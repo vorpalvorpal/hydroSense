@@ -1,0 +1,20 @@
+analyte,anzecc_reliability,anzecc_data_type,ssd_available,no_ssd_reason,acr,anzecc_hc_percentile,trigger_divisor,n_min_override,fit_dist,dgv_99pct_ug_L,dgv_95pct_ug_L,dgv_90pct_ug_L,dgv_80pct_ug_L,dgv_conditions,observations_analyte,data_source,source_doc,source_page,notes
+# PARKED ANALYTES — excluded from the main SSD pipeline due to unresolved
+# fitting discrepancies.  Data extraction is believed to be correct; the
+# discrepancies arise from differences in fitting algorithm between the
+# original Burrlioz 2.0 derivation and ssdtools 2.x.
+#
+# TODO: investigate whether any of the following would resolve the issue:
+#   (a) Fitting with burrIII3 only (no model averaging) to better match
+#       Burrlioz behaviour for Diazinon.
+#   (b) For Chlorpyrifos: re-examine whether the published HC5 (0.01 µg/L)
+#       was derived from the same dataset — ratio_95 ≈ 3.13 is unusually large.
+#   (c) Check whether additional data points are available in the ANZG 2019
+#       technical briefs that would bring the fitted SSD closer to published.
+#
+# Validation results at time of parking (ssdtools 2.6, method = burrIII3):
+#   Diazinon:    ratio_95 = 0.47  (ssdtools HC5 is 2.1× higher than published)
+#   Chlorpyrifos: ratio_95 = 3.13 (ssdtools HC5 is 3.1× lower than published)
+#
+Diazinon,MR,acute_LC50,True,,17.5,5,17.5,,burrIII3,3e-05,0.01,0.2,2,µg diazinon/L,Diazinon,Warne2000,toxicant-trigger-value-derivation_0.pdf,,HC5 within 11% of expected. Extraction confirmed accurate.
+Chlorpyrifos,HR,chronic_NOEC,True,,,5,1,,burrIII3,4e-05,0.01,0.11,1.2,µg chlorpyrifos/L,Chlorpyrifos,Warne2000,toxicant-trigger-value-derivation_0.pdf,135,n=12 chronic values. HC5 discrepancy vs published (~3.3×) is fitting method difference (Burr III vs ssdtools model average). Data extraction appears correct.

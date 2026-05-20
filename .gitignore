@@ -1,0 +1,13 @@
+# R package
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+
+# Proprietary / large guideline data files (not bundled per HANDOVER.md §2.1)
+guideline data/
+
+# R build artefacts
+/doc/
+/Meta/

@@ -1,0 +1,43 @@
+analyte,model_file,data_source,derivation_method,n_species,uses_acute_data,ssd_available,no_ssd_reason,notes
+NH3-N,NH3_N.qs,ANZG 2026 ammonia technical brief (ammonia-fresh-dgvs-data-entry.xlsx); col 55 lowest value per species,Modern ANZG XLSX,40,FALSE,TRUE,,mg NH3-N/L converted to µg/L; values at pH 7 and 20°C; apply pH/temp correction externally before calling ssd_lookup
+NO3-N,NO3_N.qs,ANZG 2025 nitrate technical brief (nitrate-fresh-dgvs-data-entry.xlsx); col 49 lowest value per species across 4 hardness sheets,Modern ANZG XLSX,38,FALSE,TRUE,,mg NO3-N/L converted to µg/L; values pooled across hardness classes
+B,B.qs,ANZG 2021 boron technical brief (boron_fresh_dgv_data-entry_final.xlsx); col 49 lowest value per species,Modern ANZG XLSX,22,FALSE,TRUE,,Column labelled (ug/L) but values are actually mg/L — converted ×1000 in fit_ssd_models.R. ANZECC 2000 trigger ~370 µg/L
+Cr,Cr.qs,ANZG 2026 chromium III technical brief (chromium-III-fresh-dgvs-data-entry.xlsx); col 48 freshwater lowest value per species,Modern ANZG XLSX,13,FALSE,TRUE,,µg Cr(III)/L; freshwater rows only (media filter); no hardness correction applied
+Cu,Cu.qs,"ANZG 2023 copper draft technical brief (copper-fresh-dgvs-data-entry.xlsx); Accepted Chronic Data sheet, col 57 best value per species",Modern ANZG XLSX,59,FALSE,TRUE,,µg Cu/L; freshwater sheet; ANZECC 2000 trigger ~1.4 µg/L (our HC5 is lower due to larger/newer dataset)
+Ni,Ni.qs,"ANZG 2024 nickel draft technical brief (nickel-fresh-dgvs-data-entry.xlsx); FW_Ni_TempTrop_Combined sheet, col 31; per-species minimum",Modern ANZG XLSX,45,FALSE,TRUE,,µg Ni/L; per-species minimum of raw test concentrations (no BLM/pH correction); ANZECC 2000 trigger ~11 µg/L (pH-corrected)
+Zn,Zn.qs,"ANZG 2024 zinc draft technical brief (zinc-fresh-dgvs-data-entry.xlsx); ForWordDoc sheet, col 11 MLR-normalised Predicted EC10; per-species minimum",Modern ANZG XLSX,31,FALSE,TRUE,,µg Zn/L at reference conditions (hardness 30 mg/L CaCO3; pH 7.5; DOC 0.5 mg/L) from ANZG MLR model; ANZECC 2000 trigger ~8 µg/L (hardness <30)
+Al,Al.qs,"Warne 2000 (ANZECC/ARMCANZ 2000 trigger value derivation); Al freshwater MR, pH >6.5",ANZECC 2000 Warne2000 PDF,9,TRUE,TRUE,,µg/L; acute LC50/EC50 data; MR reliability — % affected is approximate; two DGVs in ANZECC 2000 (pH >6.5 vs <6.5)
+As,As.qs,"Warne 2000; As(III) freshwater HR",ANZECC 2000 Warne2000 PDF,13,FALSE,TRUE,,µg/L As(III); HR reliability; ANZECC 2000 trigger ~24 µg/L As(III)
+Cd,Cd.qs,"Warne 2000; Cd freshwater HR",ANZECC 2000 Warne2000 PDF,21,FALSE,TRUE,,µg/L; HR reliability; ANZECC 2000 trigger ~0.2 µg/L
+Pb,Pb.qs,"Warne 2000; Pb freshwater HR",ANZECC 2000 Warne2000 PDF,8,FALSE,TRUE,,µg/L; HR reliability; ANZECC 2000 trigger ~3.4 µg/L
+Mn,Mn.qs,"Warne 2000; Mn freshwater MR",ANZECC 2000 Warne2000 PDF,12,TRUE,TRUE,,µg/L; acute data; MR reliability; ANZECC 2000 trigger ~1900 µg/L
+Hg,Hg.qs,"Warne 2000; Hg freshwater HR",ANZECC 2000 Warne2000 PDF,7,FALSE,TRUE,,µg/L total Hg; HR reliability; ANZECC 2000 trigger ~0.14 µg/L
+Se,,,ANZECC 2000 Warne2000 PDF,,FALSE,FALSE,n < 6 after excluding outlier (16500 µg/L) — model not fitted,ANZECC 2000 derived Se trigger by assessment factor (LR method); only 4 usable data points
+g-BHC,g_BHC.qs,"Warne 2000; lindane (γ-BHC) freshwater HR",ANZECC 2000 Warne2000 PDF,6,FALSE,TRUE,,µg/L; HR reliability
+Dieldrin,Dieldrin.qs,"Warne 2000; dieldrin freshwater MR",ANZECC 2000 Warne2000 PDF,7,TRUE,TRUE,,µg/L; acute data; MR reliability
+Endrin,Endrin.qs,"Warne 2000; endrin freshwater MR",ANZECC 2000 Warne2000 PDF,9,TRUE,TRUE,,µg/L; acute data; MR reliability
+4.4-DDT,4_4_DDT.qs,"Warne 2000; 4,4'-DDT freshwater MR",ANZECC 2000 Warne2000 PDF,7,TRUE,TRUE,,µg/L; acute data; MR reliability
+HCB,,,ANZECC 2000 Warne2000 PDF,,FALSE,FALSE,QSAR-derived trigger — no SSD possible,Hexachlorobenzene; insufficient measured toxicity data
+Aldrin,,,ANZECC 2000 Warne2000 PDF,,FALSE,FALSE,LR method — insufficient data for SSD,Assessment factor trigger only
+4.4-DDE,,,ANZECC 2000 Warne2000 PDF,,FALSE,FALSE,LR method — insufficient data for SSD,Assessment factor trigger only
+Methoxychlor,,,ANZECC 2000 Warne2000 PDF,,FALSE,FALSE,LR method — insufficient data for SSD,Assessment factor trigger only
+Demeton-S-methyl,,,ANZECC 2000 Warne2000 PDF,,FALSE,FALSE,LR method — insufficient data for SSD,Assessment factor trigger only
+Diazinon,Diazinon.qs,"Warne 2000; diazinon freshwater MR",ANZECC 2000 Warne2000 PDF,8,TRUE,TRUE,,µg/L; acute data; MR reliability; ANZECC 2000 trigger ~0.05 µg/L
+Malathion,Malathion.qs,"Warne 2000; malathion freshwater MR",ANZECC 2000 Warne2000 PDF,8,TRUE,TRUE,,µg/L; acute data; MR reliability
+Chlorpyrifos,Chlorpyrifos.qs,"Warne 2000; chlorpyrifos freshwater HR",ANZECC 2000 Warne2000 PDF,12,FALSE,TRUE,,µg/L; HR reliability; ANZECC 2000 trigger ~0.01 µg/L
+Parathion,Parathion.qs,"Warne 2000; parathion freshwater MR",ANZECC 2000 Warne2000 PDF,8,TRUE,TRUE,,µg/L; acute data; MR reliability; PDF-extracted values — verify against Warne 2000 p.22 if HC5 discrepancy found
+Azinphos-methyl,Azinphos_Methyl.qs,"Warne 2000; azinphos-methyl freshwater MR",ANZECC 2000 Warne2000 PDF,7,TRUE,TRUE,,µg/L; acute data; MR reliability
+Dimethoate,Dimethoate.qs,"Warne 2000; dimethoate freshwater MR",ANZECC 2000 Warne2000 PDF,7,TRUE,TRUE,,µg/L; acute data; MR reliability
+Phenanthrene,,,ANZECC 2000 Warne2000 PDF,,FALSE,FALSE,QSAR-derived trigger — no SSD possible,Insufficient measured freshwater toxicity data
+Anthracene,,,ANZECC 2000 Warne2000 PDF,,FALSE,FALSE,QSAR-derived trigger — no SSD possible,Insufficient measured freshwater toxicity data
+Fluoranthene,,,ANZECC 2000 Warne2000 PDF,,FALSE,FALSE,LR method — insufficient data for SSD,Assessment factor trigger only
+Naphthalene,Naphthalene.qs,"Warne 2000; naphthalene freshwater MR",ANZECC 2000 Warne2000 PDF,7,TRUE,TRUE,,µg/L; acute data; MR reliability
+Benzo(a)pyrene,Benzo_a_pyrene.qs,"Warne 2000; benzo(a)pyrene freshwater MR",ANZECC 2000 Warne2000 PDF,6,TRUE,TRUE,,µg/L; acute data; MR reliability
+Toluene,,,ANZECC 2000 Warne2000 PDF,,FALSE,FALSE,LR method — insufficient data for SSD,Assessment factor trigger only
+Ethylbenzene,,,ANZECC 2000 Warne2000 PDF,,FALSE,FALSE,LR method — insufficient data for SSD,Assessment factor trigger only
+Benzene,Benzene.qs,"Warne 2000; benzene freshwater MR",ANZECC 2000 Warne2000 PDF,8,TRUE,TRUE,,µg/L; acute data; MR reliability
+o-Xylene,o_Xylene.qs,"Warne 2000; o-xylene freshwater MR",ANZECC 2000 Warne2000 PDF,6,TRUE,TRUE,,µg/L; acute data; MR reliability
+Phenol,Phenol.qs,"Warne 2000; phenol freshwater MR",ANZECC 2000 Warne2000 PDF,8,TRUE,TRUE,,µg/L; acute data; MR reliability; ANZECC 2000 trigger ~320 µg/L
+2-Chlorophenol,2_Chlorophenol.qs,"Warne 2000; 2-chlorophenol freshwater MR",ANZECC 2000 Warne2000 PDF,6,TRUE,TRUE,,µg/L; acute data; MR reliability
+2.4.6-Trichlorophenol,2_4_6_Trichlorophenol.qs,"Warne 2000; 2,4,6-trichlorophenol freshwater MR",ANZECC 2000 Warne2000 PDF,6,TRUE,TRUE,,µg/L; acute data; MR reliability
+Pentachlorophenol,Pentachlorophenol.qs,"Warne 2000; pentachlorophenol freshwater HR",ANZECC 2000 Warne2000 PDF,11,FALSE,TRUE,,µg/L un-ionised PCP; HR reliability; ANZECC 2000 trigger ~1.4 µg/L

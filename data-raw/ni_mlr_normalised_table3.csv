@@ -1,0 +1,27 @@
+Species,Conc_ug_L,Trophic_level,Endpoint,Duration,Source_note
+Navicula pelliculosa,32.7,Diatom,Growth rate,72 h,Table 3 ANZG 2024 Ni brief (normalised to index: pH 7.5 Ca 6 Mg 4 DOC 0.5 mg/L)
+Chlorella sp. (Kakadu isolate),142,Green microalga,Growth rate,72 h,Table 3 ANZG 2024 Ni brief
+Chlorella sp. 12 (PNG isolate),18.2,Green microalga,Growth rate,72 h,Table 3 ANZG 2024 Ni brief
+Monoraphidium arcuatum,81,Green microalga,Growth rate,72 h,Table 3 ANZG 2024 Ni brief
+Nannochloropsis sp.,12.5,Green microalga,Growth rate,72 h,Table 3 ANZG 2024 Ni brief
+Pediastrum duplex,108,Green microalga,Growth rate,72 h,Table 3 ANZG 2024 Ni brief
+Pseudokirchneriella subcapitata,54.6,Green microalga,Growth rate,72 h,Table 3 ANZG 2024 Ni brief
+Lemna aequinoctialis,2.78,Macrophyte,Growth rate,96 h,Table 3 ANZG 2024 Ni brief
+Lemna minor,7.94,Macrophyte,Growth rate,7 d,Table 3 ANZG 2024 Ni brief
+Brachionus calyciflorus,217,Crustacean (rotifer),Population growth rate,48 h,Table 3 ANZG 2024 Ni brief
+Hyalella azteca,32.5,Crustacean (amphipod),Survival,14 d,Table 3 ANZG 2024 Ni brief
+Alona affinis,6.1,Crustacean (cladoceran),Survival,16 d,Table 3 ANZG 2024 Ni brief
+Ceriodaphnia dubia,2.5,Crustacean (cladoceran),Reproduction,7 d,Table 3 ANZG 2024 Ni brief
+Ceriodaphnia pulchella,23.3,Crustacean (cladoceran),Reproduction,17 d,Table 3 ANZG 2024 Ni brief
+Ceriodaphnia quadrangula,17.2,Crustacean (cladoceran),Reproduction,17 d,Table 3 ANZG 2024 Ni brief
+Daphnia longispina,66.9,Crustacean (cladoceran),Reproduction,21 d,Table 3 ANZG 2024 Ni brief
+Daphnia magna,16.6,Crustacean (cladoceran),Reproduction,5 broods,Table 3 ANZG 2024 Ni brief
+Peracantha truncata,30.4,Crustacean (cladoceran),Reproduction,17 d,Table 3 ANZG 2024 Ni brief
+Simocephalus serrulatus,48.1,Crustacean (cladoceran),Reproduction,17 d,Table 3 ANZG 2024 Ni brief
+Simocephalus vetulus,24.6,Crustacean (cladoceran),Reproduction,21 d,Table 3 ANZG 2024 Ni brief
+Lymnaea stagnalis,0.75,Gastropod,Growth rate,30 d,Table 3 ANZG 2024 Ni brief
+Hydra viridissima,57.1,Cnidarian,Population growth,96 h,Table 3 ANZG 2024 Ni brief
+Chironomus tentans,104,Insect (chironomid),Growth,10 d,Table 3 ANZG 2024 Ni brief
+Clistoronia magnifica,60.3,Insect (caddisfly),Survival,19 w,Table 3 ANZG 2024 Ni brief
+Melanotaenia splendida splendida,22.9,Fish,Hatching,12 d,Table 3 ANZG 2024 Ni brief
+Pimephales promelas,273,Fish,Survival,17 d,Table 3 ANZG 2024 Ni brief

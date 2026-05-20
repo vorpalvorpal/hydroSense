@@ -1,0 +1,207 @@
+{
+  "name": "anzecc-anzg-ssd-data",
+  "title": "ANZECC/ANZG Species Sensitivity Distribution Data",
+  "description": "Raw toxicity data and analyte metadata for fitting species sensitivity distributions (SSDs) to derive ANZECC 2000 / ANZG freshwater guideline values. Intended for use in msPAF calculations. Data sourced from Warne (2000) 'Derivation of the ANZECC and ARMCANZ Water Quality Guidelines for Toxicants' and ANZG (2021-2026) technical brief XLSX files.",
+  "version": "0.1.0",
+  "licenses": [
+    {
+      "name": "odc-pddl",
+      "title": "Open Data Commons Public Domain Dedication and License",
+      "path": "https://opendatacommons.org/licenses/pddl/"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Warne (2000) — Description of how each toxicant trigger value was derived",
+      "path": "toxicant-trigger-value-derivation_0.pdf",
+      "description": "Primary source for ANZECC 2000 SSD data. All values in µg/L unless otherwise noted."
+    },
+    {
+      "title": "ANZG Technical Briefs (2021-2026)",
+      "description": "XLSX data-entry files for NH3-N (2026), NO3-N (2025), B (2021), Cr-III (2026), Cu (2023 draft), Ni (2024 draft), Zn (2024 draft)."
+    }
+  ],
+  "resources": [
+    {
+      "name": "observations",
+      "path": "anzecc_warne2000_observations.csv",
+      "title": "ANZECC 2000 raw toxicity observations (Warne 2000)",
+      "description": "One row per toxicity value used by Warne (2000) in SSD fitting. All concentrations in µg/L. For ANZG XLSX analytes (NH3-N, NO3-N, B, Cr, Cu, Ni, Zn) the canonical data source is the XLSX file — see anzecc_analyte_metadata.csv.",
+      "schema": {
+        "fields": [
+          {
+            "name": "analyte",
+            "type": "string",
+            "description": "Analyte name. Matches observations_analyte in anzecc_analyte_metadata.csv. g-BHC has two entries ('g-BHC_chronic' and 'g-BHC_acute') because Warne fitted both."
+          },
+          {
+            "name": "value_ug_L",
+            "type": "number",
+            "description": "Toxicity threshold concentration in µg/L as reported by Warne (2000). For MR analytes this is an acute LC50/EC50; for HR analytes a chronic NOEC/LOEC; for BaP a QSAR-predicted value.",
+            "constraints": { "minimum": 0 }
+          },
+          {
+            "name": "endpoint",
+            "type": "string",
+            "description": "Type of toxicity endpoint.",
+            "constraints": {
+              "enum": ["chronic_NOEC", "acute_LC50", "acute_EC50", "qsar_predicted"]
+            }
+          },
+          {
+            "name": "species_id",
+            "type": "string",
+            "description": "Placeholder species identifier (Sp_001, Sp_002, …). Species names were not recorded by Warne (2000) in the PDF extraction. One value per species as Warne used the per-species minimum."
+          },
+          {
+            "name": "source_doc",
+            "type": "string",
+            "description": "Source document identifier.",
+            "constraints": { "enum": ["Warne2000"] }
+          },
+          {
+            "name": "source_page",
+            "type": "integer",
+            "description": "PDF page number in Warne (2000) where this data appears. Empty if page not confirmed.",
+            "constraints": { "minimum": 1, "maximum": 170 }
+          },
+          {
+            "name": "verified",
+            "type": "boolean",
+            "description": "TRUE if the value was read directly from the Warne (2000) PDF during the current extraction session. FALSE if it was extracted in an earlier session without full page-level verification."
+          },
+          {
+            "name": "notes",
+            "type": "string",
+            "description": "Extraction notes, method caveats, or data quality flags. Populated on the first row for each analyte only."
+          }
+        ],
+        "primaryKey": ["analyte", "value_ug_L", "species_id"]
+      }
+    },
+    {
+      "name": "analyte_metadata",
+      "path": "anzecc_analyte_metadata.csv",
+      "title": "ANZECC/ANZG analyte metadata",
+      "description": "One row per analyte. Captures reliability classification, ACR, ANZECC-adopted percentile, published DGVs at all four protection levels, and fit parameters needed to reproduce ANZECC trigger values from the raw observations.",
+      "schema": {
+        "fields": [
+          {
+            "name": "analyte",
+            "type": "string",
+            "description": "Canonical analyte name matching guidelineDF and analyteDF in the dashboard."
+          },
+          {
+            "name": "anzecc_reliability",
+            "type": "string",
+            "description": "ANZECC 2000 reliability tier.",
+            "constraints": { "enum": ["HR", "MR", "LR", "QSAR"] }
+          },
+          {
+            "name": "anzecc_data_type",
+            "type": "string",
+            "description": "Type of toxicity data used in the ANZECC SSD.",
+            "constraints": {
+              "enum": ["chronic_NOEC", "acute_LC50", "acute_EC50", "qsar_predicted", ""]
+            }
+          },
+          {
+            "name": "ssd_available",
+            "type": "boolean",
+            "description": "TRUE if an SSD was fitted (or can be fitted) for this analyte."
+          },
+          {
+            "name": "no_ssd_reason",
+            "type": "string",
+            "description": "Reason no SSD is available (for ssd_available=FALSE rows)."
+          },
+          {
+            "name": "acr",
+            "type": "number",
+            "description": "Acute-to-Chronic Ratio used by ANZECC for MR analytes. NA for HR, LR, QSAR analytes. Divide the fitted acute HC by this value to obtain the chronic-equivalent trigger.",
+            "constraints": { "minimum": 1 }
+          },
+          {
+            "name": "anzecc_hc_percentile",
+            "type": "integer",
+            "description": "Which HC percentile ANZECC used as the basis for the trigger value. Normally 5 (HC5 = 95% species protection). Set to 1 (HC1 = 99% protection) for analytes where ANZECC chose the more conservative HC1 due to bioaccumulation potential or acute toxicity concerns (Se, DDT, BaP, Azinphos-methyl).",
+            "constraints": { "enum": [1, 5] }
+          },
+          {
+            "name": "trigger_divisor",
+            "type": "number",
+            "description": "Divisor applied to the HC (at anzecc_hc_percentile) to obtain the published DGV. For HR analytes = 1 (no division). For MR analytes = ACR. For LR/QSAR analytes = assessment factor (typically 10). Formula: DGV_95pct = HC(anzecc_hc_percentile) / trigger_divisor.",
+            "constraints": { "minimum": 1 }
+          },
+          {
+            "name": "n_min_override",
+            "type": "integer",
+            "description": "Override for the minimum n threshold in fit_ssd_models.R (default 6). Set to 5 for Se, which Warne fitted with n=5 including an outlier.",
+            "constraints": { "minimum": 3 }
+          },
+          {
+            "name": "fit_dist",
+            "type": "string",
+            "description": "ssdtools distribution name(s) to use when fitting the SSD for this analyte. A single name (e.g. 'burrIII3', 'lnorm') fits only that distribution. A comma-separated list (e.g. 'lnorm,llogis,gamma') fits all listed distributions and model-averages. Empty/NA means use the global --dists CLI default. Warne 2000 analytes use 'burrIII3' (Burr Type III — the distribution Warne 2000 used throughout). ANZG XLSX analytes use 'lnorm'."
+          },
+          {
+            "name": "dgv_99pct_ug_L",
+            "type": "number",
+            "description": "Published ANZECC 2000 guideline value at 99% species protection (HC1-equivalent) in µg/L. Sourced from guidelineDF.qs (converted from mg/L). Empty if not available (LR analytes have one value only). Note: BaP stores its single published DGV here (0.1 µg/L = HC1÷10 bioaccumulation factor) even though guidelineDF placed it in the 90% column — the 99% column is the correct placement because the DGV is derived from HC1 (99% species protection level).",
+            "constraints": { "minimum": 0 }
+          },
+          {
+            "name": "dgv_95pct_ug_L",
+            "type": "number",
+            "description": "Published ANZECC 2000 guideline value at 95% species protection (HC5-equivalent) in µg/L. This is the primary DGV used for compliance assessment.",
+            "constraints": { "minimum": 0 }
+          },
+          {
+            "name": "dgv_90pct_ug_L",
+            "type": "number",
+            "description": "Published ANZECC 2000 guideline value at 90% species protection (HC10-equivalent) in µg/L.",
+            "constraints": { "minimum": 0 }
+          },
+          {
+            "name": "dgv_80pct_ug_L",
+            "type": "number",
+            "description": "Published ANZECC 2000 guideline value at 80% species protection (HC20-equivalent) in µg/L.",
+            "constraints": { "minimum": 0 }
+          },
+          {
+            "name": "dgv_conditions",
+            "type": "string",
+            "description": "Chemical or physical conditions under which the DGV applies (e.g. pH, hardness, DOC). Important for ammonia (pH/temperature dependent), metals with hardness corrections, and BLM-adjusted metals."
+          },
+          {
+            "name": "observations_analyte",
+            "type": "string",
+            "description": "Key into the 'analyte' column of anzecc_warne2000_observations.csv to use when fitting this analyte's SSD. May differ from 'analyte' (e.g. g-BHC -> 'g-BHC_acute'; 4.4-DDT -> '4,4\\'-DDT'). Empty for ANZG XLSX analytes."
+          },
+          {
+            "name": "data_source",
+            "type": "string",
+            "description": "Where the raw observations come from.",
+            "constraints": { "enum": ["Warne2000", "ANZG_XLSX"] }
+          },
+          {
+            "name": "source_doc",
+            "type": "string",
+            "description": "Filename of the source document."
+          },
+          {
+            "name": "source_page",
+            "type": "string",
+            "description": "Page or sheet reference within the source document."
+          },
+          {
+            "name": "notes",
+            "type": "string",
+            "description": "Data quality flags, extraction caveats, and comparison notes."
+          }
+        ],
+        "primaryKey": ["analyte"]
+      }
+    }
+  ]
+}

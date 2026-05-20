@@ -1,0 +1,30 @@
+Package: leachatetools
+Title: Water Quality Analysis Tools for Leachate-Impacted Waters
+Version: 0.1.0
+Authors@R: person("Robin", "Shannon", email = "rjs@robinshannon.net",
+    role = c("aut", "cre"))
+Description: Tools for analysing water quality in systems potentially impacted
+    by landfill leachate. Core capabilities: species sensitivity distribution
+    (SSD) based potentially affected fraction (PAF) calculations using
+    ANZECC/ANZG toxicity data; multi-substance PAF (msPAF / AmsPAF) with
+    local background adjustment via the Added Risk Approach; and end-member
+    mixing analysis for leachate detection (LMF).
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Imports:
+    checkmate,
+    dplyr,
+    purrr,
+    qs,
+    readr,
+    readxl,
+    ssdtools (>= 2.0.0),
+    tibble,
+    tidyr,
+    tools
+Suggests:
+    ggplot2,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
