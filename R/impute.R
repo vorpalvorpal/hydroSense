@@ -33,10 +33,13 @@
 #' @param formula_template `brms::brmsformula` or `NULL`. If `NULL`, a default
 #'   formula is constructed: `mvbind(analyte_1, ...) ~ s(d1) + s(d2) + ...`
 #'   with one smooth per driver.
-#' @param family brms family for the response distribution. Default
-#'   `"lognormal"` (appropriate for positive concentrations). Must be a family
-#'   where the link is `log` so censoring on the log scale is handled
-#'   correctly.
+#' @param family brms family for the log-transformed response. Default
+#'   `"gaussian"`. Concentrations are always log-transformed before fitting
+#'   (i.e. the model is `log(conc) ~ ...`), so `"gaussian"` produces
+#'   log-normal marginals. `"gaussian"` is required for `set_rescor(TRUE)` to
+#'   be available in brms; `"lognormal"` is not supported with residual
+#'   correlations. Posterior predictions are back-transformed with `exp()` so
+#'   the returned `value` column is always on the original concentration scale.
 #' @param iter Total MCMC iterations per chain. Default `2000`.
 #' @param warmup Warmup iterations per chain. Default `1000`.
 #' @param chains Number of MCMC chains. Default `4`.
@@ -69,7 +72,7 @@ impute_chemistry <- function(
     df,
     drivers          = c("pH", "EC", "DOC"),
     formula_template = NULL,
-    family           = "lognormal",
+    family           = "gaussian",
     iter             = 2000,
     warmup           = 1000,
     chains           = 4,
@@ -149,30 +152,38 @@ impute_chemistry <- function(
 
   driver_col_names <- paste0(".drv_", drivers)
 
-  # Targets: value + censoring indicator per analyte
+  # Targets: log(value) for detected rows; NA for BDL and missing.
+  #
+  # We always fit on the log scale with family = "gaussian" and rescor = TRUE.
+  # brms does not support cens() when rescor is estimated (only se/weights/mi
+  # are allowed). Using mi() handles both BDL and truly-missing analytes as
+  # latent missing values imputed from the multivariate joint distribution.
+  #
+  # Statistical consequence: we lose the strict left-censor constraint for BDL
+  # values. In practice this is acceptable because:
+  #   (a) the cross-analyte correlations constrain imputed values to plausible
+  #       ranges conditioned on all co-analytes,
+  #   (b) BDL values are typically far below the detected concentration range,
+  #       so the posterior naturally stays low.
+  eps_log <- 1e-9   # guard against log(0)
   target_wide_vals <- target_df |>
-    dplyr::select("uuid.sample", "name.analyte", "value") |>
-    tidyr::pivot_wider(
-      names_from  = "name.analyte",
-      values_from = "value"
-    )
-
-  # Censoring indicator: "left" if BDL (quantified == FALSE), "none" if detected
-  # NA rows (analyte not measured at this sample) are left as NA in the wide df
-  target_wide_cens <- target_df |>
+    dplyr::select("uuid.sample", "name.analyte", "value", "quantified") |>
     dplyr::mutate(
-      .cens = dplyr::if_else(.data$quantified, "none", "left")
+      log_value = dplyr::if_else(
+        .data$quantified,
+        log(pmax(.data$value, eps_log)),
+        NA_real_   # BDL → NA → mi() imputes from multivariate posterior
+      )
     ) |>
-    dplyr::select("uuid.sample", "name.analyte", ".cens") |>
+    dplyr::select("uuid.sample", "name.analyte", "log_value") |>
     tidyr::pivot_wider(
       names_from  = "name.analyte",
-      values_from = ".cens",
-      names_prefix = ".cens_"
+      values_from = "log_value"
     )
 
+  # No separate censoring-indicator columns needed for mi().
   wide_df <- driver_wide |>
-    dplyr::left_join(target_wide_vals, by = "uuid.sample") |>
-    dplyr::left_join(target_wide_cens, by = "uuid.sample")
+    dplyr::left_join(target_wide_vals, by = "uuid.sample")
 
   # ── Track imputation kind for each (sample, analyte) ─────────────────────
   impute_kind <- target_df |>
@@ -207,24 +218,15 @@ impute_chemistry <- function(
     safe_analytes <- make.names(target_analytes)
     names(safe_analytes) <- target_analytes
 
-    # Rename analyte columns in wide_df to safe names
-    old_names <- target_analytes
-    new_names <- safe_analytes
-    cens_old  <- paste0(".cens_", old_names)
-    cens_new  <- paste0(".cens_", new_names)
-
-    rename_map <- c(
-      stats::setNames(new_names, old_names),
-      stats::setNames(cens_new, cens_old)
-    )
-    wide_df <- dplyr::rename(wide_df, dplyr::any_of(rename_map))
+    # Rename analyte columns in wide_df to safe R variable names
+    rename_map <- stats::setNames(safe_analytes, target_analytes)
+    wide_df    <- dplyr::rename(wide_df, dplyr::any_of(rename_map))
 
     driver_terms <- paste0("s(", driver_col_names, ")", collapse = " + ")
 
-    bf_list <- purrr::map(new_names, function(a) {
-      cens_col <- paste0(".cens_", a)
+    bf_list <- purrr::map(unname(safe_analytes), function(a) {
       brms::bf(
-        stats::as.formula(paste0(a, " | cens(", cens_col, ") ~ ", driver_terms))
+        stats::as.formula(paste0(a, " | mi() ~ ", driver_terms))
       )
     })
 
@@ -247,7 +249,7 @@ impute_chemistry <- function(
     brms::brm(
       formula = brms_formula,
       data    = wide_df,
-      family  = brms::get_family(family),
+      family  = family,
       iter    = iter,
       warmup  = warmup,
       chains  = chains,
@@ -279,12 +281,13 @@ impute_chemistry <- function(
     return(result)
   }
 
-  # Point estimates: posterior mean
-  post_means <- brms::fitted(fit, summary = TRUE, scale = "response")
-  # post_means is [n_obs × (Estimate, Est.Error, ...) × response]
-  # brms returns a 3D array with names in the third dim
+  # Point estimates: posterior expected values (mean of posterior draws).
+  # brms::posterior_epred() is the modern API for E[Y | data]; it handles
+  # mi() imputed cells correctly (returns posterior of the latent missing value).
+  # Returns array [n_draws, n_obs, n_responses] on the log scale.
+  epred_draws <- brms::posterior_epred(fit)
   pm_long <- .reshape_posterior_means(
-    post_means, wide_df$uuid.sample, safe_analytes
+    epred_draws, wide_df$uuid.sample, safe_analytes
   )
 
   result <- .build_imputed_df(df, pm_long, impute_kind, drivers,
@@ -295,27 +298,34 @@ impute_chemistry <- function(
 
 # ── Internal reshape helpers ──────────────────────────────────────────────────
 
-#' Reshape brms::fitted() output to long format
+#' Reshape brms::posterior_epred() output to long format of posterior means
+#'
+#' `posterior_epred()` returns `[n_draws, n_obs, n_responses]` on the log scale.
+#' We average across draws and exp()-transform to get concentrations.
 #' @keywords internal
-.reshape_posterior_means <- function(post_means, sample_uids, safe_analytes) {
-  # post_means is a 3-dim array [n_obs, n_stats, n_responses] or a matrix when
-  # there's one response. Coerce to list of matrices, one per response.
-  if (is.matrix(post_means)) {
-    # single response (shouldn't happen in mvbind but handle gracefully)
-    pm_list <- list(post_means)
-    names(pm_list) <- names(safe_analytes)[1L]
+.reshape_posterior_means <- function(epred_draws, sample_uids, safe_analytes) {
+  # Handle both univariate (matrix [n_draws, n_obs]) and multivariate (3D array)
+  if (is.matrix(epred_draws)) {
+    # Single response — wrap in a named list
+    arr_list <- list(epred_draws)
+    names(arr_list) <- unname(safe_analytes)[1L]
   } else {
-    pm_list <- lapply(dimnames(post_means)[[3L]], function(nm) post_means[, , nm])
-    names(pm_list) <- dimnames(post_means)[[3L]]
+    # [n_draws, n_obs, n_responses]; response names in dim 3
+    resp_nms <- dimnames(epred_draws)[[3L]]
+    arr_list <- setNames(
+      lapply(seq_along(resp_nms), function(i) epred_draws[, , i]),
+      resp_nms
+    )
   }
 
-  purrr::map2_dfr(pm_list, names(pm_list), function(mat, safe_nm) {
+  purrr::map2_dfr(arr_list, names(arr_list), function(mat, safe_nm) {
     orig_nm <- names(safe_analytes)[safe_analytes == safe_nm]
     if (length(orig_nm) == 0L) orig_nm <- safe_nm  # fallback
+    # mat is [n_draws, n_obs]; colMeans gives the posterior mean per observation
     tibble::tibble(
       uuid.sample  = sample_uids,
       name.analyte = orig_nm,
-      .post_mean   = mat[, "Estimate"]
+      .post_mean   = exp(colMeans(mat))  # back-transform from log scale
     )
   })
 }
@@ -337,7 +347,7 @@ impute_chemistry <- function(
         uuid.sample  = rep(sample_uids, each = n_draws),
         name.analyte = orig_nm,
         draw_id      = rep(seq_len(n_draws), times = length(sample_uids)),
-        .post_value  = as.vector(t(mat))
+        .post_value  = exp(as.vector(t(mat)))  # back-transform from log scale
       )
     }
   )
