@@ -1,6 +1,6 @@
 Package: leachatetools
 Title: Water Quality Analysis Tools for Leachate-Impacted Waters
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: person("Robin", "Shannon", email = "rjs@robinshannon.net",
     role = c("aut", "cre"))
 Description: Tools for analysing water quality in systems potentially impacted
@@ -12,10 +12,12 @@ Description: Tools for analysing water quality in systems potentially impacted
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Imports:
     checkmate,
+    cli,
     dplyr,
+    lubridate,
     purrr,
     qs,
     readr,
@@ -23,8 +25,11 @@ Imports:
     ssdtools (>= 2.0.0),
     tibble,
     tidyr,
-    tools
+    tools,
+    uuid
+SystemRequirements: Stan (rstan or cmdstanr); required by brms for Bayesian imputation
 Suggests:
+    brms (>= 2.20.0),
     ggplot2,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
