@@ -13,6 +13,28 @@ informative — not to pre-commit to a single design.
 
 ---
 
+## Implementation status
+
+The table below summarises which pipeline stages are implemented in the
+`leachatetools` package and which remain to be done at analysis time.
+
+| Stage | Function(s) | Status |
+|-------|-------------|--------|
+| Pre-screen analytes by detection frequency | `prescreen_analytes()` | ✅ Implemented |
+| Bayesian multivariate imputation (BDL + missing) | `impute_chemistry()` | ✅ Implemented |
+| Chemistry normalisation (NH₃-N, Cd, Pb, Cu, Ni, Zn) | `prepare_reference()` → `add_amspaf()` | ✅ Implemented |
+| Per-sample AmsPAF | `prepare_reference()` + `add_amspaf()` | ✅ Implemented |
+| Chronic concentration integration | `compute_chronic_chemistry()` | ✅ Implemented |
+| Chronic AmsPAF | `compute_chronic_chemistry()` → `prepare_reference()` → `add_amspaf()` | ✅ Implemented |
+| Air-to-water temperature regression | `estimate_water_temp()` | ✅ Implemented |
+| Per-sample LMF | `add_lmf()` | ✅ Implemented |
+| Chronic LMF integration | not yet — apply `compute_chronic_chemistry()` to LMF outputs | ⬜ Not yet |
+| Baselga β-diversity partitioning | `betapart` (user script) | ⬜ Not yet |
+| Calibration regression variants V1–V4 | user script | ⬜ Not yet |
+| Sensitivity tests, diagnostics, reporting | user script | ⬜ Not yet |
+
+---
+
 ## 1. Context and conceptual model
 
 AmsPAF predicts the fraction of aquatic species potentially affected by a
@@ -422,22 +444,25 @@ is needed for calibration purposes. The per-sample AmsPAF remains the
 appropriate output for chemistry-sample-level reporting; the
 chronic-integrated AmsPAF is computed separately for calibration.
 
-#### Recommended integration framework
+#### Implemented integration framework — `compute_chronic_chemistry()`
 
-For each calendar day t_0 within the analysis window:
+The chronic integration is implemented as `leachatetools::compute_chronic_chemistry()`.
+The following describes both the mathematical framework and the corresponding
+function behaviour.
 
-**(a) Window**: include all samples from t_0 - 365 days to t_0 (one year
-of look-back). Extension beyond 365 days adds little under exponential
-decay weighting; 365 days is a reasonable balance.
+**(a) Window**: for each focal date t₀, include all samples from
+`t₀ - window_days` to `t₀` (default 365-day look-back). Extension beyond
+365 days adds little under exponential decay weighting. Controlled by
+`window_days` argument.
 
-**(b) Temporal weighting**: exponential decay with characteristic time
-τ. Weight for a sample at time t_i:
+**(b) Temporal weighting**: exponential decay with characteristic time τ.
+Weight for a sample at time tᵢ:
 
 $$w_{\text{temporal},i} = \exp\left(-\frac{t_0 - t_i}{\tau}\right)$$
 
-τ = 90 days is the suggested default. This gives roughly:
+τ = 90 days is the default (`tau_days` argument). This gives roughly:
 
-- Days 0–90 before t_0: ~63% of total weight
+- Days 0–90 before t₀: ~63% of total weight
 - Days 90–180: ~23%
 - Days 180–270: ~9%
 - Days 270–365: ~3%
@@ -455,9 +480,9 @@ and report robustness.
 each sample represents must be accounted for, otherwise pulse-triggered
 sampling artificially inflates the integrated mean.
 
-Use a **forward-step rule**: each sample i represents the period from
-its own time t_i to the time of the next sample t_{i+1}. The duration
-weight is:
+The function uses a **forward-step rule**: each sample i represents the
+period from its own time tᵢ to the time of the next sample t_{i+1}.
+The duration weight is:
 
 $$\Delta t_i = t_{i+1} - t_i \text{ (or } t_0 - t_i \text{ for the most recent sample)}$$
 
@@ -468,130 +493,225 @@ which is usually the start of intensified pulse sampling. Symmetric
 trapezoidal weighting (half before, half after) would incorrectly assign
 some of the baseline period to pulse-era weight.
 
-**Window-edge handling**: at t_0 - 365, fetch the sample immediately
-before the window start (from the broader historical record, not
-artificially constrained). This anchors the start of the window so the
-first in-window sample doesn't have undefined duration. Years of data
-exist; just look up the previous sample.
+**Window-edge handling**: controlled by `anchor_outside_window` argument
+(default `TRUE`). When `TRUE`, the function fetches the sample immediately
+before the window start and includes it as an anchor, so the first
+in-window sample doesn't have undefined duration. Its duration is
+truncated to begin at `window_start`.
 
 **(d) Combined weight per sample**:
 
 $$w_i = w_{\text{temporal},i} \times \Delta t_i$$
 
-**(e) Per-analyte summary statistic — time-weighted geometric mean**:
+The temporal weight is evaluated at the midpoint of the sample's interval.
 
-$$\bar{C}_{\text{geom}} = \exp\left( \frac{\sum_i w_i \log(C_i)}{\sum_i w_i} \right)$$
+**(e) Per-analyte summary statistic**: time-weighted geometric mean (default,
+`summary = "geom_mean"`):
+
+$$\bar{C}_{\text{geom}} = \exp\left( \frac{\sum_i w_i \log(C_i + \varepsilon)}{\sum_i w_i} \right)$$
+
+where ε = 1e-9 guards against log(0). Arithmetic mean and 90th percentile
+are also available via `summary = "arith_mean"` or `"p90"`.
 
 The geometric mean is the natural average for log-normally distributed
-concentrations (which most environmental concentrations approximate) and
-is less sensitive to extreme pulses than arithmetic mean while still
-moving in response to elevated periods. It matches the chronic-exposure
-framing of PAF better than arithmetic mean.
+concentrations and is less sensitive to extreme pulses than arithmetic mean
+while still moving in response to elevated periods. It matches the
+chronic-exposure framing of PAF better than arithmetic mean.
 
-**(f) BDL handling**:
+**(f) BDL handling and imputation — `impute_chemistry()`**
 
-The principled approach is to treat BDL values as **left-censored
-observations in the Bayesian multivariate GAM imputation step** (which
-operates upstream of the chronic integration in the AmsPAF pipeline).
-`brms` supports this natively via `cens()`:
+BDL values and missing analytes are handled upstream by
+`leachatetools::impute_chemistry()` *before* chronic integration. By the
+time data reaches `compute_chronic_chemistry()`, all BDL and missing
+values have been replaced with imputed estimates and every sample has
+full analyte coverage.
+
+`impute_chemistry()` fits a Bayesian multivariate GAM using `brms` with
+`set_rescor(TRUE)` to capture cross-analyte residual correlations. The
+implementation details:
+
+- **BDL rows**: the original concentration value (`value` column for rows
+  where `detected = FALSE`) is the detection limit. These rows are flagged
+  with `mi()` in the brms formula and treated as missing-at-random in the
+  likelihood, with an Option B post-hoc check applied after sampling (see
+  below).
+- **Missing rows**: analytes not measured at a sample are also handled as
+  `mi()` — the multivariate likelihood uses cross-analyte correlations and
+  driver smooth functions to estimate the unobserved value.
+- **Driver analytes** (e.g. pH, EC, DOC) must be fully observed; the
+  function errors if any driver has BDL or missing rows.
+- **Model structure**: `brms::bf(mvbind(A1, A2, ...) | mi() ~ s(driver1) + s(driver2) + ...)`
+  with `set_rescor(TRUE)`. The smooth functions of drivers capture the
+  systematic relationship between water chemistry conditions and analyte
+  concentrations; the residual covariance captures what the drivers don't
+  explain.
+- **Posterior summaries**: `impute_chemistry()` returns posterior means
+  by default (`return = "point"`). Set `return = "draws"` to get one row
+  per (sample × analyte × draw) for full posterior propagation.
+
+**Why `mi()` and not `cens()`**: brms does not support `cens()` (explicit
+left-censored likelihood) when `set_rescor(TRUE)` is also set. The `mi()`
+approach treats BDL values as missing at random (missing-at-random
+approximation to left-censoring), which is slightly less statistically
+rigorous but is the only way to get cross-analyte residual correlations
+within brms. A fully correct treatment would use a custom Stan model
+combining left-censored likelihoods with correlated random effects (see
+Option D note in `?impute_chemistry`). The `mi()` approximation is
+adequate for practical use when BDL rates are modest (< 50% per analyte).
+
+**Option B post-hoc check**: after imputation, `impute_chemistry()`
+optionally checks that imputed BDL values do not exceed the original
+detection limit (stored before fitting). If any do, a warning is issued
+with a count of the exceedances and which analytes are affected. The
+`bdl_cap` argument (default `TRUE`) caps exceedances at the detection
+limit to ensure the imputed values remain physically consistent.
+
+**Output columns from `impute_chemistry()`**: same schema as input plus:
+- `imputed` (logical): `TRUE` for rows that were BDL or missing in the input
+- `imputed_kind` (character): `"observed"`, `"censored_left"` (BDL), or
+  `"missing"` — useful for diagnostics and for propagating imputation
+  uncertainty into downstream summaries
+- attribute `brmsfit`: the fitted brms model object for posterior predictive
+  checks and inspection
+
+**Analyte inclusion criterion**: only analytes that pass the detection
+frequency threshold (see §4, Stage -1) are passed to `impute_chemistry()`.
+Analytes not meeting the threshold are excluded entirely rather than imputed
+from a prior-driven posterior. See `leachatetools::prescreen_analytes()`.
+
+**(g) Chemistry normalisation**
+
+Before SSD evaluation, concentrations are adjusted to the ANZG index
+condition so that the field measurement is comparable to the toxicity data
+on which the SSD was derived. This is implemented in `prepare_reference()`
+and `add_amspaf()` via normalisation formulas stored in the bundled analyte
+metadata CSV (`inst/extdata/anzecc_analyte_metadata.csv`).
+
+Implemented normalisation formulas:
+
+| Analyte | Model | Required co-analytes |
+|---------|-------|---------------------|
+| NH₃-N | ANZG (2021) ionisation equilibrium; index pH 7.0, T 20 °C | `pH`, `temperature` (°C) |
+| Cd | ANZECC 2000 hardness correction; index hardness 30 mg/L CaCO₃ | `hardness` |
+| Pb | ANZECC 2000 hardness correction; index hardness 30 mg/L CaCO₃ | `hardness` |
+| Cu | ANZG (2024) DOC power law (β = 0.977); DOC clamped [0.5, 30] mg/L | `DOC` |
+| Ni | Peters et al. (2021) invertebrate MLR; index pH 7.5, Ca 6, Mg 4, DOC 0.5 | `pH`, `DOC`, `Ca`, `Mg` |
+| Zn | Gadd et al. (in prep.) *Daphnia magna* MLR; index pH 7.5, hardness 30, DOC 0.5 | `pH`, `hardness`, `DOC` |
+
+The normalisation converts a field measurement C to an index-equivalent
+concentration C_norm = C × (EC10_index / EC10_field). All SSD lookups
+use C_norm.
+
+**Limitations**: Ni and Zn normalisations are single-model approximations.
+The ANZG DGVs were derived using multi-trophic SSD re-derivation; the
+single invertebrate/crustacean model used here gives reasonable accuracy
+at neutral pH but diverges at high pH (> 8.0 for Zn in particular, where
+the Daphnia model under-predicts the increase in toxicity captured by the
+full SSD). See `vignettes/normalisation.Rmd` for details and instructions
+on supplying custom formulas via user CSV.
+
+Water temperature (required by the NH₃-N normalisation) can be estimated
+from air temperature records using `estimate_water_temp()`, which fits a
+linear regression on paired air–water temperature observations and predicts
+forward. See `?estimate_water_temp`.
+
+**(h) Full pipeline order**
 
 ```r
-chemistry_data <- chemistry_data |>
-  mutate(
-    censored = if_else(quantified, "none", "left"),
-    value_for_likelihood = if_else(quantified, log(value), log(DL))
-  )
+library(leachatetools)
 
-bf_pb <- bf(value_for_likelihood | cens(censored) ~ s(pH) + s(log_ec) + ... )
+# --- Stage -1: Pre-screen analytes ---
+included <- prescreen_analytes(
+  chemistry_long,        # long-format df: sample_id, site_id, datetime,
+                         #                 analyte, value, detected
+  k = 0.05              # 5% minimum detection frequency
+)
+# attr(included, "excluded") lists the dropped analytes
+
+chemistry_filtered <- dplyr::filter(chemistry_long,
+                                    analyte %in% included)
+
+# --- Stage 0a: Impute BDL and missing values ---
+chemistry_imputed <- impute_chemistry(
+  chemistry_filtered,
+  drivers = c("pH", "EC", "DOC"),   # must be fully observed
+  iter    = 2000, warmup = 1000,
+  chains  = 4, cores = 4
+)
+# chemistry_imputed has columns: sample_id, site_id, datetime,
+#   analyte, value (imputed), detected, imputed, imputed_kind
+
+# --- Stage 0b: Per-sample AmsPAF (routine monitoring output) ---
+ref_df   <- dplyr::filter(chemistry_imputed, site_id == "reference")
+prep_ref <- prepare_reference(ref_df)
+
+psampl_amspaf <- add_amspaf(
+  dplyr::filter(chemistry_imputed, site_id != "reference"),
+  reference = prep_ref
+)
+
+# --- Stage 0c: Chronic integration ---
+bio_dates <- as.Date(c("2015-03-01", "2016-03-01", ...))  # biological sampling dates
+
+chr_downstream <- compute_chronic_chemistry(
+  dplyr::filter(chemistry_imputed, site_id == "downstream"),
+  focal_dates  = bio_dates,
+  tau_days     = 90,
+  window_days  = 365
+)
+
+chr_reference <- compute_chronic_chemistry(
+  dplyr::filter(chemistry_imputed, site_id == "reference"),
+  focal_dates  = bio_dates,
+  tau_days     = 90,
+  window_days  = 365
+)
+
+# --- Stage 0d: Chronic AmsPAF (calibration input) ---
+prep_chr_ref  <- prepare_reference(chr_reference)
+chronic_amspaf <- add_amspaf(chr_downstream, reference = prep_chr_ref)
+# chronic_amspaf has one row per focal_date with value = chronic AmsPAF (%)
+
+# --- Stage 0e: Chronic LMF (NOT YET IMPLEMENTED) ---
+# LMF is currently per-sample only.
+# Future: add_lmf() on imputed chemistry, then compute_chronic_chemistry()
+# on the resulting LMF values (treating LMF as a per-sample scalar analyte).
+# PLACEHOLDER:
+# psampl_lmf <- add_lmf(chemistry_imputed, ...)
+# chronic_lmf <- compute_chronic_chemistry(psampl_lmf, focal_dates = bio_dates, ...)
 ```
 
-The `cens()` indicator tells `brms` "this observation is left-censored at
-the value given" — the true log-concentration is somewhere below log(DL).
-For a multivariate model with `set_rescor(TRUE)`, the residual covariance
-captures cross-analyte correlations, which means BDL values for one
-analyte are informed by quantified values of correlated analytes.
+**(i) Apply same window and weighting to reference**: `compute_chronic_chemistry()`
+is called separately for reference and downstream using the same
+`focal_dates`, `tau_days`, and `window_days`. `prepare_reference()` on the
+chronic reference chemistry ensures the ARA shift is consistent: the
+chronic-integrated reference concentrations are subtracted from
+chronic-integrated downstream concentrations before SSD lookup.
 
-This replaces the conventional DL/2 substitution. The posterior for a
-censored value gives a distribution over [0, DL] informed by:
-
-- The censoring constraint itself (must be below DL)
-- The model's smooth functions of drivers (pH, EC, DOC etc.)
-- Cross-analyte correlations through the residual covariance
-- Any quantified observations of the same analyte at other samples
-- Priors
-
-No DL/2 substitution is needed. The reference/downstream asymmetry from
-earlier drafts becomes unnecessary because the imputation handles
-censoring properly for both sites within a single framework.
-
-**Analyte inclusion criterion**: an analyte participates in msPAF only if
-quantified above DL in at least k% of samples (suggest k = 5–10) over
-the analysis window. Below this threshold, the analyte is excluded from
-msPAF entirely.
-
-The rationale: an analyte never quantified contributes no information
-about presence at our sites — only a prior-driven posterior. The
-multivariate model handles such analytes correctly (produces small
-posterior values) but the computational and interpretational cost isn't
-worth it. Explicit exclusion is honest documentation of analytical
-limitations rather than a hidden imputation.
-
-For Blaxland this matters most for the **pesticide class**. If most/all
-pesticides have never been detected at our sites, they should be
-excluded from msPAF. The reported msPAF then represents metal + ammonia
-(+ H2S where measured) toxicity only, with a note that pesticide
-contamination wasn't detected over the analysis window. If future
-sampling produces pesticide detections, the inclusion criterion is
-re-evaluated and pesticides re-enter the index naturally.
-
-For analytes that are mostly-but-not-entirely-BDL (say, quantified in
-10–50% of samples), the Bayesian framework is most valuable. The
-quantified observations anchor μ and σ; the censored observations
-provide the constraint; cross-correlations with measured analytes help
-fill in the BDL gaps. This is real value-add over DL/2 substitution.
-
-**Fallback for the interim period**: if the Bayesian multivariate model
-isn't yet implemented, fall back to DL/2 for downstream and 0 for
-reference, accepting the convention and its known limitations. Migrate
-to the censored-likelihood approach when the Bayesian framework comes
-online.
-
-**(g) Pipeline order**:
-
-1. Bayesian multivariate GAM imputation fills in missing analytes at each
-   raw sample (the imputation step already in the AmsPAF pipeline). This
-   means every sample has full analyte coverage for chronic integration.
-2. Compute time-weighted geometric mean per analyte over 365-day window
-   ending at t_0.
-3. Apply ARA shift using equivalently-integrated reference concentrations.
-4. Evaluate SSDs at ARA-adjusted chronic concentrations to get per-analyte
-   chronic PAF.
-5. Combine per-analyte PAFs into chronic AmsPAF via CA + IA as for the
-   per-sample version.
-
-**(h) Apply same window and weighting to reference**: chronic-integrated
-reference concentrations match the chronic-integrated downstream
-concentrations in time and weighting. ARA shift then becomes a chronic-
-chronic subtraction, consistent in time.
-
-**(i) Same treatment for LMF**: LMF (leachate mixing fraction) needs the
-same chronic integration for the multi-predictor variants to be coherent.
-LMF is a sample-level value; compute its time-weighted geometric mean
-over the same 365-day window using the same τ.
+**(j) Chronic LMF — not yet implemented**: LMF needs the same chronic
+integration as chronic AmsPAF for the multi-predictor variants (§3.3) to
+be coherent. LMF is currently per-sample only (`add_lmf()`). When
+implementing: call `add_lmf()` on imputed chemistry, then pass the
+resulting LMF values through `compute_chronic_chemistry()` treating LMF
+as a scalar "analyte" with the same 365-day window and τ. The output
+is one chronic LMF value per biological sampling date.
 
 #### Output structure
 
-The macroinvertebrate calibration uses chronic AmsPAF and chronic LMF
-evaluated on the day of biological sampling. With ~10 years of annual
-biological samples, this yields ~10 paired (chronic AmsPAF, chronic LMF,
-PAFobs) observations for the calibration fit.
+`compute_chronic_chemistry()` returns a long-format tibble keyed by
+`(focal_date, site_id, analyte)` with columns:
 
-The chronic-integrated AmsPAF computed daily across the record is also
-useful for trend visualisation and as a smoothed version of the
-per-sample series. Both per-sample and chronic AmsPAF should be retained
-as separate outputs.
+- `sample_id` — synthetic key `chronic_<focal_date>_<site_id>`, compatible
+  with `add_amspaf()`'s `group_by(sample_id)` logic
+- `value` — time-weighted geometric mean concentration
+- `detected` — always `TRUE` (the chronic value is always a real estimate)
+- `n_samples_in_window` — count of samples contributing
+- `n_imputed_in_window` — count of imputed (BDL/missing) samples contributing;
+  propagated into `add_amspaf()` output as `n_analytes_imputed`
 
 #### Sensitivity tests
+
+Run these after fitting the calibration (Stage 6):
 
 - **τ** ∈ {30, 60, 90, 120, 180}: how much does the calibration shift?
   Stability across this range indicates the integration is robust.
@@ -599,14 +719,13 @@ as separate outputs.
   windows add little but check the boundary.
 - **Summary statistic**: time-weighted geometric mean vs arithmetic mean
   vs 90th percentile. The differences here indicate how much pulse vs
-  baseline weighting matters.
-- **BDL handling**: Bayesian censored vs DL/2 substitution vs DL/10
-  substitution. If the calibration shifts substantially, the Bayesian
-  framework's information gain over DL/2 is real. If little difference,
-  the simpler substitution is operationally adequate.
-- **Inclusion threshold k**: try k ∈ {5%, 10%, 20%} for the minimum
-  detection frequency. This determines which marginal analytes are
-  included or excluded from msPAF.
+  baseline weighting matters. Use `summary` argument in
+  `compute_chronic_chemistry()`.
+- **BDL handling**: the default is Bayesian imputation via
+  `impute_chemistry()`. Sensitivity: try replacing BDL values with DL/2
+  manually and check whether calibration conclusions shift substantially.
+- **Inclusion threshold k**: try k ∈ {5%, 10%, 20%} in `prescreen_analytes()`.
+  This determines which marginal analytes participate in msPAF.
 
 #### Optional refinement: pulse-aware duration weighting
 
@@ -620,9 +739,8 @@ A more sophisticated approach: detect pulses empirically (sample value
 > 3× preceding baseline median, or similar) and use forward-step weighting
 between baseline samples, but trapezoidal weighting between baseline and
 pulse samples. This is harder to implement consistently and the gain is
-probably small. Recommend deferring until sensitivity testing on the
-simple forward-step approach indicates it's worth the additional
-complexity.
+probably small. Defer until sensitivity testing on the simple forward-step
+approach indicates it's worth the additional complexity.
 
 #### Note on recruitment dynamics
 
@@ -716,6 +834,45 @@ calibration. Use family-level unless there's a specific reason to go finer.
 
 ## 4. Detailed analysis plan
 
+### Stage -1: Pre-screen analytes ✅ Implemented
+
+Use `prescreen_analytes()` to restrict the analyte set before imputation:
+
+```r
+included <- prescreen_analytes(
+  chemistry_long,
+  k                = 0.05,         # minimum detection frequency
+  group_by_feature = FALSE         # pool across sites for detection rate
+)
+# attr(included, "excluded") — character vector of dropped analytes
+```
+
+An analyte participates in msPAF only if detected above the limit in at
+least k% of samples over the analysis window. This excludes analytes that
+have never or rarely been detected (e.g. pesticides at a non-industrial
+landfill). Explicit exclusion is honest documentation of analytical
+limitations — the output AmsPAF clearly represents only the detected
+analyte classes.
+
+For analytes with 10–50% detection rates, the Bayesian imputation in
+Stage 0 adds the most value: quantified observations anchor the
+distribution; BDL observations provide the censoring constraint;
+cross-analyte correlations help fill the gaps.
+
+### Stage 0: Build chronic predictors ✅ Implemented
+
+See §3.6(h) for the full worked code. Summary:
+
+1. `impute_chemistry()` — fill BDL and missing values via Bayesian
+   multivariate GAM. Returns full analyte coverage per sample with
+   `imputed` and `imputed_kind` columns.
+2. `compute_chronic_chemistry()` — time-weighted geometric mean over
+   365-day windows, one value per (focal_date × site × analyte).
+3. `prepare_reference()` + `add_amspaf()` — ARA shift + SSD evaluation +
+   CA/IA combination for chronic AmsPAF. Works identically on chronic
+   chemistry as on per-sample chemistry.
+4. Chronic LMF — **not yet implemented**; see §3.6(j).
+
 ### Stage 1: Data assembly and inspection
 
 **1.1 Compile macroinvertebrate data into a tidy format.**
@@ -729,16 +886,10 @@ Per sampling event:
 
 Resulting in one row per family per sampling event.
 
-**1.2 Compute chronic AmsPAF and chronic LMF.**
+**1.2 Join chronic AmsPAF and chronic LMF to biological data.**
 
-For each macroinvertebrate sampling date, compute chronic AmsPAF and
-chronic LMF following §3.6: 365-day window, exponential decay with
-τ = 90 days, forward-step duration weighting, time-weighted geometric
-mean per analyte, then through the AmsPAF pipeline (ARA shift + SSD
-evaluation + CA/IA combination).
-
-Compute the same chronic values at the reference site for consistency
-with the ARA framework.
+Match each biological sampling date to the chronic AmsPAF (and, when
+implemented, chronic LMF) evaluated on that date per §3.6.
 
 Compute the empirical correlation between chronic AmsPAF and chronic
 LMF across years. If r > 0.9, multicollinearity will limit the
@@ -874,8 +1025,8 @@ The comparison is the primary diagnostic, per §3.3:
   contribute beyond LMF
 - If β_tox (V2) ≈ β (V1) and β_wq (V2) ≈ 0: LMF doesn't add explanatory
   power; V1 is the parsimonious choice
-- If all coefficients are similar magnitude with overlapping CIs: AmsPAF
-  and LMF are too correlated to separate with this data
+- If all coefficients are similar magnitude with overlapping CIs: can't
+  separate; report ambiguity
 
 Report all variants. Select the operational one based on:
 
@@ -890,13 +1041,12 @@ Whatever variant is selected, sanity-check robustness:
 
 - Exclude disturbance-flagged years from Stage 1.3
 - Vary the chronic integration parameters:
-  - τ ∈ {30, 60, 90, 120, 180} days
-  - Window length ∈ {180, 365, 730} days
-  - Summary statistic: time-weighted geometric mean vs arithmetic mean
-    vs 90th percentile
-  - BDL handling: Bayesian censored vs DL/2 vs DL/10
-  - Analyte inclusion threshold: k ∈ {5%, 10%, 20%} minimum detection
-    frequency
+  - τ ∈ {30, 60, 90, 120, 180} days — `tau_days` argument
+  - Window length ∈ {180, 365, 730} days — `window_days` argument
+  - Summary statistic: geom_mean / arith_mean / p90 — `summary` argument
+  - BDL handling: Bayesian imputation (default) vs manual DL/2 substitution
+  - Analyte inclusion threshold: k ∈ {5%, 10%, 20%} — `k` argument in
+    `prescreen_analytes()`
 - Try different core taxon thresholds (k = 4, 5, 6)
 - Try Jaccard vs Bray-Curtis partitioning
 
@@ -942,148 +1092,91 @@ Each new year of macroinvertebrate data:
 
 ---
 
-## 5. Specific implementation outline
+## 5. Pipeline pseudocode
+
+The implemented pipeline stages use `leachatetools` package functions.
+The analysis stages (Stages 1–8) are user scripts built on top.
 
 ```r
-# Pseudocode for the EDA — translate to actual data structures
+library(leachatetools)
 library(dplyr)
 library(tidyr)
 library(tibble)
 library(ggplot2)
 library(betapart)
 
-# ---- Stage -1: Pre-screen analytes for inclusion in msPAF ----
-#
-# An analyte participates in msPAF only if quantified above DL in at least
-# k% of samples at the analysis window. This excludes analytes that have
-# never been detected (e.g. pesticides at a non-industrial landfill).
-# Explicit exclusion is honest documentation of analytical limitations
-# rather than a hidden imputation of small prior-driven values.
+# ============================================================
+# IMPLEMENTED PIPELINE (leachatetools functions)
+# ============================================================
 
-K_INCLUSION <- 0.05   # 5% minimum detection frequency
+# Assumes chemistry_long: tibble with columns
+#   sample_id, site_id, datetime, analyte, value, detected
+# and macroinverts: tibble with columns
+#   site, year, family, abundance (or presence)
 
-included_analytes <- chemistry_per_sample |>
-  group_by(analyte) |>
-  summarise(
-    n_samples     = n(),
-    n_quantified  = sum(quantified, na.rm = TRUE),
-    detect_freq   = n_quantified / n_samples,
-    .groups       = "drop"
-  ) |>
-  filter(detect_freq >= K_INCLUSION) |>
-  pull(analyte)
+# ---- Stage -1: Pre-screen analytes ----
 
-# Analytes excluded by this criterion are documented but not imputed.
-# The msPAF reported is over included_analytes only.
-chemistry_per_sample <- chemistry_per_sample |>
-  filter(analyte %in% included_analytes)
+included <- prescreen_analytes(chemistry_long, k = 0.05)
+cat("Included:", included, "\n")
+cat("Excluded:", attr(included, "excluded"), "\n")
 
-# ---- Stage 0: Chronic integration of AmsPAF and LMF ----
-#
-# For each biological sampling date, compute time-weighted geometric mean
-# concentrations over a 365-day window with exponential decay
-# (tau = 90 days), then feed through the AmsPAF pipeline.
-#
-# Inputs assumed:
-#   chemistry_per_sample - one row per sample x analyte, with quantified flag
-#                          and detection limit. BDL values have been
-#                          imputed by the upstream Bayesian multivariate
-#                          GAM (treated as left-censored observations).
-#                          Missing analytes have also been imputed there.
-#   sample_dates         - one row per sample with date and site
+chemistry_filtered <- filter(chemistry_long, analyte %in% included)
 
-TAU_DAYS    <- 90
-WINDOW_DAYS <- 365
+# ---- Stage 0a: Impute BDL and missing values ----
 
-compute_chronic_concentration <- function(analyte_data, focal_date,
-                                          site, tau = TAU_DAYS,
-                                          window = WINDOW_DAYS) {
-  # Subset to this site and window. Include the sample immediately
-  # preceding the window start as the anchor for forward-step duration
-  # weighting.
-  site_data <- analyte_data |>
-    filter(site == !!site) |>
-    arrange(date)
+chemistry_imputed <- impute_chemistry(
+  chemistry_filtered,
+  drivers = c("pH", "EC", "DOC"),
+  iter    = 2000, warmup = 1000,
+  chains  = 4,    cores  = 4
+)
+# Columns: sample_id, site_id, datetime, analyte, value (imputed),
+#          detected, imputed (logical), imputed_kind (character)
 
-  window_start <- focal_date - window
-  in_window    <- site_data$date >= window_start & site_data$date <= focal_date
+# ---- Stage 0b: Per-sample AmsPAF (routine monitoring) ----
 
-  # Anchor sample: most recent sample before window_start
-  anchor_idx <- which(site_data$date < window_start) |> max()
-  if (is.finite(anchor_idx)) {
-    use_idx <- c(anchor_idx, which(in_window))
-  } else {
-    use_idx <- which(in_window)
-  }
-  d <- site_data[use_idx, ]
-  if (nrow(d) == 0) return(NA_real_)
+ref_imputed  <- filter(chemistry_imputed, site_id == "reference")
+down_imputed <- filter(chemistry_imputed, site_id == "downstream")
 
-  # BDL handling: the upstream Bayesian multivariate GAM imputation step
-  # treats BDL values as left-censored observations and produces posterior
-  # estimates for them. By the time data arrives at this function, BDL
-  # values have already been replaced with posterior estimates (e.g.,
-  # posterior means or draws).
-  #
-  # Fallback for interim use before the Bayesian step is implemented:
-  # reference site BDL -> 0, downstream site BDL -> DL/2.
-  d <- d |>
-    mutate(C = if_else(quantified, value, value))   # value already imputed
+prep_ref_psampl <- prepare_reference(ref_imputed)
+psampl_amspaf   <- add_amspaf(down_imputed, reference = prep_ref_psampl)
 
-  # Forward-step duration: t_{i+1} - t_i, with last sample extending to
-  # focal_date
-  d$next_date <- c(d$date[-1], focal_date)
-  d$dt       <- as.numeric(d$next_date - d$date)
+# ---- Stage 0c: Chronic integration ----
 
-  # Trim the anchor sample's duration so it only covers from window_start
-  # forward (not its full forward-step duration which may extend back
-  # beyond the window)
-  if (is.finite(anchor_idx)) {
-    d$dt[1] <- as.numeric(d$next_date[1] - window_start)
-  }
+# Dates of biological sampling
+bio_dates <- as.Date(c(
+  "2015-03-15", "2016-03-20", "2017-03-12", "2018-04-02",
+  "2019-03-18", "2020-03-25", "2021-04-08", "2022-03-30",
+  "2023-03-14", "2024-03-19"
+))
 
-  # Drop any samples now with non-positive duration (edge case)
-  d <- d |> filter(dt > 0)
-  if (nrow(d) == 0) return(NA_real_)
+chr_down <- compute_chronic_chemistry(
+  down_imputed,
+  focal_dates  = bio_dates,
+  tau_days     = 90,
+  window_days  = 365
+)
 
-  # Exponential temporal weight at the midpoint of the sample's interval
-  midpoint <- d$date + d$dt / 2
-  d$w_time <- exp(-as.numeric(focal_date - midpoint) / tau)
+chr_ref <- compute_chronic_chemistry(
+  ref_imputed,
+  focal_dates  = bio_dates,
+  tau_days     = 90,
+  window_days  = 365
+)
 
-  # Combined weight: temporal x duration
-  d$w <- d$w_time * d$dt
+# ---- Stage 0d: Chronic AmsPAF ----
 
-  # Time-weighted geometric mean. Guard against C = 0 (entire window at
-  # reference BDL) with a small epsilon.
-  eps <- 1e-9
-  exp(sum(d$w * log(d$C + eps)) / sum(d$w))
-}
+prep_chr_ref  <- prepare_reference(chr_ref)
+chronic_amspaf <- add_amspaf(chr_down, reference = prep_chr_ref)
+# One row per focal_date; chronic_amspaf$value = chronic AmsPAF (%)
 
-# Apply per analyte, per focal (biological sampling) date, per site
-chronic_concentrations <- biological_sampling_dates |>
-  crossing(analyte = unique(chemistry_per_sample$analyte)) |>
-  crossing(site    = c("reference", "downstream")) |>
-  rowwise() |>
-  mutate(
-    C_chronic = compute_chronic_concentration(
-      chemistry_per_sample |> filter(analyte == !!analyte),
-      focal_date = date,
-      site       = site
-    )
-  ) |>
-  ungroup()
+# ---- Stage 0e: Chronic LMF — NOT YET IMPLEMENTED ----
+# TODO: call add_lmf() per-sample, then compute_chronic_chemistry() on the
+# resulting LMF scalar to get one chronic LMF per biological sampling date.
 
-# Feed chronic concentrations through the AmsPAF pipeline:
-# - apply ARA shift using chronic reference concentrations
-# - evaluate SSDs at ARA-adjusted chronic concentrations to get
-#   per-analyte chronic PAF
-# - combine via CA + IA to get chronic AmsPAF
-#
-# Same procedure for LMF: chronic LMF is the time-weighted geometric mean
-# of per-sample LMF over the 365-day window.
-#
-# Output (one row per biological sampling date):
-#   chronic_amspaf
-#   chronic_lmf
+# ============================================================
+# ANALYSIS PIPELINE (user scripts, not yet implemented)
+# ============================================================
 
 # ---- Stage 1: Data preparation ----
 
@@ -1094,10 +1187,6 @@ core_families <- macroinverts |>
   summarise(years_detected = n_distinct(year)) |>
   filter(years_detected >= 5) |>
   pull(family)
-
-# Check chronic AmsPAF-LMF correlation (using chronic-integrated values)
-cor(chronic_predictors$chronic_amspaf, chronic_predictors$chronic_lmf,
-    method = "spearman")
 
 # ---- Stage 2: Baselga partitioning per year ----
 
@@ -1137,87 +1226,54 @@ partition_by_year <- macroinverts |>
   group_modify(\(.x, .y) compute_partition_year(.x, use_abundance = FALSE)) |>
   ungroup()
 
-# ---- Stage 3: Join with chronic AmsPAF and chronic LMF ----
+# ---- Stage 3: Join predictors and plot ----
+
+chronic_preds <- chronic_amspaf |>
+  mutate(year = as.integer(format(focal_date, "%Y"))) |>
+  select(year, chronic_amspaf = value)
+# Add chronic_lmf when implemented.
 
 calibration_df <- partition_by_year |>
-  left_join(chronic_predictors, by = "year")
+  left_join(chronic_preds, by = "year")
 
-# ---- Stage 4: Diagnostic plots ----
-
-# Time series — does J_turnover look stable?
+# Time series
 ggplot(calibration_df, aes(year)) +
   geom_line(aes(y = nestedness, colour = "Nestedness")) +
   geom_line(aes(y = turnover,   colour = "Turnover")) +
   geom_line(aes(y = total,      colour = "Total")) +
   labs(y = "Jaccard component", colour = NULL)
 
-# Chronic AmsPAF-LMF correlation
-ggplot(calibration_df, aes(chronic_amspaf, chronic_lmf)) +
+# Scatter: PAFobs vs chronic AmsPAF
+ggplot(calibration_df, aes(chronic_amspaf / 100, nestedness)) +
   geom_point() +
   geom_smooth(method = "lm") +
-  labs(x = "Chronic AmsPAF (%)", y = "Chronic LMF (%)")
+  labs(x = "Chronic AmsPAF (proportion)", y = "J_nestedness")
 
-# PAFobs vs each chronic predictor
-calibration_df |>
-  select(year, nestedness, chronic_amspaf, chronic_lmf) |>
-  pivot_longer(c(chronic_amspaf, chronic_lmf),
-               names_to = "predictor", values_to = "value") |>
-  ggplot(aes(value, nestedness)) +
-  geom_point() +
-  geom_smooth(method = "lm") +
-  facet_wrap(~ predictor, scales = "free_x") +
-  labs(y = "J_nestedness")
+# ---- Stage 4 & 5: Fit and compare variants ----
 
-# ---- Stage 5: Fit multiple variants ----
-
-clip_for_logit <- function(p, eps = 0.001) {
-  pmax(pmin(p, 1 - eps), eps)
-}
+clip_for_logit <- function(p, eps = 0.001) pmax(pmin(p, 1 - eps), eps)
 
 calibration_df <- calibration_df |>
   mutate(
     logit_pafobs = qlogis(clip_for_logit(nestedness)),
-    logit_amspaf = qlogis(clip_for_logit(chronic_amspaf / 100)),
-    logit_lmf    = qlogis(clip_for_logit(chronic_lmf / 100))
+    logit_amspaf = qlogis(clip_for_logit(chronic_amspaf / 100))
+    # logit_lmf  = qlogis(clip_for_logit(chronic_lmf / 100))  # when available
   )
 
-# Variant 1: AmsPAF only
 v1 <- lm(logit_pafobs ~ logit_amspaf, data = calibration_df)
+summary(v1)
+confint(v1)
 
-# Variant 2: AmsPAF + LMF
-v2 <- lm(logit_pafobs ~ logit_amspaf + logit_lmf, data = calibration_df)
-
-# Variant 3: LMF only
-v3 <- lm(logit_pafobs ~ logit_lmf, data = calibration_df)
-
-# Variant 4: orthogonal decomposition
-pca       <- prcomp(cbind(calibration_df$logit_amspaf,
-                          calibration_df$logit_lmf))
-shared    <- pca$x[, 1]
-tox_only  <- residuals(lm(logit_amspaf ~ logit_lmf, data = calibration_df))
-v4 <- lm(logit_pafobs ~ shared + tox_only, data = calibration_df)
-
-# Compare variants
-list(v1 = v1, v2 = v2, v3 = v3, v4 = v4) |>
-  lapply(\(m) list(
-    coef_ci   = confint(m),
-    r_squared = summary(m)$r.squared,
-    adj_r2    = summary(m)$adj.r.squared
-  ))
-
-# LOO-CV for each
+# LOO-CV
 loo_rmse <- function(formula, data) {
   preds <- sapply(seq_len(nrow(data)), \(i) {
     fit_i <- lm(formula, data = data[-i, ])
     plogis(predict(fit_i, newdata = data[i, ]))
   })
-  obs <- data$nestedness
-  sqrt(mean((preds - obs)^2))
+  sqrt(mean((preds - data$nestedness)^2))
 }
 
-loo_rmse(logit_pafobs ~ logit_amspaf, calibration_df)              # V1
-loo_rmse(logit_pafobs ~ logit_amspaf + logit_lmf, calibration_df)  # V2
-loo_rmse(logit_pafobs ~ logit_lmf, calibration_df)                 # V3
+loo_rmse(logit_pafobs ~ logit_amspaf, calibration_df)  # Variant 1
 ```
 
 ---
@@ -1237,6 +1293,8 @@ loo_rmse(logit_pafobs ~ logit_lmf, calibration_df)                 # V3
   capture independent or overlapping aspects of leachate impact
 - Output parameters have direct biological interpretation
 - Easy to update annually as new data accumulates
+- Bayesian imputation propagates uncertainty in BDL values into
+  n_analytes_imputed column in chronic AmsPAF output
 
 ### Cons
 
@@ -1256,6 +1314,8 @@ loo_rmse(logit_pafobs ~ logit_lmf, calibration_df)                 # V3
   which case the multi-predictor variants don't add information beyond
   the single-predictor ones
 - One year of unusual conditions materially affects the fit
+- Ni and Zn normalisation uses a single-trophic-level MLR approximation;
+  accuracy degrades above pH 8.0 for Zn (see §3.6(g))
 
 ### What success would look like
 
@@ -1284,7 +1344,7 @@ loo_rmse(logit_pafobs ~ logit_lmf, calibration_df)                 # V3
 
 ## 7. Open questions
 
-These need attention but can be deferred to implementation time:
+These need attention at analysis time:
 
 1. **What's the actual format of the macroinvertebrate data?** Counts,
    category abundance, presence/absence only? This determines whether
@@ -1303,10 +1363,12 @@ These need attention but can be deferred to implementation time:
    flagging?** Riparian works, channel modification, major hydrological
    events.
 
-5. **How should the time-aggregation be chosen?** Empirical (which
-   correlates best with PAFobs) is circular. Mechanistic (which timescale
-   matches biological integration) requires assumptions. Pre-registration
-   of the aggregation choice before looking at the data would be ideal.
+5. **How should the time-aggregation be chosen?** The `tau_days` and
+   `window_days` arguments in `compute_chronic_chemistry()` are the key
+   parameters. Empirical selection (which τ correlates best with PAFobs)
+   is circular — pre-specify τ = 90 days as the default before looking at
+   the data, then report sensitivity across τ ∈ {30, 60, 90, 120, 180}
+   as confirmation.
 
 6. **Is J_turnover actually stable in time?** This is testable by Stage
    3.1. If not, the conceptual model needs revision and the
@@ -1338,45 +1400,32 @@ These need attention but can be deferred to implementation time:
     useful than uncalibrated AmsPAF if the CI swamps decision thresholds.
     Worth thinking through how the output will actually be used.
 
-12. **What's the right τ for the exponential decay?** 90 days is the
-    default suggestion based on macroinvertebrate generation times, but
-    the literature doesn't strongly motivate a specific value.
-    Sensitivity testing across τ ∈ {30, ..., 180} is required. If
-    results depend strongly on τ, the chronic integration is fitting
-    something specific and may not generalise well to future samples.
+12. **Should pulse-aware duration weighting be implemented?** The
+    forward-step rule is the default in `compute_chronic_chemistry()`.
+    A more sophisticated approach (detect pulses, use forward-step
+    between baselines but trapezoidal across pulse onsets) might be
+    worth implementing if sensitivity testing shows the simple rule
+    biases results. Defer until evidence warrants.
 
-13. **Should pulse-aware duration weighting be implemented?** The
-    forward-step rule is the default. A more sophisticated approach
-    (detect pulses empirically, use forward-step between baselines but
-    trapezoidal across pulse onsets) might be worth implementing if
-    sensitivity testing shows the simple rule biases results. Defer
-    until evidence warrants.
+13. **Is per-sample AmsPAF still useful?** Yes — `add_amspaf()` on
+    imputed per-sample chemistry gives per-sample AmsPAF for routine
+    monitoring and trigger reporting. The chronic integration is
+    additional output for calibration, not a replacement.
 
-14. **Is per-sample AmsPAF still useful?** Yes, for chemistry-sample-
-    level reporting and triggering management responses. The chronic
-    integration is for the macroinvertebrate calibration only. Make
-    sure both outputs are retained in the pipeline.
+14. **Are pesticides genuinely all-BDL at this site?** Worth confirming
+    by inspecting `prescreen_analytes(chemistry_long, return = "table")`
+    before running the pipeline. If any pesticide has been detected even
+    once, `prescreen_analytes()` retains it (assuming k < that detection
+    frequency) and `impute_chemistry()` handles its BDL values. If
+    genuinely all-BDL across the whole record, the class is excluded and
+    AmsPAF is reported as "metals + ammonia + H₂S, with no detected
+    pesticide contribution".
 
-15. **What's the right inclusion threshold k?** 5% minimum detection
-    frequency is a reasonable default but the choice is judgement.
-    Higher k (10–20%) excludes more marginal analytes; lower k (1–5%)
-    includes more. The Bayesian framework handles low-detection analytes
-    appropriately but they contribute little signal. Sensitivity-test
-    k ∈ {1%, 5%, 10%, 20%} and see how msPAF changes.
-
-16. **Are pesticides genuinely all-BDL at this site?** Worth confirming
-    by inspecting `chemistry_per_sample` before running the pipeline.
-    If any pesticide has been detected even once, the inclusion criterion
-    keeps that pesticide in the Bayesian framework and its BDL values
-    are imputed via cross-analyte correlations. If genuinely all-BDL
-    across all pesticides over the analysis window, the class is
-    excluded and msPAF is reported as "metals + ammonia + H2S, with
-    no detected pesticide contribution".
-
-17. **How should excluded analytes be documented?** The output should
-    clearly state which analytes were considered, which were included
-    in msPAF, and which were excluded by the detection-frequency
-    criterion. This makes the index honest about its scope.
+15. **Does the Zn normalisation limitation matter for this dataset?** The
+    Daphnia MLR approximation diverges substantially above pH 8.0. Check
+    the pH distribution of downstream samples; if high-pH events are
+    common, consider supplying a geometric-mean four-MLR correction via
+    the custom `analyte_metadata` CSV argument in `prepare_reference()`.
 
 ---
 
@@ -1413,6 +1462,9 @@ Core methodology:
   Distributions in Ecotoxicology*. CRC Press. Background on SSDs and
   community-level effects estimation.
 
+- Peters A et al. (2021) Nickel MLR for freshwater invertebrates.
+  Used for Ni normalisation in `add_amspaf()`.
+
 Imperfect detection and occupancy (if needed):
 
 - MacKenzie DI et al. (2002) Estimating site occupancy rates when
@@ -1421,24 +1473,13 @@ Imperfect detection and occupancy (if needed):
 - Royle JA, Dorazio RM (2008) *Hierarchical Modeling and Inference in
   Ecology*. Academic Press.
 
-- Chao A, Jost L (2012) Coverage-based rarefaction and extrapolation:
-  standardizing samples by completeness rather than size. *Ecology*
-  93(12): 2533-2547.
-
 R packages:
 
+- `leachatetools` — pre-screen, imputation, chronic integration, AmsPAF
 - `betapart` — Baselga beta-diversity partitioning (primary)
 - `vegan` — community ecology including Bray-Curtis, ordination
 - `unmarked` — frequentist occupancy modelling (if escalating)
 - `spOccupancy` — Bayesian multi-species occupancy (if escalating)
-- `iNEXT` — rarefaction and extrapolation
-
-Community tolerance / PICT:
-
-- Blanck H, Wallin G, Waengberg SA (1988) Species-dependent variation
-  in algal sensitivity to chemical compounds. *Ecotoxicology and
-  Environmental Safety* 8(4): 339-351. Foundation of pollution-induced
-  community tolerance theory.
 
 ---
 
@@ -1452,19 +1493,24 @@ Start
 ├── Are sampling protocols consistent across years?
 │   └── No  → split data, calibration may not be feasible
 │
-├── Stage -1: Pre-screen analytes
-│   └── Include only analytes quantified above DL in >= k% of samples
-│       (k = 5% default). Exclude all-BDL or near-all-BDL analytes
-│       (typically pesticides at non-industrial landfills) and document.
+├── Stage -1: Pre-screen analytes  [✅ implemented: prescreen_analytes()]
+│   └── prescreen_analytes(chemistry_long, k = 0.05)
+│       Exclude all-BDL or near-all-BDL analytes and document.
 │
-├── Stage 0: Chronic integration of AmsPAF and LMF
-│   └── 365-day window, exp decay tau=90, forward-step duration
-│       weighting, time-weighted geometric mean. BDL handled by upstream
-│       Bayesian multivariate GAM via left-censored likelihood.
-│       Output: chronic AmsPAF and chronic LMF per biological sampling date
+├── Stage 0a: Impute BDL and missing  [✅ implemented: impute_chemistry()]
+│   └── impute_chemistry(chemistry_filtered, drivers = c("pH","EC","DOC"))
 │
-├── Stage 1: Data assembly (include chronic predictors alongside biology)
-│   └── Output: tidy macroinverts + chronic AmsPAF + chronic LMF
+├── Stage 0b: Per-sample AmsPAF  [✅ implemented: prepare_reference() + add_amspaf()]
+│   └── prepare_reference(ref) → add_amspaf(downstream, reference)
+│
+├── Stage 0c-d: Chronic AmsPAF  [✅ implemented: compute_chronic_chemistry() + add_amspaf()]
+│   └── compute_chronic_chemistry(downstream, focal_dates=bio_dates)
+│       → prepare_reference(chr_ref) → add_amspaf(chr_down, reference)
+│
+├── Stage 0e: Chronic LMF  [⬜ NOT YET IMPLEMENTED]
+│   └── add_lmf() → compute_chronic_chemistry() on LMF outputs
+│
+├── Stage 1: Data assembly (combine bio + chronic predictors)
 │
 ├── Stage 2: Baselga partitioning per year
 │   └── Output: J_nestedness, J_turnover, J_total time series
@@ -1479,41 +1525,31 @@ Start
 │   │   └── No  → calibration not feasible; investigate why
 │   │
 │   ├── Chronic AmsPAF-LMF correlation?
-│   │   ├── r > 0.9         → multi-predictor variants struggle;
-│   │   │                     rely on single-predictor or PCA decomposition
+│   │   ├── r > 0.9         → multi-predictor variants struggle
 │   │   ├── 0.5 < r < 0.9   → multi-predictor variants viable
 │   │   └── r < 0.5         → multi-predictor variants most informative
 │   │
-│   ├── Orthogonality check (extreme hydrology years)?
-│   │   ├── Holds → proceed with simple decomposition
-│   │   └── Fails → may need to model hydrology effect explicitly
-│   │
-│   └── Sensitivity to PAFobs definition?
-│       ├── Robust → use simpler definition
-│       └── Not robust → think harder about target metric
+│   └── Orthogonality check (extreme hydrology years)?
+│       ├── Holds → proceed with simple decomposition
+│       └── Fails → may need to model hydrology effect explicitly
 │
 ├── Stage 4: Fit V1, V2, V3, V4 in parallel
 │
 ├── Stage 5: Compare variants
-│   ├── V1 ≈ V2 (β_tox)         → AmsPAF and LMF independent;
-│   │                              either single-predictor variant works
-│   ├── V1 ≫ V2 (β_tox)         → much of V1 signal was actually LMF;
-│   │                              prefer V2 for mechanism clarity
-│   ├── V2 β_tox ≈ 0, V3 γ > 0  → AmsPAF doesn't contribute beyond LMF;
-│   │                              negative result for AmsPAF mechanism
-│   ├── V2 β_wq ≈ 0             → LMF doesn't add; prefer V1 (parsimony)
+│   ├── V1 ≈ V2 (β_tox)         → AmsPAF and LMF independent
+│   ├── V1 ≫ V2 (β_tox)         → much of V1 signal was actually LMF
+│   ├── V2 β_tox ≈ 0, V3 γ > 0  → AmsPAF doesn't contribute beyond LMF
+│   ├── V2 β_wq ≈ 0             → LMF doesn't add; prefer V1
 │   └── All similar with wide CIs → can't separate; report ambiguity
 │
-├── Stage 6: Sensitivity tests for chosen variant
+├── Stage 6: Sensitivity tests (tau, window, summary, BDL handling, k)
 │
 ├── Stage 7: Interpret α and β coefficients
 │   ├── α ≈ 0, β > 0    → clean calibration, geomorphology negligible
-│   ├── α > 0, β > 0    → stable geomorphological offset of magnitude α;
-│   │                     AmsPAF/LMF tracks leachate-driven impact via β
+│   ├── α > 0, β > 0    → stable geomorphological offset + leachate signal
 │   ├── α > 0, β ≈ 0    → predictors don't track variation; calibration fails
 │   ├── α < 0           → unexpected; investigate
-│   └── pathological    → abandon calibration; report AmsPAF as-is with
-│                         a note about validation failure
+│   └── pathological    → abandon calibration; report AmsPAF as-is
 │
 └── Stage 8: Document and integrate into reporting
 ```
