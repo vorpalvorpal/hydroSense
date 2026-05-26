@@ -68,3 +68,28 @@ test_that("group_by_feature requires site_id column", {
     regexp = "site_id"
   )
 })
+
+test_that("return = 'table' includes protected column", {
+  df  <- make_chem()
+  tbl <- prescreen_analytes(df, k = 0.10, return = "table")
+  expect_true("protected" %in% names(tbl))
+})
+
+test_that("co-analyte drivers are protected from exclusion at k = 1", {
+  # pH and DOC are listed in coanalytes_required for NH3-N / Cu / etc.
+  # They should be kept even when never detected.
+  df <- tidyr::expand_grid(
+    sample_id = paste0("s", 1:10),
+    analyte   = c("Cu", "pH", "DOC")
+  ) |>
+    dplyr::mutate(
+      site_id  = "f1",
+      value    = 1,
+      detected = analyte == "Cu"  # pH and DOC never detected
+    )
+  inc <- prescreen_analytes(df, k = 1)   # k=1 → only 100 % detected pass
+  # Cu has 100 % detection → passes on merit
+  # pH and DOC have 0 % detection → would fail but are protected
+  expect_true("pH"  %in% inc)
+  expect_true("DOC" %in% inc)
+})

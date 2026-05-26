@@ -6,24 +6,38 @@
 #' imputing such analytes from near-zero priors adds noise without ecological
 #' signal.
 #'
+#' Analytes listed in `coanalytes_required` in the bundled metadata (e.g. pH,
+#' DOC, Ca, Mg, hardness, temperature) are **automatically protected** from
+#' exclusion regardless of detection frequency. These are required for chemistry
+#' normalisation and imputation. The fixed imputation drivers (`"pH"`, `"EC"`,
+#' `"DOC"`) are also always protected. Protected analytes that fall below the
+#' threshold are reported separately so the caller is aware.
+#'
 #' @param df Long-format chemistry data frame with at least columns
 #'   `analyte` (character) and `detected` (logical). Typically also
 #'   contains `sample_id` and `site_id`.
 #' @param k Minimum detection frequency (proportion, 0–1). Analytes with
-#'   `n_detected / n_samples < k` are excluded. Default `0.05` (5 %).
+#'   `n_detected / n_samples < k` are excluded unless protected. Default
+#'   `0.05` (5 %).
 #' @param group_by_feature Logical. If `TRUE`, detection frequency is computed
 #'   per `site_id` and an analyte is included only if it passes in *all*
-#'   features. If `FALSE` (default), frequency is pooled across all samples.
+#'   features (worst-case feature, pooled counts). If `FALSE` (default),
+#'   frequency is pooled across all samples.
+#' @param analyte_metadata Data frame of analyte metadata, or `NULL` to load
+#'   the bundled `inst/extdata/anzecc_analyte_metadata.csv`. Used to identify
+#'   co-analytes that must be protected from exclusion.
 #' @param return Either `"vector"` (default) to return a character vector of
 #'   included analyte names, or `"table"` to return a tibble with one row per
 #'   analyte showing detection statistics and inclusion flag.
 #'
-#' @return When `return = "vector"`: a named character vector of passing analyte
+#' @return When `return = "vector"`: a character vector of passing analyte
 #'   names. The vector carries an attribute `"excluded"` listing analytes that
-#'   did not pass the threshold, so callers can record what was dropped.
+#'   did not pass the threshold (non-protected only), so callers can record
+#'   what was dropped.
 #'
 #'   When `return = "table"`: a tibble with columns `analyte`,
-#'   `n_samples`, `n_detected`, `detect_freq`, `included`.
+#'   `n_samples`, `n_detected`, `detect_freq`, `protected` (logical),
+#'   `included` (logical).
 #'
 #' @examples
 #' \dontrun{
@@ -37,6 +51,7 @@ prescreen_analytes <- function(
     df,
     k = 0.05,
     group_by_feature = FALSE,
+    analyte_metadata = NULL,
     return = c("vector", "table")
 ) {
   return <- match.arg(return)
@@ -57,6 +72,22 @@ prescreen_analytes <- function(
     )
   }
 
+  # ── Identify protected analytes ───────────────────────────────────────────
+  # Fixed imputation drivers are always protected.
+  fixed_drivers <- c("pH", "EC", "DOC")
+
+  # Co-analytes required by normalisation formulas are auto-protected.
+  meta <- .load_analyte_metadata(analyte_metadata)
+  co_req_all <- meta$coanalytes_required[!is.na(meta$coanalytes_required) &
+                                           nzchar(meta$coanalytes_required)]
+  coanalytes_from_meta <- unique(unlist(
+    lapply(co_req_all, function(x) trimws(strsplit(x, ",")[[1L]]))
+  ))
+  coanalytes_from_meta <- coanalytes_from_meta[nzchar(coanalytes_from_meta)]
+
+  protected_analytes <- unique(c(fixed_drivers, coanalytes_from_meta))
+
+  # ── Compute detection frequency ───────────────────────────────────────────
   if (group_by_feature) {
     tbl <- df |>
       dplyr::group_by(.data$analyte, .data$site_id) |>
@@ -67,29 +98,43 @@ prescreen_analytes <- function(
       ) |>
       dplyr::group_by(.data$analyte) |>
       dplyr::summarise(
-        n_samples  = sum(.data$n_samples),
-        n_detected = sum(.data$n_detected),
+        n_samples   = sum(.data$n_samples),
+        n_detected  = sum(.data$n_detected),
         detect_freq = min(.data$n_detected / .data$n_samples),  # worst-case feature
-        .groups    = "drop"
-      ) |>
-      dplyr::mutate(included = .data$detect_freq >= k)
+        .groups     = "drop"
+      )
   } else {
     tbl <- df |>
       dplyr::group_by(.data$analyte) |>
       dplyr::summarise(
-        n_samples  = dplyr::n(),
-        n_detected = sum(.data$detected, na.rm = TRUE),
+        n_samples   = dplyr::n(),
+        n_detected  = sum(.data$detected, na.rm = TRUE),
         detect_freq = .data$n_detected / .data$n_samples,
-        .groups    = "drop"
-      ) |>
-      dplyr::mutate(included = .data$detect_freq >= k)
+        .groups     = "drop"
+      )
   }
 
-  n_excluded <- sum(!tbl$included)
+  tbl <- dplyr::mutate(
+    tbl,
+    protected = .data$analyte %in% .env$protected_analytes,
+    included  = .data$detect_freq >= k | .data$protected
+  )
+
+  n_excluded  <- sum(!tbl$included)
+  n_protected_low <- sum(tbl$protected & tbl$detect_freq < k)
+
   if (n_excluded > 0) {
     cli::cli_inform(c(
-      "i" = "prescreen_analytes: {n_excluded} analyte{?s} below k={k} detection \\
-             frequency threshold: {.val {tbl$analyte[!tbl$included]}}."
+      "i" = "prescreen_analytes: {n_excluded} analyte{?s} excluded \\
+             (below k = {k} detection frequency): \\
+             {.val {tbl$analyte[!tbl$included]}}."
+    ))
+  }
+  if (n_protected_low > 0) {
+    cli::cli_inform(c(
+      "i" = "prescreen_analytes: {n_protected_low} protected analyte{?s} \\
+             below k = {k} threshold but kept (required for normalisation): \\
+             {.val {tbl$analyte[tbl$protected & tbl$detect_freq < k]}}."
     ))
   }
 

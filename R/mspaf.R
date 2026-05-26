@@ -227,8 +227,8 @@ add_amspaf <- function(
     prep_ref <- structure(
       list(
         normalised_quantiles = tibble::tibble(
-          name.analyte = character(0),
-          ref_norm     = numeric(0)
+          analyte  = character(0),
+          ref_norm = numeric(0)
         ),
         dropped    = character(0),
         percentile = ref_percentile_for_anchor
@@ -571,7 +571,7 @@ compute_amspaf_per_sample <- function(
       ## ── Per-analyte PAF (diagnostic + dominant-analyte identification) ─
       tox_rows <- dplyr::mutate(tox_rows,
         PAF = purrr::map2_dbl(
-          .data$C_adj, .data$name.analyte,
+          .data$C_adj, .data$analyte,
           function(c, a) {
             if (is.na(c) || c <= 0) return(0)
             paf_result <- tryCatch(
@@ -597,7 +597,7 @@ compute_amspaf_per_sample <- function(
       amspaf <- 1 - prod(1 - mspaf_by_group)
 
       dominant <- if (any(!is.na(tox_rows$PAF))) {
-        tox_rows$name.analyte[which.max(tox_rows$PAF)]
+        tox_rows$analyte[which.max(tox_rows$PAF)]
       } else NA_character_
 
       tibble::tibble(

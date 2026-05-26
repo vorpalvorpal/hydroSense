@@ -237,6 +237,40 @@ compute_chronic_chemistry <- function(
     )
 }
 
+# ── expand_focal_dates ────────────────────────────────────────────────────────
+
+#' Generate a sequence of focal dates for chronic AmsPAF computation
+#'
+#' A thin convenience wrapper around [base::seq.Date()] for generating the
+#' `focal_dates` vector passed to [compute_chronic_chemistry()]. The most
+#' common use is a daily sequence for time-series analysis.
+#'
+#' @param start Start date (character `"YYYY-MM-DD"` or `Date`).
+#' @param end   End date (character `"YYYY-MM-DD"` or `Date`).
+#' @param by    Increment. Passed to [base::seq.Date()]. Common values:
+#'   `"day"`, `"week"`, `"month"`. Default `"day"`.
+#'
+#' @return A `Date` vector from `start` to `end` at the specified increment.
+#'
+#' @examples
+#' \dontrun{
+#' # Daily sequence for 2024–2025
+#' focal_dates <- expand_focal_dates("2024-01-01", "2025-12-31", by = "day")
+#'
+#' chr_chem <- compute_chronic_chemistry(imp, focal_dates = focal_dates)
+#' }
+#'
+#' @export
+expand_focal_dates <- function(start, end, by = "day") {
+  start <- as.Date(start)
+  end   <- as.Date(end)
+  if (is.na(start)) cli::cli_abort("{.arg start} could not be parsed as a date.")
+  if (is.na(end))   cli::cli_abort("{.arg end} could not be parsed as a date.")
+  if (end < start)  cli::cli_abort("{.arg end} must be on or after {.arg start}.")
+  seq.Date(start, end, by = by)
+}
+
+
 # ── Internal aggregation helper ───────────────────────────────────────────────
 
 .aggregate_weighted <- function(values, weights, method, eps) {

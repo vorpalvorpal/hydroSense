@@ -1,4 +1,4 @@
-## Tests for compute_chronic_chemistry()
+## Tests for compute_chronic_chemistry() and expand_focal_dates()
 
 library(testthat)
 library(leachatetools)
@@ -149,4 +149,36 @@ test_that("arith_mean summary produces >= geom_mean for positive values", {
   am <- compute_chronic_chemistry(df, focal_dates = focal, summary = "arith_mean")
   # By AM-GM inequality, arith mean >= geom mean
   expect_gte(am$value, gm$value)
+})
+
+# ── expand_focal_dates ────────────────────────────────────────────────────────
+
+test_that("expand_focal_dates returns a Date vector", {
+  dates <- expand_focal_dates("2024-01-01", "2024-01-05")
+  expect_s3_class(dates, "Date")
+})
+
+test_that("expand_focal_dates daily sequence has correct length", {
+  dates <- expand_focal_dates("2024-01-01", "2024-01-05", by = "day")
+  expect_length(dates, 5L)
+  expect_equal(dates[1L], as.Date("2024-01-01"))
+  expect_equal(dates[5L], as.Date("2024-01-05"))
+})
+
+test_that("expand_focal_dates weekly sequence skips days", {
+  dates <- expand_focal_dates("2024-01-01", "2024-01-29", by = "week")
+  expect_length(dates, 5L)
+})
+
+test_that("expand_focal_dates errors when end < start", {
+  expect_error(
+    expand_focal_dates("2024-06-01", "2024-01-01"),
+    regexp = "end.*after.*start|start.*before.*end"
+  )
+})
+
+test_that("expand_focal_dates single-day range returns one date", {
+  dates <- expand_focal_dates("2024-07-15", "2024-07-15")
+  expect_length(dates, 1L)
+  expect_equal(dates, as.Date("2024-07-15"))
 })
