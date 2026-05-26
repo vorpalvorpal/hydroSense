@@ -14,7 +14,8 @@ assessing water quality in leachate-impacted freshwater systems:
 | SSD-based PAF lookup | `R/paf.R` + `R/ssd_fit.R` | `ssd_paf()`, `ssd_hc50()` |
 | Multi-substance PAF (msPAF / AmsPAF) | `R/mspaf.R` | `add_amspaf()`, `classify_amspaf_tier()` |
 | Leachate mixing fraction | `R/lmf.R` | `add_lmf()` |
-| Chronic AmsPAF pipeline | `R/prescreen.R`, `R/impute.R`, `R/chronic.R`, `R/reference.R` | `prescreen_analytes()`, `impute_chemistry()`, `compute_chronic_chemistry()`, `prepare_reference()` |
+| Chronic AmsPAF pipeline | `R/prescreen.R`, `R/impute.R`, `R/chronic.R`, `R/reference.R` | `prescreen_analytes()`, `impute_chemistry()`, `compute_chronic_chemistry()`, `expand_focal_dates()`, `prepare_reference()` |
+| Internal normalisation | `R/normalise.R` | (internal: `.parse_normalisation_formula()`, `.apply_normalisation()`) |
 
 ### Chronic pipeline overview
 
@@ -25,18 +26,22 @@ to months. The pipeline is:
 ```
 raw chemistry df
    │
-   ▼  prescreen_analytes(k = 0.05)          drop never-detected analytes
+   ▼  prescreen_analytes(k = 0.05)
+        drop never-detected analytes
+        auto-protects normalisation co-analytes (pH, DOC, Ca, Mg, etc.)
    │
    ▼  impute_chemistry(drivers = c("pH","EC","DOC"))
-        brms mvbind GAM; cens("left") for BDL; cross-analyte covariance
+        brms mvbind GAM; mi() for BDL/missing; cross-analyte covariance
+        Option B: post-hoc BDL cap; bdl_cap arg
    │
-   ├──► add_amspaf(reference = prepare_reference(ref_df))
-   │          per-sample AmsPAF (routine monitoring, DOES NOT require chronic)
+   ├──► prepare_reference(ref_df) → add_amspaf(reference = prep_ref)
+   │          per-sample AmsPAF (routine monitoring)
    │
    ▼  compute_chronic_chemistry(focal_dates, tau = 90, window = 365)
         time-weighted geometric mean; forward-step duration weighting
+        expand_focal_dates("2024-01-01", "2026-01-01") for daily sequences
    │
-   ▼  add_amspaf(reference = prepare_reference(chronic_ref))
+   ▼  prepare_reference(chr_ref) → add_amspaf(reference = prep_chr_ref)
         chronic AmsPAF (calibration target vs macroinvertebrate data)
 ```
 
@@ -44,11 +49,77 @@ raw chemistry df
 per-sample and chronic chemistry. The `prepare_reference()` function is
 pure (no cache): call it once on reference data, pass the object in.
 
+### Worked example (minimum viable call sequence)
+
+```r
+library(leachatetools)
+options(leachatetools.guideline_dir = "/path/to/guideline data")
+
+# Stage -1: drop rarely-detected analytes
+included <- prescreen_analytes(chem, k = 0.05)
+chem_f   <- dplyr::filter(chem, analyte %in% included)
+
+# Stage 0: impute BDL and missing values
+imp <- impute_chemistry(chem_f, drivers = c("pH", "EC", "DOC"))
+
+# Per-sample AmsPAF (routine monitoring)
+ref_imp  <- dplyr::filter(imp, site_id == "ref")
+prep_ref <- prepare_reference(ref_imp)
+out_ps   <- add_amspaf(dplyr::filter(imp, site_id != "ref"),
+                       reference = prep_ref)
+
+# Chronic AmsPAF (calibration target)
+bio_dates <- expand_focal_dates("2024-01-01", "2026-04-01", by = "day")
+chr_ds    <- compute_chronic_chemistry(dplyr::filter(imp, site_id != "ref"),
+                                       focal_dates = bio_dates)
+chr_ref   <- compute_chronic_chemistry(ref_imp, focal_dates = bio_dates)
+prep_chr  <- prepare_reference(chr_ref)
+out_chr   <- add_amspaf(chr_ds, reference = prep_chr)
+```
+
 ---
 
-## 2. SSD fitting — what was done and why
+## 2. Chemistry normalisation (bioavailability adjustment)
 
-### 2.1 Data sources
+ANZG SSDs are derived at specific index water-chemistry conditions. Measured
+field concentrations are normalised to index-equivalent concentrations before
+SSD lookup via formulas stored in `inst/extdata/anzecc_analyte_metadata.csv`
+(`normalisation_formula` column — R expression strings).
+
+### Currently implemented
+
+| Analyte | Index condition | Co-analytes required | Source |
+|---|---|---|---|
+| NH₃-N | pH 7.0, 20 °C | pH, temperature | ANZG 2021 |
+| Cd | hardness 30 mg/L CaCO₃ | hardness | ANZECC 2000 |
+| Pb | hardness 30 mg/L CaCO₃ | hardness | ANZECC 2000 |
+| Cu | DOC 0.5 mg/L | DOC | ANZG 2024 draft |
+| Ni | pH 7.5, Ca 6, Mg 4, DOC 0.5 mg/L | pH, DOC, Ca, Mg | Peters et al. 2021 / ANZG 2024 |
+| Zn | pH 7.5, hardness 30 mg/L CaCO₃, DOC 0.5 mg/L | pH, hardness, DOC | Gadd et al. / ANZG 2024 |
+
+**Zn limitation**: the Daphnia magna single-model approximation diverges above
+pH 8.0 (predicts ~2.4 µg/L DGV vs published 1.0 µg/L at pH 8.3). High-pH
+sites should use a custom four-MLR geometric-mean correction via the
+`analyte_metadata` CSV override argument.
+
+**Ni limitation**: uses invertebrate MLR only. Multi-trophic sites should
+supply a geometric-mean correction across all four trophic-level MLRs.
+
+Formula strings use `C` as the measured concentration and co-analyte names as
+free variables. Override any formula for a single assessment:
+
+```r
+prepare_reference(ref_df, analyte_metadata = "path/to/my_metadata.csv")
+add_amspaf(df, reference = prep_ref, analyte_metadata = "path/to/my_metadata.csv")
+```
+
+See `vignettes/normalisation.Rmd` for full details.
+
+---
+
+## 3. SSD fitting — what was done and why
+
+### 3.1 Data sources
 
 All ANZECC 2000 / ANZG analytes come from one of two sources:
 
@@ -71,7 +142,7 @@ normalised negligible-effect values from Stauber et al. (2021) Table 3
 (index conditions: pH 7.5, Ca 6 mg/L, Mg 4 mg/L, DOC 0.5 mg/L) are
 pre-tabulated in `inst/extdata/ni_mlr_normalised_table3.csv`.
 
-### 2.2 Distributions
+### 3.2 Distributions
 
 **method = "multi"** (default for `ssd_paf()`):
 Fits all 6 BCANZ-recommended distributions and model-averages the result:
@@ -95,7 +166,7 @@ Key distribution aliases in the metadata:
 - `multi` — expand to the full 6-distribution set (same as method="multi").
   Used for NH3-N and Cr where ANZG used shinyssdtools with all BCANZ dists.
 
-### 2.3 NO3-N — three separate analytes
+### 3.3 NO3-N — three separate analytes
 
 Nitrate toxicity is physically modulated by water hardness (calcium/magnesium
 ions compete with nitrate at ion-exchange sites).  The same species can be
@@ -119,9 +190,9 @@ with `hardness_mg_L` to let `ssd_paf()` / `ssd_lookup()` resolve the class.
 **Known problem — class-boundary discontinuity**: When measured hardness is
 near a boundary (e.g. 28 vs 31 mg/L), measurement noise causes abrupt jumps
 in modelled PAF with no change in actual conditions.  A probabilistic
-smoothing approach has been designed but not yet implemented (see §4.1).
+smoothing approach has been designed but not yet implemented (see §5.1).
 
-### 2.4 ACR adjustment (MR analytes)
+### 3.4 ACR adjustment (MR analytes)
 
 Analytes where ANZECC derived triggers from acute LC50/EC50 data using the
 Maximum Residue (MR) method have a trigger_divisor (= ACR) > 1.  The fitting
@@ -132,7 +203,7 @@ ACR adjustment is needed by the caller.
 
 ---
 
-## 3. Validation state
+## 4. Validation state
 
 Validated by `dashboard/R/make_ssd_validation.R` against published ANZG/ANZECC
 DGVs.  The ratio `calc/ref` should be close to 1.0; deviations reflect
@@ -164,13 +235,13 @@ is otherwise sound.
 **Parked analytes**: Chlorpyrifos and Diazinon have large HC5 discrepancies
 that cannot be explained by simple version differences.  They are excluded
 from the SSD pipeline and treated as "no model available".  See
-`dashboard/data-raw/analyte_metadata_parked.csv` for data and TODO notes.
+`data-raw/analyte_metadata_parked.csv` for data and TODO notes.
 
 ---
 
-## 4. Pending tasks
+## 5. Pending tasks
 
-### 4.1 NO3-N probabilistic hardness weighting (HIGH PRIORITY)
+### 5.1 NO3-N probabilistic hardness weighting (HIGH PRIORITY)
 
 Design is complete; implementation is a TODO stub in `paf.R .no3_class()`.
 
@@ -191,54 +262,7 @@ This requires fitting / loading all three NO3-N models on every call when
 near a boundary, so the cache should be warm-started for all three at session
 init if NO3-N is in the analyte list.
 
-### 4.2 ✅ DONE (2026-05-20): Replace DGV back-calculation in msPAF
-
-`R/mspaf.R` now calls `ssd_hc50()` and `.ssd_sigma()` directly.  The old
-OLS back-calculation from four DGV quantiles has been removed.
-
-### 4.3 ✅ DONE (2026-05-20): Generalise index function inputs
-
-`add_amspaf()` and `add_lmf()` no longer reference dashboard globals.  Both
-accept explicit `reference_data`, `leachate_data`, and related arguments.
-
-### 4.4 Investigate parked analytes
-
-See `data-raw/analyte_metadata_parked.csv`.  Specifically:
-- **Diazinon**: ssdtools HC5 is ~2.1× the published value.  Try fitting with
-  burrIII3 only (no model averaging) — Burrlioz does not model-average.
-  Check whether ACR adjustment is applied consistently.
-- **Chlorpyrifos**: HC5 ratio ~3.1×.  Check whether the published 0.01 µg/L
-  is derived from the same 12 chronic values or a different subset.
-  Consider whether the ANZG 2019 technical brief has additional data.
-
-### 4.5 Populate chemistry normalisation formulas (MEDIUM PRIORITY)
-
-Three new columns were added to the analyte metadata CSV (v0.2.0):
-`coanalytes_required`, `normalisation_formula`, `moa_group`.
-
-Day-1 state: all formula cells are empty (identity normalisation).
-Formulas need to be extracted from the ANZG technical briefs for:
-- **Cu**: DOC-adjusted (ANZG 2023 draft; linear regression on log DOC)
-- **Ni**: pH / Ca / Mg / DOC adjusted (BLM-type; ANZG 2024 draft)
-- **Zn**: hardness + pH + DOC MLR (ANZG 2024 draft)
-- **NH3-N**: pH and temperature correction (ANZECC 2000 / ANZG 2026)
-- **Cd / Pb**: hardness correction (ANZECC 2000 equations)
-
-Formula strings are R-expression text; `C` is the raw concentration; any
-co-analyte is referenced by its `name.analyte` value (e.g. `DOC`, `pH`).
-Example: `C * (0.5 / DOC)^0.48` for hypothetical Cu DOC correction.
-
-### 4.6 Populate MOA groups for organics (LOW PRIORITY)
-
-Organics with identical modes of action should be CA-combined:
-- AChE inhibitors (organophosphates: Parathion, Azinphos Methyl, Dimethoate,
-  Chlorpyrifos, Diazinon) → one CA group
-- Narcosis compounds (BTEX, PAHs, chlorinated aromatics) → one CA group
-
-Add the `moa_group` values to the metadata CSV once the pharmacological
-classification has been reviewed.
-
-### 4.7 Install brms and validate impute_chemistry() (HIGH PRIORITY)
+### 5.2 Install brms and validate impute_chemistry() (HIGH PRIORITY)
 
 `impute_chemistry()` requires brms (>= 2.20.0) and a Stan toolchain (rstan
 or cmdstanr).  The full brms smoke test is skipped unless:
@@ -254,10 +278,41 @@ cmdstanr::install_cmdstan()  # preferred (faster, no rtools needed on Mac/Linux)
 install.packages("rstan")
 ```
 After installation, run `devtools::test()` with the environment variable set.
+Two test files exercise this path:
+- `tests/testthat/test-impute-smoke.R` — unit tests for impute_chemistry()
+- `tests/testthat/test-pipeline-smoke.R` — §3 end-to-end with imputation
+
+### 5.3 Populate MOA groups for organics (LOW PRIORITY)
+
+Organics with identical modes of action should be CA-combined:
+- AChE inhibitors (organophosphates: Parathion, Azinphos Methyl, Dimethoate,
+  Chlorpyrifos, Diazinon) → one CA group
+- Narcosis compounds (BTEX, PAHs, chlorinated aromatics) → one CA group
+
+Add the `moa_group` values to the metadata CSV once the pharmacological
+classification has been reviewed.
+
+### 5.4 Investigate parked analytes
+
+See `data-raw/analyte_metadata_parked.csv`.  Specifically:
+- **Diazinon**: ssdtools HC5 is ~2.1× the published value.  Try fitting with
+  burrIII3 only (no model averaging) — Burrlioz does not model-average.
+  Check whether ACR adjustment is applied consistently.
+- **Chlorpyrifos**: HC5 ratio ~3.1×.  Check whether the published 0.01 µg/L
+  is derived from the same 12 chronic values or a different subset.
+
+### 5.5 Calibration regression (FUTURE)
+
+See `ideas/macroinvertebrate_calibration_plan.md` for full design.
+Not yet implemented:
+- Baselga beta-diversity partitioning of macroinvertebrate data
+- Logit-logit calibration regression of J_nestedness on chronic AmsPAF
+- Chronic LMF predictor (per-sample `add_lmf()` exists; chronic integration
+  to `compute_chronic_chemistry()` output not yet wired)
 
 ---
 
-## 5. Model caching
+## 6. Model caching
 
 Models are fitted lazily on first use and cached in two layers:
 
@@ -274,11 +329,11 @@ cached, the model can be loaded without access to the XLSX files.
 
 ---
 
-## 6. Key files (v0.2.0)
+## 7. Key files (v0.4.0)
 
 ```
 leachatetools/
-├── DESCRIPTION                          version 0.2.0
+├── DESCRIPTION                          version 0.4.0
 ├── NAMESPACE                            regenerated by roxygen2
 ├── R/
 │   ├── paf.R                            ssd_paf(), ssd_hc50(), .ssd_sigma()
@@ -286,15 +341,18 @@ leachatetools/
 │   ├── mspaf.R                          add_amspaf() — metadata-driven eligibility,
 │   │                                    normalisation pipeline, n_analytes_imputed
 │   ├── lmf.R                            add_lmf() — per-sample only
-│   ├── prescreen.R          (NEW)       prescreen_analytes()
-│   ├── impute.R             (NEW)       impute_chemistry() [requires brms + Stan]
-│   ├── chronic.R            (NEW)       compute_chronic_chemistry()
-│   ├── reference.R          (NEW)       prepare_reference(), .load_analyte_metadata()
-│   └── normalise.R          (NEW)       .parse_normalisation_formula(), .apply_normalisation()
+│   ├── normalise.R                      .parse_normalisation_formula(),
+│   │                                    .apply_normalisation(), .load_analyte_metadata()
+│   ├── prescreen.R                      prescreen_analytes() — auto-protects drivers
+│   ├── impute.R                         impute_chemistry() [requires brms + Stan]
+│   ├── chronic.R                        compute_chronic_chemistry(), expand_focal_dates()
+│   ├── reference.R                      prepare_reference(), .extract_coanalytes_for_sample()
+│   └── watertemp.R                      estimate_water_temp()
 │
 ├── inst/extdata/
-│   ├── anzecc_analyte_metadata.csv      3 new columns: coanalytes_required,
-│   │                                    normalisation_formula, moa_group
+│   ├── anzecc_analyte_metadata.csv      columns: analyte, ssd_available, fit_dist,
+│   │                                    coanalytes_required, normalisation_formula,
+│   │                                    moa_group, dgv_* (6 normalised analytes)
 │   ├── anzecc_warne2000_observations.csv
 │   └── ni_mlr_normalised_table3.csv
 │
@@ -303,15 +361,22 @@ leachatetools/
 │   ├── analyte_metadata_parked.csv      Chlorpyrifos, Diazinon
 │   └── ...
 │
+├── vignettes/
+│   └── normalisation.Rmd                documents all 6 normalisation formulas
+│                                         with valid ranges and limitations
+│
 ├── tests/testthat/
-│   ├── test-prescreen.R                 11 tests (all passing)
+│   ├── test-prescreen.R                 14 tests (all passing)
 │   ├── test-normalise.R                 8 tests (all passing)
-│   ├── test-chronic.R                   11 tests (all passing)
-│   ├── test-amspaf-parity.R             requires guideline_dir option to run
-│   └── test-impute-smoke.R              requires brms + BRMS_SMOKE_TEST=1 to run fully
+│   ├── test-chronic.R                   16 tests (all passing)
+│   ├── test-pipeline-smoke.R            20 tests; §1 always-run,
+│   │                                    §2 needs guideline_dir,
+│   │                                    §3 needs BRMS_SMOKE_TEST=1
+│   ├── test-amspaf-parity.R             needs guideline_dir
+│   └── test-impute-smoke.R              §full needs BRMS_SMOKE_TEST=1
 │
 └── ideas/
-    └── macroinvertebrate_calibration_plan.md   source-of-truth for AmsPAF pipeline design
+    └── macroinvertebrate_calibration_plan.md   pipeline design + open questions
 ```
 
 **Important**: `inst/extdata/anzecc_analyte_metadata.csv` is a copy of
@@ -325,21 +390,29 @@ file.copy("data-raw/anzecc_analyte_metadata.csv",
 
 ---
 
-## 7. add_amspaf() API change (v0.1.0 → v0.2.0)
+## 8. Column naming scheme (v0.3.0+)
 
-The `analyte_types` argument has been removed. Eligibility is now driven
-by the bundled metadata CSV (`ssd_available == TRUE`, not in
-`.AMSPAF_EXCLUDED_ANALYTES`). MOA grouping comes from the `moa_group` column.
+All long-format chemistry data frames use:
 
-**Old call (v0.1.0):**
-```r
-add_amspaf(df,
-  analyte_types  = tibble::tibble(name = c("Cu","Zn"), type = c("metal","metal")),
-  reference_data = ref_df
-)
-```
+| Column | Type | Description |
+|---|---|---|
+| `sample_id` | character | Unique sample identifier |
+| `site_id` | character | Monitoring feature / site |
+| `datetime` | Date or POSIXct | Sample collection date/time |
+| `analyte` | character | Analyte name (matches metadata `analyte` column) |
+| `value` | numeric | Concentration (µg/L or analyte-specific units) |
+| `detected` | logical | `FALSE` for BDL; `TRUE` for detected values |
+| `imputed` | logical | `TRUE` if filled by `impute_chemistry()` |
+| `imputed_kind` | character | `"observed"`, `"censored_left"`, or `"missing"` |
 
-**New call (v0.2.0):**
+**Breaking change from v0.2.0**: columns were `uuid.sample`, `uuid.feature`,
+`name.analyte`, `quantified`. The v0.3.0 rename aligns with tidyverse/tidy
+conventions.
+
+---
+
+## 9. add_amspaf() API (v0.3.0)
+
 ```r
 # Option A: pass prepared reference (recommended for chronic pipeline)
 prep_ref <- prepare_reference(ref_df)
@@ -348,8 +421,10 @@ add_amspaf(df, reference = prep_ref)
 # Option B: pass raw reference df (prepare_reference called internally)
 add_amspaf(df, reference = ref_df)
 
-# Option C: no background adjustment
+# Option C: no background adjustment (assess raw concentrations)
 add_amspaf(df)
 ```
 
----
+The `analyte_types` argument from v0.1.0 has been removed. Eligibility is
+driven by the bundled metadata CSV (`ssd_available == TRUE`, not in
+`.AMSPAF_EXCLUDED_ANALYTES`). MOA grouping comes from the `moa_group` column.

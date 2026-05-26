@@ -114,13 +114,23 @@ prepare_reference <- function(
       .groups  = "drop"
     )
 
-  # Analytes that ended up with no usable reference observations
+  # Analytes that ended up with no usable reference observations:
+  # either never detected at the reference site, or normalisation returned
+  # NA for every row (e.g. required co-analyte absent from reference data).
   all_analytes <- unique(reference_data$analyte)
   dropped      <- setdiff(all_analytes, qnt$analyte[qnt$n_obs > 0L])
 
+  if (length(dropped) > 0L) {
+    cli::cli_inform(c(
+      "i" = "prepare_reference: {length(dropped)} analyte{?s} dropped — \\
+             no usable normalised reference values: {.val {dropped}}."
+    ))
+  }
+
   structure(
     list(
-      normalised_quantiles = dplyr::select(qnt, "analyte", "ref_norm"),
+      normalised_quantiles = dplyr::filter(qnt, .data$n_obs > 0L) |>
+        dplyr::select("analyte", "ref_norm"),
       dropped    = dropped,
       percentile = percentile
     ),
