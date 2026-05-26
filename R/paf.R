@@ -47,7 +47,9 @@
   "Ni"                     = "Ni",
   "Zn"                     = "Zn",
   "Al"                     = "Al",
-  "As"                     = "As",
+  "As"                     = "As_V",      # unspeciated → As(V) SSD (conservative default)
+  "As(V)"                  = "As_V",
+  "As(III)"                = "As_III",
   "Cd"                     = "Cd",
   "Pb"                     = "Pb",
   "Mn"                     = "Mn",
