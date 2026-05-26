@@ -39,18 +39,10 @@ make_impute_chem <- function(n = 15, n_bdl = 3, n_missing = 2) {
   rows
 }
 
-test_that("impute_chemistry requires brms and aborts cleanly if absent", {
-  skip_if(
-    requireNamespace("brms", quietly = TRUE),
-    "brms is installed — this test checks the absent-brms path"
-  )
-  df  <- make_impute_chem()
-  err <- tryCatch(
-    impute_chemistry(df, drivers = c("pH", "EC", "DOC"), chains = 1, iter = 100),
-    error = function(e) e
-  )
-  expect_s3_class(err, "error")
-  expect_match(conditionMessage(err), "brms")
+test_that("impute_chemistry requires brms (now a hard dependency in Imports)", {
+  # brms is now in Imports; this test just confirms it is loadable.
+  skip_if_not(requireNamespace("brms", quietly = TRUE))
+  expect_true(requireNamespace("brms", quietly = TRUE))
 })
 
 test_that("impute_chemistry errors on missing driver analyte in df", {

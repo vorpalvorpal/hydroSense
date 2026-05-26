@@ -82,16 +82,6 @@ impute_chemistry <- function(
 ) {
   return <- match.arg(return)
 
-  # ── Dependency check ───────────────────────────────────────────────────────
-  if (!requireNamespace("brms", quietly = TRUE)) {
-    cli::cli_abort(c(
-      "{.pkg brms} is required for {.fn impute_chemistry} but is not installed.",
-      "i" = "Install it with: {.code install.packages('brms')}",
-      "i" = "brms also requires a Stan toolchain (rstan or cmdstanr).",
-      "i" = "See {.url https://paul-buerkner.github.io/brms/} for instructions."
-    ))
-  }
-
   # ── Input validation ───────────────────────────────────────────────────────
   checkmate::assert_data_frame(df)
   checkmate::assert_names(

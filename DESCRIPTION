@@ -14,6 +14,7 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Imports:
+    brms (>= 2.20.0),
     checkmate,
     cli,
     dplyr,
@@ -29,7 +30,6 @@ Imports:
     uuid
 SystemRequirements: Stan (rstan or cmdstanr); required by brms for Bayesian imputation
 Suggests:
-    brms (>= 2.20.0),
     ggplot2,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

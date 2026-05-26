@@ -150,6 +150,28 @@ print.prepared_reference <- function(x, ...) {
 .meta_cache_env <- new.env(parent = emptyenv())
 
 .load_analyte_metadata <- function(meta = NULL) {
+  # Accept: NULL (load bundled CSV), a data frame, or a file path string.
+  if (is.character(meta)) {
+    if (length(meta) != 1L || !nzchar(meta)) {
+      cli::cli_abort("{.arg analyte_metadata} must be a single file path, not {.val {meta}}.")
+    }
+    if (!file.exists(meta)) {
+      cli::cli_abort("File not found: {.path {meta}}")
+    }
+    m <- readr::read_csv(meta, show_col_types = FALSE) |>
+      dplyr::mutate(
+        coanalytes_required  = dplyr::if_else(
+          is.na(.data$coanalytes_required), "", .data$coanalytes_required),
+        normalisation_formula = dplyr::if_else(
+          is.na(.data$normalisation_formula), "", .data$normalisation_formula)
+      )
+    checkmate::assert_names(
+      names(m),
+      must.include = c("analyte", "coanalytes_required", "normalisation_formula")
+    )
+    return(m)
+  }
+
   if (!is.null(meta)) {
     checkmate::assert_data_frame(meta)
     checkmate::assert_names(
