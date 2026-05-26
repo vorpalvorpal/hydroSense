@@ -311,14 +311,22 @@ add_amspaf <- function(
       )
     )
 
-  ## Propagate datetime from input df to AmsPAF rows.
+  ## Propagate datetime from input df to AmsPAF rows (per-sample pipeline).
   if ("datetime" %in% names(df)) {
     sample_times <- dplyr::distinct(df, .data$sample_id, .data$datetime)
     amspaf_df    <- dplyr::left_join(amspaf_df, sample_times, by = "sample_id")
   }
 
+  ## Propagate focal_date from input df to AmsPAF rows (chronic pipeline).
+  if ("focal_date" %in% names(df)) {
+    focal_times <- dplyr::distinct(df, .data$sample_id, .data$focal_date)
+    amspaf_df   <- dplyr::left_join(amspaf_df, focal_times, by = "sample_id")
+  }
+
   result <- dplyr::bind_rows(df, amspaf_df)
-  if ("datetime" %in% names(result)) {
+  if ("focal_date" %in% names(result)) {
+    result <- dplyr::arrange(result, .data$focal_date)
+  } else if ("datetime" %in% names(result)) {
     result <- dplyr::arrange(result, .data$datetime)
   }
   result
@@ -601,7 +609,6 @@ compute_amspaf_per_sample <- function(
       } else NA_character_
 
       tibble::tibble(
-        sample_id          = dplyr::first(.x$sample_id),
         value              = amspaf * 100,
         n_analytes_used    = nrow(tox_rows),
         n_analytes_imputed = as.integer(n_analytes_imputed),

@@ -145,23 +145,59 @@
 
   df <- if (meta$data_source == "ANZG_XLSX") {
 
-    reader <- .XLSX_READERS[[analyte]]
-    if (is.null(reader)) {
-      warning("No XLSX reader registered for '", analyte, "'.")
-      return(NULL)
-    }
+    # Priority order:
+    #   1. XLSX files (freshest data; requires guideline_dir to be set)
+    #   2. Bundled anzg_xlsx_observations.csv (ships with the package; no
+    #      external files needed; used automatically when guideline_dir is unset
+    #      or the XLSX file is missing)
+    #
+    # The bundled CSV was extracted from the same XLSX files and contains
+    # identical data.  It exists so the package works out-of-the-box without
+    # requiring users to download ANZG guideline XLSX files.
 
-    if (is.null(guideline_dir) || !nzchar(guideline_dir)) {
-      stop("guideline_dir must be set for ANZG_XLSX analyte '", analyte, "'.\n",
-           "Set options(leachatetools.guideline_dir = '/path/to/guideline data').")
-    }
+    use_xlsx <- !is.null(guideline_dir) && nzchar(guideline_dir)
 
-    tryCatch(
-      reader(guideline_dir),
-      error = function(e) {
-        stop("Error reading XLSX data for '", analyte, "': ", conditionMessage(e))
+    if (use_xlsx) {
+      reader <- .XLSX_READERS[[analyte]]
+      if (is.null(reader)) {
+        warning("No XLSX reader registered for '", analyte, "' — falling back to bundled CSV.")
+        use_xlsx <- FALSE
       }
-    )
+    }
+
+    if (use_xlsx) {
+      result <- tryCatch(
+        .XLSX_READERS[[analyte]](guideline_dir),
+        error = function(e) {
+          cli::cli_warn(c(
+            "!" = "Error reading XLSX data for {.val {analyte}}: {conditionMessage(e)}",
+            "i" = "Falling back to bundled {.file anzg_xlsx_observations.csv}."
+          ))
+          NULL
+        }
+      )
+      if (is.null(result)) use_xlsx <- FALSE else result
+    }
+
+    if (!use_xlsx) {
+      # Fallback: read from the bundled CSV that ships with the package
+      csv_path <- system.file("extdata", "anzg_xlsx_observations.csv",
+                               package = "leachatetools")
+      if (!nzchar(csv_path)) {
+        stop("Cannot find bundled anzg_xlsx_observations.csv inside the ",
+             "installed leachatetools package. Re-install the package.")
+      }
+      obs_all <- readr::read_csv(
+        csv_path,
+        col_types = readr::cols(value_ug_L = readr::col_double(),
+                                .default   = readr::col_character()),
+        show_col_types = FALSE
+      )
+      obs_all |>
+        dplyr::filter(analyte == !!analyte,
+                      !is.na(value_ug_L), value_ug_L > 0) |>
+        dplyr::transmute(Conc = value_ug_L, Species = species_id)
+    }
 
   } else {
     # Warne2000 (or any other CSV-backed source)

@@ -59,6 +59,7 @@
   "Malathion"              = "Malathion",
   "Parathion"              = "Parathion",
   "Azinphos-methyl"        = "Azinphos_Methyl",
+  "Azinphos Methyl"        = "Azinphos_Methyl",   # metadata uses space; both accepted
   "Dimethoate"             = "Dimethoate",
   "Naphthalene"            = "Naphthalene",
   "Benzo(a)pyrene"         = "Benzo_a_pyrene",
@@ -67,6 +68,7 @@
   "Phenol"                 = "Phenol",
   "2-Chlorophenol"         = "2_Chlorophenol",
   "2,4,6-Trichlorophenol"  = "2_4_6_Trichlorophenol",
+  "2.4.6-Trichlorophenol"  = "2_4_6_Trichlorophenol",  # metadata uses dots; both accepted
   "Pentachlorophenol"      = "Pentachlorophenol"
 )
 

@@ -163,10 +163,6 @@ test_that("§1e chronic reference baseline is lower for reference than downstrea
 # ─────────────────────────────────────────────────────────────────────────────
 
 test_that("§2 full chronic AmsPAF pipeline runs end-to-end", {
-  skip_if(
-    is.null(getOption("leachatetools.guideline_dir")),
-    "Skipping: leachatetools.guideline_dir not set (no ANZG XLSX available)"
-  )
 
   chem <- make_pipeline_chem()
 
@@ -217,10 +213,6 @@ test_that("§3 full pipeline with imputation runs end-to-end", {
     requireNamespace("brms", quietly = TRUE) &&
       identical(Sys.getenv("BRMS_SMOKE_TEST"), "1"),
     "Skipping: brms not installed or BRMS_SMOKE_TEST != '1'"
-  )
-  skip_if(
-    is.null(getOption("leachatetools.guideline_dir")),
-    "Skipping: leachatetools.guideline_dir not set"
   )
 
   chem <- make_pipeline_chem()
