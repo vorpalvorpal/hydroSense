@@ -611,6 +611,10 @@ Phenol,72876.27,acute_LC50,Sp_150,Warne2000,87,TRUE,NA
 2-Chlorophenol,13458.3,acute_LC50,Sp_004,Warne2000,NA,FALSE,NA
 2-Chlorophenol,5235.81,acute_LC50,Sp_005,Warne2000,NA,FALSE,NA
 2-Chlorophenol,6900,acute_LC50,Sp_006,Warne2000,NA,FALSE,NA
+2-Chlorophenol,170000,acute_LC50,Sp_007,Warne2000,89,TRUE,NA
+2-Chlorophenol,50000,acute_LC50,Sp_008,Warne2000,89,TRUE,NA
+2-Chlorophenol,70000,acute_LC50,Sp_009,Warne2000,89,TRUE,NA
+2-Chlorophenol,67970,acute_LC50,Sp_010,Warne2000,89,TRUE,NA
 "2,4,6-Trichlorophenol",643.43,acute_LC50,Sp_001,Warne2000,NA,FALSE,Freshwater MR; acute data (Warne 2000). ACR unspecified; implied ~12.5 from published DGV; default 10 used.
 "2,4,6-Trichlorophenol",2220.13,acute_LC50,Sp_002,Warne2000,NA,FALSE,NA
 "2,4,6-Trichlorophenol",1768.94,acute_LC50,Sp_003,Warne2000,NA,FALSE,NA
