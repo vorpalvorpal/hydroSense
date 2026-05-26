@@ -9,13 +9,14 @@ prepare_reference(reference_data, analyte_metadata = NULL, percentile = 0.8)
 \arguments{
 \item{reference_data}{Long-format chemistry data frame for the reference
 (background) site(s). Same schema as the input to \code{add_amspaf()}:
-\code{name.analyte}, \code{value}, \code{quantified}. If \code{quantified == FALSE} for a row,
+\code{analyte}, \code{value}, \code{detected}. If \code{detected == FALSE} for a row,
 it is excluded from the quantile calculation (BDL observations are treated
 as absent at the reference site).}
 
 \item{analyte_metadata}{Data frame of analyte metadata, or \code{NULL} to load
-the bundled \code{inst/extdata/anzecc_analyte_metadata.csv}. Must contain
-columns \code{analyte}, \code{coanalytes_required}, and \code{normalisation_formula}.}
+the bundled \code{inst/extdata/anzecc_analyte_metadata.csv}. Accepts either a
+data frame or a file path string. Must contain columns \code{analyte},
+\code{coanalytes_required}, and \code{normalisation_formula}.}
 
 \item{percentile}{Quantile (0–1) of the reference distribution used as the
 background anchor for Added Risk Approach (ARA) subtraction. Default
@@ -25,9 +26,9 @@ exceed 80 \% of the time).}
 \value{
 A list of class \code{"prepared_reference"} with elements:
 \itemize{
-\item \verb{$normalised_quantiles}: tibble with columns \code{name.analyte},
+\item \verb{$normalised_quantiles}: tibble with columns \code{analyte},
 \code{ref_norm} (normalised concentration at \code{percentile}).
-\item \verb{$dropped}: character vector of analytes excluded due to no quantified
+\item \verb{$dropped}: character vector of analytes excluded due to no detected
 reference observations.
 \item \verb{$percentile}: the \code{percentile} value used.
 }

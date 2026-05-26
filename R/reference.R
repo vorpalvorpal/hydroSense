@@ -13,21 +13,22 @@
 #'
 #' @param reference_data Long-format chemistry data frame for the reference
 #'   (background) site(s). Same schema as the input to `add_amspaf()`:
-#'   `name.analyte`, `value`, `quantified`. If `quantified == FALSE` for a row,
+#'   `analyte`, `value`, `detected`. If `detected == FALSE` for a row,
 #'   it is excluded from the quantile calculation (BDL observations are treated
 #'   as absent at the reference site).
 #' @param analyte_metadata Data frame of analyte metadata, or `NULL` to load
-#'   the bundled `inst/extdata/anzecc_analyte_metadata.csv`. Must contain
-#'   columns `analyte`, `coanalytes_required`, and `normalisation_formula`.
+#'   the bundled `inst/extdata/anzecc_analyte_metadata.csv`. Accepts either a
+#'   data frame or a file path string. Must contain columns `analyte`,
+#'   `coanalytes_required`, and `normalisation_formula`.
 #' @param percentile Quantile (0–1) of the reference distribution used as the
 #'   background anchor for Added Risk Approach (ARA) subtraction. Default
 #'   `0.80` (80th percentile — the concentration the reference site does not
 #'   exceed 80 % of the time).
 #'
 #' @return A list of class `"prepared_reference"` with elements:
-#'   - `$normalised_quantiles`: tibble with columns `name.analyte`,
+#'   - `$normalised_quantiles`: tibble with columns `analyte`,
 #'     `ref_norm` (normalised concentration at `percentile`).
-#'   - `$dropped`: character vector of analytes excluded due to no quantified
+#'   - `$dropped`: character vector of analytes excluded due to no detected
 #'     reference observations.
 #'   - `$percentile`: the `percentile` value used.
 #'
@@ -51,24 +52,24 @@ prepare_reference <- function(
 ) {
   checkmate::assert_data_frame(reference_data)
   checkmate::assert_names(names(reference_data),
-    must.include = c("name.analyte", "value", "quantified"))
+    must.include = c("analyte", "value", "detected"))
   checkmate::assert_number(percentile, lower = 0, upper = 1)
 
   meta <- .load_analyte_metadata(analyte_metadata)
 
-  # Keep only quantified reference observations
-  ref_q <- dplyr::filter(reference_data, .data$quantified)
+  # Keep only detected reference observations
+  ref_q <- dplyr::filter(reference_data, .data$detected)
 
   if (nrow(ref_q) == 0L) {
     cli::cli_warn(
-      "No quantified reference observations found; ARA subtraction will be zero \\
+      "No detected reference observations found; ARA subtraction will be zero \\
        for all analytes."
     )
     return(structure(
       list(
         normalised_quantiles = tibble::tibble(
-          name.analyte = character(0),
-          ref_norm     = numeric(0)
+          analyte  = character(0),
+          ref_norm = numeric(0)
         ),
         dropped    = character(0),
         percentile = percentile
@@ -82,23 +83,22 @@ prepare_reference <- function(
     dplyr::left_join(
       meta |>
         dplyr::select("analyte", "coanalytes_required", "normalisation_formula"),
-      by = c("name.analyte" = "analyte")
+      by = "analyte"
     ) |>
     dplyr::mutate(
       value_norm = purrr::pmap_dbl(
         list(
-          formula_str = .data$normalisation_formula,
-          C           = .data$value,
-          sample_uid  = .data$uuid.sample %||% NA_character_
+          formula_str   = .data$normalisation_formula,
+          C             = .data$value,
+          sample_id_val = if ("sample_id" %in% names(ref_q)) .data$sample_id else NA_character_,
+          analyte_nm    = .data$analyte,
+          co_req        = .data$coanalytes_required
         ),
-        function(formula_str, C, sample_uid) {
+        function(formula_str, C, sample_id_val, analyte_nm, co_req) {
           parsed <- .parse_normalisation_formula(formula_str %||% "")
-          if (is.null(parsed)) return(C)  # identity
-          # For reference data, co-analytes are looked up from same sample
-          # (simplified: extract from the full reference_data by uuid.sample)
+          if (is.null(parsed)) return(C)  # identity (empty formula stub)
           coanalytes <- .extract_coanalytes_for_sample(
-            reference_data, sample_uid,
-            meta$coanalytes_required[meta$analyte == .data$name.analyte]
+            reference_data, sample_id_val, co_req %||% ""
           )
           .apply_normalisation(parsed, C, coanalytes)
         }
@@ -107,7 +107,7 @@ prepare_reference <- function(
 
   # Per-analyte quantile of normalised concentrations
   qnt <- nq |>
-    dplyr::group_by(.data$name.analyte) |>
+    dplyr::group_by(.data$analyte) |>
     dplyr::summarise(
       ref_norm = quantile(.data$value_norm, probs = percentile, na.rm = TRUE),
       n_obs    = sum(!is.na(.data$value_norm)),
@@ -115,12 +115,12 @@ prepare_reference <- function(
     )
 
   # Analytes that ended up with no usable reference observations
-  all_analytes <- unique(reference_data$name.analyte)
-  dropped      <- setdiff(all_analytes, qnt$name.analyte[qnt$n_obs > 0L])
+  all_analytes <- unique(reference_data$analyte)
+  dropped      <- setdiff(all_analytes, qnt$analyte[qnt$n_obs > 0L])
 
   structure(
     list(
-      normalised_quantiles = dplyr::select(qnt, "name.analyte", "ref_norm"),
+      normalised_quantiles = dplyr::select(qnt, "analyte", "ref_norm"),
       dropped    = dropped,
       percentile = percentile
     ),
@@ -210,12 +210,12 @@ print.prepared_reference <- function(x, ...) {
 #' Extract co-analyte values for a given sample from a long-format df
 #'
 #' @param df Long-format chemistry df
-#' @param sample_uid uuid.sample identifier (may be NA for non-sample data)
+#' @param sample_id Sample identifier (may be NA for non-sample data)
 #' @param coanalytes_str Comma-separated string of required co-analyte names
 #' @return Named numeric vector; may be empty
 #' @keywords internal
-.extract_coanalytes_for_sample <- function(df, sample_uid, coanalytes_str) {
-  if (is.na(sample_uid) || !nzchar(coanalytes_str %||% "")) {
+.extract_coanalytes_for_sample <- function(df, sample_id, coanalytes_str) {
+  if (is.na(sample_id) || !nzchar(coanalytes_str %||% "")) {
     return(numeric(0))
   }
   required <- trimws(strsplit(coanalytes_str, ",")[[1L]])
@@ -223,13 +223,13 @@ print.prepared_reference <- function(x, ...) {
   if (length(required) == 0L) return(numeric(0))
 
   co <- dplyr::filter(df,
-    .data$uuid.sample == .env$sample_uid,
-    .data$name.analyte %in% .env$required,
-    .data$quantified
+    .data$sample_id == .env$sample_id,
+    .data$analyte %in% .env$required,
+    .data$detected
   )
   if (nrow(co) == 0L) return(numeric(0))
   vals <- co$value
-  names(vals) <- co$name.analyte
+  names(vals) <- co$analyte
   vals[required[required %in% names(vals)]]
 }
 

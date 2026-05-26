@@ -21,15 +21,15 @@
 #'
 #' @param df Long-format chemistry data frame, typically the output of
 #'   `impute_chemistry()`. Required columns:
-#'   - `uuid.sample` (character) — unique sample identifier
-#'   - `uuid.feature` (character) — monitoring feature identifier
-#'   - `datetime.sample` (Date or POSIXct) — sample collection date/time
-#'   - `name.analyte` (character) — analyte name
+#'   - `sample_id` (character) — unique sample identifier
+#'   - `site_id` (character) — monitoring feature identifier
+#'   - `datetime` (Date or POSIXct) — sample collection date/time
+#'   - `analyte` (character) — analyte name
 #'   - `value` (numeric) — concentration
-#'   - `quantified` (logical) — whether value is a detected concentration
+#'   - `detected` (logical) — whether value is a detected concentration
 #'   Optional: `imputed` (logical) — propagated to `n_imputed_in_window`.
 #' @param focal_dates Either a `Date` vector (applied to all features in `df`)
-#'   or a data frame with columns `focal_date` (Date) and `uuid.feature`
+#'   or a data frame with columns `focal_date` (Date) and `site_id`
 #'   (character) specifying per-feature focal dates.
 #' @param tau_days Exponential decay half-life parameter in days. Default 90.
 #' @param window_days Look-back window in days. Default 365.
@@ -48,11 +48,11 @@
 #'
 #' @return A long-format tibble with columns:
 #'   - `focal_date` (Date)
-#'   - `uuid.feature` (character)
-#'   - `uuid.sample` (character) — synthetic key `"chronic_<focal_date>_<feature>"`
-#'   - `name.analyte` (character)
+#'   - `site_id` (character)
+#'   - `sample_id` (character) — synthetic key `"chronic_<focal_date>_<site>"`
+#'   - `analyte` (character)
 #'   - `value` (numeric) — chronic aggregated concentration
-#'   - `quantified` (logical) — always `TRUE`
+#'   - `detected` (logical) — always `TRUE`
 #'   - `n_samples_in_window` (integer)
 #'   - `n_imputed_in_window` (integer) — count of `imputed == TRUE` samples
 #'     contributing; 0 if `imputed` column absent from `df`
@@ -84,8 +84,8 @@ compute_chronic_chemistry <- function(
   checkmate::assert_data_frame(df)
   checkmate::assert_names(
     names(df),
-    must.include = c("uuid.sample", "uuid.feature", "datetime.sample",
-                     "name.analyte", "value", "quantified")
+    must.include = c("sample_id", "site_id", "datetime",
+                     "analyte", "value", "detected")
   )
   checkmate::assert_number(tau_days, lower = 0.001)
   checkmate::assert_number(window_days, lower = 1)
@@ -96,41 +96,41 @@ compute_chronic_chemistry <- function(
 
   # Normalise datetime to Date for day-level arithmetic
   df <- dplyr::mutate(df,
-    .date = as.Date(.data$datetime.sample)
+    .date = as.Date(.data$datetime)
   )
 
-  # ── Build the focal_dates × uuid.feature grid ──────────────────────────────
+  # ── Build the focal_dates × site_id grid ──────────────────────────────────
   if (is.data.frame(focal_dates)) {
     checkmate::assert_names(names(focal_dates),
-      must.include = c("focal_date", "uuid.feature"))
+      must.include = c("focal_date", "site_id"))
     focal_grid <- dplyr::mutate(focal_dates,
       focal_date = as.Date(.data$focal_date)
     )
   } else {
     focal_dates <- as.Date(focal_dates)
-    features    <- unique(df$uuid.feature)
+    features    <- unique(df$site_id)
     focal_grid  <- tidyr::expand_grid(
-      focal_date  = focal_dates,
-      uuid.feature = features
+      focal_date = focal_dates,
+      site_id    = features
     )
   }
 
-  # ── Per (focal_date, uuid.feature): compute chronic values ─────────────────
-  results <- purrr::pmap(focal_grid, function(focal_date, uuid.feature) {
+  # ── Per (focal_date, site_id): compute chronic values ─────────────────────
+  results <- purrr::pmap(focal_grid, function(focal_date, site_id) {
     window_start <- focal_date - window_days
 
     # Samples for this feature
     feat_df <- dplyr::filter(df,
-      .data$uuid.feature == .env$uuid.feature
+      .data$site_id == .env$site_id
     )
 
     if (nrow(feat_df) == 0L) {
       return(NULL)
     }
 
-    # Unique samples (one row per uuid.sample × date)
+    # Unique samples (one row per sample_id × date)
     sample_dates <- feat_df |>
-      dplyr::distinct(.data$uuid.sample, .data$.date) |>
+      dplyr::distinct(.data$sample_id, .data$.date) |>
       dplyr::arrange(.data$.date)
 
     in_window <- sample_dates$.date >= window_start & sample_dates$.date <= focal_date
@@ -142,7 +142,7 @@ compute_chronic_chemistry <- function(
     # Identify anchor: most recent sample strictly before window_start
     anchor_idx <- which(sample_dates$.date < window_start)
     anchor_uid <- if (anchor_outside_window && length(anchor_idx) > 0L) {
-      sample_dates$uuid.sample[max(anchor_idx)]
+      sample_dates$sample_id[max(anchor_idx)]
     } else {
       NA_character_
     }
@@ -150,7 +150,7 @@ compute_chronic_chemistry <- function(
     # Samples to use: anchor (if any) + in-window samples
     use_uids <- c(
       if (!is.na(anchor_uid)) anchor_uid,
-      sample_dates$uuid.sample[in_window]
+      sample_dates$sample_id[in_window]
     )
     use_dates <- c(
       if (!is.na(anchor_uid)) sample_dates$.date[max(anchor_idx)],
@@ -177,25 +177,25 @@ compute_chronic_chemistry <- function(
     w_time <- exp(-as.numeric(focal_date - midpoints) / tau_days)
     w      <- w_time * pmax(delta_t, 0)
 
-    # Map sample uid → (delta_t, midpoint, weight)
+    # Map sample_id → (delta_t, midpoint, weight)
     sample_wt <- tibble::tibble(
-      uuid.sample = use_uids,
-      .weight     = w,
-      .n_in_win   = as.integer(in_window[match(use_uids, sample_dates$uuid.sample)])
+      sample_id  = use_uids,
+      .weight    = w,
+      .n_in_win  = as.integer(in_window[match(use_uids, sample_dates$sample_id)])
     )
     # anchor is NOT counted in n_samples_in_window
-    sample_wt$.n_in_win[sample_wt$uuid.sample == (if (!is.na(anchor_uid)) anchor_uid else "__none__")] <- 0L
+    sample_wt$.n_in_win[sample_wt$sample_id == (if (!is.na(anchor_uid)) anchor_uid else "__none__")] <- 0L
 
     # Filter chemistry to used samples
     chem_use <- feat_df |>
-      dplyr::filter(.data$uuid.sample %in% use_uids) |>
-      dplyr::left_join(sample_wt, by = "uuid.sample")
+      dplyr::filter(.data$sample_id %in% use_uids) |>
+      dplyr::left_join(sample_wt, by = "sample_id")
 
     # ── Aggregate per analyte ─────────────────────────────────────────────
-    synth_uid <- paste0("chronic_", focal_date, "_", uuid.feature)
+    synth_uid <- paste0("chronic_", focal_date, "_", site_id)
 
     analyte_out <- chem_use |>
-      dplyr::group_by(.data$name.analyte) |>
+      dplyr::group_by(.data$analyte) |>
       dplyr::summarise(
         value             = .aggregate_weighted(
           .data$value, .data$.weight, summary, eps
@@ -209,11 +209,11 @@ compute_chronic_chemistry <- function(
         .groups = "drop"
       ) |>
       dplyr::mutate(
-        focal_date   = .env$focal_date,
-        uuid.feature = .env$uuid.feature,
-        uuid.sample  = synth_uid,
-        quantified   = TRUE,
-        .before      = 1L
+        focal_date = .env$focal_date,
+        site_id    = .env$site_id,
+        sample_id  = synth_uid,
+        detected   = TRUE,
+        .before    = 1L
       )
 
     analyte_out
@@ -224,15 +224,15 @@ compute_chronic_chemistry <- function(
   if (length(results) == 0L) {
     cli::cli_abort(c(
       "No chronic chemistry could be computed.",
-      "i" = "Check that {.arg focal_dates} and {.arg df$datetime.sample} overlap \\
+      "i" = "Check that {.arg focal_dates} and {.arg df$datetime} overlap \\
              within {.arg window_days} = {window_days} days."
     ))
   }
 
   dplyr::bind_rows(results) |>
     dplyr::select(
-      "focal_date", "uuid.feature", "uuid.sample",
-      "name.analyte", "value", "quantified",
+      "focal_date", "site_id", "sample_id",
+      "analyte", "value", "detected",
       "n_samples_in_window", "n_imputed_in_window"
     )
 }

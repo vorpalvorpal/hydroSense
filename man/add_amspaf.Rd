@@ -16,9 +16,9 @@ add_amspaf(
 }
 \arguments{
 \item{df}{Long-format monitoring dataframe. Required columns:
-\code{uuid.sample}, \code{uuid.feature}, \code{name.analyte}, \code{value} (concentrations in
-µg/L). Optional but recommended: \code{datetime.sample} (propagated to AmsPAF
-rows if present), \code{quantified} (assumed \code{TRUE} if absent), \code{imputed}
+\code{sample_id}, \code{site_id}, \code{analyte}, \code{value} (concentrations in
+µg/L). Optional but recommended: \code{datetime} (propagated to AmsPAF
+rows if present), \code{detected} (assumed \code{TRUE} if absent), \code{imputed}
 (logical; if present, \code{n_analytes_imputed} is populated in output).
 Driver analytes needed for chemistry normalisation (e.g. pH, DOC) should
 be present as rows in \code{df}.}

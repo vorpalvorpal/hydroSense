@@ -2,11 +2,12 @@
 % Please edit documentation in R/impute.R
 \name{.reshape_posterior_means}
 \alias{.reshape_posterior_means}
-\title{Reshape brms::fitted() output to long format}
+\title{Reshape brms::posterior_epred() output to long format of posterior means}
 \usage{
-.reshape_posterior_means(post_means, sample_uids, safe_analytes)
+.reshape_posterior_means(epred_draws, sample_ids, safe_analytes)
 }
 \description{
-Reshape brms::fitted() output to long format
+\code{posterior_epred()} returns \verb{[n_draws, n_obs, n_responses]} on the log scale.
+We average across draws and exp()-transform to get concentrations.
 }
 \keyword{internal}

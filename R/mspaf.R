@@ -135,9 +135,9 @@
 #' object.
 #'
 #' @param df Long-format monitoring dataframe. Required columns:
-#'   `uuid.sample`, `uuid.feature`, `name.analyte`, `value` (concentrations in
-#'   µg/L). Optional but recommended: `datetime.sample` (propagated to AmsPAF
-#'   rows if present), `quantified` (assumed `TRUE` if absent), `imputed`
+#'   `sample_id`, `site_id`, `analyte`, `value` (concentrations in
+#'   µg/L). Optional but recommended: `datetime` (propagated to AmsPAF
+#'   rows if present), `detected` (assumed `TRUE` if absent), `imputed`
 #'   (logical; if present, `n_analytes_imputed` is populated in output).
 #'   Driver analytes needed for chemistry normalisation (e.g. pH, DOC) should
 #'   be present as rows in `df`.
@@ -194,7 +194,7 @@ add_amspaf <- function(
   checkmate::assert_data_frame(df)
   checkmate::assert_names(
     names(df),
-    must.include = c("uuid.sample", "uuid.feature", "name.analyte", "value")
+    must.include = c("sample_id", "site_id", "analyte", "value")
   )
   method <- match.arg(method)
   checkmate::assert_int(min_analytes, lower = 1L)
@@ -252,7 +252,7 @@ add_amspaf <- function(
 
   amspaf_df <-
     df |>
-    dplyr::group_by(uuid.feature) |>
+    dplyr::group_by(site_id) |>
     dplyr::group_modify(\(.x, .y) {
       compute_amspaf_per_sample(
         sample_data   = .x,
@@ -265,10 +265,8 @@ add_amspaf <- function(
     }) |>
     dplyr::ungroup() |>
     dplyr::mutate(
-      name.analyte = "AmsPAF",
-      uuid.analyte = NA_character_,
-      uuid = uuid::UUIDgenerate(use.time = FALSE, n = dplyr::n()),
-      quantified = TRUE,
+      analyte  = "AmsPAF",
+      detected = TRUE,
       RL_low = 0,
 
       ## ================================================================
@@ -313,15 +311,15 @@ add_amspaf <- function(
       )
     )
 
-  ## Propagate datetime.sample from input df to AmsPAF rows.
-  if ("datetime.sample" %in% names(df)) {
-    sample_times <- dplyr::distinct(df, uuid.sample, datetime.sample)
-    amspaf_df    <- dplyr::left_join(amspaf_df, sample_times, by = "uuid.sample")
+  ## Propagate datetime from input df to AmsPAF rows.
+  if ("datetime" %in% names(df)) {
+    sample_times <- dplyr::distinct(df, .data$sample_id, .data$datetime)
+    amspaf_df    <- dplyr::left_join(amspaf_df, sample_times, by = "sample_id")
   }
 
   result <- dplyr::bind_rows(df, amspaf_df)
-  if ("datetime.sample" %in% names(result)) {
-    result <- dplyr::arrange(result, datetime.sample)
+  if ("datetime" %in% names(result)) {
+    result <- dplyr::arrange(result, .data$datetime)
   }
   result
 }
@@ -471,31 +469,31 @@ compute_amspaf_per_sample <- function(
     method,
     guideline_dir
 ) {
-  has_quantified <- "quantified" %in% names(sample_data)
-  has_imputed    <- "imputed"    %in% names(sample_data)
+  has_detected   <- "detected" %in% names(sample_data)
+  has_imputed    <- "imputed"  %in% names(sample_data)
 
-  if (!has_quantified) {
-    sample_data <- dplyr::mutate(sample_data, quantified = TRUE)
+  if (!has_detected) {
+    sample_data <- dplyr::mutate(sample_data, detected = TRUE)
   }
 
   sample_data |>
-    dplyr::group_by(uuid.sample) |>
+    dplyr::group_by(sample_id) |>
     dplyr::group_modify(\(.x, .y) {
-      ## Build co-analyte lookup (all quantified values in this sample)
+      ## Build co-analyte lookup (all detected values in this sample)
       coanalyte_vals <- .x |>
-        dplyr::filter(.data$quantified) |>
-        dplyr::select("name.analyte", "value") |>
+        dplyr::filter(.data$detected) |>
+        dplyr::select("analyte", "value") |>
         tibble::deframe()  # named numeric vector
 
       ## Filter to SSD-eligible analytes
       tox_rows <- .x |>
-        dplyr::filter(.data$name.analyte %in% ssd_params$name.analyte) |>
+        dplyr::filter(.data$analyte %in% ssd_params$name.analyte) |>
         dplyr::left_join(
           dplyr::select(ssd_params, "name.analyte", "hc50", "sigma",
                         "moa_group", "parsed_formula", "coanalytes_req"),
-          by = "name.analyte"
+          by = c("analyte" = "name.analyte")
         ) |>
-        dplyr::left_join(ref_quantiles, by = "name.analyte") |>
+        dplyr::left_join(ref_quantiles, by = "analyte") |>
         dplyr::mutate(
           ref_norm = tidyr::replace_na(.data$ref_norm, 0)
         )
@@ -521,7 +519,7 @@ compute_amspaf_per_sample <- function(
         tox_rows,
         C_norm = purrr::pmap_dbl(
           list(
-            q   = .data$quantified,
+            q   = .data$detected,
             C   = .data$value,
             pf  = .data$parsed_formula,
             cr  = .data$coanalytes_req
@@ -542,9 +540,9 @@ compute_amspaf_per_sample <- function(
       n_dropped_norm <- sum(is.na(tox_rows$C_norm))
       if (n_dropped_norm > 0L) {
         cli::cli_inform(c(
-          "!" = "Sample {.val {unique(.y$uuid.sample)}}: {n_dropped_norm} analyte \\
+          "!" = "Sample {.val {unique(.y$sample_id)}}: {n_dropped_norm} analyte \\
                  row{?s} dropped (normalisation returned NA — missing co-analyte)."
-        ), .frequency = "always", .frequency_id = paste0(unique(.y$uuid.sample), "_norm"))
+        ), .frequency = "always", .frequency_id = paste0(unique(.y$sample_id), "_norm"))
         tox_rows <- dplyr::filter(tox_rows, !is.na(.data$C_norm))
       }
 
@@ -603,14 +601,14 @@ compute_amspaf_per_sample <- function(
       } else NA_character_
 
       tibble::tibble(
-        uuid.sample        = dplyr::first(.x$uuid.sample),
+        sample_id          = dplyr::first(.x$sample_id),
         value              = amspaf * 100,
         n_analytes_used    = nrow(tox_rows),
         n_analytes_imputed = as.integer(n_analytes_imputed),
         dominant_analyte   = dominant,
         max_paf            = if (nrow(tox_rows) > 0L) max(tox_rows$PAF, na.rm = TRUE) else NA_real_,
         analyte_pafs       = list(
-          dplyr::select(tox_rows, "name.analyte", "C_adj", "PAF", "moa_group")
+          dplyr::select(tox_rows, "analyte", "C_adj", "PAF", "moa_group")
         )
       )
     }) |>

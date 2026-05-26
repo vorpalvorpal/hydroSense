@@ -7,13 +7,13 @@
 to_meq(df)
 }
 \arguments{
-\item{df}{Long-format dataframe. Required columns: \code{name.analyte},
+\item{df}{Long-format dataframe. Required columns: \code{analyte},
 \code{value}, \code{units.analyte}, \code{valence.analyte},
 \code{atomic_mass.analyte}.}
 }
 \value{
 The input \code{df} with converted rows appended via
-\code{bind_rows}. Converted rows have \code{name.analyte} suffixed with
+\code{bind_rows}. Converted rows have \code{analyte} suffixed with
 \code{"_"} and \code{value} in meq/L. Rows lacking \code{valence.analyte}
 or \code{atomic_mass.analyte} are excluded from conversion but retained
 in the original rows.

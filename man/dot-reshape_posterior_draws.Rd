@@ -4,7 +4,7 @@
 \alias{.reshape_posterior_draws}
 \title{Reshape brms::posterior_predict() output to long format}
 \usage{
-.reshape_posterior_draws(post_draws, sample_uids, safe_analytes)
+.reshape_posterior_draws(post_draws, sample_ids, safe_analytes)
 }
 \description{
 Reshape brms::posterior_predict() output to long format

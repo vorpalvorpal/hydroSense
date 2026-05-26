@@ -13,14 +13,14 @@ prescreen_analytes(
 }
 \arguments{
 \item{df}{Long-format chemistry data frame with at least columns
-\code{name.analyte} (character) and \code{quantified} (logical). Typically also
-contains \code{uuid.sample} and \code{uuid.feature}.}
+\code{analyte} (character) and \code{detected} (logical). Typically also
+contains \code{sample_id} and \code{site_id}.}
 
 \item{k}{Minimum detection frequency (proportion, 0–1). Analytes with
-\code{n_quantified / n_samples < k} are excluded. Default \code{0.05} (5 \%).}
+\code{n_detected / n_samples < k} are excluded. Default \code{0.05} (5 \%).}
 
 \item{group_by_feature}{Logical. If \code{TRUE}, detection frequency is computed
-per \code{uuid.feature} and an analyte is included only if it passes in \emph{all}
+per \code{site_id} and an analyte is included only if it passes in \emph{all}
 features. If \code{FALSE} (default), frequency is pooled across all samples.}
 
 \item{return}{Either \code{"vector"} (default) to return a character vector of
@@ -32,11 +32,11 @@ When \code{return = "vector"}: a named character vector of passing analyte
 names. The vector carries an attribute \code{"excluded"} listing analytes that
 did not pass the threshold, so callers can record what was dropped.
 
-When \code{return = "table"}: a tibble with columns \code{name.analyte},
-\code{n_samples}, \code{n_quantified}, \code{detect_freq}, \code{included}.
+When \code{return = "table"}: a tibble with columns \code{analyte},
+\code{n_samples}, \code{n_detected}, \code{detect_freq}, \code{included}.
 }
 \description{
-Computes detection frequency (proportion of samples with \code{quantified == TRUE})
+Computes detection frequency (proportion of samples with \code{detected == TRUE})
 per analyte and returns the names that meet a minimum threshold. Use this
 before \code{impute_chemistry()} to drop analytes that were almost never detected —
 imputing such analytes from near-zero priors adds noise without ecological
@@ -46,7 +46,7 @@ signal.
 \dontrun{
 included <- prescreen_analytes(chemistry, k = 0.05)
 attr(included, "excluded")  # see what was dropped
-chem_f <- dplyr::filter(chemistry, name.analyte \%in\% included)
+chem_f <- dplyr::filter(chemistry, analyte \%in\% included)
 }
 
 }

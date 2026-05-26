@@ -9,11 +9,12 @@ impute_chemistry(
   df,
   drivers = c("pH", "EC", "DOC"),
   formula_template = NULL,
-  family = "lognormal",
+  family = "gaussian",
   iter = 2000,
   warmup = 1000,
   chains = 4,
   cores = parallel::detectCores(),
+  bdl_cap = TRUE,
   return = c("point", "draws"),
   ...
 )
@@ -21,14 +22,14 @@ impute_chemistry(
 \arguments{
 \item{df}{Long-format chemistry data frame. Required columns:
 \itemize{
-\item \code{uuid.sample} (character)
-\item \code{uuid.feature} (character)
-\item \code{datetime.sample} (Date or POSIXct)
-\item \code{name.analyte} (character)
+\item \code{sample_id} (character)
+\item \code{site_id} (character)
+\item \code{datetime} (Date or POSIXct)
+\item \code{analyte} (character)
 \item \code{value} (numeric) — for BDL rows, set to the detection limit
-\item \code{quantified} (logical) — \code{FALSE} for BDL, \code{TRUE} for detected values
+\item \code{detected} (logical) — \code{FALSE} for BDL, \code{TRUE} for detected values
 Driver analytes (e.g. pH, EC, DOC) must be present as rows in \code{df} and
-must have \code{quantified == TRUE} for every sample.
+must have \code{detected == TRUE} for every sample.
 }}
 
 \item{drivers}{Character vector of analyte names to use as GAM predictors.
@@ -40,10 +41,13 @@ pivoted to wide columns, and used as spline predictors. They are
 formula is constructed: \code{mvbind(analyte_1, ...) ~ s(d1) + s(d2) + ...}
 with one smooth per driver.}
 
-\item{family}{brms family for the response distribution. Default
-\code{"lognormal"} (appropriate for positive concentrations). Must be a family
-where the link is \code{log} so censoring on the log scale is handled
-correctly.}
+\item{family}{brms family for the log-transformed response. Default
+\code{"gaussian"}. Concentrations are always log-transformed before fitting
+(i.e. the model is \code{log(conc) ~ ...}), so \code{"gaussian"} produces
+log-normal marginals. \code{"gaussian"} is required for \code{set_rescor(TRUE)} to
+be available in brms; \code{"lognormal"} is not supported with residual
+correlations. Posterior predictions are back-transformed with \code{exp()} so
+the returned \code{value} column is always on the original concentration scale.}
 
 \item{iter}{Total MCMC iterations per chain. Default \code{2000}.}
 
@@ -52,6 +56,12 @@ correctly.}
 \item{chains}{Number of MCMC chains. Default \code{4}.}
 
 \item{cores}{Number of parallel cores. Default \code{parallel::detectCores()}.}
+
+\item{bdl_cap}{Logical. If \code{TRUE} (default), imputed values for BDL
+observations that exceed the original detection limit are capped at the
+detection limit and a warning is issued. If \code{FALSE}, no capping is applied
+but a warning is still issued when imputed BDL values exceed the DL.
+Set to \code{FALSE} if you want to inspect the uncapped posterior means.}
 
 \item{return}{Either \code{"point"} (default) to return posterior mean estimates
 for imputed cells, or \code{"draws"} to return one row per
@@ -76,16 +86,34 @@ propagates posterior uncertainty into \code{compute_chronic_chemistry()}.
 \description{
 Fits a multivariate log-normal GAM via \code{brms::brm()} with
 \code{set_rescor(TRUE)} to capture cross-analyte covariance. Left-censored
-observations (below-detection-limit, BDL) are modelled via \code{cens("left")}
-in the brms likelihood — the latent concentration is inferred as somewhere
-below the detection limit rather than assumed to be zero. Missing analyte
-measurements at a sample are imputed from the cross-analyte covariance
-structure and the driver predictors.
+observations (below-detection-limit, BDL) and missing analyte measurements
+are treated as latent values and imputed from the multivariate joint
+posterior using \code{mi()} (missing indicator). Missing analyte measurements at
+a sample are imputed from the cross-analyte covariance structure and the
+driver predictors.
 }
 \details{
 After fitting, the function returns a long-format data frame with all BDL
 and missing cells replaced by posterior means (or draws), plus an \code{imputed}
 column to flag which values were filled in.
+
+\strong{Note on BDL handling:} \code{brms} does not support \code{cens()} (left-censored
+likelihood) when \code{rescor = TRUE} is set — only \code{se}, \code{weights}, and \code{mi}
+are supported addition arguments when residual correlations are estimated.
+This function therefore uses \code{mi()} for both BDL and missing observations:
+BDL values are set to \code{NA} before fitting and imputed from the multivariate
+posterior. The strict left-censor constraint (concentration ≤ detection
+limit) is not enforced during fitting. A post-hoc check (Option B) warns
+and optionally caps imputed BDL values that exceed the original detection
+limit.
+
+\strong{Future improvement — Option D (custom Stan model):} A statistically
+correct treatment would use a custom Stan likelihood that combines
+left-censoring with cross-analyte residual correlations. This would enforce
+the constraint \verb{imputed_C ≤ DL} for BDL observations throughout the MCMC
+chain rather than as a post-hoc correction. Option D is feasible but
+requires bypassing brms and writing a custom Stan program. It is listed as
+a planned future improvement.
 
 \strong{Installation note:} \code{brms} requires a working Stan toolchain (rstan or
 cmdstanr). If Stan is not installed, this function will abort with a message

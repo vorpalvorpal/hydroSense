@@ -3,29 +3,47 @@
 #'
 #' Fits a multivariate log-normal GAM via `brms::brm()` with
 #' `set_rescor(TRUE)` to capture cross-analyte covariance. Left-censored
-#' observations (below-detection-limit, BDL) are modelled via `cens("left")`
-#' in the brms likelihood — the latent concentration is inferred as somewhere
-#' below the detection limit rather than assumed to be zero. Missing analyte
-#' measurements at a sample are imputed from the cross-analyte covariance
-#' structure and the driver predictors.
+#' observations (below-detection-limit, BDL) and missing analyte measurements
+#' are treated as latent values and imputed from the multivariate joint
+#' posterior using `mi()` (missing indicator). Missing analyte measurements at
+#' a sample are imputed from the cross-analyte covariance structure and the
+#' driver predictors.
 #'
 #' After fitting, the function returns a long-format data frame with all BDL
 #' and missing cells replaced by posterior means (or draws), plus an `imputed`
 #' column to flag which values were filled in.
+#'
+#' **Note on BDL handling:** `brms` does not support `cens()` (left-censored
+#' likelihood) when `rescor = TRUE` is set — only `se`, `weights`, and `mi`
+#' are supported addition arguments when residual correlations are estimated.
+#' This function therefore uses `mi()` for both BDL and missing observations:
+#' BDL values are set to `NA` before fitting and imputed from the multivariate
+#' posterior. The strict left-censor constraint (concentration ≤ detection
+#' limit) is not enforced during fitting. A post-hoc check (Option B) warns
+#' and optionally caps imputed BDL values that exceed the original detection
+#' limit.
+#'
+#' **Future improvement — Option D (custom Stan model):** A statistically
+#' correct treatment would use a custom Stan likelihood that combines
+#' left-censoring with cross-analyte residual correlations. This would enforce
+#' the constraint `imputed_C ≤ DL` for BDL observations throughout the MCMC
+#' chain rather than as a post-hoc correction. Option D is feasible but
+#' requires bypassing brms and writing a custom Stan program. It is listed as
+#' a planned future improvement.
 #'
 #' **Installation note:** `brms` requires a working Stan toolchain (rstan or
 #' cmdstanr). If Stan is not installed, this function will abort with a message
 #' pointing to the installation documentation.
 #'
 #' @param df Long-format chemistry data frame. Required columns:
-#'   - `uuid.sample` (character)
-#'   - `uuid.feature` (character)
-#'   - `datetime.sample` (Date or POSIXct)
-#'   - `name.analyte` (character)
+#'   - `sample_id` (character)
+#'   - `site_id` (character)
+#'   - `datetime` (Date or POSIXct)
+#'   - `analyte` (character)
 #'   - `value` (numeric) — for BDL rows, set to the detection limit
-#'   - `quantified` (logical) — `FALSE` for BDL, `TRUE` for detected values
+#'   - `detected` (logical) — `FALSE` for BDL, `TRUE` for detected values
 #'   Driver analytes (e.g. pH, EC, DOC) must be present as rows in `df` and
-#'   must have `quantified == TRUE` for every sample.
+#'   must have `detected == TRUE` for every sample.
 #' @param drivers Character vector of analyte names to use as GAM predictors.
 #'   Default `c("pH", "EC", "DOC")`. These analytes are extracted from `df`,
 #'   pivoted to wide columns, and used as spline predictors. They are
@@ -44,6 +62,11 @@
 #' @param warmup Warmup iterations per chain. Default `1000`.
 #' @param chains Number of MCMC chains. Default `4`.
 #' @param cores Number of parallel cores. Default `parallel::detectCores()`.
+#' @param bdl_cap Logical. If `TRUE` (default), imputed values for BDL
+#'   observations that exceed the original detection limit are capped at the
+#'   detection limit and a warning is issued. If `FALSE`, no capping is applied
+#'   but a warning is still issued when imputed BDL values exceed the DL.
+#'   Set to `FALSE` if you want to inspect the uncapped posterior means.
 #' @param return Either `"point"` (default) to return posterior mean estimates
 #'   for imputed cells, or `"draws"` to return one row per
 #'   (sample × analyte × draw).
@@ -77,6 +100,7 @@ impute_chemistry <- function(
     warmup           = 1000,
     chains           = 4,
     cores            = parallel::detectCores(),
+    bdl_cap          = TRUE,
     return           = c("point", "draws"),
     ...
 ) {
@@ -86,56 +110,62 @@ impute_chemistry <- function(
   checkmate::assert_data_frame(df)
   checkmate::assert_names(
     names(df),
-    must.include = c("uuid.sample", "uuid.feature", "datetime.sample",
-                     "name.analyte", "value", "quantified")
+    must.include = c("sample_id", "site_id", "datetime",
+                     "analyte", "value", "detected")
   )
   checkmate::assert_character(drivers, min.len = 1L, any.missing = FALSE)
   checkmate::assert_count(iter)
   checkmate::assert_count(warmup)
   checkmate::assert_count(chains)
+  checkmate::assert_flag(bdl_cap)
 
-  missing_drivers <- setdiff(drivers, unique(df$name.analyte))
+  missing_drivers <- setdiff(drivers, unique(df$analyte))
   if (length(missing_drivers) > 0L) {
     cli::cli_abort(c(
       "Driver analyte{?s} not found in {.arg df}: {.val {missing_drivers}}.",
       "i" = "Drivers must be present as rows in {.arg df} with \\
-             {.code name.analyte} matching the driver names."
+             {.code analyte} matching the driver names."
     ))
   }
 
   # ── Separate targets from drivers ─────────────────────────────────────────
-  driver_df  <- dplyr::filter(df, .data$name.analyte %in% .env$drivers)
-  target_df  <- dplyr::filter(df, !(.data$name.analyte %in% .env$drivers))
+  driver_df  <- dplyr::filter(df, .data$analyte %in% .env$drivers)
+  target_df  <- dplyr::filter(df, !(.data$analyte %in% .env$drivers))
 
-  target_analytes <- unique(target_df$name.analyte)
+  target_analytes <- unique(target_df$analyte)
   if (length(target_analytes) == 0L) {
     cli::cli_abort("No non-driver analytes found in {.arg df} to impute.")
   }
 
-  # ── Check drivers are quantified everywhere ────────────────────────────────
+  # ── Check drivers are detected everywhere ─────────────────────────────────
   driver_missing <- driver_df |>
-    dplyr::group_by(.data$uuid.sample, .data$name.analyte) |>
+    dplyr::group_by(.data$sample_id, .data$analyte) |>
     dplyr::summarise(
-      any_missing = any(!.data$quantified),
+      any_missing = any(!.data$detected),
       .groups = "drop"
     ) |>
     dplyr::filter(.data$any_missing)
 
   if (nrow(driver_missing) > 0L) {
-    bad <- unique(driver_missing$name.analyte)
+    bad <- unique(driver_missing$analyte)
     cli::cli_abort(c(
       "Driver analyte{?s} have missing or BDL values: {.val {bad}}.",
-      "i" = "Drivers must be fully quantified at every sample. \\
+      "i" = "Drivers must be fully detected at every sample. \\
              Either remove BDL samples or choose different drivers."
     ))
   }
 
+  # ── Save detection limits for BDL rows (Option B post-hoc check) ──────────
+  # The `value` column stores the detection limit for BDL (detected = FALSE) rows.
+  dl_tbl <- dplyr::filter(target_df, !.data$detected) |>
+    dplyr::select("sample_id", "analyte", detection_limit = "value")
+
   # ── Pivot to wide format for brms ─────────────────────────────────────────
   # Drivers: one column each
   driver_wide <- driver_df |>
-    dplyr::select("uuid.sample", "name.analyte", "value") |>
+    dplyr::select("sample_id", "analyte", "value") |>
     tidyr::pivot_wider(
-      names_from  = "name.analyte",
+      names_from  = "analyte",
       values_from = "value",
       names_prefix = ".drv_"
     )
@@ -155,46 +185,47 @@ impute_chemistry <- function(
   #       ranges conditioned on all co-analytes,
   #   (b) BDL values are typically far below the detected concentration range,
   #       so the posterior naturally stays low.
+  # A post-hoc check (Option B) flags and caps exceedances below.
   eps_log <- 1e-9   # guard against log(0)
   target_wide_vals <- target_df |>
-    dplyr::select("uuid.sample", "name.analyte", "value", "quantified") |>
+    dplyr::select("sample_id", "analyte", "value", "detected") |>
     dplyr::mutate(
       log_value = dplyr::if_else(
-        .data$quantified,
+        .data$detected,
         log(pmax(.data$value, eps_log)),
         NA_real_   # BDL → NA → mi() imputes from multivariate posterior
       )
     ) |>
-    dplyr::select("uuid.sample", "name.analyte", "log_value") |>
+    dplyr::select("sample_id", "analyte", "log_value") |>
     tidyr::pivot_wider(
-      names_from  = "name.analyte",
+      names_from  = "analyte",
       values_from = "log_value"
     )
 
   # No separate censoring-indicator columns needed for mi().
   wide_df <- driver_wide |>
-    dplyr::left_join(target_wide_vals, by = "uuid.sample")
+    dplyr::left_join(target_wide_vals, by = "sample_id")
 
   # ── Track imputation kind for each (sample, analyte) ─────────────────────
   impute_kind <- target_df |>
-    dplyr::group_by(.data$uuid.sample, .data$name.analyte) |>
+    dplyr::group_by(.data$sample_id, .data$analyte) |>
     dplyr::slice(1L) |>
     dplyr::ungroup() |>
     dplyr::mutate(
       .imputed_kind = dplyr::case_when(
-        !.data$quantified ~ "censored_left",
-        TRUE              ~ "observed"
+        !.data$detected ~ "censored_left",
+        TRUE            ~ "observed"
       )
     ) |>
-    dplyr::select("uuid.sample", "name.analyte", ".imputed_kind")
+    dplyr::select("sample_id", "analyte", ".imputed_kind")
 
   # Samples with no measurement at all for an analyte: "missing"
   all_combos <- tidyr::expand_grid(
-    uuid.sample  = unique(target_df$uuid.sample),
-    name.analyte = target_analytes
+    sample_id = unique(target_df$sample_id),
+    analyte   = target_analytes
   )
   impute_kind <- dplyr::left_join(all_combos, impute_kind,
-                                  by = c("uuid.sample", "name.analyte")) |>
+                                  by = c("sample_id", "analyte")) |>
     dplyr::mutate(
       .imputed_kind = dplyr::if_else(
         is.na(.data$.imputed_kind), "missing", .data$.imputed_kind
@@ -260,13 +291,14 @@ impute_chemistry <- function(
   # ── Extract posterior estimates for imputed cells ─────────────────────────
   if (return == "draws") {
     post_draws <- brms::posterior_predict(fit)  # [draws × obs × response]
-    # Reshape to long format: (uuid.sample, name.analyte, draw_id, value)
+    # Reshape to long format: (sample_id, analyte, draw_id, value)
     post_long <- .reshape_posterior_draws(
-      post_draws, wide_df$uuid.sample, safe_analytes
+      post_draws, wide_df$sample_id, safe_analytes
     )
 
     result <- .build_imputed_df(df, post_long, impute_kind, drivers,
                                 return = "draws")
+    result <- .check_bdl_imputed(result, dl_tbl, bdl_cap)
     attr(result, "brmsfit") <- fit
     return(result)
   }
@@ -277,11 +309,12 @@ impute_chemistry <- function(
   # Returns array [n_draws, n_obs, n_responses] on the log scale.
   epred_draws <- brms::posterior_epred(fit)
   pm_long <- .reshape_posterior_means(
-    epred_draws, wide_df$uuid.sample, safe_analytes
+    epred_draws, wide_df$sample_id, safe_analytes
   )
 
   result <- .build_imputed_df(df, pm_long, impute_kind, drivers,
                               return = "point")
+  result <- .check_bdl_imputed(result, dl_tbl, bdl_cap)
   attr(result, "brmsfit") <- fit
   result
 }
@@ -293,7 +326,7 @@ impute_chemistry <- function(
 #' `posterior_epred()` returns `[n_draws, n_obs, n_responses]` on the log scale.
 #' We average across draws and exp()-transform to get concentrations.
 #' @keywords internal
-.reshape_posterior_means <- function(epred_draws, sample_uids, safe_analytes) {
+.reshape_posterior_means <- function(epred_draws, sample_ids, safe_analytes) {
   # Handle both univariate (matrix [n_draws, n_obs]) and multivariate (3D array)
   if (is.matrix(epred_draws)) {
     # Single response — wrap in a named list
@@ -313,8 +346,8 @@ impute_chemistry <- function(
     if (length(orig_nm) == 0L) orig_nm <- safe_nm  # fallback
     # mat is [n_draws, n_obs]; colMeans gives the posterior mean per observation
     tibble::tibble(
-      uuid.sample  = sample_uids,
-      name.analyte = orig_nm,
+      sample_id    = sample_ids,
+      analyte      = orig_nm,
       .post_mean   = exp(colMeans(mat))  # back-transform from log scale
     )
   })
@@ -322,7 +355,7 @@ impute_chemistry <- function(
 
 #' Reshape brms::posterior_predict() output to long format
 #' @keywords internal
-.reshape_posterior_draws <- function(post_draws, sample_uids, safe_analytes) {
+.reshape_posterior_draws <- function(post_draws, sample_ids, safe_analytes) {
   # post_draws: [n_draws, n_obs, n_responses]
   n_draws <- dim(post_draws)[1L]
   resp_nms <- dimnames(post_draws)[[3L]]
@@ -334,10 +367,10 @@ impute_chemistry <- function(
       if (length(orig_nm) == 0L) orig_nm <- safe_nm
       mat <- post_draws[, , ri]  # [n_draws, n_obs]
       tibble::tibble(
-        uuid.sample  = rep(sample_uids, each = n_draws),
-        name.analyte = orig_nm,
-        draw_id      = rep(seq_len(n_draws), times = length(sample_uids)),
-        .post_value  = exp(as.vector(t(mat)))  # back-transform from log scale
+        sample_id   = rep(sample_ids, each = n_draws),
+        analyte     = orig_nm,
+        draw_id     = rep(seq_len(n_draws), times = length(sample_ids)),
+        .post_value = exp(as.vector(t(mat)))  # back-transform from log scale
       )
     }
   )
@@ -347,14 +380,14 @@ impute_chemistry <- function(
 #' @keywords internal
 .build_imputed_df <- function(df, post_long, impute_kind, drivers,
                               return = "point") {
-  target_df  <- dplyr::filter(df, !(.data$name.analyte %in% .env$drivers))
-  driver_df  <- dplyr::filter(df, .data$name.analyte %in% .env$drivers)
+  target_df  <- dplyr::filter(df, !(.data$analyte %in% .env$drivers))
+  driver_df  <- dplyr::filter(df, .data$analyte %in% .env$drivers)
 
   # Tag existing observed rows
   target_df <- dplyr::left_join(
     target_df,
     impute_kind,
-    by = c("uuid.sample", "name.analyte")
+    by = c("sample_id", "analyte")
   ) |>
     dplyr::mutate(
       imputed      = .data$.imputed_kind != "observed",
@@ -365,17 +398,17 @@ impute_chemistry <- function(
   if (return == "point") {
     val_col <- ".post_mean"
     # Replace BDL / missing values with posterior means
-    imputed_rows <- dplyr::filter(target_df, .data$imputed)
+    imputed_rows  <- dplyr::filter(target_df, .data$imputed)
     observed_rows <- dplyr::filter(target_df, !.data$imputed)
 
     imputed_filled <- dplyr::left_join(
       imputed_rows,
-      post_long |> dplyr::select("uuid.sample", "name.analyte", dplyr::all_of(val_col)),
-      by = c("uuid.sample", "name.analyte")
+      post_long |> dplyr::select("sample_id", "analyte", dplyr::all_of(val_col)),
+      by = c("sample_id", "analyte")
     ) |>
       dplyr::mutate(
-        value      = dplyr::coalesce(.data[[val_col]], .data$value),
-        quantified = TRUE
+        value    = dplyr::coalesce(.data[[val_col]], .data$value),
+        detected = TRUE
       ) |>
       dplyr::select(-dplyr::all_of(val_col))
 
@@ -397,12 +430,12 @@ impute_chemistry <- function(
     imp_expanded <- dplyr::left_join(
       tidyr::crossing(imputed_rows, draw_id = seq_len(n_draws)),
       post_long |>
-        dplyr::select("uuid.sample", "name.analyte", "draw_id", ".post_value"),
-      by = c("uuid.sample", "name.analyte", "draw_id")
+        dplyr::select("sample_id", "analyte", "draw_id", ".post_value"),
+      by = c("sample_id", "analyte", "draw_id")
     ) |>
       dplyr::mutate(
-        value      = dplyr::coalesce(.data$.post_value, .data$value),
-        quantified = TRUE
+        value    = dplyr::coalesce(.data$.post_value, .data$value),
+        detected = TRUE
       ) |>
       dplyr::select(-".post_value")
 
@@ -421,5 +454,77 @@ impute_chemistry <- function(
   }
 
   dplyr::bind_rows(result_targets, driver_df) |>
-    dplyr::arrange(.data$uuid.sample, .data$name.analyte)
+    dplyr::arrange(.data$sample_id, .data$analyte)
+}
+
+#' Post-hoc BDL check (Option B): warn/cap imputed values exceeding detection limit
+#'
+#' For BDL observations (`imputed_kind == "censored_left"`), if the imputed
+#' posterior mean exceeds the original detection limit (stored in `dl_tbl`),
+#' issue a warning. When `cap = TRUE`, the value is capped at the DL.
+#'
+#' This check is a minimum safeguard against the loss of the strict left-censor
+#' constraint caused by using `mi()` instead of `cens()` (the latter is
+#' incompatible with `rescor = TRUE` in brms). See the `impute_chemistry()`
+#' documentation for details on Option D (custom Stan), which would handle this
+#' correctly during fitting.
+#'
+#' @keywords internal
+.check_bdl_imputed <- function(result, dl_tbl, cap = TRUE) {
+  if (nrow(dl_tbl) == 0L) return(result)
+
+  # Join detection limits onto BDL rows
+  bdl_rows <- dplyr::filter(result, .data$imputed_kind == "censored_left") |>
+    dplyr::left_join(dl_tbl, by = c("sample_id", "analyte"))
+
+  if (nrow(bdl_rows) == 0L || !("detection_limit" %in% names(bdl_rows))) {
+    return(result)
+  }
+
+  exceedances <- dplyr::filter(
+    bdl_rows,
+    !is.na(.data$detection_limit),
+    .data$value > .data$detection_limit
+  )
+
+  if (nrow(exceedances) == 0L) return(result)
+
+  n_ex <- nrow(exceedances)
+  analytes_ex <- unique(exceedances$analyte)
+
+  cli::cli_warn(c(
+    "!" = "{n_ex} imputed BDL value{?s} exceed the original detection limit.",
+    "i" = "Affected analyte{?s}: {.val {analytes_ex}}.",
+    "i" = "This can occur because brms uses {.code mi()} (missing-indicator) \\
+           instead of {.code cens('left')} for BDL observations when \\
+           {.code rescor = TRUE} — the strict left-censor constraint is not \\
+           enforced during MCMC.",
+    if (cap) {
+      "i" = "Values have been capped at the detection limit ({.arg bdl_cap = TRUE}). \\
+             Set {.code bdl_cap = FALSE} to inspect uncapped values."
+    } else {
+      "i" = "Values have NOT been capped ({.arg bdl_cap = FALSE}). \\
+             Use {.code bdl_cap = TRUE} to cap at the detection limit."
+    }
+  ))
+
+  if (!cap) return(result)
+
+  # Cap: replace imputed BDL values that exceed DL with the DL
+  exceedance_keys <- dplyr::select(exceedances, "sample_id", "analyte",
+                                    cap_value = "detection_limit")
+
+  result <- dplyr::left_join(
+    result, exceedance_keys, by = c("sample_id", "analyte")
+  ) |>
+    dplyr::mutate(
+      value = dplyr::if_else(
+        !is.na(.data$cap_value),
+        .data$cap_value,
+        .data$value
+      )
+    ) |>
+    dplyr::select(-"cap_value")
+
+  result
 }

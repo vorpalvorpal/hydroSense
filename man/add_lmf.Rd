@@ -24,14 +24,14 @@ add_lmf(
 )
 }
 \arguments{
-\item{df}{Long-format dataframe (same structure as \code{data_df()} output).
-Required columns: \code{uuid.sample}, \code{uuid.feature},
-\code{name.analyte}, \code{value}, \code{quantified},
-\code{datetime.sample}.}
+\item{df}{Long-format dataframe.
+Required columns: \code{sample_id}, \code{site_id},
+\code{analyte}, \code{value}, \code{detected},
+\code{datetime}.}
 
 \item{leachate_data}{Optional long-format dataframe in the same structure
 as \code{df} providing leachate end-member chemistry. Required columns:
-\code{uuid.sample}, \code{name.analyte}, \code{value}, \code{quantified}.
+\code{sample_id}, \code{analyte}, \code{value}, \code{detected}.
 When supplied, \emph{all} samples are used to build the leachate
 end-member regardless of date and regardless of total-N content (the
 total-N quality filter is bypassed — supply curated data). Samples
@@ -42,8 +42,8 @@ logic (requires dashboard infrastructure: \code{feature_df()},
 
 \item{reference_data}{Optional long-format dataframe in the same structure
 as \code{df} providing reference site chemistry for end-member
-calibration. Required columns: \code{uuid.sample}, \code{name.analyte},
-\code{value}, \code{quantified}. When supplied, \emph{all} samples are
+calibration. Required columns: \code{sample_id}, \code{analyte},
+\code{value}, \code{detected}. When supplied, \emph{all} samples are
 used to build the reference end-member regardless of date; the
 calibration window is ignored. The same end-member is applied globally
 to all features. \code{NULL} (default) uses the standard per-feature

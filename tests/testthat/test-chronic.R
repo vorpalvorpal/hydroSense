@@ -17,17 +17,17 @@ make_synth_chem <- function(
   analytes <- paste0("A", seq_len(n_analytes))
 
   df <- tidyr::expand_grid(
-    uuid.sample  = paste0("s", seq_len(n_samples)),
-    name.analyte = analytes
+    sample_id = paste0("s", seq_len(n_samples)),
+    analyte   = analytes
   ) |>
     dplyr::mutate(
-      uuid.feature     = feature,
-      datetime.sample  = dates[match(
-        sub("s", "", uuid.sample), as.character(seq_len(n_samples))
+      site_id  = feature,
+      datetime = dates[match(
+        sub("s", "", sample_id), as.character(seq_len(n_samples))
       )],
-      value      = if (!is.null(value_const)) value_const else runif(dplyr::n(), 0.5, 5),
-      quantified = TRUE,
-      imputed    = FALSE
+      value    = if (!is.null(value_const)) value_const else runif(dplyr::n(), 0.5, 5),
+      detected = TRUE,
+      imputed  = FALSE
     )
   df
 }
@@ -47,28 +47,20 @@ test_that("constant concentration → chronic mean equals that constant", {
 
 # ── Property: forward-step weighting — two samples, known weight ratio ─────────
 test_that("exponential decay weight ratio is correct for two samples 90d apart", {
-  # Two samples: old (90 days before focal) and recent (0 days before focal).
-  # tau = 90 d.
-  # Midpoints: old interval [t1, t2) → midpoint 45 d before focal (age ~45)
-  # recent interval [t2, focal] → midpoint 45/2 = 22.5 d before focal (age ~22.5)
-  # But let's use a cleaner test with just 2 samples.
-  #
-  # Simpler: just verify that a sample with higher concentration near focal_date
-  # gets weighted more than one further away (tau = 90 d).
   focal <- as.Date("2024-01-01")
   df <- tibble::tibble(
-    uuid.sample     = c("s1", "s1", "s2", "s2"),
-    uuid.feature    = "f1",
-    datetime.sample = c(
+    sample_id = c("s1", "s1", "s2", "s2"),
+    site_id   = "f1",
+    datetime  = c(
       focal - 91,  # old sample
       focal - 91,
       focal - 1,   # recent sample
       focal - 1
     ),
-    name.analyte = c("Cu", "Zn", "Cu", "Zn"),
-    value        = c(1.0, 1.0, 10.0, 10.0),
-    quantified   = TRUE,
-    imputed      = FALSE
+    analyte  = c("Cu", "Zn", "Cu", "Zn"),
+    value    = c(1.0, 1.0, 10.0, 10.0),
+    detected = TRUE,
+    imputed  = FALSE
   )
   result <- compute_chronic_chemistry(
     df, focal_dates = focal, tau_days = 90, window_days = 365,
@@ -76,18 +68,18 @@ test_that("exponential decay weight ratio is correct for two samples 90d apart",
   )
   # The recent sample (value=10) is more recent, so the geometric mean should
   # be > 1.0 (closer to 10 than 1 due to temporal weighting + duration weighting)
-  cu_val <- result$value[result$name.analyte == "Cu"]
+  cu_val <- result$value[result$analyte == "Cu"]
   expect_gt(cu_val, 1.0)
   expect_lt(cu_val, 10.0)
 })
 
-# ── Property: quantified always TRUE in output ────────────────────────────────
-test_that("output quantified column is always TRUE", {
+# ── Property: detected always TRUE in output ──────────────────────────────────
+test_that("output detected column is always TRUE", {
   df <- make_synth_chem()
   result <- compute_chronic_chemistry(
     df, focal_dates = as.Date("2024-01-01"), tau_days = 90, window_days = 365
   )
-  expect_true(all(result$quantified))
+  expect_true(all(result$detected))
 })
 
 # ── Property: n_samples_in_window is counted correctly ───────────────────────
@@ -123,18 +115,18 @@ test_that("output has all required columns", {
   result <- compute_chronic_chemistry(
     df, focal_dates = as.Date("2024-01-01")
   )
-  expected_cols <- c("focal_date", "uuid.feature", "uuid.sample",
-                     "name.analyte", "value", "quantified",
+  expected_cols <- c("focal_date", "site_id", "sample_id",
+                     "analyte", "value", "detected",
                      "n_samples_in_window", "n_imputed_in_window")
   expect_true(all(expected_cols %in% names(result)))
 })
 
-# ── Schema: synthetic uuid.sample is correct format ──────────────────────────
-test_that("synthetic uuid.sample has correct prefix", {
+# ── Schema: synthetic sample_id is correct format ────────────────────────────
+test_that("synthetic sample_id has correct prefix", {
   df <- make_synth_chem()
   focal <- as.Date("2024-01-01")
   result <- compute_chronic_chemistry(df, focal_dates = focal)
-  expect_true(all(grepl("^chronic_", result$uuid.sample)))
+  expect_true(all(grepl("^chronic_", result$sample_id)))
 })
 
 # ── Error: no samples in window → abort with message ─────────────────────────

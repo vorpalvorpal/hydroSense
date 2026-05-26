@@ -18,17 +18,17 @@ compute_chronic_chemistry(
 \item{df}{Long-format chemistry data frame, typically the output of
 \code{impute_chemistry()}. Required columns:
 \itemize{
-\item \code{uuid.sample} (character) — unique sample identifier
-\item \code{uuid.feature} (character) — monitoring feature identifier
-\item \code{datetime.sample} (Date or POSIXct) — sample collection date/time
-\item \code{name.analyte} (character) — analyte name
+\item \code{sample_id} (character) — unique sample identifier
+\item \code{site_id} (character) — monitoring feature identifier
+\item \code{datetime} (Date or POSIXct) — sample collection date/time
+\item \code{analyte} (character) — analyte name
 \item \code{value} (numeric) — concentration
-\item \code{quantified} (logical) — whether value is a detected concentration
+\item \code{detected} (logical) — whether value is a detected concentration
 Optional: \code{imputed} (logical) — propagated to \code{n_imputed_in_window}.
 }}
 
 \item{focal_dates}{Either a \code{Date} vector (applied to all features in \code{df})
-or a data frame with columns \code{focal_date} (Date) and \code{uuid.feature}
+or a data frame with columns \code{focal_date} (Date) and \code{site_id}
 (character) specifying per-feature focal dates.}
 
 \item{tau_days}{Exponential decay half-life parameter in days. Default 90.}
@@ -54,11 +54,11 @@ to avoid \code{log(0)}. Default \code{1e-9}.}
 A long-format tibble with columns:
 \itemize{
 \item \code{focal_date} (Date)
-\item \code{uuid.feature} (character)
-\item \code{uuid.sample} (character) — synthetic key \code{"chronic_<focal_date>_<feature>"}
-\item \code{name.analyte} (character)
+\item \code{site_id} (character)
+\item \code{sample_id} (character) — synthetic key \code{"chronic_<focal_date>_<site>"}
+\item \code{analyte} (character)
 \item \code{value} (numeric) — chronic aggregated concentration
-\item \code{quantified} (logical) — always \code{TRUE}
+\item \code{detected} (logical) — always \code{TRUE}
 \item \code{n_samples_in_window} (integer)
 \item \code{n_imputed_in_window} (integer) — count of \code{imputed == TRUE} samples
 contributing; 0 if \code{imputed} column absent from \code{df}

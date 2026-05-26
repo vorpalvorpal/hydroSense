@@ -197,10 +197,10 @@
 #' can be attributed to the leachate end-member under a two-component mixing
 #' model. See the file-level header for full methodological detail.
 #'
-#' @param df Long-format dataframe (same structure as \code{data_df()} output).
-#'   Required columns: \code{uuid.sample}, \code{uuid.feature},
-#'   \code{name.analyte}, \code{value}, \code{quantified},
-#'   \code{datetime.sample}.
+#' @param df Long-format dataframe.
+#'   Required columns: \code{sample_id}, \code{site_id},
+#'   \code{analyte}, \code{value}, \code{detected},
+#'   \code{datetime}.
 #' @param calibration_window_years Number of years of calibration data to use.
 #'   Window is centred on the input data's date range and shifted backwards if
 #'   future data are unavailable. Default \code{5}.
@@ -252,7 +252,7 @@
 #'
 #' @param leachate_data Optional long-format dataframe in the same structure
 #'   as \code{df} providing leachate end-member chemistry. Required columns:
-#'   \code{uuid.sample}, \code{name.analyte}, \code{value}, \code{quantified}.
+#'   \code{sample_id}, \code{analyte}, \code{value}, \code{detected}.
 #'   When supplied, \emph{all} samples are used to build the leachate
 #'   end-member regardless of date and regardless of total-N content (the
 #'   total-N quality filter is bypassed — supply curated data). Samples
@@ -262,8 +262,8 @@
 #'   \code{data_df()}).
 #' @param reference_data Optional long-format dataframe in the same structure
 #'   as \code{df} providing reference site chemistry for end-member
-#'   calibration. Required columns: \code{uuid.sample}, \code{name.analyte},
-#'   \code{value}, \code{quantified}. When supplied, \emph{all} samples are
+#'   calibration. Required columns: \code{sample_id}, \code{analyte},
+#'   \code{value}, \code{detected}. When supplied, \emph{all} samples are
 #'   used to build the reference end-member regardless of date; the
 #'   calibration window is ignored. The same end-member is applied globally
 #'   to all features. \code{NULL} (default) uses the standard per-feature
@@ -315,6 +315,8 @@ add_lmf <- function(
   verbose = FALSE
 ) {
   checkmate::assert_data_frame(df)
+  checkmate::assert_names(names(df),
+    must.include = c("sample_id", "site_id", "analyte", "value", "detected", "datetime"))
   checkmate::assert_data_frame(leachate_data, null.ok = TRUE)
   checkmate::assert_data_frame(reference_data, null.ok = TRUE)
   checkmate::assert_character(lmf_analyte_uuid, len = 1L)
@@ -342,7 +344,7 @@ add_lmf <- function(
   ## per-site below if future calibration data are unavailable.
   ## ================================================================
 
-  df_dates <- as.Date(df$datetime.sample)
+  df_dates <- as.Date(df$datetime)
   df_start <- min(df_dates, na.rm = TRUE)
   df_end <- max(df_dates, na.rm = TRUE)
   df_span <- as.numeric(difftime(df_end, df_start, units = "days")) / 365.25
@@ -368,18 +370,17 @@ add_lmf <- function(
   df_meq <-
     df |>
     to_meq() |>
-    filter(name.analyte %in% .LMF_ANALYTES_MEQ)
+    filter(analyte %in% .LMF_ANALYTES_MEQ)
 
   ## Verify no duplicate analyte values per sample.
   df_meq |>
-    group_by(uuid.sample, name.analyte) |>
+    group_by(sample_id, analyte) |>
     mutate(n_values = n()) |>
     assertr::verify(
       n_values == 1,
       description = paste0(
         "ERROR: Multiple values of the same analyte in a single sample. ",
-        "Resolve with the `multiple_values` argument of `data_df()` ",
-        "before calling `add_lmf()`."
+        "Resolve duplicates before calling `add_lmf()`."
       )
     ) |>
     ungroup()
@@ -388,7 +389,7 @@ add_lmf <- function(
   ## Applied before collapsing so totals are correct.
   df_meq <-
     df_meq |>
-    mutate(value = if_else(!quantified, value * 0.5, value))
+    mutate(value = if_else(!detected, value * 0.5, value))
 
   ## Pivot and collapse. The working wide panel has:
   ##   Cl_, Na_, K_, Ca_, Mg_   (conservative major ions)
@@ -398,9 +399,9 @@ add_lmf <- function(
   ##   F_                        (optional)
   df_wide <-
     df_meq |>
-    select(uuid.sample, uuid.feature, datetime.sample, name.analyte, value) |>
+    select(sample_id, site_id, datetime, analyte, value) |>
     collapse_species(
-      id_cols = c("uuid.sample", "uuid.feature", "datetime.sample")
+      id_cols = c("sample_id", "site_id", "datetime")
     )
 
   ## ================================================================
@@ -417,9 +418,9 @@ add_lmf <- function(
       cli::cli_inform(
         "i" = paste0(
           "Using leachate_data (",
-          n_distinct(leachate_data$uuid.sample),
+          n_distinct(leachate_data$sample_id),
           " samples, ",
-          n_distinct(leachate_data$uuid.feature),
+          n_distinct(leachate_data$site_id),
           " feature(s))."
         )
       )
@@ -456,9 +457,9 @@ add_lmf <- function(
       cli::cli_inform(
         "i" = paste0(
           "Using reference_data for informativeness calibration (",
-          n_distinct(reference_data$uuid.sample),
+          n_distinct(reference_data$sample_id),
           " samples, ",
-          n_distinct(reference_data$uuid.feature),
+          n_distinct(reference_data$site_id),
           " feature(s))."
         )
       )
@@ -548,14 +549,14 @@ add_lmf <- function(
 
   lsi_results <-
     df_wide |>
-    group_by(uuid.feature) |>
+    group_by(site_id) |>
     group_modify(\(.x, .y) {
-      feature_uuid <- .y[[1, 1]]
+      feature_id <- .y[[1, 1]]
       if (!is.null(ref_endmember_override)) {
         ## Use the pre-built override end-member (same for all features).
         ref_endmember <- ref_endmember_override
       } else {
-        ref_feature <- get_reference_site(feature_uuid)
+        ref_feature <- get_reference_site(feature_id)
         ref_endmember <- build_reference_endmember(
           reference_feature_uuid = ref_feature$uuid,
           cal_start = calibration_start,
@@ -565,7 +566,7 @@ add_lmf <- function(
 
       if (is.null(ref_endmember)) {
         message(glue::glue(
-          "No reference data for feature {feature_uuid}. Skipping."
+          "No reference data for feature {feature_id}. Skipping."
         ))
         return(tibble())
       }
@@ -578,7 +579,7 @@ add_lmf <- function(
       ) {
         message(glue::glue(
           "Only {ref_endmember$n_samples} reference samples for ",
-          "feature {feature_uuid} (min {min_ref_samples}). Skipping."
+          "feature {feature_id} (min {min_ref_samples}). Skipping."
         ))
         return(tibble())
       }
@@ -592,7 +593,7 @@ add_lmf <- function(
 
       ## Compute LMF per sample.
       .x |>
-        group_by(uuid.sample) |>
+        group_by(sample_id) |>
         group_modify(\(.s, .sid) {
           compute_lmf_for_sample(
             sample_wide = .s,
@@ -611,7 +612,7 @@ add_lmf <- function(
             robust_iterations = robust_iterations,
             robust_threshold_k = robust_threshold_k,
             verbose = verbose,
-            datetime_sample = as.character(.s$datetime.sample[[1]])
+            datetime_sample = as.character(.s$datetime[[1]])
           )
         }) |>
         ungroup()
@@ -622,18 +623,18 @@ add_lmf <- function(
   ## Step 6: Bind LMF rows back into the input df.
   ## ================================================================
 
-  lsi_results <- dplyr::mutate(lsi_results, name.analyte = "LMF")
+  lsi_results <- dplyr::mutate(lsi_results, analyte = "LMF")
 
-  ## Propagate datetime.sample from input df to LMF rows.
-  if ("datetime.sample" %in% names(df)) {
-    sample_times <- dplyr::distinct(df, uuid.sample, datetime.sample)
-    lsi_results <- dplyr::left_join(lsi_results, sample_times, by = "uuid.sample")
+  ## Propagate datetime from input df to LMF rows.
+  if ("datetime" %in% names(df)) {
+    sample_times <- dplyr::distinct(df, sample_id, datetime)
+    lsi_results <- dplyr::left_join(lsi_results, sample_times, by = "sample_id")
   }
 
   result <- dplyr::bind_rows(df, lsi_results)
 
-  if ("datetime.sample" %in% names(result)) {
-    result <- dplyr::arrange(result, datetime.sample)
+  if ("datetime" %in% names(result)) {
+    result <- dplyr::arrange(result, datetime)
   }
   result
 }
@@ -1092,7 +1093,7 @@ make_lmf_row <- function(
     chi2_per_df = chi2,
     uuid.analyte = uuid_lmf,
     uuid = uuid::UUIDgenerate(),
-    quantified = quantified,
+    detected = quantified,
 
     ## Tier breaks: mixing-fraction units, reviewed after deployment.
     value.guideline_1 = .LMF_BREAK_TRACE,
@@ -1166,8 +1167,8 @@ make_lmf_row <- function(
 collapse_species <- function(df_meq, id_cols) {
   wide <-
     df_meq |>
-    select(all_of(c(id_cols, "name.analyte", "value"))) |>
-    pivot_wider(names_from = name.analyte, values_from = value)
+    select(all_of(c(id_cols, "analyte", "value"))) |>
+    pivot_wider(names_from = analyte, values_from = value)
 
   ## Collapse N species to total inorganic N.
   n_cols <- c("NH3-N_", "NO3-N_", "NO2-N_")
@@ -1268,8 +1269,8 @@ build_endmember_from_override <- function(override_df, type) {
   override_meq <-
     override_df |>
     to_meq() |>
-    filter(name.analyte %in% .LMF_ANALYTES_MEQ) |>
-    mutate(value = if_else(!quantified, value * 0.5, value))
+    filter(analyte %in% .LMF_ANALYTES_MEQ) |>
+    mutate(value = if_else(!detected, value * 0.5, value))
 
   if (nrow(override_meq) == 0) {
     stop(glue::glue(
@@ -1282,13 +1283,13 @@ build_endmember_from_override <- function(override_df, type) {
 
   override_wide <- collapse_species(
     df_meq = override_meq,
-    id_cols = "uuid.sample"
+    id_cols = "sample_id"
   )
 
   ## Date range for use in window_start/window_end fields.
   ## These are informational only when using an override — they describe
   ## the span of the override data, not a calibration window.
-  dates <- as.Date(override_df$datetime.sample)
+  dates <- as.Date(override_df$datetime)
   window_start <- min(dates, na.rm = TRUE)
   window_end <- max(dates, na.rm = TRUE)
   n_samples <- nrow(override_wide)
@@ -1427,17 +1428,17 @@ build_reference_endmember <- function(
 ) {
   all_ref <-
     data_df() |>
-    filter(uuid.feature == reference_feature_uuid) |>
+    filter(site_id == reference_feature_uuid) |>
     to_meq() |>
-    filter(name.analyte %in% .LMF_ANALYTES_MEQ) |>
-    mutate(value = if_else(!quantified, value * 0.5, value))
+    filter(analyte %in% .LMF_ANALYTES_MEQ) |>
+    mutate(value = if_else(!detected, value * 0.5, value))
 
   if (nrow(all_ref) == 0) {
     return(NULL)
   }
 
   ## Backwards window shift if no future data.
-  ref_max_date <- max(as.Date(all_ref$datetime.sample), na.rm = TRUE)
+  ref_max_date <- max(as.Date(all_ref$datetime), na.rm = TRUE)
   window_start <- cal_start
   window_end <- cal_end
 
@@ -1450,11 +1451,11 @@ build_reference_endmember <- function(
   ref_window <-
     all_ref |>
     filter(
-      as.Date(datetime.sample) >= window_start,
-      as.Date(datetime.sample) <= window_end
+      as.Date(datetime) >= window_start,
+      as.Date(datetime) <= window_end
     )
 
-  ref_wide <- collapse_species(ref_window, id_cols = "uuid.sample")
+  ref_wide <- collapse_species(ref_window, id_cols = "sample_id")
 
   R_stats <-
     ref_wide |>
@@ -1522,16 +1523,16 @@ build_pooled_reference_endmember <- function(
 
   all_ref <-
     data_df() |>
-    filter(uuid.feature %in% ref_uuids) |>
+    filter(site_id %in% ref_uuids) |>
     to_meq() |>
-    filter(name.analyte %in% .LMF_ANALYTES_MEQ) |>
-    mutate(value = if_else(!quantified, value * 0.5, value))
+    filter(analyte %in% .LMF_ANALYTES_MEQ) |>
+    mutate(value = if_else(!detected, value * 0.5, value))
 
   if (nrow(all_ref) == 0) {
     stop("No reference data found for any reference features.")
   }
 
-  ref_max_date <- max(as.Date(all_ref$datetime.sample), na.rm = TRUE)
+  ref_max_date <- max(as.Date(all_ref$datetime), na.rm = TRUE)
   window_start <- calibration_start
   window_end <- calibration_end
 
@@ -1544,11 +1545,11 @@ build_pooled_reference_endmember <- function(
   ref_window <-
     all_ref |>
     filter(
-      as.Date(datetime.sample) >= window_start,
-      as.Date(datetime.sample) <= window_end
+      as.Date(datetime) >= window_start,
+      as.Date(datetime) <= window_end
     )
 
-  ref_wide <- collapse_species(ref_window, id_cols = "uuid.sample")
+  ref_wide <- collapse_species(ref_window, id_cols = "sample_id")
 
   ref_wide |>
     select(all_of(intersect(.LMF_PANEL_COLLAPSED, names(ref_wide)))) |>
@@ -1625,13 +1626,13 @@ build_leachate_endmember <- function(
 
   leachate_raw <-
     data_df() |>
-    filter(uuid.feature %in% leachate_features$uuid)
+    filter(site_id %in% leachate_features$uuid)
 
   if (nrow(leachate_raw) == 0) {
     stop("No leachate data found for identified leachate features.")
   }
 
-  leach_max_date <- max(as.Date(leachate_raw$datetime.sample), na.rm = TRUE)
+  leach_max_date <- max(as.Date(leachate_raw$datetime), na.rm = TRUE)
   window_start <- calibration_start
   window_end <- calibration_end
 
@@ -1648,8 +1649,8 @@ build_leachate_endmember <- function(
   leachate_window <-
     leachate_raw |>
     filter(
-      as.Date(datetime.sample) >= window_start,
-      as.Date(datetime.sample) <= window_end
+      as.Date(datetime) >= window_start,
+      as.Date(datetime) <= window_end
     )
 
   ## ---------------------------------------------------------------
@@ -1660,17 +1661,17 @@ build_leachate_endmember <- function(
 
   valid_samples <-
     leachate_window |>
-    filter(name.analyte %in% c("NH3-N", "NO3-N", "NO2-N")) |>
-    group_by(uuid.sample) |>
+    filter(analyte %in% c("NH3-N", "NO3-N", "NO2-N")) |>
+    group_by(sample_id) |>
     summarise(total_N_mgl = sum(value, na.rm = TRUE), .groups = "drop") |>
     filter(total_N_mgl >= min_leachate_total_n_mgl) |>
-    pull(uuid.sample)
+    pull(sample_id)
 
   leachate_valid <-
     leachate_window |>
-    filter(uuid.sample %in% valid_samples)
+    filter(sample_id %in% valid_samples)
 
-  n_valid <- n_distinct(leachate_valid$uuid.sample)
+  n_valid <- n_distinct(leachate_valid$sample_id)
 
   if (n_valid < min_leachate_samples) {
     stop(glue::glue(
@@ -1686,9 +1687,9 @@ build_leachate_endmember <- function(
   leachate_wide <-
     leachate_valid |>
     to_meq() |>
-    filter(name.analyte %in% .LMF_ANALYTES_MEQ) |>
-    mutate(value = if_else(!quantified, value * 0.5, value)) |>
-    collapse_species(id_cols = "uuid.sample")
+    filter(analyte %in% .LMF_ANALYTES_MEQ) |>
+    mutate(value = if_else(!detected, value * 0.5, value)) |>
+    collapse_species(id_cols = "sample_id")
 
   ## Cl anchor: median Cl across valid leachate samples.
   cl_anchor <- median(leachate_wide$Cl_, na.rm = TRUE)
@@ -1773,12 +1774,12 @@ build_leachate_endmember <- function(
 #' \code{name.analyte} suffixed with \code{"_"} to distinguish them from the
 #' original rows, which are preserved unchanged.
 #'
-#' @param df Long-format dataframe. Required columns: \code{name.analyte},
+#' @param df Long-format dataframe. Required columns: \code{analyte},
 #'   \code{value}, \code{units.analyte}, \code{valence.analyte},
 #'   \code{atomic_mass.analyte}.
 #'
 #' @return The input \code{df} with converted rows appended via
-#'   \code{bind_rows}. Converted rows have \code{name.analyte} suffixed with
+#'   \code{bind_rows}. Converted rows have \code{analyte} suffixed with
 #'   \code{"_"} and \code{value} in meq/L. Rows lacking \code{valence.analyte}
 #'   or \code{atomic_mass.analyte} are excluded from conversion but retained
 #'   in the original rows.
@@ -1790,7 +1791,7 @@ to_meq <- function(df) {
   checkmate::assert_names(
     names(df),
     must.include = c(
-      "name.analyte",
+      "analyte",
       "value",
       "units.analyte",
       "valence.analyte",
@@ -1824,7 +1825,7 @@ to_meq <- function(df) {
     purrr::imap(\(subset, unit_str) {
       subset |>
         mutate(
-          name.analyte = glue::glue("{name.analyte}_"),
+          analyte = glue::glue("{analyte}_"),
           value = units::set_units(value, unit_str, mode = "standard"),
           value = value / units::set_units(atomic_mass.analyte, g / mol),
           valence_abs = units::set_units(abs(valence.analyte), absValence),

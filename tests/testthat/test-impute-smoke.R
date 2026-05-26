@@ -14,26 +14,26 @@ make_impute_chem <- function(n = 15, n_bdl = 3, n_missing = 2) {
   drivers  <- c("pH", "EC", "DOC")
 
   # Build long-format df
-  rows <- tidyr::expand_grid(uuid.sample = samples, name.analyte = c(analytes, drivers)) |>
+  rows <- tidyr::expand_grid(sample_id = samples, analyte = c(analytes, drivers)) |>
     dplyr::mutate(
-      uuid.feature    = "f1",
-      datetime.sample = as.Date("2023-01-01") + (match(uuid.sample, samples) - 1L),
-      value      = dplyr::case_when(
-        name.analyte == "pH"  ~ runif(dplyr::n(), 6.5, 8.5),
-        name.analyte == "EC"  ~ runif(dplyr::n(), 100, 500),
-        name.analyte == "DOC" ~ runif(dplyr::n(), 0.2, 5),
-        TRUE                  ~ exp(rnorm(dplyr::n(), log(2), 0.5))
+      site_id  = "f1",
+      datetime = as.Date("2023-01-01") + (match(sample_id, samples) - 1L),
+      value    = dplyr::case_when(
+        analyte == "pH"  ~ runif(dplyr::n(), 6.5, 8.5),
+        analyte == "EC"  ~ runif(dplyr::n(), 100, 500),
+        analyte == "DOC" ~ runif(dplyr::n(), 0.2, 5),
+        TRUE             ~ exp(rnorm(dplyr::n(), log(2), 0.5))
       ),
-      quantified = TRUE,
-      imputed    = FALSE
+      detected = TRUE,
+      imputed  = FALSE
     )
 
   # Introduce some BDL rows
-  bdl_idx <- sample(which(rows$name.analyte %in% analytes), n_bdl)
-  rows$quantified[bdl_idx] <- FALSE
+  bdl_idx <- sample(which(rows$analyte %in% analytes), n_bdl)
+  rows$detected[bdl_idx] <- FALSE
 
   # Introduce some missing rows (remove them entirely — simulate not measured)
-  miss_idx <- sample(which(rows$name.analyte %in% analytes), n_missing)
+  miss_idx <- sample(which(rows$analyte %in% analytes), n_missing)
   rows <- rows[-miss_idx, ]
 
   rows
@@ -49,7 +49,7 @@ test_that("impute_chemistry errors on missing driver analyte in df", {
   skip_if_not(requireNamespace("brms", quietly = TRUE))
   df <- make_impute_chem()
   # Remove all DOC rows
-  df_no_doc <- dplyr::filter(df, name.analyte != "DOC")
+  df_no_doc <- dplyr::filter(df, analyte != "DOC")
   expect_error(
     impute_chemistry(df_no_doc, drivers = c("pH", "EC", "DOC")),
     regexp = "Driver analyte.* not found"
@@ -60,7 +60,7 @@ test_that("impute_chemistry errors on BDL driver rows", {
   skip_if_not(requireNamespace("brms", quietly = TRUE))
   df <- make_impute_chem()
   # Make one pH row BDL
-  df$quantified[df$name.analyte == "pH"][1L] <- FALSE
+  df$detected[df$analyte == "pH"][1L] <- FALSE
   expect_error(
     impute_chemistry(df, drivers = c("pH", "EC", "DOC")),
     regexp = "Driver analyte.* have missing or BDL"
@@ -99,4 +99,7 @@ test_that("impute_chemistry full run (brms smoke test)", {
 
   # Fitted brmsfit is attached as attribute
   expect_true(!is.null(attr(imp, "brmsfit")))
+
+  # New column names present
+  expect_true(all(c("sample_id", "site_id", "datetime", "analyte", "detected") %in% names(imp)))
 })

@@ -4,12 +4,12 @@
 \alias{.extract_coanalytes_for_sample}
 \title{Extract co-analyte values for a given sample from a long-format df}
 \usage{
-.extract_coanalytes_for_sample(df, sample_uid, coanalytes_str)
+.extract_coanalytes_for_sample(df, sample_id, coanalytes_str)
 }
 \arguments{
 \item{df}{Long-format chemistry df}
 
-\item{sample_uid}{uuid.sample identifier (may be NA for non-sample data)}
+\item{sample_id}{Sample identifier (may be NA for non-sample data)}
 
 \item{coanalytes_str}{Comma-separated string of required co-analyte names}
 }
