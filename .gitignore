@@ -8,6 +8,9 @@
 # Proprietary / large guideline data files (not bundled per HANDOVER.md §2.1)
 guideline data/
 
+# Test database (local copy only — contains monitoring data)
+test data/
+
 # R build artefacts
 /doc/
 /Meta/

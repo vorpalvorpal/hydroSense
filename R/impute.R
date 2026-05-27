@@ -48,6 +48,17 @@
 #'   Default `c("pH", "EC", "DOC")`. These analytes are extracted from `df`,
 #'   pivoted to wide columns, and used as spline predictors. They are
 #'   **not** themselves imputed.
+#' @param driver_surrogates Named list mapping driver names to fallback analyte
+#'   names tried in priority order when the primary driver is absent for a
+#'   sample. Default `list(DOC = c("TOC", "BOD", "COD"))`. For each sample
+#'   where a driver is undetected or missing, the first available surrogate is
+#'   substituted and the sample is retained. Samples where neither the primary
+#'   driver nor any surrogate is available are still dropped with a message.
+#'   Set to `list()` to disable surrogate substitution entirely.
+#' @param min_samples Integer. Minimum number of samples (after driver
+#'   completeness filtering) required to attempt fitting. Default `10`. If
+#'   fewer samples are available the function aborts with an informative
+#'   message rather than fitting a poorly constrained model.
 #' @param formula_template `brms::brmsformula` or `NULL`. If `NULL`, a default
 #'   formula is constructed: `mvbind(analyte_1, ...) ~ s(d1) + s(d2) + ...`
 #'   with one smooth per driver.
@@ -94,6 +105,8 @@
 impute_chemistry <- function(
     df,
     drivers          = c("pH", "EC", "DOC"),
+    driver_surrogates = list(DOC = c("TOC", "BOD", "COD")),
+    min_samples      = 10L,
     formula_template = NULL,
     family           = "gaussian",
     iter             = 2000,
@@ -114,17 +127,66 @@ impute_chemistry <- function(
                      "analyte", "value", "detected")
   )
   checkmate::assert_character(drivers, min.len = 1L, any.missing = FALSE)
+  checkmate::assert_list(driver_surrogates, types = "character", names = "unique")
+  checkmate::assert_count(min_samples)
   checkmate::assert_count(iter)
   checkmate::assert_count(warmup)
   checkmate::assert_count(chains)
   checkmate::assert_flag(bdl_cap)
 
+  # ── Surrogate driver substitution ─────────────────────────────────────────
+  # For each driver that has surrogates defined, find samples where the primary
+  # driver is absent and substitute the first available surrogate analyte.
+  # This allows e.g. TOC or BOD to stand in for DOC when DOC wasn't measured.
+  for (drv in intersect(drivers, names(driver_surrogates))) {
+    surrogates    <- driver_surrogates[[drv]]
+    all_samples   <- unique(df$sample_id)
+    has_primary   <- df |>
+      dplyr::filter(.data$analyte == drv, .data$detected) |>
+      dplyr::pull(.data$sample_id) |>
+      unique()
+    needs_sub     <- setdiff(all_samples, has_primary)
+
+    if (length(needs_sub) == 0L) next
+
+    sub_rows <- df |>
+      dplyr::filter(.data$sample_id %in% needs_sub,
+                    .data$analyte   %in% surrogates,
+                    .data$detected) |>
+      # For each sample pick the highest-priority surrogate available
+      dplyr::mutate(.priority = match(.data$analyte, surrogates)) |>
+      dplyr::group_by(.data$sample_id) |>
+      dplyr::slice_min(.data$.priority, n = 1L, with_ties = FALSE) |>
+      dplyr::ungroup() |>
+      dplyr::mutate(analyte = drv) |>
+      dplyr::select(-".priority")
+
+    n_sub <- dplyr::n_distinct(sub_rows$sample_id)
+    if (n_sub > 0L) {
+      cli::cli_inform(c(
+        "i" = "{n_sub} sample{?s} substituted a surrogate for \\
+               driver {.val {drv}}: \\
+               {.val {sort(unique(dplyr::filter(df, .data$sample_id %in% sub_rows$sample_id, .data$analyte %in% surrogates, .data$detected)$analyte))}}."
+      ))
+      df <- dplyr::bind_rows(df, sub_rows)
+    }
+
+    still_missing <- setdiff(needs_sub, unique(sub_rows$sample_id))
+    if (length(still_missing) > 0L) {
+      cli::cli_inform(c(
+        "!" = "{length(still_missing)} sample{?s} lack{?s} both {.val {drv}} \\
+               and all surrogates ({.val {surrogates}}) — \\
+               {?it/they} will be dropped from imputation."
+      ))
+    }
+  }
+
+  # ── Check all named drivers exist in df (after surrogate substitution) ────
   missing_drivers <- setdiff(drivers, unique(df$analyte))
   if (length(missing_drivers) > 0L) {
     cli::cli_abort(c(
       "Driver analyte{?s} not found in {.arg df}: {.val {missing_drivers}}.",
-      "i" = "Drivers must be present as rows in {.arg df} with \\
-             {.code analyte} matching the driver names."
+      "i" = "Add them to {.arg df} or list surrogates in {.arg driver_surrogates}."
     ))
   }
 
@@ -137,19 +199,44 @@ impute_chemistry <- function(
     cli::cli_abort("No non-driver analytes found in {.arg df} to impute.")
   }
 
-  # ── Check drivers are detected everywhere ─────────────────────────────────
-  driver_missing <- driver_df |>
-    dplyr::group_by(.data$sample_id, .data$analyte) |>
-    dplyr::summarise(
-      any_missing = any(!.data$detected),
-      .groups = "drop"
-    ) |>
-    dplyr::filter(.data$any_missing)
+  # ── Drop samples missing any driver; check minimum sample count ───────────
+  samples_complete <- driver_df |>
+    dplyr::filter(.data$detected) |>
+    dplyr::group_by(.data$sample_id) |>
+    dplyr::summarise(n_drivers = dplyr::n_distinct(.data$analyte), .groups = "drop") |>
+    dplyr::filter(.data$n_drivers == length(drivers)) |>
+    dplyr::pull(.data$sample_id)
 
-  if (nrow(driver_missing) > 0L) {
-    bad <- unique(driver_missing$analyte)
+  n_dropped <- dplyr::n_distinct(df$sample_id) - length(samples_complete)
+  if (n_dropped > 0L) {
+    cli::cli_inform(c(
+      "!" = "{n_dropped} sample{?s} dropped: missing one or more drivers \\
+             after surrogate substitution."
+    ))
+    df        <- dplyr::filter(df,        .data$sample_id %in% samples_complete)
+    driver_df <- dplyr::filter(driver_df, .data$sample_id %in% samples_complete)
+    target_df <- dplyr::filter(target_df, .data$sample_id %in% samples_complete)
+  }
+
+  if (length(samples_complete) < min_samples) {
     cli::cli_abort(c(
-      "Driver analyte{?s} have missing or BDL values: {.val {bad}}.",
+      "Only {length(samples_complete)} sample{?s} remain after driver \\
+       completeness filtering — fewer than {.arg min_samples} = {min_samples}.",
+      "i" = "Imputing from so few samples would produce an unreliable model. \\
+             Lower {.arg min_samples}, add more data, or choose different drivers."
+    ))
+  }
+
+  # ── Retain original driver-missing check (BDL in drivers) ─────────────────
+  driver_bdl <- driver_df |>
+    dplyr::group_by(.data$sample_id, .data$analyte) |>
+    dplyr::summarise(any_bdl = any(!.data$detected), .groups = "drop") |>
+    dplyr::filter(.data$any_bdl)
+
+  if (nrow(driver_bdl) > 0L) {
+    bad <- unique(driver_bdl$analyte)
+    cli::cli_abort(c(
+      "Driver analyte{?s} have BDL values: {.val {bad}}.",
       "i" = "Drivers must be fully detected at every sample. \\
              Either remove BDL samples or choose different drivers."
     ))
@@ -164,6 +251,9 @@ impute_chemistry <- function(
   # Drivers: one column each
   driver_wide <- driver_df |>
     dplyr::select("sample_id", "analyte", "value") |>
+    # Average duplicate driver measurements for the same sample
+    dplyr::summarise(value = mean(.data$value, na.rm = TRUE),
+                     .by   = c("sample_id", "analyte")) |>
     tidyr::pivot_wider(
       names_from  = "analyte",
       values_from = "value",
@@ -197,6 +287,12 @@ impute_chemistry <- function(
       )
     ) |>
     dplyr::select("sample_id", "analyte", "log_value") |>
+    # If an analyte was measured twice for the same sample (e.g. duplicate
+    # analyses), take the mean of the log-values to avoid list columns.
+    dplyr::summarise(
+      log_value = mean(.data$log_value, na.rm = TRUE),
+      .by       = c("sample_id", "analyte")
+    ) |>
     tidyr::pivot_wider(
       names_from  = "analyte",
       values_from = "log_value"
@@ -239,8 +335,10 @@ impute_chemistry <- function(
     safe_analytes <- make.names(target_analytes)
     names(safe_analytes) <- target_analytes
 
-    # Rename analyte columns in wide_df to safe R variable names
-    rename_map <- stats::setNames(safe_analytes, target_analytes)
+    # Rename analyte columns in wide_df to safe R variable names.
+    # setNames(x, nm): x = old names (values), nm = new names (names).
+    # dplyr::rename(any_of(v)) expects: names(v) = new, values(v) = old.
+    rename_map <- stats::setNames(target_analytes, safe_analytes)
     wide_df    <- dplyr::rename(wide_df, dplyr::any_of(rename_map))
 
     driver_terms <- paste0("s(", driver_col_names, ")", collapse = " + ")
