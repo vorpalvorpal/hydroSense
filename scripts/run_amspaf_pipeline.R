@@ -352,10 +352,17 @@ run_amspaf_pipeline <- function(
     imp_result <- impute_chemistry(focal_screened, model)
     t_imp <- round((proc.time() - t0)[3], 1)
     n_imp <- sum(imp_result$imputed, na.rm = TRUE)
-    message("  Imputation done in ", t_imp, " s | Imputed rows: ", n_imp,
+    message("  Metals/organics imputation done in ", t_imp, " s | Rows: ", n_imp,
             sprintf(" (%.0f%%)", 100 * n_imp / nrow(imp_result)))
 
-    focal_imp <- imp_result
+    # Co-analyte imputation (DOC, Ca, Mg, Hardness) — separate GAM step,
+    # uses same PCA but never feeds back into metals model.
+    message("  Imputing co-analytes (DOC, Ca, Mg, Hardness) …")
+    focal_imp <- impute_coanalytes(imp_result, model)
+    n_coa <- sum(focal_imp$imputed & focal_imp$imputed_kind == "missing" &
+                   focal_imp$analyte %in% leachatetools:::.COANALYTE_TARGETS,
+                 na.rm = TRUE)
+    message("  Co-analyte rows imputed: ", n_coa)
 
   } else {
     message("\n=== 7. Imputation skipped (impute = FALSE) ===")
