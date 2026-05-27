@@ -57,13 +57,21 @@ prepare_reference <- function(
 
   meta <- .load_analyte_metadata(analyte_metadata)
 
-  # Keep only detected reference observations
-  ref_q <- dplyr::filter(reference_data, .data$detected)
+  # BDL reference observations are treated as 0 (not excluded).
+  # Rationale: the quantile represents what the local biota is adapted to.
+  # If 99/100 reference samples are BDL, the 80th-percentile background is
+  # genuinely near zero — excluding BDLs would inflate the reference and
+  # understate risk. Detected rows keep their measured value; BDL rows
+  # contribute 0 to the quantile. Normalisation is applied only to detected
+  # rows (normalising 0 is a no-op, but avoids formula edge cases).
+  ref_q <- dplyr::mutate(
+    reference_data,
+    value = dplyr::if_else(.data$detected, .data$value, 0)
+  )
 
   if (nrow(ref_q) == 0L) {
     cli::cli_warn(
-      "No detected reference observations found; ARA subtraction will be zero \\
-       for all analytes."
+      "No reference observations found; ARA subtraction will be zero for all analytes."
     )
     return(structure(
       list(
@@ -78,7 +86,7 @@ prepare_reference <- function(
     ))
   }
 
-  # Apply normalisation per analyte row
+  # Apply normalisation per analyte row (detected rows only; BDL rows stay 0)
   nq <- ref_q |>
     dplyr::left_join(
       meta |>
@@ -88,13 +96,15 @@ prepare_reference <- function(
     dplyr::mutate(
       value_norm = purrr::pmap_dbl(
         list(
+          det           = .data$detected,
           formula_str   = .data$normalisation_formula,
           C             = .data$value,
           sample_id_val = if ("sample_id" %in% names(ref_q)) .data$sample_id else NA_character_,
           analyte_nm    = .data$analyte,
           co_req        = .data$coanalytes_required
         ),
-        function(formula_str, C, sample_id_val, analyte_nm, co_req) {
+        function(det, formula_str, C, sample_id_val, analyte_nm, co_req) {
+          if (!det) return(0)  # BDL → background contribution is 0
           parsed <- .parse_normalisation_formula(formula_str %||% "")
           if (is.null(parsed)) return(C)  # identity (empty formula stub)
           coanalytes <- .extract_coanalytes_for_sample(
