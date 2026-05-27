@@ -66,6 +66,14 @@
 #' @keywords internal
 .DOC_LIKE_ANALYTES <- c("DOC", "TOC", "BOD", "COD", "cBOD")
 
+#' Co-analytes required by ANZECC/ANZG metal normalisation formulas
+#'
+#' These are imputed separately (after metals/organics imputation) via
+#' [impute_coanalytes()] so that [add_amspaf()] has values to normalise
+#' against.  pH and EC are excluded — they are always present (required vars).
+#' @keywords internal
+.COANALYTE_TARGETS <- c("DOC", "Ca", "Mg", "Hardness-total-CaCO3")
+
 
 # ── fit_imputation_model() ────────────────────────────────────────────────────
 
@@ -513,6 +521,177 @@ impute_chemistry <- function(
   }
 
   .check_bdl_imputed(result, dl_tbl, bdl_cap)
+}
+
+
+# ── impute_coanalytes() ───────────────────────────────────────────────────────
+
+#' Impute missing normalisation co-analytes from the fitted chemistry PCA
+#'
+#' Fits a univariate log-Gaussian GAM (`mgcv::gam`) for each target
+#' co-analyte using the PC scores already computed by
+#' [fit_imputation_model()].  Only samples where the co-analyte is entirely
+#' absent are filled; BDL observations are left unchanged.
+#'
+#' This step belongs **after** [impute_chemistry()] and **before**
+#' [compute_chronic_chemistry()].  Imputed co-analyte values are never fed
+#' back into the metals/organics model — the brms model ran on measured values
+#' only and is already done.
+#'
+#' Using the chemistry PCA as the sole predictor set is appropriate because:
+#' (a) the PCA already captures DOC/Ca/Mg variation in its axes; (b) a
+#' univariate GAM on PC scores is unbiased and fast (no Stan required); (c)
+#' the same PCA is used for the metals model so the co-analyte predictions
+#' are conditioned on the same chemical environment summary.
+#'
+#' @param df Long-format chemistry data frame (same schema as
+#'   [impute_chemistry()], with `imputed`/`imputed_kind` columns if
+#'   [impute_chemistry()] has already been called).
+#' @param model Fitted model from [fit_imputation_model()] (provides the PCA
+#'   object and the list of `pca_vars`).
+#' @param targets Co-analyte names to impute when missing.  Default
+#'   `.COANALYTE_TARGETS` (`"DOC"`, `"Ca"`, `"Mg"`,
+#'   `"Hardness-total-CaCO3"`).  Only targets present in `model$pca_vars`
+#'   are processed; others are silently skipped with a warning.
+#' @param min_obs Minimum number of quantified observations required to fit a
+#'   GAM for a target.  Targets with fewer observations are skipped.
+#'   Default `10L`.
+#'
+#' @return `df` with missing co-analyte rows filled in, tagged with
+#'   `imputed = TRUE` and `imputed_kind = "missing"`.  All other rows are
+#'   unchanged.
+#'
+#' @seealso [fit_imputation_model()], [impute_chemistry()]
+#' @export
+impute_coanalytes <- function(
+    df,
+    model,
+    targets = NULL,
+    min_obs = 10L
+) {
+  if (is.null(targets)) targets <- .COANALYTE_TARGETS
+  checkmate::assert_data_frame(df)
+  checkmate::assert_names(names(df),
+    must.include = c("sample_id", "site_id", "datetime",
+                     "analyte", "value", "detected"))
+  if (!inherits(model, "imputation_model"))
+    cli::cli_abort(
+      "{.arg model} must be an object returned by {.fn fit_imputation_model}."
+    )
+  if (is.null(model$pca))
+    cli::cli_abort(
+      "Model has no fitted PCA — did {.fn fit_imputation_model} find any \\
+       target analytes?"
+    )
+
+  # ── Compute PC scores for all samples ─────────────────────────────────────
+  pca_scores <- .compute_pca_scores(df, model$pca)
+  pc_cols    <- paste0("WQ_PC", seq_len(model$pca$n_pcs))
+
+  # Skip targets not represented in the PCA (they can't be predicted)
+  targets_ok <- intersect(targets, model$pca_vars)
+  skipped    <- setdiff(targets, model$pca_vars)
+  if (length(skipped) > 0L)
+    cli::cli_warn(c(
+      "!" = "{length(skipped)} co-analyte target{?s} not in fitted \\
+             {.arg pca_vars} — skipping: {.val {skipped}}."
+    ))
+
+  # Per-sample metadata for constructing new rows
+  sample_meta <- df |>
+    dplyr::group_by(.data$sample_id) |>
+    dplyr::slice(1L) |>
+    dplyr::ungroup() |>
+    dplyr::select("sample_id", "site_id", "datetime")
+
+  result <- df
+
+  for (tgt in targets_ok) {
+
+    # "Present" means at least one row exists (detected or BDL)
+    present_ids <- unique(result$sample_id[result$analyte == tgt])
+    missing_ids <- setdiff(unique(result$sample_id), present_ids)
+
+    if (length(missing_ids) == 0L) next   # already complete
+
+    # Count quantified observations available for GAM fitting
+    n_obs <- dplyr::n_distinct(
+      result$sample_id[result$analyte == tgt & result$detected]
+    )
+    if (n_obs < min_obs) {
+      cli::cli_warn(c(
+        "!" = "Co-analyte {.val {tgt}}: only {n_obs} quantified sample{?s} \\
+               (< {.arg min_obs} = {min_obs}) — skipping."
+      ))
+      next
+    }
+
+    cli::cli_inform(c(
+      "i" = "Co-analyte {.val {tgt}}: imputing {length(missing_ids)} \\
+             missing sample{?s} via GAM on {model$pca$n_pcs} PC score{?s}."
+    ))
+
+    # ── Fit GAM on quantified observations ──────────────────────────────────
+    obs_vals <- result |>
+      dplyr::filter(.data$analyte == tgt, .data$detected) |>
+      dplyr::group_by(.data$sample_id) |>
+      dplyr::slice(1L) |>
+      dplyr::ungroup() |>
+      dplyr::transmute(.data$sample_id,
+                        log_tgt = log(pmax(.data$value, 1e-9)))
+
+    gam_data <- pca_scores |>
+      dplyr::filter(.data$sample_id %in% present_ids) |>
+      dplyr::left_join(obs_vals, by = "sample_id") |>
+      dplyr::filter(!is.na(.data$log_tgt))
+
+    gam_formula <- stats::as.formula(
+      paste("log_tgt ~",
+            paste(paste0("s(", pc_cols, ")"), collapse = " + "))
+    )
+
+    gam_fit <- tryCatch(
+      mgcv::gam(gam_formula, data = gam_data, family = stats::gaussian()),
+      error = function(e) {
+        cli::cli_warn(c(
+          "!" = "GAM fit failed for {.val {tgt}}: {conditionMessage(e)}.",
+          "i" = "Skipping imputation for this co-analyte."
+        ))
+        NULL
+      }
+    )
+    if (is.null(gam_fit)) next
+
+    # ── Predict for missing samples ──────────────────────────────────────────
+    pred_data <- dplyr::filter(pca_scores, .data$sample_id %in% missing_ids)
+    pred_vals <- exp(
+      as.numeric(stats::predict(gam_fit, newdata = pred_data, type = "response"))
+    )
+
+    new_rows <- tibble::tibble(
+      sample_id    = pred_data$sample_id,
+      analyte      = tgt,
+      value        = pred_vals,
+      detected     = TRUE,
+      imputed      = TRUE,
+      imputed_kind = "missing"
+    ) |>
+      dplyr::left_join(sample_meta, by = "sample_id")
+
+    result <- dplyr::bind_rows(result, new_rows)
+  }
+
+  # ── Ensure imputed/imputed_kind columns are populated on all rows ──────────
+  if (!"imputed" %in% names(result)) {
+    result <- dplyr::mutate(result, imputed = FALSE, imputed_kind = "observed")
+  } else {
+    result <- dplyr::mutate(result,
+      imputed      = dplyr::coalesce(.data$imputed, FALSE),
+      imputed_kind = dplyr::coalesce(.data$imputed_kind, "observed")
+    )
+  }
+
+  dplyr::arrange(result, .data$sample_id, .data$analyte)
 }
 
 
