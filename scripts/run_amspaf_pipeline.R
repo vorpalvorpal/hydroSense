@@ -22,30 +22,31 @@
 # ── Full signature ────────────────────────────────────────────────────────────
 #
 #   run_amspaf_pipeline(
-#     db_path,                      # path to DuckDB file (required)
-#     leachatetools_dir  = NULL,    # path for devtools::load_all(); NULL = use installed pkg
-#     focal_features     = NULL,    # character vector of feature names to analyse
-#                                   #   NULL = all non-reference surface-water features
-#     reference_features = NULL,    # character vector of reference feature names
-#                                   #   NULL = features with reference=TRUE in DB
-#     date_range         = NULL,    # Date[2]: c(start, end).  NULL = full history
-#     focal_dates        = NULL,    # Date vector for chronic anchors.
-#                                   #   NULL = first day of each month in date_range
-#     tau_days           = 90,      # exponential-decay half-life (days)
-#     window_days        = 365,     # look-back window for chronic integration (days)
-#     percentile         = 0.80,    # ARA reference quantile
-#     impute             = TRUE,    # Bayesian imputation (brms)?  FALSE = raw values only
-#     impute_targets     = NULL,    # analytes to impute.  NULL = default set (see body)
-#     impute_drivers     = c("pH", "EC"),
-#     impute_surrogates  = list(DOC = c("TOC", "BOD", "COD")),
+#     db_path,                         # path to DuckDB file (required)
+#     leachatetools_dir  = NULL,       # path for devtools::load_all(); NULL = installed pkg
+#     focal_features     = NULL,       # character vector of feature names to analyse
+#                                      #   NULL = all non-reference surface-water features
+#     reference_features = NULL,       # character vector of reference feature names
+#                                      #   NULL = features with reference=TRUE in DB
+#     date_range         = NULL,       # Date[2]: c(start, end).  NULL = full history
+#     focal_dates        = NULL,       # Date vector for chronic anchors.
+#                                      #   NULL = first day of each month in date_range
+#     tau_days           = 90,         # exponential-decay half-life (days)
+#     window_days        = 365,        # look-back window for chronic integration (days)
+#     percentile         = 0.80,       # ARA reference quantile
+#     impute             = TRUE,       # Bayesian imputation (brms)?  FALSE = raw values only
+#     impute_drivers     = c("pH", "EC", "NH3-N"),
 #     impute_iter        = 2000,
 #     impute_warmup      = 1000,
 #     impute_chains      = 4,
 #     impute_cores       = parallel::detectCores(),
-#     min_detect_freq    = 0.05,    # prescreen threshold
-#     fill_temperature   = TRUE,    # interpolate missing Temperature for existing samples?
-#     write_back         = TRUE,    # write AmsPAF rows back to DB?
-#     replace_existing   = FALSE    # if TRUE, delete existing computed AmsPAF before writing
+#     model_dir          = NULL,       # directory for .qs model files
+#                                      #   NULL = <db_dir>/models/
+#     refit_model        = FALSE,      # if TRUE, always refit even if a cached model exists
+#     min_detect_freq    = 0.05,       # prescreen threshold
+#     fill_temperature   = TRUE,       # interpolate missing Temperature?
+#     write_back         = TRUE,       # write AmsPAF rows back to DB?
+#     replace_existing   = FALSE       # if TRUE, delete existing computed AmsPAF before writing
 #   )
 #
 # ── Return value ──────────────────────────────────────────────────────────────
@@ -61,9 +62,15 @@
 #   analytes in NO_CONVERT (pH, Temperature, hardness, EC, etc.).
 # • Temperature is renamed from "Temperature" → "temperature" to match the
 #   NH3-N co-analyte name used in the analyte metadata.
+# • Duplicate (sample_id, analyte) rows (e.g. field + lab EC/pH) are resolved
+#   by preferring the row where lab_method.method = "field".
 # • NO3-N is classified into NO3-N_soft / NO3-N_mod / NO3-N_hard using the
-#   co-sampled Hardness-total-CaCO3 value AFTER imputation.
+#   co-sampled Hardness-total-CaCO3 value AFTER imputation (so that hardness
+#   is available to the WQ PCA during model fitting).
 # • Reference features are not imputed (raw field measurements only).
+# • Fitted imputation models are saved as .qs files and their paths recorded
+#   in the imputation_models table in the DB.  On subsequent runs the cached
+#   model is reused unless refit_model = TRUE or the file is missing.
 # • AmsPAF rows written back use a synthetic sample row with purpose =
 #   "chronic_amspaf_computed".  Existing rows for the same feature × focal_date
 #   are left untouched unless replace_existing = TRUE.
@@ -102,7 +109,7 @@ suppressPackageStartupMessages({
 .DERIVED_ANALYTES <- c("AmsPAF", "LMF")
 
 # Fixed UUIDs for computed analytes / methods (DB-specific, but stable)
-.UUID_AMSPAF_ANALYTE  <- "b3b1f259-a05d-4dde-b153-3b91f03b51c5"
+.UUID_AMSPAF_ANALYTE   <- "b3b1f259-a05d-4dde-b153-3b91f03b51c5"
 .UUID_AMSPAF_LABMETHOD <- "00000000-0000-0000-0000-000000000004"
 .UUID_TEMP_LABMETHOD   <- "8ac3819d-92e4-4d66-a6f2-213d998b9354"  # "Internal" field temp
 
@@ -121,13 +128,13 @@ run_amspaf_pipeline <- function(
     window_days        = 365,
     percentile         = 0.80,
     impute             = TRUE,
-    impute_targets     = NULL,
-    impute_drivers     = c("pH", "EC"),
-    impute_surrogates  = list(DOC = c("TOC", "BOD", "COD")),
+    impute_drivers     = c("pH", "EC", "NH3-N"),
     impute_iter        = 2000,
     impute_warmup      = 1000,
     impute_chains      = 4,
     impute_cores       = parallel::detectCores(),
+    model_dir          = NULL,
+    refit_model        = FALSE,
     min_detect_freq    = 0.05,
     fill_temperature   = TRUE,
     write_back         = TRUE,
@@ -147,6 +154,11 @@ run_amspaf_pipeline <- function(
   }
 
   stopifnot(file.exists(db_path))
+
+  # Resolve model_dir now so it is available before the DB connection opens
+  if (is.null(model_dir)) {
+    model_dir <- file.path(dirname(normalizePath(db_path)), "models")
+  }
 
   # ── 1. Connect and resolve features ────────────────────────────────────────
   message("\n=== 1. Connecting to DB and resolving features ===")
@@ -206,17 +218,34 @@ run_amspaf_pipeline <- function(
       a.name          AS analyte,
       an.value        AS value,
       an.quantified   AS detected,
-      an.rl_low       AS rl_low
+      an.rl_low       AS rl_low,
+      lm.method       AS method
     FROM analysis an
-    JOIN sample    s  ON an.uuid_sample  = s.uuid
-    JOIN lab_method lm ON an.uuid_lab    = lm.uuid
-    JOIN analyte   a  ON lm.uuid_analyte = a.uuid
+    JOIN sample     s  ON an.uuid_sample  = s.uuid
+    JOIN lab_method lm ON an.uuid_lab     = lm.uuid
+    JOIN analyte    a  ON lm.uuid_analyte = a.uuid
     WHERE s.uuid_feature IN (%s)%s
   ", uuid_in, date_filter))
 
   message("  Raw rows fetched: ", nrow(raw))
 
-  # Join feature names
+  # Deduplicate: for (sample_id, analyte) pairs with more than one row,
+  # prefer the row where method == "field" (case-insensitive, e.g. field EC/pH);
+  # fall back to whichever row comes first.
+  n_before_dedup <- nrow(raw)
+  raw <- raw |>
+    mutate(.field_first = tolower(method) == "field") |>
+    arrange(sample_id, analyte, desc(.field_first)) |>
+    group_by(sample_id, analyte) |>
+    slice(1L) |>
+    ungroup() |>
+    select(-.field_first)
+  n_dedup <- n_before_dedup - nrow(raw)
+  if (n_dedup > 0L)
+    message("  Deduplication: removed ", n_dedup,
+            " duplicate row(s) — preferred 'field' method where available")
+
+  # Join feature names; filter out derived analytes
   raw <- raw |>
     left_join(feature_map, by = c("site_uuid" = "uuid")) |>
     rename(site_id = name) |>
@@ -249,7 +278,8 @@ run_amspaf_pipeline <- function(
           a.name         AS analyte,
           an.value       AS value,
           an.quantified  AS detected,
-          an.rl_low      AS rl_low
+          an.rl_low      AS rl_low,
+          lm.method      AS method
         FROM analysis an
         JOIN sample     s  ON an.uuid_sample  = s.uuid
         JOIN lab_method lm ON an.uuid_lab     = lm.uuid
@@ -274,11 +304,9 @@ run_amspaf_pipeline <- function(
     }
   }
 
-  # ── 5. NO3-N hardness classification ──────────────────────────────────────
-  message("\n=== 5. NO3-N hardness classification ===")
-  chem <- .classify_no3(chem)
-
-  # ── 6. Split focal vs reference ───────────────────────────────────────────
+  # ── 5. Split focal vs reference ───────────────────────────────────────────
+  # Note: NO3-N classification is deferred to step 8 (after imputation) so
+  # that Hardness-total-CaCO3 remains available to the WQ PCA during fitting.
   focal_chem <- filter(chem, site_id %in% focal_features)
   ref_chem   <- filter(chem, site_id %in% reference_features)
 
@@ -287,89 +315,70 @@ run_amspaf_pipeline <- function(
 
   message("  Focal rows: ", nrow(focal_chem), " | Reference rows: ", nrow(ref_chem))
 
-  # ── 7. Prescreen ──────────────────────────────────────────────────────────
+  # ── 6. Prescreen ──────────────────────────────────────────────────────────
   message("\n=== 6. Prescreen analytes (k = ", min_detect_freq, ") ===")
   included <- prescreen_analytes(focal_chem, k = min_detect_freq)
   message("  Analytes passing prescreen: ", length(included), ": ",
           paste(sort(included), collapse = ", "))
 
-  # Drivers and co-analytes must be retained even if below detection threshold
-  keep_always <- c(impute_drivers, unlist(impute_surrogates),
-                   "temperature", "Hardness-total-CaCO3",
-                   "NO3-N_soft", "NO3-N_mod", "NO3-N_hard")
+  # Always retain drivers, temperature, hardness (for WQ PCA), and raw NO3-N
+  # (for classification post-imputation).  Classified NO3-N variants (NO3-N_soft
+  # etc.) do not exist yet at this stage — they are produced in step 8.
+  keep_always <- c(impute_drivers, "temperature", "Hardness-total-CaCO3", "NO3-N")
   focal_screened <- filter(focal_chem, analyte %in% union(included, keep_always))
 
-  # ── 8. Imputation (optional) ───────────────────────────────────────────────
+  # ── 7. Imputation (optional) ───────────────────────────────────────────────
   imp_result <- NULL
-  focal_final <- NULL
+  focal_imp  <- NULL
 
   if (impute) {
-    message("\n=== 7. Bayesian imputation (impute_chemistry) ===")
-
-    # Default imputation targets: SSD-eligible metals + NH3-N + temperature
-    # Exclude NO3-N variants (classified post-imputation) and hardness (driver)
-    if (is.null(impute_targets)) {
-      impute_targets <- intersect(
-        included,
-        c("Al", "As", "B", "Cd", "Cr", "Cu", "Hg", "Mn", "Ni", "Pb", "Se", "Zn",
-          "NH3-N", "NH3.N", "temperature")
-      )
-    }
-    message("  Imputing: ", paste(sort(impute_targets), collapse = ", "))
-
-    imp_input <- filter(focal_screened,
-                        analyte %in% c(impute_targets, impute_drivers,
-                                       unlist(impute_surrogates)))
-
+    message("\n=== 7. Bayesian imputation ===")
     t0 <- proc.time()
-    imp_result <- impute_chemistry(
-      imp_input,
-      drivers          = impute_drivers,
-      driver_surrogates = impute_surrogates,
-      iter             = impute_iter,
-      warmup           = impute_warmup,
-      chains           = impute_chains,
-      cores            = impute_cores
+
+    model <- .load_or_fit_model(
+      con            = con,
+      focal_features = focal_features,
+      df             = focal_screened,
+      impute_drivers = impute_drivers,
+      model_dir      = model_dir,
+      refit_model    = refit_model,
+      iter           = impute_iter,
+      warmup         = impute_warmup,
+      chains         = impute_chains,
+      cores          = impute_cores
     )
+
+    imp_result <- impute_chemistry(focal_screened, model)
     t_imp <- round((proc.time() - t0)[3], 1)
     n_imp <- sum(imp_result$imputed, na.rm = TRUE)
     message("  Imputation done in ", t_imp, " s | Imputed rows: ", n_imp,
             sprintf(" (%.0f%%)", 100 * n_imp / nrow(imp_result)))
 
-    # Identify which samples made it through imputation (had all required drivers)
-    imputed_sample_ids <- unique(imp_result$sample_id)
-
-    # Classify NO3-N for those samples using measured (pre-imputation) hardness
-    # Use original focal_screened so hardness values are not lost
-    no3_for_imputed <- .classify_no3(
-      filter(focal_screened,
-             analyte %in% c("NO3-N", "Hardness-total-CaCO3"),
-             sample_id %in% imputed_sample_ids)
-    ) |>
-      filter(grepl("^NO3-N_", analyte))
-
-    # Combine: imputed metals/NH3-N/temperature + measured NO3-N variants
-    focal_final <- bind_rows(
-      filter(imp_result, !grepl("^NO3-N", analyte)),
-      no3_for_imputed
-    )
+    focal_imp <- imp_result
 
   } else {
     message("\n=== 7. Imputation skipped (impute = FALSE) ===")
-    focal_final <- focal_screened
+    focal_imp <- focal_screened
   }
 
+  # ── 8. NO3-N hardness classification (after imputation) ───────────────────
+  # Hardness rows were preserved through imputation as WQ block variables.
+  # Classify now; .classify_no3() removes raw NO3-N + Hardness-total-CaCO3.
+  message("\n=== 8. NO3-N hardness classification ===")
+  focal_final <- .classify_no3(focal_imp)
+
   # ── 9. Reference chemistry ─────────────────────────────────────────────────
-  # Reference is always raw measured data — no imputation
-  ref_final <- ref_chem |>
+  # Reference is always raw measured data — no imputation.
+  ref_screened <- ref_chem |>
     filter(analyte %in% union(included, keep_always))
+  ref_final <- .classify_no3(ref_screened)
 
   # ── 10. Focal dates ────────────────────────────────────────────────────────
-  message("\n=== 8. Focal dates ===")
+  message("\n=== 10. Focal dates ===")
   if (is.null(focal_dates)) {
     date_min <- min(focal_final$datetime, na.rm = TRUE)
     date_max <- max(focal_final$datetime, na.rm = TRUE)
-    # First day of each month from first sample month to current month
+    # First day of each month from first sample month to last sample month
     focal_dates <- seq(
       as.Date(format(date_min, "%Y-%m-01")),
       as.Date(format(date_max, "%Y-%m-01")),
@@ -381,7 +390,7 @@ run_amspaf_pipeline <- function(
           format(max(focal_dates), "%Y-%m-%d"), ")")
 
   # ── 11. Chronic chemistry ──────────────────────────────────────────────────
-  message("\n=== 9. Chronic chemistry (tau=", tau_days, "d, window=", window_days, "d) ===")
+  message("\n=== 11. Chronic chemistry (tau=", tau_days, "d, window=", window_days, "d) ===")
 
   t0 <- proc.time()
   chr_focal <- suppressWarnings(
@@ -404,13 +413,13 @@ run_amspaf_pipeline <- function(
   message("  Focal dates with data: ", nrow(covered), " of ", length(focal_dates))
 
   # ── 12. Reference preparation ──────────────────────────────────────────────
-  message("\n=== 10. prepare_reference (", percentile * 100, "th pct ARA) ===")
+  message("\n=== 12. prepare_reference (", percentile * 100, "th pct ARA) ===")
   suppressMessages(prep_ref <- prepare_reference(chr_ref, percentile = percentile))
   message("  Reference analytes: ", nrow(prep_ref$normalised_quantiles),
           " | Dropped: ", length(prep_ref$dropped))
 
   # ── 13. AmsPAF ─────────────────────────────────────────────────────────────
-  message("\n=== 11. add_amspaf() ===")
+  message("\n=== 13. add_amspaf() ===")
   t0 <- proc.time()
   paf_out <- suppressMessages(add_amspaf(chr_focal, reference = prep_ref, min_analytes = 3))
   message("  add_amspaf: ", round((proc.time() - t0)[3], 1), " s")
@@ -435,16 +444,16 @@ run_amspaf_pipeline <- function(
   # ── 14. Write back to DB ───────────────────────────────────────────────────
   n_written <- 0L
   if (write_back) {
-    message("\n=== 12. Writing AmsPAF rows to DB ===")
+    message("\n=== 14. Writing AmsPAF rows to DB ===")
     n_written <- .write_amspaf_to_db(amspaf, con, feature_map, replace_existing)
     message("  Rows written: ", n_written)
   }
 
   message("\n=== Done ===")
   invisible(list(
-    amspaf   = amspaf,
-    imputed  = imp_result,
-    chronic  = chr_focal,
+    amspaf    = amspaf,
+    imputed   = imp_result,
+    chronic   = chr_focal,
     n_written = n_written
   ))
 }
@@ -454,10 +463,115 @@ run_amspaf_pipeline <- function(
 # Internal helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Null-coalescing operator
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
+
+#' Load a cached imputation model from the DB, or fit a new one
+#'
+#' Creates the `imputation_models` table in the DB if it does not exist.
+#' Looks for a cached model matching `focal_features`; loads and returns it if
+#' the `.qs` file is still on disk.  Otherwise fits via `fit_imputation_model()`,
+#' saves the result, and inserts the path into the DB.
+#'
+#' @param con Open DuckDB connection (read-write)
+#' @param focal_features Character vector of focal feature names (used as key)
+#' @param df Long-format chemistry df passed to `fit_imputation_model()`
+#' @param impute_drivers Character vector of required driver names
+#' @param model_dir Directory for .qs model files
+#' @param refit_model Logical: if TRUE, bypass cache and always refit
+#' @param ... Passed to `fit_imputation_model()` (iter, warmup, chains, cores)
+#' @return An object of class `"imputation_model"`
+.load_or_fit_model <- function(
+    con, focal_features, df, impute_drivers, model_dir,
+    refit_model, ...
+) {
+  # Ensure table exists
+  dbExecute(con, "
+    CREATE TABLE IF NOT EXISTS imputation_models (
+      uuid           TEXT PRIMARY KEY,
+      focal_features TEXT,
+      model_path     TEXT,
+      fit_date       DATE,
+      fit_settings   TEXT,
+      comments       TEXT
+    )
+  ")
+
+  # Cache key: sorted, comma-joined feature names
+  features_key <- paste(sort(focal_features), collapse = ",")
+
+  # Try to use cached model (most-recently fitted for this feature set)
+  if (!refit_model) {
+    cached <- dbGetQuery(con, sprintf(
+      "SELECT * FROM imputation_models WHERE focal_features = '%s' ORDER BY fit_date DESC LIMIT 1",
+      gsub("'", "''", features_key)   # escape single quotes in feature names
+    ))
+    if (nrow(cached) > 0 && nzchar(cached$model_path[1]) &&
+        file.exists(cached$model_path[1])) {
+      message("  Loading cached imputation model from ", cached$model_path[1],
+              "  (fitted ", cached$fit_date[1], ")")
+      if (!requireNamespace("qs", quietly = TRUE))
+        stop("Package 'qs' required to load cached model. ",
+             "Install with: install.packages('qs')")
+      return(qs::qread(cached$model_path[1]))
+    } else if (nrow(cached) > 0) {
+      message("  Cached model record found but file missing — refitting: ",
+              cached$model_path[1])
+    }
+  }
+
+  # Fit new model
+  message("  Fitting new imputation model (this may take several minutes) …")
+  extra <- list(...)
+  model <- fit_imputation_model(
+    df,
+    drivers  = impute_drivers,
+    save_dir = model_dir,
+    ...
+  )
+
+  # Insert record into DB
+  if (!requireNamespace("uuid", quietly = TRUE))
+    stop("Package 'uuid' is required for recording model path. ",
+         "Install with: install.packages('uuid')")
+
+  save_path    <- attr(model, "save_path") %||% ""
+  fit_settings <- sprintf(
+    "drivers=%s;iter=%d;chains=%d",
+    paste(model$drivers, collapse = ","),
+    extra$iter   %||% 2000L,
+    extra$chains %||% 4L
+  )
+
+  dbExecute(con, sprintf(
+    paste0(
+      "INSERT INTO imputation_models ",
+      "(uuid, focal_features, model_path, fit_date, fit_settings, comments) ",
+      "VALUES ('%s', '%s', '%s', '%s', '%s', '%s')"
+    ),
+    uuid::UUIDgenerate(),
+    gsub("'", "''", features_key),
+    gsub("'", "''", save_path),
+    format(Sys.Date(), "%Y-%m-%d"),
+    gsub("'", "''", fit_settings),
+    paste0("Fitted by run_amspaf_pipeline.R on ", Sys.Date())
+  ))
+  if (nzchar(save_path))
+    message("  Model path recorded in imputation_models table: ", save_path)
+  else
+    message("  Warning: model path is empty (save_dir may not have been writable).")
+
+  model
+}
+
+
 #' Classify NO3-N into hardness variants
+#'
 #' @param df Long-format chemistry df containing "NO3-N" and optionally
-#'   "Hardness-total-CaCO3" rows
-#' @return df with NO3-N rows replaced by NO3-N_soft/mod/hard, hardness removed
+#'   "Hardness-total-CaCO3" rows.
+#' @return df with NO3-N rows replaced by NO3-N_soft/mod/hard; both raw NO3-N
+#'   and Hardness-total-CaCO3 rows are removed from the result.
 .classify_no3 <- function(df) {
   hardness <- df |>
     filter(analyte == "Hardness-total-CaCO3", detected) |>
@@ -467,10 +581,10 @@ run_amspaf_pipeline <- function(
     filter(analyte == "NO3-N") |>
     left_join(hardness, by = "sample_id") |>
     mutate(analyte = case_when(
-      !is.na(hardness_mgL) & hardness_mgL < 30    ~ "NO3-N_soft",
-      !is.na(hardness_mgL) & hardness_mgL <= 150   ~ "NO3-N_mod",
-      !is.na(hardness_mgL) & hardness_mgL > 150    ~ "NO3-N_hard",
-      TRUE                                          ~ "NO3-N_mod"
+      !is.na(hardness_mgL) & hardness_mgL <  30  ~ "NO3-N_soft",
+      !is.na(hardness_mgL) & hardness_mgL <= 150 ~ "NO3-N_mod",
+      !is.na(hardness_mgL) & hardness_mgL >  150 ~ "NO3-N_hard",
+      TRUE                                        ~ "NO3-N_mod"
     )) |>
     select(-hardness_mgL)
 
@@ -502,9 +616,9 @@ run_amspaf_pipeline <- function(
 #'   many days; beyond this, use fallback_temp
 #' @return Number of analysis rows written (0 if write_back = FALSE)
 .fill_temperature_gaps <- function(chem, con, feature_map,
-                                   write_back     = TRUE,
-                                   fallback_temp  = 20,
-                                   max_gap_days   = 180) {
+                                   write_back    = TRUE,
+                                   fallback_temp = 20,
+                                   max_gap_days  = 180) {
 
   # Samples that already have temperature
   samples_with_temp <- chem |>
@@ -512,7 +626,7 @@ run_amspaf_pipeline <- function(
     pull(sample_id) |>
     unique()
 
-  # All (sample_id, datetime, site_id) combos in the focal chemistry
+  # All (sample_id, datetime, site_id) combos in the chemistry
   all_samples <- chem |>
     distinct(sample_id, datetime, site_id) |>
     filter(!sample_id %in% samples_with_temp)
@@ -537,28 +651,26 @@ run_amspaf_pipeline <- function(
         arrange(datetime)
       if (nrow(feat_temps) == 0) {
         message("    ", key$site_id,
-                ": no Temperature measurements found — using fallback ", fallback_temp, " °C")
+                ": no Temperature measurements found — using fallback ",
+                fallback_temp, " °C")
         return(mutate(gaps, temp_est = fallback_temp))
       }
 
-      # approx() does linear interpolation with constant extrapolation
       # Deduplicate by date first (average same-day readings)
       feat_temps <- feat_temps |>
         group_by(datetime) |>
         summarise(value = mean(value), .groups = "drop") |>
         arrange(datetime)
+
       t_num <- as.numeric(feat_temps$datetime)
       v     <- feat_temps$value
       g_num <- as.numeric(gaps$datetime)
 
-      # Use approx with rule=2 (extrapolate using boundary values)
+      # Linear interpolation; rule=2 extrapolates using boundary values
       interp <- approx(t_num, v, xout = g_num, rule = 2)$y
 
-      # Cap extrapolation: replace with fallback if nearest known measurement
-      # is more than max_gap_days away
-      nearest_gap <- vapply(g_num, function(gd) {
-        min(abs(t_num - gd))
-      }, numeric(1))
+      # Replace far-extrapolated values with fallback
+      nearest_gap <- vapply(g_num, function(gd) min(abs(t_num - gd)), numeric(1))
       interp[nearest_gap > max_gap_days] <- fallback_temp
 
       gaps$temp_est <- round(interp, 1)
@@ -571,34 +683,31 @@ run_amspaf_pipeline <- function(
     message("  Using fallback temperature (", fallback_temp,
             " °C) for ", n_fallback, " samples (nearest measurement > ",
             max_gap_days, " d)")
-
   message("  Interpolated temperature for ", nrow(new_rows), " samples")
 
   if (!write_back) return(0L)
 
-  # Build analysis rows to insert
-  # Generate UUIDs for new rows
   if (!requireNamespace("uuid", quietly = TRUE))
     stop("Package 'uuid' is required for writing temperature rows. ",
          "Install with: install.packages('uuid')")
 
   insert_rows <- new_rows |>
     mutate(
-      uuid      = vapply(seq_len(n()), function(i) uuid::UUIDgenerate(), character(1)),
-      uuid_lab  = .UUID_TEMP_LABMETHOD,
-      value     = temp_est,
+      uuid       = vapply(seq_len(n()), function(i) uuid::UUIDgenerate(), character(1)),
+      uuid_lab   = .UUID_TEMP_LABMETHOD,
+      value      = temp_est,
       quantified = TRUE,
-      rl_low    = NA_real_,
-      rl_high   = NA_real_,
-      purpose   = "temperature_interpolated",
-      comments  = sprintf("Interpolated by run_amspaf_pipeline.R on %s", Sys.Date())
+      rl_low     = NA_real_,
+      rl_high    = NA_real_,
+      purpose    = "temperature_interpolated",
+      comments   = sprintf("Interpolated by run_amspaf_pipeline.R on %s", Sys.Date())
     ) |>
     select(uuid, uuid_sample = sample_id, uuid_lab, value, quantified,
            rl_low, rl_high, purpose, comments)
 
-  # Check which columns actually exist in the analysis table
+  # Restrict to columns that exist in the DB table
   analysis_cols <- dbListFields(con, "analysis")
-  insert_rows <- select(insert_rows, any_of(analysis_cols))
+  insert_rows   <- select(insert_rows, any_of(analysis_cols))
 
   dbAppendTable(con, "analysis", insert_rows)
   message("  Wrote ", nrow(insert_rows), " temperature rows to analysis table")
@@ -633,7 +742,7 @@ run_amspaf_pipeline <- function(
   amspaf_w_uuid <- filter(amspaf_w_uuid, !is.na(feature_uuid))
   if (nrow(amspaf_w_uuid) == 0) return(0L)
 
-  # Check for existing computed AmsPAF rows (by joining sample → analysis → lab_method)
+  # Check for existing computed AmsPAF rows
   existing <- dbGetQuery(con, sprintf("
     SELECT s.uuid AS uuid_sample, s.uuid_feature, s.date AS focal_date
     FROM sample s
@@ -674,13 +783,13 @@ run_amspaf_pipeline <- function(
       datetime     = as.POSIXct(paste(focal_date, "00:00:00")),
       organisation = "leachatetools",
       purpose      = "chronic_amspaf_computed",
-      comments     = sprintf("Chronic AmsPAF computed by run_amspaf_pipeline.R on %s", Sys.Date())
+      comments     = sprintf("Chronic AmsPAF computed by run_amspaf_pipeline.R on %s",
+                             Sys.Date())
     ) |>
     select(uuid, uuid_feature = feature_uuid, date, datetime,
            organisation, purpose, comments)
 
-  # Check which columns exist in sample table
-  sample_cols <- dbListFields(con, "sample")
+  sample_cols        <- dbListFields(con, "sample")
   sample_rows_insert <- select(sample_rows, any_of(sample_cols))
   dbAppendTable(con, "sample", sample_rows_insert)
 
@@ -693,18 +802,16 @@ run_amspaf_pipeline <- function(
       quantified  = TRUE,
       purpose     = "chronic_amspaf_computed",
       comments    = sprintf(
-        "tau=%dd window=%dd pct=%g%% analytes_used=%s%s",
-        # tau/window/pct are not in the amspaf tibble so we record them in comments
-        NA_integer_, NA_integer_, NA_real_,
-        if ("n_analytes_used" %in% names(amspaf_w_uuid)) as.character(amspaf_w_uuid$n_analytes_used) else "?",
+        "analytes_used=%s%s",
+        if ("n_analytes_used" %in% names(amspaf_w_uuid))
+          as.character(amspaf_w_uuid$n_analytes_used) else "?",
         if ("dominant_analyte" %in% names(amspaf_w_uuid))
           paste0(" dominant=", amspaf_w_uuid$dominant_analyte) else ""
       )
     ) |>
-    select(uuid, uuid_sample, uuid_lab, value,
-           quantified, purpose, comments)
+    select(uuid, uuid_sample, uuid_lab, value, quantified, purpose, comments)
 
-  analysis_cols <- dbListFields(con, "analysis")
+  analysis_cols        <- dbListFields(con, "analysis")
   analysis_rows_insert <- select(analysis_rows, any_of(analysis_cols))
   dbAppendTable(con, "analysis", analysis_rows_insert)
 
@@ -719,19 +826,20 @@ run_amspaf_pipeline <- function(
 # source("run_amspaf_pipeline.R")
 #
 # result <- run_amspaf_pipeline(
-#   db_path           = "monitoring.duckdb",
+#   db_path            = "monitoring.duckdb",
 #   # leachatetools_dir = "/path/to/leachatetools",  # uncomment if not installed
-#   focal_features    = c("B.S01"),                  # NULL = all non-reference features
+#   focal_features     = c("B.S01"),                 # NULL = all non-reference features
 #   reference_features = c("B.S03"),                 # NULL = auto-detect from DB
-#   date_range        = c(as.Date("2017-01-01"), Sys.Date()),
-#   tau_days          = 90,
-#   window_days       = 365,
-#   percentile        = 0.80,
-#   impute            = TRUE,
-#   impute_iter       = 2000,
-#   impute_chains     = 4,
-#   write_back        = TRUE,
-#   replace_existing  = FALSE
+#   date_range         = c(as.Date("2017-01-01"), Sys.Date()),
+#   tau_days           = 90,
+#   window_days        = 365,
+#   percentile         = 0.80,
+#   impute             = TRUE,
+#   impute_iter        = 2000,
+#   impute_chains      = 4,
+#   refit_model        = FALSE,   # set TRUE to discard cached model and refit
+#   write_back         = TRUE,
+#   replace_existing   = FALSE
 # )
 #
 # # Inspect results
