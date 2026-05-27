@@ -11,6 +11,9 @@ guideline data/
 # Test database (local copy only — contains monitoring data)
 test data/
 
+# Pipeline helper and exploratory scripts (not package code)
+scripts/
+
 # R build artefacts
 /doc/
 /Meta/
