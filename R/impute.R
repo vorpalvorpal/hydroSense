@@ -92,8 +92,9 @@
 #'
 #' WQ block variables (major ions, carbon/oxygen demand, nutrients, redox
 #' indicators — see `.WQ_BLOCK_CANDIDATES`) that are present in `df` and pass
-#' a detection-frequency check are pivoted to a wide matrix, median-imputed for
-#' any missing cells, and submitted to `prcomp()`.  Principal components are
+#' a detection-frequency check are pivoted to a wide matrix and submitted to
+#' `nipals::nipals()`, which handles within-sample missing cells natively
+#' without prior imputation.  Principal components are
 #' added until cumulative variance explained reaches `min_var_explained` or
 #' `max_pcs` is reached (a warning is issued if the target cannot be met within
 #' `max_pcs` axes).  A minimum of two PCs is always used.
@@ -532,20 +533,13 @@ impute_chemistry <- function(
 
   wq_matrix   <- as.matrix(dplyr::select(wq_wide, -"sample_id"))
 
-  # Training medians (used to fill missing cells in new data)
+  # Training medians — kept as fallback for columns entirely absent in
+  # scoring data.  Per-cell NAs within a column are handled by nipals.
   train_medians <- apply(wq_matrix, 2, stats::median, na.rm = TRUE)
 
-  # Median-impute for PCA
-  for (j in seq_len(ncol(wq_matrix))) {
-    na_idx <- is.na(wq_matrix[, j])
-    if (any(na_idx)) {
-      wq_matrix[na_idx, j] <- if (!is.na(train_medians[j])) train_medians[j] else 0
-    }
-  }
-
-  # Remove zero-variance columns (PCA would divide by 0)
-  col_sds    <- apply(wq_matrix, 2, stats::sd)
-  keep_cols  <- col_sds > 0
+  # Remove zero-variance or all-NA columns
+  col_sds   <- apply(wq_matrix, 2, stats::sd, na.rm = TRUE)
+  keep_cols <- !is.na(col_sds) & col_sds > 0
   if (!any(keep_cols))
     cli::cli_abort("All WQ block variables have zero variance — cannot fit PCA.")
   if (!all(keep_cols)) {
@@ -555,8 +549,10 @@ impute_chemistry <- function(
     wq_matrix <- wq_matrix[, keep_cols, drop = FALSE]
   }
 
-  pca_fit <- stats::prcomp(wq_matrix, center = TRUE, scale. = TRUE)
-  cum_var <- cumsum(pca_fit$sdev^2) / sum(pca_fit$sdev^2)
+  # NIPALS PCA — handles missing cells without prior imputation
+  ncomp   <- min(max_pcs, ncol(wq_matrix), nrow(wq_matrix) - 1L)
+  pca_fit <- nipals::nipals(wq_matrix, ncomp = ncomp, center = TRUE, scale = TRUE)
+  cum_var <- pca_fit$R2cum  # cumulative proportion of variance explained
 
   # Determine number of PCs
   n_needed <- which(cum_var >= min_var_explained)[1L]
@@ -564,7 +560,7 @@ impute_chemistry <- function(
     n_pcs <- min(max_pcs, length(cum_var))
     cli::cli_warn(c(
       "!" = "WQ PCA: first {n_pcs} axis/axes explain only \\
-             {round(100 * cum_var[n_pcs], 1)}% of variance \\
+             {round(100 * cum_var[n_pcs], 1)}% of WQ variance \\
              (target: {min_var_explained * 100}%).",
       "i" = "Consider adding more WQ variables or loosening \\
              {.arg min_var_explained}."
@@ -572,9 +568,9 @@ impute_chemistry <- function(
   } else {
     n_pcs <- max(2L, n_needed)
   }
-  n_pcs <- min(n_pcs, ncol(wq_matrix))
+  n_pcs <- min(n_pcs, length(cum_var))
 
-  pc_scores <- tibble::as_tibble(pca_fit$x[, seq_len(n_pcs), drop = FALSE]) |>
+  pc_scores <- tibble::as_tibble(pca_fit$scores[, seq_len(n_pcs), drop = FALSE]) |>
     stats::setNames(paste0("WQ_PC", seq_len(n_pcs))) |>
     dplyr::mutate(sample_id = wq_wide$sample_id)
 
@@ -588,10 +584,15 @@ impute_chemistry <- function(
   )
 }
 
-#' Project new data onto stored PCA
+#' Project new data onto stored NIPALS PCA axes
+#'
+#' Handles within-row missing values via NIPALS regression scoring: each
+#' component score is estimated from observed variables only, then the residual
+#' is deflated before the next component.  Columns entirely absent in `df` (not
+#' measured at all, not just BDL) are filled with training medians.
 #' @keywords internal
 .compute_pca_scores <- function(df, pca_obj) {
-  wq_vars <- names(pca_obj$medians)
+  wq_vars <- pca_obj$active_vars  # columns used in training
 
   wq_wide <- df |>
     dplyr::filter(.data$analyte %in% .env$wq_vars) |>
@@ -605,32 +606,64 @@ impute_chemistry <- function(
   all_samples <- tibble::tibble(sample_id = unique(df$sample_id))
   wq_wide     <- dplyr::left_join(all_samples, wq_wide, by = "sample_id")
 
-  # Ensure columns match active_vars (add NA for unseen WQ vars)
-  for (v in pca_obj$active_vars) {
-    if (!v %in% names(wq_wide)) wq_wide[[v]] <- NA_real_
+  # Add entirely-absent training columns using training medians.
+  # Per-cell NAs within a column are handled by the NIPALS scoring below.
+  for (v in wq_vars) {
+    if (!v %in% names(wq_wide)) wq_wide[[v]] <- pca_obj$medians[[v]]
   }
 
-  wq_mat <- as.matrix(dplyr::select(wq_wide, dplyr::all_of(pca_obj$active_vars)))
+  wq_mat <- as.matrix(dplyr::select(wq_wide, dplyr::all_of(wq_vars)))
 
-  # Median-impute using training medians
+  # Fill columns that are entirely NA (not measured in this dataset at all)
   for (j in seq_len(ncol(wq_mat))) {
-    col_nm  <- colnames(wq_mat)[j]
-    med_val <- pca_obj$medians[col_nm]
-    na_idx  <- is.na(wq_mat[, j])
-    if (any(na_idx)) {
-      wq_mat[na_idx, j] <- if (!is.na(med_val)) med_val else 0
+    if (all(is.na(wq_mat[, j]))) {
+      col_nm       <- colnames(wq_mat)[j]
+      wq_mat[, j]  <- pca_obj$medians[[col_nm]]
     }
   }
 
-  # Project onto training PCA space
-  wq_scaled  <- scale(wq_mat,
-                      center = pca_obj$fit$center,
-                      scale  = pca_obj$fit$scale)
-  scores_mat <- wq_scaled %*% pca_obj$fit$rotation[, seq_len(pca_obj$n_pcs), drop = FALSE]
+  # Centre and scale using training parameters stored in the nipals object
+  wq_scaled <- sweep(wq_mat,    2, pca_obj$fit$center, "-")
+  wq_scaled <- sweep(wq_scaled, 2, pca_obj$fit$scale,  "/")
+
+  # NIPALS regression scoring: per-row, per-component
+  loadings   <- pca_obj$fit$loadings[, seq_len(pca_obj$n_pcs), drop = FALSE]
+  scores_mat <- t(apply(wq_scaled, 1, .nipals_score_row,
+                        loadings = loadings, n_pcs = pca_obj$n_pcs))
 
   tibble::as_tibble(scores_mat) |>
     stats::setNames(paste0("WQ_PC", seq_len(pca_obj$n_pcs))) |>
     dplyr::mutate(sample_id = wq_wide$sample_id)
+}
+
+#' NIPALS regression scoring for one centred/scaled observation
+#'
+#' Computes PC scores for a single row by projecting onto each loading vector
+#' using only observed (non-NA) elements, then deflating the residual before
+#' moving to the next component.  For a fully observed row this is identical to
+#' the standard `x %*% loadings` projection.  For a row with missing values it
+#' correctly down-weights the loading vectors to the observed subspace — without
+#' the bias that zero/median imputation introduces.
+#'
+#' @param x Numeric vector (centred + scaled); `NA` marks missing variables.
+#' @param loadings p × K loading matrix (unit-normalised columns from nipals).
+#' @param n_pcs Number of components to score.
+#' @keywords internal
+.nipals_score_row <- function(x, loadings, n_pcs) {
+  scores  <- numeric(n_pcs)
+  x_resid <- x
+  for (k in seq_len(n_pcs)) {
+    lk  <- loadings[, k]
+    obs <- !is.na(x_resid)
+    if (any(obs)) {
+      # Regression onto observed sub-vector of the loading; renormalise by
+      # sum(lk[obs]^2) because the loading is unit-normalised over *all* p vars
+      scores[k] <- sum(x_resid[obs] * lk[obs]) / sum(lk[obs]^2)
+    }
+    # Deflate: remove this component's contribution from observed elements
+    x_resid[obs] <- x_resid[obs] - scores[k] * lk[obs]
+  }
+  scores
 }
 
 #' Fit a single brms group model (metals or organics)

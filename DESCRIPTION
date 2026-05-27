@@ -19,6 +19,7 @@ Imports:
     cli,
     dplyr,
     lubridate,
+    nipals,
     purrr,
     qs,
     readr,
