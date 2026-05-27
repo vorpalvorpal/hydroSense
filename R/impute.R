@@ -80,24 +80,25 @@
 #'
 #' For each analyte group (metals / organics), the mean structure is:
 #' ```
-#' s(pH) + s(EC) + s(NH3-N) + s(WQ_PC1) + [s(WQ_PC2) + ...]
+#' s(PC1) + s(PC2) + ... + s(PCk)
 #' ```
-#' where `WQ_PC*` are the leading principal components of the water-quality
-#' block (see *WQ PCA* below).  All target analytes (metals or organics) are
-#' modelled jointly with `rescor = TRUE`, so observed co-analytes at a given
-#' sample condition the posterior of the missing ones through the residual
+#' where `PC*` are the leading principal components of the unified chemistry
+#' PCA (see *Chemistry PCA* below).  All target analytes (metals or organics)
+#' are modelled jointly with `rescor = TRUE`, so observed co-analytes at a
+#' given sample condition the posterior of the missing ones through the residual
 #' correlation matrix.
 #'
-#' **WQ PCA**
+#' **Chemistry PCA**
 #'
-#' WQ block variables (major ions, carbon/oxygen demand, nutrients, redox
-#' indicators — see `.WQ_BLOCK_CANDIDATES`) that are present in `df` and pass
-#' a detection-frequency check are pivoted to a wide matrix and submitted to
-#' `nipals::nipals()`, which handles within-sample missing cells natively
-#' without prior imputation.  Principal components are
-#' added until cumulative variance explained reaches `min_var_explained` or
-#' `max_pcs` is reached (a warning is issued if the target cannot be met within
-#' `max_pcs` axes).  A minimum of two PCs is always used.
+#' All `pca_vars` — major ions, pH, EC, NH3-N, DOC, nutrients, redox
+#' indicators — that are present in `df` and pass a detection-frequency check
+#' are submitted to `nipals::nipals()`, which handles within-sample missing
+#' cells natively without prior imputation.  Using a single unified PCA (rather
+#' than separate driver + WQ-block sets) eliminates predictor collinearity and
+#' ensures normalisation co-analytes (DOC, Ca, Mg) influence the imputed metal
+#' concentrations.  Principal components are added until cumulative variance
+#' explained reaches `min_var_explained` or `max_pcs` is reached.  A minimum
+#' of two PCs is always used.
 #'
 #' **Hurdles (applied at prediction time by `impute_chemistry()`)**
 #'
@@ -106,30 +107,31 @@
 #' - *Organics*: a sample is only imputed if at least one of
 #'   {DOC, TOC, BOD, COD, cBOD} is present.
 #'
-#' **BDL drivers**
+#' **BDL required variables**
 #'
-#' When a required driver (pH, EC, NH3-N) is below the detection limit for a
+#' When a `required_vars` analyte (pH or EC) is below the detection limit for a
 #' sample, the stored detection-limit value is used as-is (conservative upper
-#' bound).  A message is issued but the sample is retained — BDL-driver samples
-#' represent genuine low-concentration conditions and are important for
-#' calibrating the low end of the model.
+#' bound).  A message is issued but the sample is retained.
 #'
 #' @param df Long-format chemistry data frame with columns `sample_id`,
 #'   `site_id`, `datetime`, `analyte`, `value`, `detected`.
-#' @param drivers Required driver analyte names. Default `c("pH", "EC",
-#'   "NH3-N")`. Samples where any driver is entirely absent are dropped.
-#' @param wq_candidates Candidate WQ analytes for PCA. Default
-#'   `.WQ_BLOCK_CANDIDATES`.
+#' @param pca_vars Analyte names to include in the unified chemistry PCA (used
+#'   as predictors for the brms model via PC scores).  Default: `c("pH", "EC",
+#'   "NH3-N")` plus all `.WQ_BLOCK_CANDIDATES`.  Normalisation co-analytes
+#'   (DOC, Ca, Mg) are included in the default set.
+#' @param required_vars Analyte names that must be present in a sample for it
+#'   to be retained in training and prediction.  Default `c("pH", "EC")`.
+#'   Samples missing any of these are dropped entirely.
 #' @param metal_analytes Analyte names classified as metals.  Default
 #'   `.METAL_ANALYTES`.
 #' @param doc_like_analytes Analyte names used for the organics hurdle check
 #'   (the "organic carbon present" requirement).  Default `.DOC_LIKE_ANALYTES`.
-#' @param min_detect_freq Minimum detection frequency for a WQ analyte to be
-#'   included in the PCA block.  Default `0.05`.
-#' @param min_samples Minimum training samples after driver filtering.
+#' @param min_detect_freq Minimum detection frequency for a PCA variable to be
+#'   retained.  Default `0.05`.  Required vars are always retained regardless.
+#' @param min_samples Minimum training samples after required-var filtering.
 #' @param min_var_explained Target cumulative variance for PCA axis selection.
 #'   Default `0.75`.
-#' @param max_pcs Maximum PCA axes to use.  Default `4L`.
+#' @param max_pcs Maximum PCA axes to use.  Default `6L`.
 #' @param family brms response family.  Must be `"gaussian"` (concentrations
 #'   are log-transformed before fitting; residual correlations require
 #'   Gaussian family).
@@ -142,7 +144,7 @@
 #'   - `$pca`: PCA fit + metadata (loadings, training medians, n_pcs, …)
 #'   - `$metals`: list with `$fit` (brmsfit), `$analytes`, `$safe_names`
 #'   - `$organics`: same structure, or `NULL` if no organics pass prescreen
-#'   - `$drivers`, `$hurdle_metals`, `$hurdle_organics`: character vectors
+#'   - `$required_vars`, `$pca_vars`, `$hurdle_metals`, `$hurdle_organics`
 #'   - `$fit_date`, `$n_samples`: metadata
 #'   If `save_dir` is supplied, the path to the saved file is returned as
 #'   `attr(result, "save_path")`.
@@ -151,14 +153,14 @@
 #' @export
 fit_imputation_model <- function(
     df,
-    drivers           = c("pH", "EC", "NH3-N"),
-    wq_candidates     = NULL,
+    pca_vars          = NULL,           # default built in body
+    required_vars     = c("pH", "EC"),
     metal_analytes    = NULL,
     doc_like_analytes = NULL,
     min_detect_freq   = 0.05,
     min_samples       = 10L,
     min_var_explained = 0.75,
-    max_pcs           = 4L,
+    max_pcs           = 6L,
     family            = "gaussian",
     iter              = 2000,
     warmup            = 1000,
@@ -167,7 +169,8 @@ fit_imputation_model <- function(
     save_dir          = NULL,
     ...
 ) {
-  if (is.null(wq_candidates))     wq_candidates     <- .WQ_BLOCK_CANDIDATES
+  if (is.null(pca_vars))          pca_vars          <- c("pH", "EC", "NH3-N",
+                                                          .WQ_BLOCK_CANDIDATES)
   if (is.null(metal_analytes))    metal_analytes    <- .METAL_ANALYTES
   if (is.null(doc_like_analytes)) doc_like_analytes <- .DOC_LIKE_ANALYTES
 
@@ -175,54 +178,54 @@ fit_imputation_model <- function(
   checkmate::assert_names(names(df),
     must.include = c("sample_id", "site_id", "datetime",
                      "analyte", "value", "detected"))
-  checkmate::assert_character(drivers, min.len = 1L, any.missing = FALSE)
+  checkmate::assert_character(required_vars, min.len = 1L, any.missing = FALSE)
   checkmate::assert_count(min_samples)
 
-  # ── 1. BDL driver handling ─────────────────────────────────────────────────
-  # For samples where a driver is BDL, use the stored detection-limit value.
-  # These are genuine low-concentration events and must not be silently dropped.
-  n_bdl_drivers <- df |>
-    dplyr::filter(.data$analyte %in% .env$drivers, !.data$detected) |>
+  # ── 1. BDL required-variable handling ────────────────────────────────────
+  # For required vars (pH, EC) where a value is BDL, use the stored DL value.
+  # These are genuine low-level conditions; the sample is retained.
+  n_bdl_req <- df |>
+    dplyr::filter(.data$analyte %in% .env$required_vars, !.data$detected) |>
     nrow()
-  if (n_bdl_drivers > 0L) {
+  if (n_bdl_req > 0L) {
     cli::cli_inform(c(
-      "i" = "{n_bdl_drivers} BDL row{?s} for driver analyte{?s} — using \\
+      "i" = "{n_bdl_req} BDL row{?s} for required variable{?s} — using \\
              detection-limit value{?s} as conservative estimate."
     ))
   }
   # `value` already holds the DL for BDL rows; no transformation needed.
-  # We just need to NOT filter out BDL driver rows.
 
-  # ── 2. Drop samples missing any driver entirely ────────────────────────────
-  samples_with_all_drivers <- df |>
-    dplyr::filter(.data$analyte %in% .env$drivers) |>
+  # ── 2. Drop samples missing any required variable entirely ────────────────
+  samples_with_required <- df |>
+    dplyr::filter(.data$analyte %in% .env$required_vars) |>
     dplyr::group_by(.data$sample_id) |>
-    dplyr::summarise(n_drivers = dplyr::n_distinct(.data$analyte), .groups = "drop") |>
-    dplyr::filter(.data$n_drivers == length(drivers)) |>
+    dplyr::summarise(n_req = dplyr::n_distinct(.data$analyte), .groups = "drop") |>
+    dplyr::filter(.data$n_req == length(required_vars)) |>
     dplyr::pull(.data$sample_id)
 
-  n_dropped <- dplyr::n_distinct(df$sample_id) - length(samples_with_all_drivers)
+  n_dropped <- dplyr::n_distinct(df$sample_id) - length(samples_with_required)
   if (n_dropped > 0L) {
     cli::cli_inform(c(
-      "!" = "{n_dropped} sample{?s} dropped: missing one or more drivers \\
-             ({.val {drivers}}) entirely."
+      "!" = "{n_dropped} sample{?s} dropped: missing one or more required \\
+             variable{?s} ({.val {required_vars}}) entirely."
     ))
-    df <- dplyr::filter(df, .data$sample_id %in% samples_with_all_drivers)
+    df <- dplyr::filter(df, .data$sample_id %in% samples_with_required)
   }
 
-  if (length(samples_with_all_drivers) < min_samples) {
+  if (length(samples_with_required) < min_samples) {
     cli::cli_abort(c(
-      "Only {length(samples_with_all_drivers)} sample{?s} remain after driver \\
-       filtering — fewer than {.arg min_samples} = {min_samples}.",
-      "i" = "Lower {.arg min_samples}, add more data, or choose different drivers."
+      "Only {length(samples_with_required)} sample{?s} remain after \\
+       required-var filtering — fewer than {.arg min_samples} = {min_samples}.",
+      "i" = "Lower {.arg min_samples}, add more data, or choose different \\
+             {.arg required_vars}."
     ))
   }
 
-  # ── 3. Identify WQ block variables ────────────────────────────────────────
-  # Keep WQ candidates that are present in df and meet detection-frequency threshold
+  # ── 3. Filter pca_vars by detection frequency ─────────────────────────────
+  # Required vars always pass regardless of detection frequency.
   n_samples_total <- dplyr::n_distinct(df$sample_id)
-  wq_present <- df |>
-    dplyr::filter(.data$analyte %in% .env$wq_candidates) |>
+  pca_vars_present <- df |>
+    dplyr::filter(.data$analyte %in% .env$pca_vars) |>
     dplyr::group_by(.data$analyte) |>
     dplyr::summarise(
       detect_freq = dplyr::n_distinct(.data$sample_id) / n_samples_total,
@@ -231,18 +234,23 @@ fit_imputation_model <- function(
     dplyr::filter(.data$detect_freq >= min_detect_freq) |>
     dplyr::pull(.data$analyte)
 
+  pca_vars_present <- union(
+    intersect(required_vars, unique(df$analyte)),
+    pca_vars_present
+  )
+
   cli::cli_inform(c(
-    "i" = "WQ block: {length(wq_present)} variable{?s} available for PCA: \\
-           {.val {sort(wq_present)}}."
+    "i" = "Chemistry PCA: {length(pca_vars_present)} variable{?s) available: \\
+           {.val {sort(pca_vars_present)}}."
   ))
 
   # ── 4. Identify analyte groups ─────────────────────────────────────────────
   all_analytes <- unique(df$analyte)
-  # Exclude WQ block, drivers, and explicitly excluded analytes (microbiological
+  # Exclude all pca_vars and explicitly excluded analytes (microbiological
   # counts, qualitative/physical descriptors — not amenable to log-normal model)
-  non_wq_non_driver <- setdiff(
+  non_pca_non_excl <- setdiff(
     all_analytes,
-    union(union(wq_candidates, drivers), .IMPUTE_EXCLUDED)
+    union(pca_vars, .IMPUTE_EXCLUDED)
   )
 
   excl_present <- intersect(all_analytes, .IMPUTE_EXCLUDED)
@@ -253,8 +261,8 @@ fit_imputation_model <- function(
     ))
   }
 
-  metals_in_df   <- intersect(non_wq_non_driver, metal_analytes)
-  organics_in_df <- setdiff(non_wq_non_driver, metal_analytes)
+  metals_in_df   <- intersect(non_pca_non_excl, metal_analytes)
+  organics_in_df <- setdiff(non_pca_non_excl, metal_analytes)
 
   cli::cli_inform(c(
     "i" = "Metals group: {length(metals_in_df)} analyte{?s}: \\
@@ -265,7 +273,7 @@ fit_imputation_model <- function(
 
   if (length(metals_in_df) == 0L && length(organics_in_df) == 0L) {
     cli::cli_warn(
-      "No target analytes found outside the driver, WQ block, and excluded sets. \\
+      "No target analytes found outside the PCA and excluded sets. \\
        Returning model with no fitted groups (imputation will be a no-op)."
     )
     return(structure(
@@ -273,27 +281,27 @@ fit_imputation_model <- function(
         pca             = NULL,
         metals          = NULL,
         organics        = NULL,
-        drivers         = drivers,
-        wq_candidates   = wq_candidates,
+        required_vars   = required_vars,
+        pca_vars        = pca_vars,
         hurdle_metals   = metal_analytes,
         hurdle_organics = doc_like_analytes,
         fit_date        = Sys.Date(),
-        n_samples       = length(samples_with_all_drivers)
+        n_samples       = length(samples_with_required)
       ),
       class = "imputation_model"
     ))
   }
 
-  # ── 5. Fit PCA on WQ block ─────────────────────────────────────────────────
+  # ── 5. Fit unified chemistry PCA ──────────────────────────────────────────
   pca_obj <- .prepare_wq_pca(
-    df, wq_vars        = wq_present,
+    df, wq_vars        = pca_vars_present,
     min_var_explained  = min_var_explained,
     max_pcs            = max_pcs
   )
 
   cli::cli_inform(c(
-    "i" = "WQ PCA: {pca_obj$n_pcs} axis/axes explain \\
-           {round(100 * pca_obj$var_explained, 1)}% of WQ variance."
+    "i" = "Chemistry PCA: {pca_obj$n_pcs} axis/axes explain \\
+           {round(100 * pca_obj$var_explained, 1)}% of variance."
   ))
 
   # ── 6. Fit metals model ────────────────────────────────────────────────────
@@ -301,15 +309,14 @@ fit_imputation_model <- function(
   if (length(metals_in_df) >= 1L) {
     cli::cli_inform(c("i" = "Fitting metals model …"))
     metals_fit <- .fit_group_model(
-      df          = df,
+      df              = df,
       target_analytes = metals_in_df,
-      drivers     = drivers,
-      pca_obj     = pca_obj,
-      family      = family,
-      iter        = iter,
-      warmup      = warmup,
-      chains      = chains,
-      cores       = cores,
+      pca_obj         = pca_obj,
+      family          = family,
+      iter            = iter,
+      warmup          = warmup,
+      chains          = chains,
+      cores           = cores,
       ...
     )
   }
@@ -319,15 +326,14 @@ fit_imputation_model <- function(
   if (length(organics_in_df) >= 1L) {
     cli::cli_inform(c("i" = "Fitting organics model …"))
     organics_fit <- .fit_group_model(
-      df          = df,
+      df              = df,
       target_analytes = organics_in_df,
-      drivers     = drivers,
-      pca_obj     = pca_obj,
-      family      = family,
-      iter        = iter,
-      warmup      = warmup,
-      chains      = chains,
-      cores       = cores,
+      pca_obj         = pca_obj,
+      family          = family,
+      iter            = iter,
+      warmup          = warmup,
+      chains          = chains,
+      cores           = cores,
       ...
     )
   }
@@ -338,12 +344,12 @@ fit_imputation_model <- function(
       pca             = pca_obj,
       metals          = metals_fit,
       organics        = organics_fit,
-      drivers         = drivers,
-      wq_candidates   = wq_candidates,
+      required_vars   = required_vars,
+      pca_vars        = pca_vars,
       hurdle_metals   = metal_analytes,
       hurdle_organics = doc_like_analytes,
       fit_date        = Sys.Date(),
-      n_samples       = length(samples_with_all_drivers)
+      n_samples       = length(samples_with_required)
     ),
     class = "imputation_model"
   )
@@ -367,8 +373,8 @@ fit_imputation_model <- function(
 #' @export
 print.imputation_model <- function(x, ...) {
   cat(sprintf(
-    "<imputation_model>  fitted %s | %d samples | %d WQ PCs (%.0f%% var)\n",
-    x$fit_date, x$n_samples,
+    "<imputation_model>  fitted %s | %d samples | %d PCA vars | %d PCs (%.0f%% var)\n",
+    x$fit_date, x$n_samples, length(x$pca_vars),
     x$pca$n_pcs, 100 * x$pca$var_explained
   ))
   if (!is.null(x$metals))
@@ -462,12 +468,11 @@ impute_chemistry <- function(
                                 (no metals present)."))
 
     result <- .predict_and_merge(
-      df            = result,
-      group         = model$metals,
-      pca_scores    = pca_scores,
-      drivers       = model$drivers,
-      eligible_ids  = eligible,
-      return        = return
+      df           = result,
+      group        = model$metals,
+      pca_scores   = pca_scores,
+      eligible_ids = eligible,
+      return       = return
     )
   }
 
@@ -486,12 +491,11 @@ impute_chemistry <- function(
                                 (no DOC-like variable present)."))
 
     result <- .predict_and_merge(
-      df            = result,
-      group         = model$organics,
-      pca_scores    = pca_scores,
-      drivers       = model$drivers,
-      eligible_ids  = eligible_org,
-      return        = return
+      df           = result,
+      group        = model$organics,
+      pca_scores   = pca_scores,
+      eligible_ids = eligible_org,
+      return       = return
     )
   }
 
@@ -668,33 +672,12 @@ impute_chemistry <- function(
 
 #' Fit a single brms group model (metals or organics)
 #' @keywords internal
-.fit_group_model <- function(df, target_analytes, drivers, pca_obj,
+.fit_group_model <- function(df, target_analytes, pca_obj,
                               family, iter, warmup, chains, cores, ...) {
   eps_log <- 1e-9
 
-  safe_analytes   <- stats::setNames(make.names(target_analytes), target_analytes)
+  safe_analytes <- stats::setNames(make.names(target_analytes), target_analytes)
   # safe_analytes: names = safe R names, values = original names
-  # (reverse of the old convention to make lookup unambiguous)
-
-  driver_col_names <- paste0(".drv_", make.names(drivers))
-
-  # ── Wide drivers ───────────────────────────────────────────────────────────
-  driver_wide <- df |>
-    dplyr::filter(.data$analyte %in% .env$drivers) |>
-    dplyr::select("sample_id", "analyte", "value") |>
-    dplyr::summarise(
-      value = mean(.data$value, na.rm = TRUE),
-      .by   = c("sample_id", "analyte")
-    ) |>
-    tidyr::pivot_wider(
-      names_from   = "analyte",
-      values_from  = "value",
-      names_prefix = ".drv_",
-      names_repair = "universal"
-    ) |>
-    # Standardise column names: make.names applied after prefix
-    dplyr::rename_with(~ paste0(".drv_", make.names(sub("^\\.drv_", "", .x))),
-                       dplyr::starts_with(".drv_"))
 
   # ── Wide targets (log scale; NA for BDL and missing) ─────────────────────
   target_wide <- df |>
@@ -718,21 +701,14 @@ impute_chemistry <- function(
       # setNames(old_names, new_names): names = new safe names, values = old original names
     ))
 
-  # ── Join everything ────────────────────────────────────────────────────────
-  pc_cols    <- paste0("WQ_PC", seq_len(pca_obj$n_pcs))
-  wide_df    <- driver_wide |>
-    dplyr::left_join(
-      dplyr::select(pca_obj$pc_scores, "sample_id", dplyr::all_of(pc_cols)),
-      by = "sample_id"
-    ) |>
+  # ── Join PC scores with targets ───────────────────────────────────────────
+  pc_cols <- paste0("WQ_PC", seq_len(pca_obj$n_pcs))
+  wide_df <- pca_obj$pc_scores |>
+    dplyr::select("sample_id", dplyr::all_of(pc_cols)) |>
     dplyr::left_join(target_wide, by = "sample_id")
 
-  # ── brms formula ──────────────────────────────────────────────────────────
-  rhs <- paste(
-    c(paste0("s(", driver_col_names, ")"),
-      paste0("s(", pc_cols, ")")),
-    collapse = " + "
-  )
+  # ── brms formula (PC scores only — orthogonal, no collinearity) ──────────
+  rhs <- paste(paste0("s(", pc_cols, ")"), collapse = " + ")
 
   bf_list <- purrr::map(unname(safe_analytes), function(safe_nm) {
     brms::bf(stats::as.formula(paste0(safe_nm, " | mi() ~ ", rhs)))
@@ -766,46 +742,26 @@ impute_chemistry <- function(
   )
 
   list(
-    fit          = fit,
-    analytes     = target_analytes,        # original names
-    safe_names   = safe_analytes,          # names=safe, values=original
-    driver_cols  = driver_col_names,
-    pc_cols      = pc_cols,
+    fit             = fit,
+    analytes        = target_analytes,   # original names
+    safe_names      = safe_analytes,     # names=safe, values=original
+    pc_cols         = pc_cols,
     wide_sample_ids = wide_df$sample_id
   )
 }
 
 #' Predict and merge imputed values for one analyte group
 #' @keywords internal
-.predict_and_merge <- function(df, group, pca_scores, drivers,
-                                eligible_ids, return) {
+.predict_and_merge <- function(df, group, pca_scores, eligible_ids, return) {
   eps_log <- 1e-9
 
-  target_analytes  <- group$analytes
-  safe_analytes    <- group$safe_names    # names=safe, values=original
-  driver_col_names <- group$driver_cols
-  pc_cols          <- group$pc_cols
+  target_analytes <- group$analytes
+  safe_analytes   <- group$safe_names   # names=safe, values=original
+  pc_cols         <- group$pc_cols
 
   # ── Build wide prediction df for eligible samples ─────────────────────────
   df_eligible <- dplyr::filter(df, .data$sample_id %in% .env$eligible_ids)
   if (nrow(df_eligible) == 0L) return(df)
-
-  # Drivers wide
-  driver_wide <- df_eligible |>
-    dplyr::filter(.data$analyte %in% .env$drivers) |>
-    dplyr::select("sample_id", "analyte", "value") |>
-    dplyr::summarise(
-      value = mean(.data$value, na.rm = TRUE),
-      .by   = c("sample_id", "analyte")
-    ) |>
-    tidyr::pivot_wider(
-      names_from   = "analyte",
-      values_from  = "value",
-      names_prefix = ".drv_",
-      names_repair = "universal"
-    ) |>
-    dplyr::rename_with(~ paste0(".drv_", make.names(sub("^\\.drv_", "", .x))),
-                       dplyr::starts_with(".drv_"))
 
   # Targets wide (log for detected, NA for BDL/missing → to be imputed)
   target_wide <- df_eligible |>
@@ -827,18 +783,16 @@ impute_chemistry <- function(
       stats::setNames(names(safe_analytes), unname(safe_analytes))
     ))
 
-  # PC scores
+  # PC scores for eligible samples
   pc_wide <- dplyr::filter(pca_scores, .data$sample_id %in% .env$eligible_ids) |>
     dplyr::select("sample_id", dplyr::all_of(pc_cols))
 
-  # Ensure all training columns are present (add NA if analyte not in new data)
-  all_target_safe <- names(safe_analytes)  # safe R names
-  for (s in all_target_safe) {
+  # Ensure all training analyte columns are present (add NA if absent)
+  for (s in names(safe_analytes)) {
     if (!s %in% names(target_wide)) target_wide[[s]] <- NA_real_
   }
 
-  wide_new <- driver_wide |>
-    dplyr::left_join(pc_wide,    by = "sample_id") |>
+  wide_new <- pc_wide |>
     dplyr::left_join(target_wide, by = "sample_id")
 
   # ── Posterior predictions ─────────────────────────────────────────────────

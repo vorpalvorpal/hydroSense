@@ -35,7 +35,7 @@
 #     window_days        = 365,        # look-back window for chronic integration (days)
 #     percentile         = 0.80,       # ARA reference quantile
 #     impute             = TRUE,       # Bayesian imputation (brms)?  FALSE = raw values only
-#     impute_drivers     = c("pH", "EC", "NH3-N"),
+#     required_vars      = c("pH", "EC"),
 #     impute_iter        = 2000,
 #     impute_warmup      = 1000,
 #     impute_chains      = 4,
@@ -128,7 +128,7 @@ run_amspaf_pipeline <- function(
     window_days        = 365,
     percentile         = 0.80,
     impute             = TRUE,
-    impute_drivers     = c("pH", "EC", "NH3-N"),
+    required_vars      = c("pH", "EC"),
     impute_iter        = 2000,
     impute_warmup      = 1000,
     impute_chains      = 4,
@@ -321,10 +321,11 @@ run_amspaf_pipeline <- function(
   message("  Analytes passing prescreen: ", length(included), ": ",
           paste(sort(included), collapse = ", "))
 
-  # Always retain drivers, temperature, hardness (for WQ PCA), and raw NO3-N
+  # Always retain required_vars, temperature, hardness (for PCA), and raw NO3-N
   # (for classification post-imputation).  Classified NO3-N variants (NO3-N_soft
   # etc.) do not exist yet at this stage — they are produced in step 8.
-  keep_always <- c(impute_drivers, "temperature", "Hardness-total-CaCO3", "NO3-N")
+  keep_always <- c(required_vars, "pH", "EC", "NH3-N",
+                   "temperature", "Hardness-total-CaCO3", "NO3-N")
   focal_screened <- filter(focal_chem, analyte %in% union(included, keep_always))
 
   # ── 7. Imputation (optional) ───────────────────────────────────────────────
@@ -339,7 +340,7 @@ run_amspaf_pipeline <- function(
       con            = con,
       focal_features = focal_features,
       df             = focal_screened,
-      impute_drivers = impute_drivers,
+      required_vars  = required_vars,
       model_dir      = model_dir,
       refit_model    = refit_model,
       iter           = impute_iter,
@@ -477,13 +478,13 @@ run_amspaf_pipeline <- function(
 #' @param con Open DuckDB connection (read-write)
 #' @param focal_features Character vector of focal feature names (used as key)
 #' @param df Long-format chemistry df passed to `fit_imputation_model()`
-#' @param impute_drivers Character vector of required driver names
+#' @param required_vars Character vector of required variable names
 #' @param model_dir Directory for .qs model files
 #' @param refit_model Logical: if TRUE, bypass cache and always refit
 #' @param ... Passed to `fit_imputation_model()` (iter, warmup, chains, cores)
 #' @return An object of class `"imputation_model"`
 .load_or_fit_model <- function(
-    con, focal_features, df, impute_drivers, model_dir,
+    con, focal_features, df, required_vars, model_dir,
     refit_model, ...
 ) {
   # Ensure table exists
@@ -526,8 +527,8 @@ run_amspaf_pipeline <- function(
   extra <- list(...)
   model <- fit_imputation_model(
     df,
-    drivers  = impute_drivers,
-    save_dir = model_dir,
+    required_vars = required_vars,
+    save_dir      = model_dir,
     ...
   )
 
@@ -538,8 +539,9 @@ run_amspaf_pipeline <- function(
 
   save_path    <- attr(model, "save_path") %||% ""
   fit_settings <- sprintf(
-    "drivers=%s;iter=%d;chains=%d",
-    paste(model$drivers, collapse = ","),
+    "required_vars=%s;n_pca_vars=%d;iter=%d;chains=%d",
+    paste(model$required_vars, collapse = ","),
+    length(model$pca_vars),
     extra$iter   %||% 2000L,
     extra$chains %||% 4L
   )
