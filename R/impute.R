@@ -6,6 +6,9 @@
 #' intersection of this list with analytes that pass prescreen in the training
 #' data.  ORP and DO are included because they are valuable at sites where they
 #' are measured, but at most sites they will be filtered out by prescreen.
+#'
+#' Note: SO4 uses `\u00b2\u207b` (\u00b2\u207b) escape sequences to ensure correct
+#' string matching regardless of how the source file is parsed by devtools.
 #' @keywords internal
 .WQ_BLOCK_CANDIDATES <- c(
   # Field parameters / redox
@@ -13,16 +16,43 @@
   # Major cations
   "Ca", "Mg", "Na", "K",
   # Major anions & alkalinity
-  "Cl", "SO4²⁻", "Alkalinity-total-CaCO3", "F",
+  "Cl", "SO4\u00b2\u207b", "Alkalinity-total-CaCO3", "F",
   "Hardness-total-CaCO3",
-  # Dissolved solids
-  "TDS",
+  # Carbonate / alkalinity species
+  "HCO3-CaCO3", "CO3-CaCO3", "OH-CaCO3",
+  # Dissolved solids & suspended solids
+  "TDS", "TSS",
+  # Ionic balance totals
+  "Anions-total", "Cations-total",
   # Organic carbon / oxygen demand (also used for organics hurdle)
   "DOC", "TOC", "BOD", "COD", "cBOD",
   # Nitrogen (excluding NH3-N which is a required driver)
-  "NO2-N", "NO3-N", "TKN-N",
+  "NO2-N", "NO3-N", "NO2+NO3-N", "TKN-N", "N-total",
+  # Sulfur
+  "S",
   # Phosphorus
   "P-total", "P-reactive"
+)
+
+#' Analytes that must never enter the imputation model as response variables
+#'
+#' These are excluded from both the metals and organics groups.  They are
+#' typically non-concentration measurements (counts, qualitative, physical)
+#' for which a log-normal concentration model is inappropriate.
+#' @keywords internal
+.IMPUTE_EXCLUDED <- c(
+  # Microbiological counts (colony-forming units — not concentrations)
+  "Coliforms",
+  "Escherichia coli",
+  "Faecal Coliforms",
+  "Heterotrophic Plate Count (22\u00b0C)",
+  "Heterotrophic Plate Count (36\u00b0C)",
+  "E. coli",
+  # Qualitative / physical descriptors
+  "Appearance",
+  "Colour",
+  "Turbidity",
+  "Stage"
 )
 
 #' All metal-type analytes (used to define the metals imputation group)
@@ -207,7 +237,20 @@ fit_imputation_model <- function(
 
   # ── 4. Identify analyte groups ─────────────────────────────────────────────
   all_analytes <- unique(df$analyte)
-  non_wq_non_driver <- setdiff(all_analytes, union(wq_candidates, drivers))
+  # Exclude WQ block, drivers, and explicitly excluded analytes (microbiological
+  # counts, qualitative/physical descriptors — not amenable to log-normal model)
+  non_wq_non_driver <- setdiff(
+    all_analytes,
+    union(union(wq_candidates, drivers), .IMPUTE_EXCLUDED)
+  )
+
+  excl_present <- intersect(all_analytes, .IMPUTE_EXCLUDED)
+  if (length(excl_present) > 0L) {
+    cli::cli_inform(c(
+      "i" = "{length(excl_present)} analyte{?s} excluded from imputation \\
+             (non-concentration data): {.val {sort(excl_present)}}."
+    ))
+  }
 
   metals_in_df   <- intersect(non_wq_non_driver, metal_analytes)
   organics_in_df <- setdiff(non_wq_non_driver, metal_analytes)
@@ -220,7 +263,24 @@ fit_imputation_model <- function(
   ))
 
   if (length(metals_in_df) == 0L && length(organics_in_df) == 0L) {
-    cli::cli_abort("No target analytes found outside the driver and WQ block sets.")
+    cli::cli_warn(
+      "No target analytes found outside the driver, WQ block, and excluded sets. \\
+       Returning model with no fitted groups (imputation will be a no-op)."
+    )
+    return(structure(
+      list(
+        pca             = NULL,
+        metals          = NULL,
+        organics        = NULL,
+        drivers         = drivers,
+        wq_candidates   = wq_candidates,
+        hurdle_metals   = metal_analytes,
+        hurdle_organics = doc_like_analytes,
+        fit_date        = Sys.Date(),
+        n_samples       = length(samples_with_all_drivers)
+      ),
+      class = "imputation_model"
+    ))
   }
 
   # ── 5. Fit PCA on WQ block ─────────────────────────────────────────────────
