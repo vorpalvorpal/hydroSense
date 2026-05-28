@@ -275,11 +275,21 @@ add_amspaf <- function(
         guideline_dir = guideline_dir
       )
     }) |>
-    dplyr::ungroup() |>
-    dplyr::mutate(
-      analyte  = "AmsPAF",
-      detected = TRUE
-    )
+    dplyr::ungroup()
+
+  ## End-of-call summary of dropped analytes (single message rather than
+  ## per-sample warnings — important for large datasets)
+  .summarise_amspaf_diagnostics(amspaf_df, min_analytes)
+
+  ## dropped_analytes is a diagnostic list-column; remove from the final
+  ## output rows (still emitted in summary above)
+  if ("dropped_analytes" %in% names(amspaf_df))
+    amspaf_df <- dplyr::select(amspaf_df, -"dropped_analytes")
+
+  amspaf_df <- dplyr::mutate(amspaf_df,
+    analyte  = "AmsPAF",
+    detected = TRUE
+  )
 
   ## Tier breaks / regulatory interpretation are intentionally NOT provided
   ## by this package.  AmsPAF is a continuous risk metric (% of species
@@ -483,23 +493,25 @@ compute_amspaf_per_sample <- function(
           ref_norm = tidyr::replace_na(.data$ref_norm, 0)
         )
 
-      if (nrow(tox_rows) < min_analytes) {
-        return(tibble::tibble(
-          value              = numeric(0),
-          n_analytes_used    = integer(0),
-          n_analytes_imputed = integer(0),
-          dominant_analyte   = character(0),
-          max_paf            = numeric(0),
-          analyte_pafs       = list()
-        ))
-      }
+      empty_row <- tibble::tibble(
+        value              = numeric(0),
+        n_analytes_used    = integer(0),
+        n_analytes_imputed = integer(0),
+        dominant_analyte   = character(0),
+        max_paf            = numeric(0),
+        analyte_pafs       = list(),
+        dropped_analytes   = list()
+      )
+
+      if (nrow(tox_rows) < min_analytes) return(empty_row)
 
       ## ── Chemistry normalisation ────────────────────────────────────────
       ##
       ## BDL (quantified == FALSE): treated as zero exposure; C_norm = 0.
       ## Detected: apply normalisation formula using co-analyte values.
       ## Rows where normalisation returns NA (missing required co-analyte)
-      ## are dropped and reported.
+      ## are dropped and recorded (per-sample list column; summarised
+      ## at the end of add_amspaf()).
       tox_rows <- dplyr::mutate(
         tox_rows,
         C_norm = purrr::pmap_dbl(
@@ -521,26 +533,15 @@ compute_amspaf_per_sample <- function(
         )
       )
 
-      ## Drop rows where normalisation failed (NA C_norm)
-      n_dropped_norm <- sum(is.na(tox_rows$C_norm))
-      if (n_dropped_norm > 0L) {
-        cli::cli_inform(c(
-          "!" = "Sample {.val {unique(.y$sample_id)}}: {n_dropped_norm} analyte \\
-                 row{?s} dropped (normalisation returned NA — missing co-analyte)."
-        ), .frequency = "always", .frequency_id = paste0(unique(.y$sample_id), "_norm"))
-        tox_rows <- dplyr::filter(tox_rows, !is.na(.data$C_norm))
-      }
+      ## Capture dropped analyte names + reason before filtering
+      dropped <- dplyr::filter(tox_rows, is.na(.data$C_norm)) |>
+        dplyr::transmute(
+          .data$analyte,
+          reason = "missing_co_analyte"
+        )
+      tox_rows <- dplyr::filter(tox_rows, !is.na(.data$C_norm))
 
-      if (nrow(tox_rows) < min_analytes) {
-        return(tibble::tibble(
-          value              = numeric(0),
-          n_analytes_used    = integer(0),
-          n_analytes_imputed = integer(0),
-          dominant_analyte   = character(0),
-          max_paf            = numeric(0),
-          analyte_pafs       = list()
-        ))
-      }
+      if (nrow(tox_rows) < min_analytes) return(empty_row)
 
       ## ARA shift
       tox_rows <- dplyr::mutate(
@@ -593,10 +594,38 @@ compute_amspaf_per_sample <- function(
         max_paf            = if (nrow(tox_rows) > 0L) max(tox_rows$PAF, na.rm = TRUE) else NA_real_,
         analyte_pafs       = list(
           dplyr::select(tox_rows, "analyte", "C_adj", "PAF", "moa_group")
-        )
+        ),
+        dropped_analytes   = list(dropped)
       )
     }) |>
     dplyr::ungroup()
+}
+
+#' Summarise per-sample dropped-analyte tally and emit a single cli message
+#' @keywords internal
+.summarise_amspaf_diagnostics <- function(amspaf_df, min_analytes) {
+  if (!"dropped_analytes" %in% names(amspaf_df) || nrow(amspaf_df) == 0L)
+    return(invisible(NULL))
+
+  drop_long <- amspaf_df |>
+    dplyr::select(dplyr::any_of(c("sample_id", "site_id")), "dropped_analytes") |>
+    tidyr::unnest(cols = "dropped_analytes")
+
+  if (nrow(drop_long) == 0L) return(invisible(NULL))
+
+  per_analyte <- drop_long |>
+    dplyr::count(.data$analyte, .data$reason, name = "n_samples")
+
+  n_total_drops <- nrow(drop_long)
+  n_samples_aff <- dplyr::n_distinct(drop_long$sample_id)
+
+  cli::cli_inform(c(
+    "i" = "add_amspaf: {n_total_drops} analyte row{?s} dropped across \\
+           {n_samples_aff} sample{?s} (normalisation co-analyte missing).",
+    paste0("    ", per_analyte$analyte, ": ", per_analyte$n_samples,
+           " sample", ifelse(per_analyte$n_samples == 1L, "", "s"))
+  ))
+  invisible(per_analyte)
 }
 
 

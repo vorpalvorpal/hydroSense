@@ -332,7 +332,8 @@ run_amspaf_pipeline <- function(
 
   # ── 6. Prescreen ──────────────────────────────────────────────────────────
   message("\n=== 6. Prescreen analytes (k = ", min_detect_freq, ") ===")
-  included <- prescreen_analytes(focal_chem, k = min_detect_freq)
+  included <- prescreen_analytes(focal_chem, k = min_detect_freq,
+                                  protect = required_vars)
   message("  Analytes passing prescreen: ", length(included), ": ",
           paste(sort(included), collapse = ", "))
 

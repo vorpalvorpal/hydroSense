@@ -8,9 +8,11 @@
 #'
 #' Analytes listed in `coanalytes_required` in the bundled metadata (e.g. pH,
 #' DOC, Ca, Mg, hardness, temperature) are **automatically protected** from
-#' exclusion regardless of detection frequency. These are required for chemistry
-#' normalisation and imputation. The fixed imputation drivers (`"pH"`, `"EC"`,
-#' `"DOC"`) are also always protected. Protected analytes that fall below the
+#' exclusion regardless of detection frequency, because they are needed for
+#' chemistry normalisation in [add_amspaf()].  Additional analytes can be
+#' protected via the `protect` argument (typical use: pass the
+#' `required_vars` you intend to use in [fit_imputation_model()] here so
+#' those vars survive prescreen).  Protected analytes that fall below the
 #' threshold are reported separately so the caller is aware.
 #'
 #' @param df Long-format chemistry data frame with at least columns
@@ -19,6 +21,10 @@
 #' @param k Minimum detection frequency (proportion, 0–1). Analytes with
 #'   `n_detected / n_samples < k` are excluded unless protected. Default
 #'   `0.05` (5 %).
+#' @param protect Optional character vector of additional analyte names to
+#'   protect from prescreen exclusion, on top of the metadata-derived
+#'   co-analytes.  Default `NULL`.  Pass the `required_vars` from your
+#'   downstream imputation step here.
 #' @param group_by_feature Logical. If `TRUE`, detection frequency is computed
 #'   per `site_id` and an analyte is included only if it passes in *all*
 #'   features (worst-case feature, pooled counts). If `FALSE` (default),
@@ -50,6 +56,7 @@
 prescreen_analytes <- function(
     df,
     k = 0.05,
+    protect          = NULL,
     group_by_feature = FALSE,
     analyte_metadata = NULL,
     return = c("vector", "table")
@@ -59,6 +66,7 @@ prescreen_analytes <- function(
   checkmate::assert_data_frame(df)
   checkmate::assert_names(names(df), must.include = c("analyte", "detected"))
   checkmate::assert_number(k, lower = 0, upper = 1)
+  checkmate::assert_character(protect, null.ok = TRUE, any.missing = FALSE)
   checkmate::assert_flag(group_by_feature)
 
   if (group_by_feature) {
@@ -73,9 +81,6 @@ prescreen_analytes <- function(
   }
 
   # ── Identify protected analytes ───────────────────────────────────────────
-  # Fixed imputation drivers are always protected.
-  fixed_drivers <- c("pH", "EC", "DOC")
-
   # Co-analytes required by normalisation formulas are auto-protected.
   meta <- .load_analyte_metadata(analyte_metadata)
   co_req_all <- meta$coanalytes_required[!is.na(meta$coanalytes_required) &
@@ -85,7 +90,7 @@ prescreen_analytes <- function(
   ))
   coanalytes_from_meta <- coanalytes_from_meta[nzchar(coanalytes_from_meta)]
 
-  protected_analytes <- unique(c(fixed_drivers, coanalytes_from_meta))
+  protected_analytes <- unique(c(protect, coanalytes_from_meta))
 
   # ── Compute detection frequency ───────────────────────────────────────────
   if (group_by_feature) {
