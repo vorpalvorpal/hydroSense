@@ -17,7 +17,9 @@
   "Ca", "Mg", "Na", "K",
   # Major anions & alkalinity
   "Cl", "SO4\u00b2\u207b", "Alkalinity-total-CaCO3", "F",
-  "Hardness-total-CaCO3",
+  # Hardness: total water hardness in mg/L as CaCO3 equivalents.
+  # Callers must convert their data to this convention before passing in.
+  "hardness",
   # Carbonate / alkalinity species
   "HCO3-CaCO3", "CO3-CaCO3", "OH-CaCO3",
   # Dissolved solids & suspended solids
@@ -72,7 +74,7 @@
 #' [impute_coanalytes()] so that [add_amspaf()] has values to normalise
 #' against.  pH and EC are excluded — they are always present (required vars).
 #' @keywords internal
-.COANALYTE_TARGETS <- c("DOC", "Ca", "Mg", "Hardness-total-CaCO3")
+.COANALYTE_TARGETS <- c("DOC", "Ca", "Mg", "hardness")
 
 
 # ── fit_imputation_model() ────────────────────────────────────────────────────
@@ -551,7 +553,7 @@ impute_chemistry <- function(
 #'   object and the list of `pca_vars`).
 #' @param targets Co-analyte names to impute when missing.  Default
 #'   `.COANALYTE_TARGETS` (`"DOC"`, `"Ca"`, `"Mg"`,
-#'   `"Hardness-total-CaCO3"`).  Only targets present in `model$pca_vars`
+#'   `"hardness"`).  Only targets present in `model$pca_vars`
 #'   are processed; others are silently skipped with a warning.
 #' @param min_obs Minimum number of quantified observations required to fit a
 #'   GAM for a target.  Targets with fewer observations are skipped.

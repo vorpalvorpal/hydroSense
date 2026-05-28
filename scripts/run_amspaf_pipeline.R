@@ -65,7 +65,7 @@
 # • Duplicate (sample_id, analyte) rows (e.g. field + lab EC/pH) are resolved
 #   by preferring the row where lab_method.method = "field".
 # • NO3-N is classified into NO3-N_soft / NO3-N_mod / NO3-N_hard using the
-#   co-sampled Hardness-total-CaCO3 value AFTER imputation (so that hardness
+#   co-sampled hardness value AFTER imputation (so that hardness
 #   is available to the WQ PCA during model fitting).
 # • Reference features are not imputed (raw field measurements only).
 # • Fitted imputation models are saved as .qs files and their paths recorded
@@ -259,7 +259,12 @@ run_amspaf_pipeline <- function(
       value    = if_else(!analyte %in% .NO_CONVERT, value * 1000, value),
       datetime = as.Date(datetime),
       detected = as.logical(detected),
-      analyte  = if_else(analyte == "Temperature", "temperature", analyte)
+      # Translate DB analyte names to the names the package uses internally.
+      analyte  = dplyr::case_when(
+        analyte == "Temperature"           ~ "temperature",
+        analyte == "Hardness-total-CaCO3"  ~ "hardness",
+        TRUE                                ~ analyte
+      )
     )
 
   message("  Rows after conversion: ", nrow(chem))
@@ -306,7 +311,7 @@ run_amspaf_pipeline <- function(
 
   # ── 5. Split focal vs reference ───────────────────────────────────────────
   # Note: NO3-N classification is deferred to step 8 (after imputation) so
-  # that Hardness-total-CaCO3 remains available to the WQ PCA during fitting.
+  # that hardness remains available to the WQ PCA during fitting.
   focal_chem <- filter(chem, site_id %in% focal_features)
   ref_chem   <- filter(chem, site_id %in% reference_features)
 
@@ -314,6 +319,14 @@ run_amspaf_pipeline <- function(
   if (nrow(ref_chem)   == 0) stop("No chemistry rows for reference features after filtering.")
 
   message("  Focal rows: ", nrow(focal_chem), " | Reference rows: ", nrow(ref_chem))
+
+  # ── 5b. Pre-imputation hardness reconciliation ────────────────────────────
+  # Fill hardness from Ca+Mg (or Ca/Mg from hardness + the other) wherever
+  # exactly two of the three are measured.  Warn if all three present but
+  # inconsistent.  Cheap, no model required — derived from stoichiometry.
+  message("\n=== 5b. Hardness reconciliation (pre-imputation) ===")
+  focal_chem <- derive_hardness(focal_chem, verbose = TRUE)
+  ref_chem   <- derive_hardness(ref_chem,   verbose = TRUE)
 
   # ── 6. Prescreen ──────────────────────────────────────────────────────────
   message("\n=== 6. Prescreen analytes (k = ", min_detect_freq, ") ===")
@@ -325,7 +338,7 @@ run_amspaf_pipeline <- function(
   # (for classification post-imputation).  Classified NO3-N variants (NO3-N_soft
   # etc.) do not exist yet at this stage — they are produced in step 8.
   keep_always <- c(required_vars, "pH", "EC", "NH3-N",
-                   "temperature", "Hardness-total-CaCO3", "NO3-N")
+                   "temperature", "hardness", "NO3-N")
   focal_screened <- filter(focal_chem, analyte %in% union(included, keep_always))
 
   # ── 7. Imputation (optional) ───────────────────────────────────────────────
@@ -355,14 +368,19 @@ run_amspaf_pipeline <- function(
     message("  Metals/organics imputation done in ", t_imp, " s | Rows: ", n_imp,
             sprintf(" (%.0f%%)", 100 * n_imp / nrow(imp_result)))
 
-    # Co-analyte imputation (DOC, Ca, Mg, Hardness) — separate GAM step,
+    # Co-analyte imputation (DOC, Ca, Mg, hardness) — separate GAM step,
     # uses same PCA but never feeds back into metals model.
-    message("  Imputing co-analytes (DOC, Ca, Mg, Hardness) …")
+    message("  Imputing co-analytes (DOC, Ca, Mg, hardness) …")
     focal_imp <- impute_coanalytes(imp_result, model)
     n_coa <- sum(focal_imp$imputed & focal_imp$imputed_kind == "missing" &
                    focal_imp$analyte %in% leachatetools:::.COANALYTE_TARGETS,
                  na.rm = TRUE)
     message("  Co-analyte rows imputed: ", n_coa)
+
+    # Post-imputation hardness reconciliation — fill hardness wherever
+    # Ca and Mg were just imputed but hardness itself wasn't.
+    message("  Reconciling hardness from imputed Ca/Mg …")
+    focal_imp <- derive_hardness(focal_imp, verbose = TRUE)
 
   } else {
     message("\n=== 7. Imputation skipped (impute = FALSE) ===")
@@ -371,7 +389,7 @@ run_amspaf_pipeline <- function(
 
   # ── 8. NO3-N hardness classification (after imputation) ───────────────────
   # Hardness rows were preserved through imputation as WQ block variables.
-  # Classify now; .classify_no3() removes raw NO3-N + Hardness-total-CaCO3.
+  # Classify NO3-N now; hardness rows are kept for downstream normalisation.
   message("\n=== 8. NO3-N hardness classification ===")
   focal_final <- .classify_no3(focal_imp)
 
@@ -578,12 +596,13 @@ run_amspaf_pipeline <- function(
 #' Classify NO3-N into hardness variants
 #'
 #' @param df Long-format chemistry df containing "NO3-N" and optionally
-#'   "Hardness-total-CaCO3" rows.
-#' @return df with NO3-N rows replaced by NO3-N_soft/mod/hard; both raw NO3-N
-#'   and Hardness-total-CaCO3 rows are removed from the result.
+#'   "hardness" rows.
+#' @return df with NO3-N rows replaced by NO3-N_soft/mod/hard; raw NO3-N
+#'   rows are removed from the result.  Hardness rows are preserved
+#'   downstream so that add_amspaf() can use them for Cd/Pb/Zn normalisation.
 .classify_no3 <- function(df) {
   hardness <- df |>
-    filter(analyte == "Hardness-total-CaCO3", detected) |>
+    filter(analyte == "hardness", detected) |>
     select(sample_id, hardness_mgL = value)
 
   no3 <- df |>
@@ -603,8 +622,9 @@ run_amspaf_pipeline <- function(
     message("  NO3-N classified → ", msg)
   }
 
+  # Remove raw NO3-N rows; keep hardness for downstream normalisation.
   df |>
-    filter(!analyte %in% c("NO3-N", "Hardness-total-CaCO3")) |>
+    filter(analyte != "NO3-N") |>
     bind_rows(no3)
 }
 
