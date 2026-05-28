@@ -426,7 +426,7 @@ run_amspaf_pipeline <- function(
   suppressMessages(
     prep_ref <- prepare_reference(ref_final, summary = ref_summary)
   )
-  message("  Reference analytes: ", nrow(prep_ref$normalised_quantiles),
+  message("  Reference analytes: ", nrow(prep_ref$ref_table),
           " | Dropped: ", length(prep_ref$dropped))
 
   # ── 12. Per-sample AmsPAF ──────────────────────────────────────────────────

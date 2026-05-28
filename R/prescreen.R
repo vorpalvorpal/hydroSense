@@ -15,9 +15,9 @@
 #' those vars survive prescreen).  Protected analytes that fall below the
 #' threshold are reported separately so the caller is aware.
 #'
-#' @param df Long-format chemistry data frame with at least columns
-#'   `analyte` (character) and `detected` (logical). Typically also
-#'   contains `sample_id` and `site_id`.
+#' @param df Long-format chemistry data frame.  Required columns:
+#'   `sample_id` (character), `analyte` (character), `detected` (logical).
+#'   When `group_by_feature = TRUE`, also requires `site_id` (character).
 #' @param k Minimum detection frequency (proportion, 0–1). Analytes with
 #'   `n_detected / n_samples < k` are excluded unless protected. Default
 #'   `0.05` (5 %).
@@ -64,7 +64,8 @@ prescreen_analytes <- function(
   return <- match.arg(return)
 
   checkmate::assert_data_frame(df)
-  checkmate::assert_names(names(df), must.include = c("analyte", "detected"))
+  checkmate::assert_names(names(df),
+    must.include = c("sample_id", "analyte", "detected"))
   checkmate::assert_number(k, lower = 0, upper = 1)
   checkmate::assert_character(protect, null.ok = TRUE, any.missing = FALSE)
   checkmate::assert_flag(group_by_feature)
@@ -93,27 +94,32 @@ prescreen_analytes <- function(
   protected_analytes <- unique(c(protect, coanalytes_from_meta))
 
   # ── Compute detection frequency ───────────────────────────────────────────
+  # n_samples counts DISTINCT samples (not rows) so duplicated analyte rows in
+  # a single sample don't inflate the denominator.
   if (group_by_feature) {
-    tbl <- df |>
+    per_feat <- df |>
       dplyr::group_by(.data$analyte, .data$site_id) |>
       dplyr::summarise(
-        n_samples  = dplyr::n(),
-        n_detected = sum(.data$detected, na.rm = TRUE),
+        n_samples  = dplyr::n_distinct(.data$sample_id),
+        n_detected = dplyr::n_distinct(.data$sample_id[.data$detected]),
         .groups    = "drop"
       ) |>
+      dplyr::mutate(feat_freq = .data$n_detected / .data$n_samples)
+
+    tbl <- per_feat |>
       dplyr::group_by(.data$analyte) |>
       dplyr::summarise(
         n_samples   = sum(.data$n_samples),
         n_detected  = sum(.data$n_detected),
-        detect_freq = min(.data$n_detected / .data$n_samples),  # worst-case feature
+        detect_freq = min(.data$feat_freq),  # worst-case feature
         .groups     = "drop"
       )
   } else {
     tbl <- df |>
       dplyr::group_by(.data$analyte) |>
       dplyr::summarise(
-        n_samples   = dplyr::n(),
-        n_detected  = sum(.data$detected, na.rm = TRUE),
+        n_samples   = dplyr::n_distinct(.data$sample_id),
+        n_detected  = dplyr::n_distinct(.data$sample_id[.data$detected]),
         detect_freq = .data$n_detected / .data$n_samples,
         .groups     = "drop"
       )

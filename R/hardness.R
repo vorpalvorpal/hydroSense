@@ -107,10 +107,13 @@ derive_hardness <- function(df, tolerance = 0.05, verbose = TRUE) {
   }
 
   # ── Consistency check on all-three samples ────────────────────────────────
+  # Use max(hardness, hardness_calc) as the denominator so that hardness ≈ 0
+  # samples still produce a meaningful relative error (and don't divide-by-0)
   all3 <- dplyr::filter(trio, .data$.case == "all_three") |>
     dplyr::mutate(
       hardness_calc = k_Ca * .data$Ca + k_Mg * .data$Mg,
-      rel_err       = abs(.data$hardness_calc - .data$hardness) / .data$hardness,
+      denom         = pmax(.data$hardness, .data$hardness_calc, 1e-9),
+      rel_err       = abs(.data$hardness_calc - .data$hardness) / .data$denom,
       inconsistent  = .data$rel_err > tolerance
     )
 

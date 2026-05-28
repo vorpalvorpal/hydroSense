@@ -7,7 +7,7 @@
 ##
 ## The pipeline under test:
 ##   prescreen_analytes() → [impute_chemistry()] →
-##   compute_chronic_chemistry() → prepare_reference() → add_amspaf()
+##   time_weighted_aggregate() → prepare_reference() → add_amspaf()
 
 library(testthat)
 library(leachatetools)
@@ -84,10 +84,10 @@ test_that("§1a prescreen_analytes returns expected analytes and protects driver
   expect_true("DOC" %in% included)
 })
 
-test_that("§1b compute_chronic_chemistry produces one row per (date × site × analyte)", {
+test_that("§1b time_weighted_aggregate produces one row per (date × site × analyte)", {
   chem       <- make_pipeline_chem()
   focal      <- as.Date(c("2025-04-01", "2025-10-01"))
-  chr_chem   <- compute_chronic_chemistry(chem, focal_dates = focal,
+  chr_chem   <- time_weighted_aggregate(chem, focal_dates = focal,
                                           tau_days = 90, window_days = 365)
 
   # Each focal date × each site × each analyte should have exactly one row
@@ -110,23 +110,23 @@ test_that("§1c prepare_reference produces a valid prepared_reference object", {
   chem    <- make_pipeline_chem()
   ref_raw <- dplyr::filter(chem, site_id == "ref")
   focal   <- as.Date("2025-04-01")
-  chr_ref <- compute_chronic_chemistry(ref_raw, focal_dates = focal,
+  chr_ref <- time_weighted_aggregate(ref_raw, focal_dates = focal,
                                        tau_days = 90, window_days = 365)
   prep    <- prepare_reference(chr_ref)
 
   expect_s3_class(prep, "prepared_reference")
-  expect_true(is.data.frame(prep$normalised_quantiles))
-  expect_true(all(c("analyte", "ref_norm") %in% names(prep$normalised_quantiles)))
-  expect_true(all(is.finite(prep$normalised_quantiles$ref_norm)))
-  expect_equal(prep$percentile, 0.80)
+  expect_true(is.data.frame(prep$ref_table))
+  expect_true(all(c("analyte", "ref_norm", "n_obs") %in% names(prep$ref_table)))
+  expect_true(all(is.finite(prep$ref_table$ref_norm)))
+  expect_equal(prep$summary, "geom_mean")
 })
 
-test_that("§1d expand_focal_dates integrates with compute_chronic_chemistry", {
+test_that("§1d expand_focal_dates integrates with time_weighted_aggregate", {
   chem       <- make_pipeline_chem()
   focal      <- expand_focal_dates("2025-01-01", "2025-03-31", by = "week")
   expect_gte(length(focal), 13L)  # roughly 13 weekly intervals
 
-  chr_chem <- compute_chronic_chemistry(chem, focal_dates = focal,
+  chr_chem <- time_weighted_aggregate(chem, focal_dates = focal,
                                         tau_days = 90, window_days = 365)
   # One row per (date × site × analyte)
   n_sites    <- length(unique(chem$site_id))
@@ -148,7 +148,7 @@ test_that("§1e chronic reference baseline is lower for reference than downstrea
   )
 
   focal    <- as.Date("2025-06-01")
-  chr_chem <- compute_chronic_chemistry(chem, focal_dates = focal,
+  chr_chem <- time_weighted_aggregate(chem, focal_dates = focal,
                                         tau_days = 90, window_days = 365)
 
   ref_cu <- chr_chem$value[chr_chem$site_id == "ref" & chr_chem$analyte == "Cu"]
@@ -176,8 +176,8 @@ test_that("§2 full chronic AmsPAF pipeline runs end-to-end", {
   ds_chem  <- dplyr::filter(chem_f, site_id == "ds")
   ref_chem <- dplyr::filter(chem_f, site_id == "ref")
 
-  chr_ds  <- compute_chronic_chemistry(ds_chem, focal_dates = focal)
-  chr_ref <- compute_chronic_chemistry(ref_chem, focal_dates = focal)
+  chr_ds  <- time_weighted_aggregate(ds_chem, focal_dates = focal)
+  chr_ref <- time_weighted_aggregate(ref_chem, focal_dates = focal)
 
   # Step 3: prepare reference
   prep_ref <- prepare_reference(chr_ref)
@@ -208,7 +208,7 @@ test_that("§2 full chronic AmsPAF pipeline runs end-to-end", {
 # Gated on BRMS_SMOKE_TEST=1 and brms/Stan installation.
 # ─────────────────────────────────────────────────────────────────────────────
 
-test_that("§3 full pipeline with imputation runs end-to-end", {
+test_that("§3 full pipeline with imputation runs end-to-end (Path B)", {
   skip_if_not(
     requireNamespace("brms", quietly = TRUE) &&
       identical(Sys.getenv("BRMS_SMOKE_TEST"), "1"),
@@ -217,41 +217,38 @@ test_that("§3 full pipeline with imputation runs end-to-end", {
 
   chem <- make_pipeline_chem()
 
-  # Step 1: prescreen (all analytes pass in synthetic data)
-  included <- prescreen_analytes(chem, k = 0.05)
+  # Step 1: prescreen
+  included <- prescreen_analytes(chem, k = 0.05,
+                                  protect = c("pH", "EC"))
   chem_f   <- dplyr::filter(chem, analyte %in% included)
 
-  # Step 2: impute (fast settings for CI)
-  imp <- impute_chemistry(
+  # Step 2: fit + impute (fast settings)
+  model <- fit_imputation_model(
     chem_f,
-    drivers = c("pH", "EC", "DOC"),
+    required_vars = c("pH", "EC"),
     iter    = 500,
     warmup  = 250,
     chains  = 1,
     cores   = 1
   )
+  imp <- impute_chemistry(chem_f, model)
 
   expect_true(all(is.finite(imp$value)))
   expect_true("imputed" %in% names(imp))
 
-  # Step 3: chronic
-  focal <- as.Date(c("2025-04-01", "2025-10-01"))
+  # Step 3: per-sample AmsPAF
+  prep_ref <- prepare_reference(dplyr::filter(imp, site_id == "ref"))
+  ps       <- add_amspaf(dplyr::filter(imp, site_id == "ds"),
+                         reference = prep_ref)
+  ps_amspaf <- dplyr::filter(ps, analyte == "AmsPAF")
+  expect_gte(nrow(ps_amspaf), 1L)
 
-  chr_ds  <- compute_chronic_chemistry(
-    dplyr::filter(imp, site_id == "ds"), focal_dates = focal
+  # Step 4: chronic Path B — time-weighted arithmetic mean of per-sample AmsPAF
+  focal     <- as.Date(c("2025-04-01", "2025-10-01"))
+  chr_amspaf <- time_weighted_aggregate(
+    ps_amspaf, focal_dates = focal, summary = "arith_mean"
   )
-  chr_ref <- compute_chronic_chemistry(
-    dplyr::filter(imp, site_id == "ref"), focal_dates = focal
-  )
 
-  # Step 4: prepare reference + AmsPAF
-  prep_ref <- prepare_reference(chr_ref)
-  out      <- add_amspaf(chr_ds, reference = prep_ref)
-
-  amspaf_rows <- dplyr::filter(out, analyte == "AmsPAF")
-  expect_gte(nrow(amspaf_rows), 1L)
-  expect_true(all(is.finite(amspaf_rows$value)))
-
-  # n_analytes_imputed should be propagated from imp through chronic to AmsPAF
-  expect_true("n_analytes_imputed" %in% names(amspaf_rows))
+  expect_gte(nrow(chr_amspaf), 1L)
+  expect_true(all(is.finite(chr_amspaf$value)))
 })

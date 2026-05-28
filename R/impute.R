@@ -278,7 +278,7 @@ fit_imputation_model <- function(
   )
 
   cli::cli_inform(c(
-    "i" = "Chemistry PCA: {length(pca_vars_present)} variable{?s) available: \\
+    "i" = "Chemistry PCA: {length(pca_vars_present)} variable{?s} available: \\
            {.val {sort(pca_vars_present)}}."
   ))
 
@@ -564,7 +564,7 @@ impute_chemistry <- function(
 #' absent are filled; BDL observations are left unchanged.
 #'
 #' This step belongs **after** [impute_chemistry()] and **before**
-#' [compute_chronic_chemistry()].  Imputed co-analyte values are never fed
+#' [time_weighted_aggregate()].  Imputed co-analyte values are never fed
 #' back into the metals/organics model — the brms model ran on measured values
 #' only and is already done.
 #'
@@ -580,9 +580,9 @@ impute_chemistry <- function(
 #' @param model Fitted model from [fit_imputation_model()] (provides the PCA
 #'   object and the list of `pca_vars`).
 #' @param targets Co-analyte names to impute when missing.  Default
-#'   `.COANALYTE_TARGETS` (`"DOC"`, `"Ca"`, `"Mg"`,
-#'   `"hardness"`).  Only targets present in `model$pca_vars`
-#'   are processed; others are silently skipped with a warning.
+#'   `.COANALYTE_TARGETS` (`"DOC"`, `"Ca"`, `"Mg"`, `"hardness"`).  Only
+#'   targets present in `model$pca_vars` are processed; others are
+#'   skipped with a warning.
 #' @param min_obs Minimum number of quantified observations required to fit a
 #'   GAM for a target.  Targets with fewer observations are skipped.
 #'   Default `10L`.
@@ -727,10 +727,15 @@ impute_coanalytes <- function(
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-#' Fit PCA on the WQ block for training data
+#' Fit the unified chemistry PCA on training data
+#'
+#' Despite the historical `wq_*` naming, this PCA spans the full unified
+#' chemistry predictor set (`pca_vars` in `fit_imputation_model()`), not just
+#' the WQ block.  PC column names retain the `WQ_PC` prefix for consistency
+#' with stored `.qs` model files.
 #' @keywords internal
 .prepare_wq_pca <- function(df, wq_vars, min_var_explained = 0.75, max_pcs = 4L) {
-  # Pivot WQ to wide (one row per sample); missing cells → NA
+  # Pivot chemistry vars to wide (one row per sample); missing cells → NA
   wq_wide <- df |>
     dplyr::filter(.data$analyte %in% .env$wq_vars) |>
     dplyr::select("sample_id", "analyte", "value") |>
@@ -754,11 +759,11 @@ impute_coanalytes <- function(
   col_sds   <- apply(wq_matrix, 2, stats::sd, na.rm = TRUE)
   keep_cols <- !is.na(col_sds) & col_sds > 0
   if (!any(keep_cols))
-    cli::cli_abort("All WQ block variables have zero variance — cannot fit PCA.")
+    cli::cli_abort("All PCA variables have zero variance — cannot fit PCA.")
   if (!all(keep_cols)) {
     dropped <- colnames(wq_matrix)[!keep_cols]
-    cli::cli_inform(c("!" = "WQ PCA: dropping zero-variance variable{?s}: \\
-                             {.val {dropped}}"))
+    cli::cli_inform(c("!" = "Chemistry PCA: dropping zero-variance variable{?s}: \\
+                              {.val {dropped}}"))
     wq_matrix <- wq_matrix[, keep_cols, drop = FALSE]
   }
 
@@ -772,10 +777,10 @@ impute_coanalytes <- function(
   if (is.na(n_needed) || n_needed > max_pcs) {
     n_pcs <- min(max_pcs, length(cum_var))
     cli::cli_warn(c(
-      "!" = "WQ PCA: first {n_pcs} axis/axes explain only \\
-             {round(100 * cum_var[n_pcs], 1)}% of WQ variance \\
+      "!" = "Chemistry PCA: first {n_pcs} axis/axes explain only \\
+             {round(100 * cum_var[n_pcs], 1)}% of variance \\
              (target: {min_var_explained * 100}%).",
-      "i" = "Consider adding more WQ variables or loosening \\
+      "i" = "Consider adding more {.arg pca_vars} or loosening \\
              {.arg min_var_explained}."
     ))
   } else {

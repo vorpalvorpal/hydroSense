@@ -218,8 +218,10 @@ time_weighted_aggregate <- function(
       .weight    = w,
       .n_in_win  = as.integer(in_window[match(use_uids, sample_dates$sample_id)])
     )
-    # anchor is NOT counted in n_samples_in_window
-    sample_wt$.n_in_win[sample_wt$sample_id == (if (!is.na(anchor_uid)) anchor_uid else "__none__")] <- 0L
+    # Anchor is not counted in n_samples_in_window (it's outside the window)
+    if (!is.na(anchor_uid)) {
+      sample_wt$.n_in_win[sample_wt$sample_id == anchor_uid] <- 0L
+    }
 
     # Filter chemistry to used samples
     chem_use <- feat_df |>
@@ -258,9 +260,10 @@ time_weighted_aggregate <- function(
 
   if (length(results) == 0L) {
     cli::cli_abort(c(
-      "No chronic chemistry could be computed.",
+      "No values could be aggregated for any (focal_date, site_id).",
       "i" = "Check that {.arg focal_dates} and {.arg df$datetime} overlap \\
-             within {.arg window_days} = {window_days} days."
+             within {.arg window_days} = {window_days} days, and that \\
+             {.arg df$site_id} matches the sites in {.arg focal_dates}."
     ))
   }
 
@@ -270,32 +273,6 @@ time_weighted_aggregate <- function(
       "analyte", "value", "detected",
       "n_samples_in_window", "n_imputed_in_window"
     )
-}
-
-#' Time-weighted chronic chemistry (alias)
-#'
-#' Backwards-compatible alias for [time_weighted_aggregate()].  Identical
-#' behaviour; retained because earlier versions of the package used this name.
-#' New code should call [time_weighted_aggregate()] directly.
-#'
-#' @inheritParams time_weighted_aggregate
-#' @export
-compute_chronic_chemistry <- function(
-    df,
-    focal_dates,
-    tau_days    = 90,
-    window_days = 365,
-    summary     = c("geom_mean", "arith_mean", "p90"),
-    anchor_outside_window = TRUE,
-    eps         = 1e-9
-) {
-  time_weighted_aggregate(
-    df = df, focal_dates = focal_dates,
-    tau_days = tau_days, window_days = window_days,
-    summary = summary,
-    anchor_outside_window = anchor_outside_window,
-    eps = eps
-  )
 }
 
 # ── expand_focal_dates ────────────────────────────────────────────────────────
@@ -318,7 +295,7 @@ compute_chronic_chemistry <- function(
 #' # Daily sequence for 2024–2025
 #' focal_dates <- expand_focal_dates("2024-01-01", "2025-12-31", by = "day")
 #'
-#' chr_chem <- compute_chronic_chemistry(imp, focal_dates = focal_dates)
+#' chr_chem <- time_weighted_aggregate(imp, focal_dates = focal_dates)
 #' }
 #'
 #' @export

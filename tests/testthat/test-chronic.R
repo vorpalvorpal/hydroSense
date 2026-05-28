@@ -1,4 +1,4 @@
-## Tests for compute_chronic_chemistry() and expand_focal_dates()
+## Tests for time_weighted_aggregate() and expand_focal_dates()
 
 library(testthat)
 library(leachatetools)
@@ -35,7 +35,7 @@ make_synth_chem <- function(
 # ── Property: identical concentrations → chronic mean equals that value ───────
 test_that("constant concentration → chronic mean equals that constant", {
   df <- make_synth_chem(value_const = 3.0)
-  result <- compute_chronic_chemistry(
+  result <- time_weighted_aggregate(
     df,
     focal_dates = as.Date("2024-01-01"),
     tau_days    = 90,
@@ -62,7 +62,7 @@ test_that("exponential decay weight ratio is correct for two samples 90d apart",
     detected = TRUE,
     imputed  = FALSE
   )
-  result <- compute_chronic_chemistry(
+  result <- time_weighted_aggregate(
     df, focal_dates = focal, tau_days = 90, window_days = 365,
     anchor_outside_window = FALSE
   )
@@ -76,7 +76,7 @@ test_that("exponential decay weight ratio is correct for two samples 90d apart",
 # ── Property: detected always TRUE in output ──────────────────────────────────
 test_that("output detected column is always TRUE", {
   df <- make_synth_chem()
-  result <- compute_chronic_chemistry(
+  result <- time_weighted_aggregate(
     df, focal_dates = as.Date("2024-01-01"), tau_days = 90, window_days = 365
   )
   expect_true(all(result$detected))
@@ -87,7 +87,7 @@ test_that("n_samples_in_window equals samples within window", {
   # 10 samples uniformly spread across 2023
   df <- make_synth_chem(n_samples = 10, n_analytes = 1)
   focal <- as.Date("2024-01-01")
-  result <- compute_chronic_chemistry(
+  result <- time_weighted_aggregate(
     df, focal_dates = focal, tau_days = 90, window_days = 365,
     anchor_outside_window = FALSE
   )
@@ -101,7 +101,7 @@ test_that("n_imputed_in_window counts imputed rows", {
   # Mark 3 samples as imputed
   df$imputed[1:3] <- TRUE
   focal <- as.Date("2024-01-01")
-  result <- compute_chronic_chemistry(
+  result <- time_weighted_aggregate(
     df, focal_dates = focal, tau_days = 90, window_days = 365,
     anchor_outside_window = FALSE
   )
@@ -112,7 +112,7 @@ test_that("n_imputed_in_window counts imputed rows", {
 # ── Schema: output has expected columns ──────────────────────────────────────
 test_that("output has all required columns", {
   df <- make_synth_chem()
-  result <- compute_chronic_chemistry(
+  result <- time_weighted_aggregate(
     df, focal_dates = as.Date("2024-01-01")
   )
   expected_cols <- c("focal_date", "site_id", "sample_id",
@@ -125,7 +125,7 @@ test_that("output has all required columns", {
 test_that("synthetic sample_id has correct prefix", {
   df <- make_synth_chem()
   focal <- as.Date("2024-01-01")
-  result <- compute_chronic_chemistry(df, focal_dates = focal)
+  result <- time_weighted_aggregate(df, focal_dates = focal)
   expect_true(all(grepl("^chronic_", result$sample_id)))
 })
 
@@ -133,11 +133,11 @@ test_that("synthetic sample_id has correct prefix", {
 test_that("errors when no samples fall within window", {
   df <- make_synth_chem(start = as.Date("2020-01-01"), end = as.Date("2020-06-01"))
   expect_error(
-    compute_chronic_chemistry(
+    time_weighted_aggregate(
       df, focal_dates = as.Date("2024-01-01"),
       window_days = 30, anchor_outside_window = FALSE
     ),
-    regexp = "No chronic chemistry"
+    regexp = "No values could be aggregated"
   )
 })
 
@@ -145,8 +145,8 @@ test_that("errors when no samples fall within window", {
 test_that("arith_mean summary produces >= geom_mean for positive values", {
   df <- make_synth_chem(n_samples = 10, n_analytes = 1)
   focal <- as.Date("2024-01-01")
-  gm <- compute_chronic_chemistry(df, focal_dates = focal, summary = "geom_mean")
-  am <- compute_chronic_chemistry(df, focal_dates = focal, summary = "arith_mean")
+  gm <- time_weighted_aggregate(df, focal_dates = focal, summary = "geom_mean")
+  am <- time_weighted_aggregate(df, focal_dates = focal, summary = "arith_mean")
   # By AM-GM inequality, arith mean >= geom mean
   expect_gte(am$value, gm$value)
 })
@@ -181,4 +181,51 @@ test_that("expand_focal_dates single-day range returns one date", {
   dates <- expand_focal_dates("2024-07-15", "2024-07-15")
   expect_length(dates, 1L)
   expect_equal(dates, as.Date("2024-07-15"))
+})
+
+# ── Path B usage: time-aggregate AmsPAF (non-chemistry analyte) ──────────────
+
+test_that("works on a non-chemistry value column (AmsPAF-style)", {
+  focal <- as.Date("2024-04-01")
+  df <- tibble::tibble(
+    sample_id = paste0("s", 1:4),
+    site_id   = "f1",
+    datetime  = focal - c(60, 30, 10, 5),
+    analyte   = "AmsPAF",
+    value     = c(2.5, 5.0, 10.0, 4.0),
+    detected  = TRUE
+  )
+  out <- time_weighted_aggregate(
+    df, focal_dates = focal, summary = "arith_mean",
+    tau_days = 90, window_days = 365,
+    anchor_outside_window = FALSE
+  )
+  expect_equal(nrow(out), 1L)
+  expect_equal(out$analyte, "AmsPAF")
+  expect_true(out$value > 0)
+  expect_true(out$value < max(df$value))
+})
+
+test_that("anchor sample is included but not counted in n_samples_in_window", {
+  focal <- as.Date("2024-04-01")
+  df <- tibble::tibble(
+    sample_id = c("anchor", "s1"),
+    site_id   = "f1",
+    datetime  = c(focal - 400, focal - 30),     # anchor outside, s1 inside
+    analyte   = "Cu",
+    value     = c(2.0, 5.0),
+    detected  = TRUE
+  )
+  with_anchor <- time_weighted_aggregate(
+    df, focal_dates = focal, tau_days = 90, window_days = 365,
+    anchor_outside_window = TRUE
+  )
+  expect_equal(with_anchor$n_samples_in_window, 1L)
+
+  no_anchor <- time_weighted_aggregate(
+    df, focal_dates = focal, tau_days = 90, window_days = 365,
+    anchor_outside_window = FALSE
+  )
+  # Anchor still influences the time-weighted value
+  expect_false(isTRUE(all.equal(with_anchor$value, no_anchor$value)))
 })

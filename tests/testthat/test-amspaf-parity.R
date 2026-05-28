@@ -64,7 +64,3 @@ test_that("add_amspaf accepts a prepared_reference object", {
   expect_true("AmsPAF" %in% result$analyte)
 })
 
-test_that("classify_amspaf_tier returns expected labels", {
-  expect_equal(classify_amspaf_tier(c(0.5, 2, 7, 15)),
-               c("1_background", "2_elevated", "3_impacted", "4_severely_impacted"))
-})

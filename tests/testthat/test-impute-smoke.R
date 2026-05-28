@@ -1,73 +1,81 @@
-## Smoke tests for impute_chemistry()
+## Smoke tests for fit_imputation_model() + impute_chemistry()
 ##
-## Full brms/Stan tests are skipped unless brms + Stan are installed and
-## the package-wide BRMS_SMOKE_TEST environment variable is set to "1".
-## The non-brms tests validate input checking and error messages.
+## Full brms/Stan tests are skipped unless brms + Stan are installed and the
+## package-wide BRMS_SMOKE_TEST environment variable is set to "1".  The
+## non-brms tests cover input validation and behaviour that does not require
+## Stan compilation.
 
 library(testthat)
 library(leachatetools)
 
-make_impute_chem <- function(n = 15, n_bdl = 3, n_missing = 2) {
+make_impute_chem <- function(n = 20, n_bdl = 3, n_missing = 2) {
   set.seed(7)
   samples  <- paste0("s", seq_len(n))
-  analytes <- c("Cu", "Zn", "Ni")
-  drivers  <- c("pH", "EC", "DOC")
+  metals   <- c("Cu", "Zn", "Ni")
+  drivers  <- c("pH", "EC", "NH3-N", "DOC")
 
-  # Build long-format df
-  rows <- tidyr::expand_grid(sample_id = samples, analyte = c(analytes, drivers)) |>
+  rows <- tidyr::expand_grid(
+    sample_id = samples,
+    analyte   = c(metals, drivers)
+  ) |>
     dplyr::mutate(
       site_id  = "f1",
       datetime = as.Date("2023-01-01") + (match(sample_id, samples) - 1L),
       value    = dplyr::case_when(
-        analyte == "pH"  ~ runif(dplyr::n(), 6.5, 8.5),
-        analyte == "EC"  ~ runif(dplyr::n(), 100, 500),
-        analyte == "DOC" ~ runif(dplyr::n(), 0.2, 5),
-        TRUE             ~ exp(rnorm(dplyr::n(), log(2), 0.5))
+        analyte == "pH"     ~ runif(dplyr::n(), 6.5, 8.5),
+        analyte == "EC"     ~ runif(dplyr::n(), 100, 500),
+        analyte == "NH3-N"  ~ runif(dplyr::n(), 0.01, 0.5),
+        analyte == "DOC"    ~ runif(dplyr::n(), 0.2, 5),
+        TRUE                ~ exp(rnorm(dplyr::n(), log(2), 0.5))
       ),
       detected = TRUE,
       imputed  = FALSE
     )
 
-  # Introduce some BDL rows
-  bdl_idx <- sample(which(rows$analyte %in% analytes), n_bdl)
+  # Introduce some BDL rows for metals (not drivers)
+  bdl_idx <- sample(which(rows$analyte %in% metals), n_bdl)
   rows$detected[bdl_idx] <- FALSE
 
-  # Introduce some missing rows (remove them entirely — simulate not measured)
-  miss_idx <- sample(which(rows$analyte %in% analytes), n_missing)
+  # Introduce missing metal rows (remove entirely)
+  miss_idx <- sample(which(rows$analyte %in% metals), n_missing)
   rows <- rows[-miss_idx, ]
 
   rows
 }
 
-test_that("impute_chemistry requires brms (now a hard dependency in Imports)", {
-  # brms is now in Imports; this test just confirms it is loadable.
-  skip_if_not(requireNamespace("brms", quietly = TRUE))
+test_that("brms is available (now a hard Imports dependency)", {
   expect_true(requireNamespace("brms", quietly = TRUE))
 })
 
-test_that("impute_chemistry errors on missing driver analyte in df", {
-  skip_if_not(requireNamespace("brms", quietly = TRUE))
+test_that("fit_imputation_model errors when required_vars are missing entirely", {
   df <- make_impute_chem()
-  # Remove all DOC rows
-  df_no_doc <- dplyr::filter(df, analyte != "DOC")
+  df_no_ph <- dplyr::filter(df, analyte != "pH")
+  # All samples drop → fewer than min_samples
   expect_error(
-    impute_chemistry(df_no_doc, drivers = c("pH", "EC", "DOC")),
-    regexp = "Driver analyte.* not found"
+    fit_imputation_model(
+      df_no_ph,
+      required_vars = c("pH", "EC"),
+      min_samples   = 10L
+    ),
+    regexp = "remain after"
   )
 })
 
-test_that("impute_chemistry errors on BDL driver rows", {
-  skip_if_not(requireNamespace("brms", quietly = TRUE))
-  df <- make_impute_chem()
-  # Make one pH row BDL
-  df$detected[df$analyte == "pH"][1L] <- FALSE
-  expect_error(
-    impute_chemistry(df, drivers = c("pH", "EC", "DOC")),
-    regexp = "Driver analyte.* have missing or BDL"
+test_that("fit_imputation_model handles a fully-empty target set gracefully", {
+  # Only required_vars present, no metals or organics → warn + empty model
+  df <- make_impute_chem() |>
+    dplyr::filter(analyte %in% c("pH", "EC", "NH3-N", "DOC"))
+  expect_warning(
+    m <- fit_imputation_model(df, required_vars = c("pH", "EC"),
+                              iter = 100, warmup = 50, chains = 1),
+    regexp = "No target analytes"
   )
+  expect_null(m$metals)
+  expect_null(m$organics)
+  expect_s3_class(m, "imputation_model")
 })
 
-test_that("impute_chemistry full run (brms smoke test)", {
+test_that("fit_imputation_model full run (brms smoke test)", {
   skip_if_not(
     requireNamespace("brms", quietly = TRUE) &&
       identical(Sys.getenv("BRMS_SMOKE_TEST"), "1"),
@@ -75,31 +83,43 @@ test_that("impute_chemistry full run (brms smoke test)", {
   )
 
   df  <- make_impute_chem(n = 30, n_bdl = 4, n_missing = 3)
-  imp <- impute_chemistry(
+  m   <- fit_imputation_model(
     df,
-    drivers = c("pH", "EC", "DOC"),
+    required_vars = c("pH", "EC"),
     iter    = 500,
     warmup  = 250,
     chains  = 1,
     cores   = 1
   )
 
-  # All values should be finite after imputation
+  expect_s3_class(m, "imputation_model")
+  expect_true(!is.null(m$metals))
+  expect_true(!is.null(m$pca))
+
+  imp <- impute_chemistry(df, m)
+
+  # All values finite
   expect_true(all(is.finite(imp$value)))
 
-  # imputed column must exist
+  # imputed/imputed_kind columns present
   expect_true("imputed" %in% names(imp))
-
-  # Rows that were BDL or missing should now be imputed = TRUE
-  expect_true(any(imp$imputed))
-
-  # imputed_kind column must exist and have expected values
   expect_true("imputed_kind" %in% names(imp))
   expect_true(all(imp$imputed_kind %in% c("observed", "censored_left", "missing")))
 
-  # Fitted brmsfit is attached as attribute
-  expect_true(!is.null(attr(imp, "brmsfit")))
+  # Some BDL/missing rows should now be marked imputed
+  expect_true(any(imp$imputed))
+})
 
-  # New column names present
-  expect_true(all(c("sample_id", "site_id", "datetime", "analyte", "detected") %in% names(imp)))
+test_that("impute_coanalytes skips targets not in pca_vars", {
+  # Trivial test: construct an imputation_model with no PCA and confirm the
+  # function gives a clear error rather than crashing.
+  fake_model <- structure(
+    list(pca = NULL, pca_vars = c("pH","EC")),
+    class = "imputation_model"
+  )
+  df <- make_impute_chem()
+  expect_error(
+    impute_coanalytes(df, fake_model),
+    regexp = "no fitted PCA"
+  )
 })

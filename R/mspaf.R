@@ -38,9 +38,10 @@
 ##
 ##   C_adj_i = max(C_norm_i - ref_norm_i, 0)
 ##
-## where ref_norm_i is the normalised reference concentration (80th percentile
-## of matched reference site data, normalised to ANZG index conditions via the
-## same chemistry normalisation applied to sample concentrations). Evaluating
+## where ref_norm_i is the normalised reference concentration (default:
+## geometric mean of matched reference-site data, normalised to ANZG index
+## conditions via the same chemistry normalisation applied to sample
+## concentrations).  See `prepare_reference()` for alternatives.  Evaluating
 ## the SSD at C_adj_i is equivalent to evaluating a rightward-shifted SSD at
 ## C_norm_i, consistent with PICT theory.
 ##
@@ -124,7 +125,7 @@
 #' detail.
 #'
 #' The function accepts either per-sample or chronic-integrated chemistry (from
-#' [compute_chronic_chemistry()]). It does not need to know which — the
+#' [time_weighted_aggregate()]). It does not need to know which — the
 #' distinction is entirely in the input data. Similarly, `reference` may be a
 #' raw long-format chemistry data frame or a pre-built [prepare_reference()]
 #' object.
@@ -178,7 +179,7 @@
 #'   `vignette("chronic-amspaf-interpretation")` for guidance.
 #'
 #' @seealso [ssd_paf()], [ssd_hc50()], [prepare_reference()],
-#'   [compute_chronic_chemistry()], [prescreen_analytes()], [impute_chemistry()]
+#'   [time_weighted_aggregate()], [prescreen_analytes()], [impute_chemistry()]
 #'
 #' @references
 #' De Zwart D, Posthuma L (2005) Environmental Toxicology and Chemistry
@@ -227,17 +228,16 @@ add_amspaf <- function(
   if (inherits(reference, "prepared_reference")) {
     prep_ref <- reference
   } else if (is.null(reference)) {
-    ## No ARA: empty summary → ref_norm treated as 0 inside compute_amspaf_per_sample()
+    ## No ARA: empty ref_table → ref_norm joined as NA → coerced to 0
     prep_ref <- structure(
       list(
-        normalised_quantiles = tibble::tibble(
+        ref_table = tibble::tibble(
           analyte  = character(0),
           ref_norm = numeric(0),
           n_obs    = integer(0)
         ),
-        dropped    = character(0),
-        summary    = ref_summary,
-        percentile = NA_real_
+        dropped = character(0),
+        summary = ref_summary
       ),
       class = "prepared_reference"
     )
@@ -252,10 +252,10 @@ add_amspaf <- function(
 
   ## Use only analyte+ref_norm columns for the join (avoid polluting tox_rows
   ## with n_obs / ref_lower / ref_upper if bootstrap_ci was used)
-  ref_quantiles <- if (nrow(prep_ref$normalised_quantiles) > 0L) {
-    dplyr::select(prep_ref$normalised_quantiles, "analyte", "ref_norm")
+  ref_table <- if (nrow(prep_ref$ref_table) > 0L) {
+    dplyr::select(prep_ref$ref_table, "analyte", "ref_norm")
   } else {
-    prep_ref$normalised_quantiles
+    prep_ref$ref_table
   }
 
   ## ================================================================
@@ -264,11 +264,11 @@ add_amspaf <- function(
 
   amspaf_df <-
     df |>
-    dplyr::group_by(site_id) |>
+    dplyr::group_by(.data$site_id) |>
     dplyr::group_modify(\(.x, .y) {
       compute_amspaf_per_sample(
         sample_data   = .x,
-        ref_quantiles = ref_quantiles,
+        ref_table     = ref_table,
         ssd_params    = ssd_params,
         min_analytes  = min_analytes,
         method        = method,
@@ -343,7 +343,7 @@ add_amspaf <- function(
 #' @param method SSD method: `"multi"` or `"anzecc"`.
 #' @param guideline_dir Path to ANZG guideline data folder.
 #'
-#' @return Tibble with columns `name.analyte`, `hc50`, `sigma`, `moa_group`,
+#' @return Tibble with columns `analyte`, `hc50`, `sigma`, `moa_group`,
 #'   `parsed_formula` (list of language objects or NULLs),
 #'   `coanalytes_req` (character).
 #'
@@ -378,12 +378,12 @@ derive_ssd_params <- function(meta, method, guideline_dir) {
     coanalytes_r <- eligible$coanalytes_required[i] %||% ""
 
     tibble::tibble(
-      name.analyte     = nm,
-      hc50             = hc50,
-      sigma            = sigma,
-      moa_group        = moa_group,
-      parsed_formula   = list(parsed_f),
-      coanalytes_req   = coanalytes_r
+      analyte        = nm,
+      hc50           = hc50,
+      sigma          = sigma,
+      moa_group      = moa_group,
+      parsed_formula = list(parsed_f),
+      coanalytes_req = coanalytes_r
     )
   })
 
@@ -392,7 +392,7 @@ derive_ssd_params <- function(meta, method, guideline_dir) {
 
 .empty_ssd_params <- function() {
   tibble::tibble(
-    name.analyte   = character(),
+    analyte        = character(),
     hc50           = numeric(),
     sigma          = numeric(),
     moa_group      = character(),
@@ -445,20 +445,19 @@ compute_ca_group_mspaf <- function(group_data) {
 #'
 #' @param sample_data Per-feature long-format df (may include co-analyte rows
 #'   such as pH, DOC alongside toxicant rows).
-#' @param ref_quantiles Tibble `(name.analyte, ref_norm)` from
-#'   `prep_ref$normalised_quantiles`.
+#' @param ref_table Tibble `(analyte, ref_norm)` from `prep_ref$ref_table`.
 #' @param ssd_params Tibble from [derive_ssd_params()].
 #' @param min_analytes Minimum analytes required.
 #' @param method SSD method.
 #' @param guideline_dir Path to ANZG XLSX folder.
 #'
 #' @return Tibble with one row per sample that passes `min_analytes`, columns:
-#'   `uuid.sample`, `value`, `n_analytes_used`, `n_analytes_imputed`,
-#'   `dominant_analyte`, `max_paf`, `analyte_pafs`.
+#'   `sample_id`, `value`, `n_analytes_used`, `n_analytes_imputed`,
+#'   `dominant_analyte`, `max_paf`, `analyte_pafs`, `dropped_analytes`.
 #' @keywords internal
 compute_amspaf_per_sample <- function(
     sample_data,
-    ref_quantiles,
+    ref_table,
     ssd_params,
     min_analytes,
     method,
@@ -472,7 +471,7 @@ compute_amspaf_per_sample <- function(
   }
 
   sample_data |>
-    dplyr::group_by(sample_id) |>
+    dplyr::group_by(.data$sample_id) |>
     dplyr::group_modify(\(.x, .y) {
       ## Build co-analyte lookup (all detected values in this sample)
       coanalyte_vals <- .x |>
@@ -482,13 +481,13 @@ compute_amspaf_per_sample <- function(
 
       ## Filter to SSD-eligible analytes
       tox_rows <- .x |>
-        dplyr::filter(.data$analyte %in% ssd_params$name.analyte) |>
+        dplyr::filter(.data$analyte %in% ssd_params$analyte) |>
         dplyr::left_join(
-          dplyr::select(ssd_params, "name.analyte", "hc50", "sigma",
+          dplyr::select(ssd_params, "analyte", "hc50", "sigma",
                         "moa_group", "parsed_formula", "coanalytes_req"),
-          by = c("analyte" = "name.analyte")
+          by = "analyte"
         ) |>
-        dplyr::left_join(ref_quantiles, by = "analyte") |>
+        dplyr::left_join(ref_table, by = "analyte") |>
         dplyr::mutate(
           ref_norm = tidyr::replace_na(.data$ref_norm, 0)
         )

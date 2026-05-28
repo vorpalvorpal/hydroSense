@@ -39,15 +39,11 @@
 #'   `coanalytes_required`, and `normalisation_formula`.
 #' @param summary Summary statistic for the reference distribution. One of
 #'   `"geom_mean"` (default), `"median"`, `"arith_mean"`, `"p80"`, `"p90"`,
-#'   `"p95"`.  Argument `percentile` (deprecated, see below) is honoured
-#'   for backwards compatibility.
-#' @param percentile Deprecated.  If supplied, sets `summary = sprintf("p%d",
-#'   round(100*percentile))` and overrides any `summary` argument.  Issued
-#'   with a deprecation warning.
+#'   `"p95"`.
 #' @param bootstrap_ci Logical.  If `TRUE`, compute a 95% bootstrap CI on the
 #'   reference summary statistic for each analyte (1,000 replicates by
-#'   default).  Adds `ref_lower` and `ref_upper` columns to
-#'   `$normalised_quantiles`.  Default `FALSE`.
+#'   default).  Adds `ref_lower` and `ref_upper` columns to `$ref_table`.
+#'   Default `FALSE`.
 #' @param n_boot Number of bootstrap replicates if `bootstrap_ci = TRUE`.
 #'   Default `1000L`.
 #' @param eps Small positive guard added inside the log for geometric-mean
@@ -55,15 +51,13 @@
 #'
 #' @return A list of class `"prepared_reference"` with elements:
 #'   \itemize{
-#'     \item `$normalised_quantiles`: tibble with columns `analyte`,
-#'       `ref_norm` (normalised summary concentration), `n_obs` (count of
-#'       observations contributing).  If `bootstrap_ci = TRUE`, also
-#'       `ref_lower` / `ref_upper` (95% CI).
+#'     \item `$ref_table`: tibble with columns `analyte`, `ref_norm`
+#'       (normalised summary concentration), `n_obs` (count of observations
+#'       contributing).  If `bootstrap_ci = TRUE`, also `ref_lower` /
+#'       `ref_upper` (95% CI).
 #'     \item `$dropped`: character vector of analytes excluded due to no
 #'       reference observations.
 #'     \item `$summary`: the summary statistic used.
-#'     \item `$percentile`: for backwards-compatible quantile summaries,
-#'       the quantile probability.  `NA` for non-quantile summaries.
 #'   }
 #'
 #' @examples
@@ -71,12 +65,12 @@
 #' # Default: geometric mean (recommended)
 #' prep_ref <- prepare_reference(ref_df)
 #'
-#' # 80th percentile (legacy behaviour)
+#' # 80th percentile
 #' prep_ref <- prepare_reference(ref_df, summary = "p80")
 #'
 #' # With bootstrap CI
 #' prep_ref <- prepare_reference(ref_df, bootstrap_ci = TRUE)
-#' prep_ref$normalised_quantiles
+#' prep_ref$ref_table
 #' }
 #'
 #' @export
@@ -85,7 +79,6 @@ prepare_reference <- function(
     analyte_metadata = NULL,
     summary          = c("geom_mean", "median", "arith_mean",
                           "p80", "p90", "p95"),
-    percentile       = NULL,
     bootstrap_ci     = FALSE,
     n_boot           = 1000L,
     eps              = 1e-9
@@ -96,29 +89,7 @@ prepare_reference <- function(
   checkmate::assert_flag(bootstrap_ci)
   checkmate::assert_int(n_boot, lower = 100L)
   checkmate::assert_number(eps, lower = 0)
-
-  # Deprecation handling: `percentile` overrides `summary`
-  if (!is.null(percentile)) {
-    checkmate::assert_number(percentile, lower = 0, upper = 1)
-    lifecycle_summary <- sprintf("p%d", round(100 * percentile))
-    if (!lifecycle_summary %in% c("p80", "p90", "p95")) {
-      cli::cli_abort(c(
-        "`percentile` is deprecated and only supports 0.80, 0.90, 0.95.",
-        "i" = "Use {.arg summary} directly: \\
-               {.code summary = 'geom_mean'} (recommended), \\
-               {.code 'median'}, {.code 'p80'}, etc."
-      ))
-    }
-    cli::cli_warn(c(
-      "!" = "{.arg percentile} is deprecated; use {.arg summary} = \\
-             {.val {lifecycle_summary}}.",
-      "i" = "Default summary has changed to {.val geom_mean} \\
-             (more robust to small reference datasets)."
-    ))
-    summary <- lifecycle_summary
-  } else {
-    summary <- match.arg(summary)
-  }
+  summary <- match.arg(summary)
 
   meta <- .load_analyte_metadata(analyte_metadata)
 
@@ -136,14 +107,13 @@ prepare_reference <- function(
 
   empty_result <- function() structure(
     list(
-      normalised_quantiles = tibble::tibble(
+      ref_table = tibble::tibble(
         analyte  = character(0),
         ref_norm = numeric(0),
         n_obs    = integer(0)
       ),
-      dropped    = character(0),
-      summary    = summary,
-      percentile = .summary_to_percentile(summary)
+      dropped = character(0),
+      summary = summary
     ),
     class = "prepared_reference"
   )
@@ -232,10 +202,9 @@ prepare_reference <- function(
 
   structure(
     list(
-      normalised_quantiles = dplyr::filter(qnt, .data$n_obs > 0L),
-      dropped    = dropped,
-      summary    = summary,
-      percentile = .summary_to_percentile(summary)
+      ref_table = dplyr::filter(qnt, .data$n_obs > 0L),
+      dropped   = dropped,
+      summary   = summary
     ),
     class = "prepared_reference"
   )
@@ -276,25 +245,13 @@ prepare_reference <- function(
   )
 }
 
-#' Map a summary name to its quantile probability (or NA for non-quantile)
-#' @keywords internal
-.summary_to_percentile <- function(summary) {
-  switch(summary,
-    p80    = 0.80,
-    p90    = 0.90,
-    p95    = 0.95,
-    median = 0.50,
-    NA_real_
-  )
-}
-
 #' @export
 print.prepared_reference <- function(x, ...) {
-  has_ci <- "ref_lower" %in% names(x$normalised_quantiles)
+  has_ci <- "ref_lower" %in% names(x$ref_table)
   cat(sprintf(
     "<prepared_reference>  %d analytes | summary = %s%s | %d dropped\n",
-    nrow(x$normalised_quantiles),
-    x$summary %||% "geom_mean",
+    nrow(x$ref_table),
+    x$summary,
     if (has_ci) " | bootstrap CI" else "",
     length(x$dropped)
   ))

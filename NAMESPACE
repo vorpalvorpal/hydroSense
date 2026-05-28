@@ -3,7 +3,6 @@
 S3method(print,prepared_reference)
 export(add_amspaf)
 export(add_lmf)
-export(compute_chronic_chemistry)
 export(derive_hardness)
 export(expand_focal_dates)
 export(estimate_water_temp)
