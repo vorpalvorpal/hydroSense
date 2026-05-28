@@ -98,6 +98,34 @@
 #' given sample condition the posterior of the missing ones through the residual
 #' correlation matrix.
 #'
+#' **Why `rescor = TRUE`** — the PCA captures the *instantaneous* chemical
+#' covariance structure (what is measured together at a single moment), but
+#' it cannot capture the *temporal-lag* covariance characteristic of
+#' AMD/leachate-impacted aquifers, where conservative tracers move ahead of
+#' redox-controlled metals.  At a post-pulse sample the PCA scores have
+#' returned toward baseline but Cu/Pb/Zn/Mn remain elevated together — that
+#' co-elevation is pure residual correlation with no predictor signal driving
+#' it.  `rescor = TRUE` is the right machinery for this and is what makes
+#' multivariate imputation borrow strength across analytes.
+#'
+#' **Costs of `rescor = TRUE`** — brms cannot combine `set_rescor(TRUE)` with
+#' `cens("left")`, so this implementation uses `mi()` for BDL values and
+#' applies a post-hoc cap (see [impute_chemistry()]).  The cap clips imputed
+#' BDL cells to the original detection limit when the model predicts above
+#' DL.  For sites where the chemistry context legitimately suggests high
+#' concentrations the cap can fire frequently; results in that regime should
+#' be inspected.  Three alternative configurations are worth benchmarking on
+#' real hold-out data if predictive performance becomes a concern:
+#'   - `rescor = TRUE` + `mi()` (current; expected to win on plume-affected
+#'     groundwater because cross-analyte residual coupling captures plume
+#'     dynamics that the predictor PCA misses).
+#'   - `rescor = FALSE` + `cens("left")` (statistically clean for BDL; loses
+#'     cross-analyte residual coupling).
+#'   - `rescor = FALSE` + `cens("left")` + shared `(1 | sample_id)` (proper
+#'     BDL handling with rank-1 latent-factor coupling across analytes).
+#' Benchmark methodology: mask 10% of detected cells, fit each configuration,
+#' compare hold-out RMSE / coverage.
+#'
 #' **Chemistry PCA**
 #'
 #' All `pca_vars` — major ions, pH, EC, NH3-N, DOC, nutrients, redox

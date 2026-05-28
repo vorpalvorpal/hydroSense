@@ -33,7 +33,8 @@
 #                                      #   NULL = first day of each month in date_range
 #     tau_days           = 90,         # exponential-decay half-life (days)
 #     window_days        = 365,        # look-back window for chronic integration (days)
-#     percentile         = 0.80,       # ARA reference quantile
+#     ref_summary        = "geom_mean", # ARA reference summary statistic
+#                                       # ("geom_mean", "median", "p80", ...)
 #     impute             = TRUE,       # Bayesian imputation (brms)?  FALSE = raw values only
 #     required_vars      = c("pH", "EC"),
 #     impute_iter        = 2000,
@@ -51,10 +52,11 @@
 #
 # ── Return value ──────────────────────────────────────────────────────────────
 # A named list (invisibly):
-#   $amspaf    tibble  — chronic AmsPAF per focal_date × feature
-#   $imputed   tibble  — imputed chemistry (NULL if impute=FALSE)
-#   $chronic   tibble  — chronic-integrated chemistry
-#   $n_written integer — number of analysis rows written to DB (0 if write_back=FALSE)
+#   $amspaf      tibble  — chronic AmsPAF per focal_date × feature
+#   $persample   tibble  — per-sample AmsPAF + diagnostics
+#                          (n_analytes_used, dominant_analyte, max_paf, ...)
+#   $imputed     tibble  — imputed chemistry (NULL if impute=FALSE)
+#   $n_written   integer — number of analysis rows written to DB (0 if write_back=FALSE)
 #
 # ── Notes ─────────────────────────────────────────────────────────────────────
 # • All concentrations in the DB are in mg/L.  The script multiplies by 1000
@@ -126,7 +128,7 @@ run_amspaf_pipeline <- function(
     focal_dates        = NULL,
     tau_days           = 90,
     window_days        = 365,
-    percentile         = 0.80,
+    ref_summary        = "geom_mean",
     impute             = TRUE,
     required_vars      = c("pH", "EC"),
     impute_iter        = 2000,
@@ -415,46 +417,51 @@ run_amspaf_pipeline <- function(
           format(min(focal_dates), "%Y-%m-%d"), " – ",
           format(max(focal_dates), "%Y-%m-%d"), ")")
 
-  # ── 11. Chronic chemistry ──────────────────────────────────────────────────
-  message("\n=== 11. Chronic chemistry (tau=", tau_days, "d, window=", window_days, "d) ===")
-
-  t0 <- proc.time()
-  chr_focal <- suppressWarnings(
-    compute_chronic_chemistry(focal_final, focal_dates,
-                              tau_days = tau_days, window_days = window_days))
-  message("  Focal chronic: ", round((proc.time() - t0)[3], 1), " s")
-
-  t0 <- proc.time()
-  chr_ref <- suppressWarnings(
-    compute_chronic_chemistry(ref_final, focal_dates,
-                              tau_days = tau_days, window_days = window_days))
-  message("  Reference chronic: ", round((proc.time() - t0)[3], 1), " s")
-
-  # Keep only focal dates that have at least one in-window sample
-  covered <- chr_focal |>
-    group_by(focal_date) |>
-    summarise(n = max(n_samples_in_window), .groups = "drop") |>
-    filter(n >= 1)
-  chr_focal <- semi_join(chr_focal, covered, by = "focal_date")
-  message("  Focal dates with data: ", nrow(covered), " of ", length(focal_dates))
-
-  # ── 12. Reference preparation ──────────────────────────────────────────────
-  message("\n=== 12. prepare_reference (", percentile * 100, "th pct ARA) ===")
-  suppressMessages(prep_ref <- prepare_reference(chr_ref, percentile = percentile))
+  # ── 11. Reference preparation ──────────────────────────────────────────────
+  # Build the reference summary ONCE from per-sample reference chemistry.
+  # The summary is a single value per analyte representing what the local
+  # community is integrated against — it does not vary by focal_date.
+  message("\n=== 11. prepare_reference (summary = ", ref_summary, ") ===")
+  suppressMessages(
+    prep_ref <- prepare_reference(ref_final, summary = ref_summary)
+  )
   message("  Reference analytes: ", nrow(prep_ref$normalised_quantiles),
           " | Dropped: ", length(prep_ref$dropped))
 
-  # ── 13. AmsPAF ─────────────────────────────────────────────────────────────
-  message("\n=== 13. add_amspaf() ===")
+  # ── 12. Per-sample AmsPAF ──────────────────────────────────────────────────
+  # Compute AmsPAF on each individual focal sample's imputed chemistry.
+  # This produces a per-sample AmsPAF value that we'll time-aggregate next.
+  message("\n=== 12. Per-sample AmsPAF ===")
   t0 <- proc.time()
-  paf_out <- suppressMessages(add_amspaf(chr_focal, reference = prep_ref, min_analytes = 3))
-  message("  add_amspaf: ", round((proc.time() - t0)[3], 1), " s")
+  paf_persample <- suppressMessages(
+    add_amspaf(focal_final, reference = prep_ref, min_analytes = 3)
+  ) |>
+    filter(analyte == "AmsPAF")
+  message("  add_amspaf: ", round((proc.time() - t0)[3], 1), " s | ",
+          "Per-sample AmsPAF rows: ", nrow(paf_persample))
 
-  amspaf <- paf_out |>
-    filter(analyte == "AmsPAF") |>
-    select(focal_date, site_id,
-           value, n_analytes_used,
-           any_of(c("n_analytes_imputed", "dominant_analyte", "max_paf"))) |>
+  # ── 13. Chronic AmsPAF (Path B: time-aggregate per-sample AmsPAFs) ─────────
+  # Time-weighted ARITHMETIC mean of per-sample AmsPAF values.
+  # Arithmetic mean is appropriate here because AmsPAF is a bounded
+  # percentage representing fraction of species affected; biology integrates
+  # the toxic-response signal linearly over time.
+  message("\n=== 13. Chronic AmsPAF (tau=", tau_days, "d, window=", window_days, "d) ===")
+  t0 <- proc.time()
+  chr_amspaf <- suppressWarnings(
+    time_weighted_aggregate(
+      paf_persample,
+      focal_dates    = focal_dates,
+      tau_days       = tau_days,
+      window_days    = window_days,
+      summary        = "arith_mean"
+    )
+  )
+  message("  time_weighted_aggregate: ", round((proc.time() - t0)[3], 1), " s")
+
+  amspaf <- chr_amspaf |>
+    select(focal_date, site_id, value,
+           n_samples_in_window,
+           any_of("n_imputed_in_window")) |>
     arrange(site_id, focal_date)
 
   message("\n  Results:")
@@ -462,10 +469,10 @@ run_amspaf_pipeline <- function(
   message("    AmsPAF range: ",
           round(min(amspaf$value, na.rm = TRUE), 3), " – ",
           round(max(amspaf$value, na.rm = TRUE), 2), " %")
-  if ("dominant_analyte" %in% names(amspaf)) {
-    dom <- paste(sort(unique(na.omit(amspaf$dominant_analyte))), collapse = ", ")
-    message("    Dominant analytes: ", dom)
-  }
+  # Per-sample diagnostics (if user wants to inspect)
+  dom <- sort(unique(na.omit(paf_persample$dominant_analyte)))
+  if (length(dom) > 0L)
+    message("    Per-sample dominant analytes: ", paste(dom, collapse = ", "))
 
   # ── 14. Write back to DB ───────────────────────────────────────────────────
   n_written <- 0L
@@ -477,10 +484,10 @@ run_amspaf_pipeline <- function(
 
   message("\n=== Done ===")
   invisible(list(
-    amspaf    = amspaf,
-    imputed   = imp_result,
-    chronic   = chr_focal,
-    n_written = n_written
+    amspaf        = amspaf,           # chronic AmsPAF per (focal_date, site)
+    persample     = paf_persample,    # per-sample AmsPAF + diagnostics
+    imputed       = imp_result,
+    n_written     = n_written
   ))
 }
 
@@ -831,11 +838,11 @@ run_amspaf_pipeline <- function(
       quantified  = TRUE,
       purpose     = "chronic_amspaf_computed",
       comments    = sprintf(
-        "analytes_used=%s%s",
-        if ("n_analytes_used" %in% names(amspaf_w_uuid))
-          as.character(amspaf_w_uuid$n_analytes_used) else "?",
-        if ("dominant_analyte" %in% names(amspaf_w_uuid))
-          paste0(" dominant=", amspaf_w_uuid$dominant_analyte) else ""
+        "n_samples_in_window=%s%s",
+        if ("n_samples_in_window" %in% names(amspaf_w_uuid))
+          as.character(amspaf_w_uuid$n_samples_in_window) else "?",
+        if ("n_imputed_in_window" %in% names(amspaf_w_uuid))
+          paste0(" n_imputed=", amspaf_w_uuid$n_imputed_in_window) else ""
       )
     ) |>
     select(uuid, uuid_sample, uuid_lab, value, quantified, purpose, comments)
@@ -862,7 +869,7 @@ run_amspaf_pipeline <- function(
 #   date_range         = c(as.Date("2017-01-01"), Sys.Date()),
 #   tau_days           = 90,
 #   window_days        = 365,
-#   percentile         = 0.80,
+#   ref_summary        = "geom_mean",
 #   impute             = TRUE,
 #   impute_iter        = 2000,
 #   impute_chains      = 4,

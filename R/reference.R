@@ -1,89 +1,158 @@
 #' Prepare reference chemistry for AmsPAF background subtraction
 #'
 #' Applies chemistry normalisation (if formulas are populated in the metadata)
-#' and computes per-analyte quantile concentrations from reference-site data.
-#' The resulting object is passed as the `reference` argument to
-#' `add_amspaf()`.
+#' and computes a per-analyte central-tendency summary from reference-site
+#' data, optionally with a bootstrap confidence interval.  The resulting
+#' object is passed as the `reference` argument to `add_amspaf()`.
 #'
 #' This is a pure function — it has no side effects and no internal cache.
 #' In the chronic pipeline, call it once after computing chronic chemistry for
 #' the reference feature(s), then pass the object into `add_amspaf()` for
-#' every focal date. In the per-sample pipeline, call it once on the raw
+#' every focal date.  In the per-sample pipeline, call it once on the raw
 #' reference chemistry.
+#'
+#' **Summary statistic.**  The default is `"geom_mean"` — the geometric mean
+#' of all detected observations.  This is preferred over a fixed quantile
+#' because:
+#' \itemize{
+#'   \item it is the maximum-likelihood central tendency for log-normal
+#'     concentrations (which is how aquatic concentration data typically
+#'     distribute);
+#'   \item it uses all observations rather than a single ranked point, so
+#'     it is more robust to small reference datasets;
+#'   \item it is PICT-consistent: the resident community has adapted to the
+#'     integrated typical exposure over time, not to a particular upper
+#'     quantile.
+#' }
+#' BDL observations contribute `0` to the geometric mean via an
+#' \eqn{\epsilon}-shifted log: `exp(mean(log(value + eps)))`.  Other
+#' summaries available: `"median"`, `"arith_mean"`, `"p80"`, `"p90"`,
+#' `"p95"`.
 #'
 #' @param reference_data Long-format chemistry data frame for the reference
 #'   (background) site(s). Same schema as the input to `add_amspaf()`:
-#'   `analyte`, `value`, `detected`. If `detected == FALSE` for a row,
-#'   it is excluded from the quantile calculation (BDL observations are treated
-#'   as absent at the reference site).
+#'   `analyte`, `value`, `detected`. BDL (`detected == FALSE`) observations
+#'   contribute `0` to the summary statistic.
 #' @param analyte_metadata Data frame of analyte metadata, or `NULL` to load
 #'   the bundled `inst/extdata/anzecc_analyte_metadata.csv`. Accepts either a
 #'   data frame or a file path string. Must contain columns `analyte`,
 #'   `coanalytes_required`, and `normalisation_formula`.
-#' @param percentile Quantile (0–1) of the reference distribution used as the
-#'   background anchor for Added Risk Approach (ARA) subtraction. Default
-#'   `0.80` (80th percentile — the concentration the reference site does not
-#'   exceed 80 % of the time).
+#' @param summary Summary statistic for the reference distribution. One of
+#'   `"geom_mean"` (default), `"median"`, `"arith_mean"`, `"p80"`, `"p90"`,
+#'   `"p95"`.  Argument `percentile` (deprecated, see below) is honoured
+#'   for backwards compatibility.
+#' @param percentile Deprecated.  If supplied, sets `summary = sprintf("p%d",
+#'   round(100*percentile))` and overrides any `summary` argument.  Issued
+#'   with a deprecation warning.
+#' @param bootstrap_ci Logical.  If `TRUE`, compute a 95% bootstrap CI on the
+#'   reference summary statistic for each analyte (1,000 replicates by
+#'   default).  Adds `ref_lower` and `ref_upper` columns to
+#'   `$normalised_quantiles`.  Default `FALSE`.
+#' @param n_boot Number of bootstrap replicates if `bootstrap_ci = TRUE`.
+#'   Default `1000L`.
+#' @param eps Small positive guard added inside the log for geometric-mean
+#'   computation, to handle BDL contributions of `0`.  Default `1e-9`.
 #'
 #' @return A list of class `"prepared_reference"` with elements:
-#'   - `$normalised_quantiles`: tibble with columns `analyte`,
-#'     `ref_norm` (normalised concentration at `percentile`).
-#'   - `$dropped`: character vector of analytes excluded due to no detected
-#'     reference observations.
-#'   - `$percentile`: the `percentile` value used.
+#'   \itemize{
+#'     \item `$normalised_quantiles`: tibble with columns `analyte`,
+#'       `ref_norm` (normalised summary concentration), `n_obs` (count of
+#'       observations contributing).  If `bootstrap_ci = TRUE`, also
+#'       `ref_lower` / `ref_upper` (95% CI).
+#'     \item `$dropped`: character vector of analytes excluded due to no
+#'       reference observations.
+#'     \item `$summary`: the summary statistic used.
+#'     \item `$percentile`: for backwards-compatible quantile summaries,
+#'       the quantile probability.  `NA` for non-quantile summaries.
+#'   }
 #'
 #' @examples
 #' \dontrun{
-#' # Per-sample pipeline
+#' # Default: geometric mean (recommended)
 #' prep_ref <- prepare_reference(ref_df)
-#' out <- add_amspaf(sample_df, reference = prep_ref)
 #'
-#' # Chronic pipeline: integrate reference chemistry first
-#' chr_ref  <- compute_chronic_chemistry(ref_df, focal_dates = bio_dates)
-#' prep_chr <- prepare_reference(chr_ref)
-#' out_chr  <- add_amspaf(chr_chem, reference = prep_chr)
+#' # 80th percentile (legacy behaviour)
+#' prep_ref <- prepare_reference(ref_df, summary = "p80")
+#'
+#' # With bootstrap CI
+#' prep_ref <- prepare_reference(ref_df, bootstrap_ci = TRUE)
+#' prep_ref$normalised_quantiles
 #' }
 #'
 #' @export
 prepare_reference <- function(
     reference_data,
     analyte_metadata = NULL,
-    percentile       = 0.80
+    summary          = c("geom_mean", "median", "arith_mean",
+                          "p80", "p90", "p95"),
+    percentile       = NULL,
+    bootstrap_ci     = FALSE,
+    n_boot           = 1000L,
+    eps              = 1e-9
 ) {
   checkmate::assert_data_frame(reference_data)
   checkmate::assert_names(names(reference_data),
     must.include = c("analyte", "value", "detected"))
-  checkmate::assert_number(percentile, lower = 0, upper = 1)
+  checkmate::assert_flag(bootstrap_ci)
+  checkmate::assert_int(n_boot, lower = 100L)
+  checkmate::assert_number(eps, lower = 0)
+
+  # Deprecation handling: `percentile` overrides `summary`
+  if (!is.null(percentile)) {
+    checkmate::assert_number(percentile, lower = 0, upper = 1)
+    lifecycle_summary <- sprintf("p%d", round(100 * percentile))
+    if (!lifecycle_summary %in% c("p80", "p90", "p95")) {
+      cli::cli_abort(c(
+        "`percentile` is deprecated and only supports 0.80, 0.90, 0.95.",
+        "i" = "Use {.arg summary} directly: \\
+               {.code summary = 'geom_mean'} (recommended), \\
+               {.code 'median'}, {.code 'p80'}, etc."
+      ))
+    }
+    cli::cli_warn(c(
+      "!" = "{.arg percentile} is deprecated; use {.arg summary} = \\
+             {.val {lifecycle_summary}}.",
+      "i" = "Default summary has changed to {.val geom_mean} \\
+             (more robust to small reference datasets)."
+    ))
+    summary <- lifecycle_summary
+  } else {
+    summary <- match.arg(summary)
+  }
 
   meta <- .load_analyte_metadata(analyte_metadata)
 
   # BDL reference observations are treated as 0 (not excluded).
-  # Rationale: the quantile represents what the local biota is adapted to.
-  # If 99/100 reference samples are BDL, the 80th-percentile background is
-  # genuinely near zero — excluding BDLs would inflate the reference and
-  # understate risk. Detected rows keep their measured value; BDL rows
-  # contribute 0 to the quantile. Normalisation is applied only to detected
-  # rows (normalising 0 is a no-op, but avoids formula edge cases).
+  # Rationale: the summary represents what the local biota is adapted to.
+  # If 99/100 reference samples are BDL, the background is genuinely near
+  # zero — excluding BDLs would inflate the reference and understate risk.
+  # Detected rows keep their measured value; BDL rows contribute 0.
+  # Normalisation is applied only to detected rows (normalising 0 is a
+  # no-op, but avoids formula edge cases).
   ref_q <- dplyr::mutate(
     reference_data,
     value = dplyr::if_else(.data$detected, .data$value, 0)
+  )
+
+  empty_result <- function() structure(
+    list(
+      normalised_quantiles = tibble::tibble(
+        analyte  = character(0),
+        ref_norm = numeric(0),
+        n_obs    = integer(0)
+      ),
+      dropped    = character(0),
+      summary    = summary,
+      percentile = .summary_to_percentile(summary)
+    ),
+    class = "prepared_reference"
   )
 
   if (nrow(ref_q) == 0L) {
     cli::cli_warn(
       "No reference observations found; ARA subtraction will be zero for all analytes."
     )
-    return(structure(
-      list(
-        normalised_quantiles = tibble::tibble(
-          analyte  = character(0),
-          ref_norm = numeric(0)
-        ),
-        dropped    = character(0),
-        percentile = percentile
-      ),
-      class = "prepared_reference"
-    ))
+    return(empty_result())
   }
 
   # Apply normalisation per analyte row (detected rows only; BDL rows stay 0)
@@ -115,14 +184,29 @@ prepare_reference <- function(
       )
     )
 
-  # Per-analyte quantile of normalised concentrations
+  # Per-analyte summary statistic
   qnt <- nq |>
     dplyr::group_by(.data$analyte) |>
     dplyr::summarise(
-      ref_norm = quantile(.data$value_norm, probs = percentile, na.rm = TRUE),
+      ref_norm = .ref_summary(.data$value_norm, summary, eps),
       n_obs    = sum(!is.na(.data$value_norm)),
       .groups  = "drop"
     )
+
+  # Optional bootstrap CI per analyte
+  if (bootstrap_ci) {
+    ci_tbl <- nq |>
+      dplyr::group_by(.data$analyte) |>
+      dplyr::summarise(
+        .ci = list(
+          .ref_summary_bootstrap_ci(.data$value_norm, summary, eps, n_boot)
+        ),
+        .groups = "drop"
+      ) |>
+      tidyr::unnest_wider(".ci")
+
+    qnt <- dplyr::left_join(qnt, ci_tbl, by = "analyte")
+  }
 
   # Analytes that ended up with no usable reference observations:
   # either never detected at the reference site, or normalisation returned
@@ -137,23 +221,81 @@ prepare_reference <- function(
     ))
   }
 
+  # Warn about analytes with very few observations (CI may be unreliable)
+  low_n <- qnt$analyte[qnt$n_obs > 0L & qnt$n_obs < 5L]
+  if (length(low_n) > 0L) {
+    cli::cli_warn(c(
+      "!" = "{length(low_n)} analyte{?s} have < 5 reference observations \\
+             — `ref_norm` estimate may be unreliable: {.val {low_n}}."
+    ))
+  }
+
   structure(
     list(
-      normalised_quantiles = dplyr::filter(qnt, .data$n_obs > 0L) |>
-        dplyr::select("analyte", "ref_norm"),
+      normalised_quantiles = dplyr::filter(qnt, .data$n_obs > 0L),
       dropped    = dropped,
-      percentile = percentile
+      summary    = summary,
+      percentile = .summary_to_percentile(summary)
     ),
     class = "prepared_reference"
   )
 }
 
+# ── Summary-statistic helpers ─────────────────────────────────────────────────
+
+#' Compute a reference-distribution summary statistic
+#' @keywords internal
+.ref_summary <- function(x, summary, eps = 1e-9) {
+  x <- x[!is.na(x)]
+  if (length(x) == 0L) return(NA_real_)
+  switch(summary,
+    geom_mean  = exp(mean(log(x + eps))) - eps,
+    arith_mean = mean(x),
+    median     = stats::median(x),
+    p80        = stats::quantile(x, probs = 0.80, names = FALSE),
+    p90        = stats::quantile(x, probs = 0.90, names = FALSE),
+    p95        = stats::quantile(x, probs = 0.95, names = FALSE),
+    cli::cli_abort("Unknown summary {.val {summary}}.")
+  )
+}
+
+#' Bootstrap CI for a reference summary statistic
+#' @keywords internal
+.ref_summary_bootstrap_ci <- function(x, summary, eps = 1e-9, n_boot = 1000L) {
+  x <- x[!is.na(x)]
+  n <- length(x)
+  if (n < 3L) {
+    return(list(ref_lower = NA_real_, ref_upper = NA_real_))
+  }
+  draws <- vapply(seq_len(n_boot), function(.) {
+    .ref_summary(sample(x, size = n, replace = TRUE), summary, eps)
+  }, numeric(1))
+  list(
+    ref_lower = unname(stats::quantile(draws, 0.025, na.rm = TRUE)),
+    ref_upper = unname(stats::quantile(draws, 0.975, na.rm = TRUE))
+  )
+}
+
+#' Map a summary name to its quantile probability (or NA for non-quantile)
+#' @keywords internal
+.summary_to_percentile <- function(summary) {
+  switch(summary,
+    p80    = 0.80,
+    p90    = 0.90,
+    p95    = 0.95,
+    median = 0.50,
+    NA_real_
+  )
+}
+
 #' @export
 print.prepared_reference <- function(x, ...) {
+  has_ci <- "ref_lower" %in% names(x$normalised_quantiles)
   cat(sprintf(
-    "<prepared_reference>  %d analytes | %gth percentile | %d dropped\n",
+    "<prepared_reference>  %d analytes | summary = %s%s | %d dropped\n",
     nrow(x$normalised_quantiles),
-    x$percentile * 100,
+    x$summary %||% "geom_mean",
+    if (has_ci) " | bootstrap CI" else "",
     length(x$dropped)
   ))
   invisible(x)

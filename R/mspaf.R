@@ -73,14 +73,15 @@
 ## `moa_group = "ionoregulatory"` (one CA group). Organics/pesticides have
 ## `moa_group = NA` → each gets a unique synthetic solo group `"_solo_<name>"`.
 ##
-## ## Tier breaks
+## ## Output interpretation
 ##
-## All four tier breaks are biologically anchored to ANZG species protection
-## levels, expressed as msPAF percentages:
-##   Tier 1 (Background):  AmsPAF < 1%   (99% species protection)
-##   Tier 2 (Elevated):    1% - 5%       (95% species protection)
-##   Tier 3 (Impacted):    5% - 10%      (90% species protection)
-##   Tier 4 (Severe):      > 10% - 20%+  (80% species protection)
+## AmsPAF is returned as a continuous risk metric (% of species potentially
+## affected by the mixture, 0-100+).  Tier breaks are deliberately not
+## provided by this package — msPAF semantics differ from single-substance
+## guideline values (the "% affected" denominator depends on which
+## substances are in the mixture).  See
+## `vignette("chronic-amspaf-interpretation")` for a discussion of how to
+## interpret msPAF values in an assessment context.
 ##
 ## ## References
 ##
@@ -100,12 +101,6 @@
 ##   Zealand Water Quality Guideline Values for Toxicants. ANZG.
 ##
 ## ============================================================================
-
-## Tier break constants (expressed as proportions internally, % in output)
-.AMSPAF_BREAK_T1_T2 <- 0.01 ## 1%  — 99% species protection
-.AMSPAF_BREAK_T2_T3 <- 0.05 ## 5%  — 95% species protection
-.AMSPAF_BREAK_T3_T4 <- 0.10 ## 10% — 90% species protection
-.AMSPAF_CEILING <- 0.20 ## 20% — 80% species protection (notional ceiling)
 
 ## Analytes excluded from msPAF regardless of SSD availability.
 ##
@@ -162,17 +157,25 @@
 #'   XLSX files. Falls back to `getOption("leachatetools.guideline_dir")`.
 #' @param min_analytes Minimum number of analytes with fitted SSDs required
 #'   to compute AmsPAF for a sample. Default `3`.
-#' @param ref_percentile_for_anchor Percentile used when `reference` is a raw
-#'   data frame. Default `0.80` (80th percentile, per ANZG convention).
+#' @param ref_summary Summary statistic for the reference distribution when
+#'   `reference` is a raw data frame.  Passed through to
+#'   [prepare_reference()].  Default `"geom_mean"` — the maximum-likelihood
+#'   central tendency for log-normal concentrations, and a PICT-consistent
+#'   estimate of the "typical" exposure the resident community has adapted
+#'   to.  Other options: `"median"`, `"arith_mean"`, `"p80"`, `"p90"`,
+#'   `"p95"`.
 #'
 #' @return The input `df` with AmsPAF rows appended. Each AmsPAF row carries:
-#'   `value` (AmsPAF as a percentage, 0–100+), `quantified = TRUE`,
-#'   `name.analyte = "AmsPAF"`, `n_analytes_used` (integer),
+#'   `value` (AmsPAF as a percentage, 0–100+), `detected = TRUE`,
+#'   `analyte = "AmsPAF"`, `n_analytes_used` (integer),
 #'   `n_analytes_imputed` (integer, 0 if `imputed` column absent),
 #'   `dominant_analyte` (character), `max_paf` (numeric),
-#'   `analyte_pafs` (list column of per-analyte diagnostic tibbles), and four
-#'   guideline columns (`value/level_name/guideline/comments.guideline_1`
-#'   through `_4`).
+#'   `analyte_pafs` (list column of per-analyte diagnostic tibbles).
+#'
+#'   Tier breaks are not provided by this package — AmsPAF is a continuous
+#'   risk metric and the threshold at which a community is "impacted"
+#'   depends on the assessment context.  See
+#'   `vignette("chronic-amspaf-interpretation")` for guidance.
 #'
 #' @seealso [ssd_paf()], [ssd_hc50()], [prepare_reference()],
 #'   [compute_chronic_chemistry()], [prescreen_analytes()], [impute_chemistry()]
@@ -184,21 +187,22 @@
 #' @export
 add_amspaf <- function(
     df,
-    reference                 = NULL,
-    analyte_metadata          = NULL,
-    method                    = c("multi", "anzecc"),
-    guideline_dir             = getOption("leachatetools.guideline_dir"),
-    min_analytes              = 3,
-    ref_percentile_for_anchor = 0.80
+    reference        = NULL,
+    analyte_metadata = NULL,
+    method           = c("multi", "anzecc"),
+    guideline_dir    = getOption("leachatetools.guideline_dir"),
+    min_analytes     = 3,
+    ref_summary      = c("geom_mean", "median", "arith_mean",
+                          "p80", "p90", "p95")
 ) {
   checkmate::assert_data_frame(df)
   checkmate::assert_names(
     names(df),
     must.include = c("sample_id", "site_id", "analyte", "value")
   )
-  method <- match.arg(method)
+  method      <- match.arg(method)
+  ref_summary <- match.arg(ref_summary)
   checkmate::assert_int(min_analytes, lower = 1L)
-  checkmate::assert_number(ref_percentile_for_anchor, lower = 0.5, upper = 0.99)
 
   ## ================================================================
   ## Step 1: Load analyte metadata and derive SSD parameters.
@@ -223,15 +227,17 @@ add_amspaf <- function(
   if (inherits(reference, "prepared_reference")) {
     prep_ref <- reference
   } else if (is.null(reference)) {
-    ## No ARA: empty quantiles → ref_norm treated as 0 inside compute_amspaf_per_sample()
+    ## No ARA: empty summary → ref_norm treated as 0 inside compute_amspaf_per_sample()
     prep_ref <- structure(
       list(
         normalised_quantiles = tibble::tibble(
           analyte  = character(0),
-          ref_norm = numeric(0)
+          ref_norm = numeric(0),
+          n_obs    = integer(0)
         ),
         dropped    = character(0),
-        percentile = ref_percentile_for_anchor
+        summary    = ref_summary,
+        percentile = NA_real_
       ),
       class = "prepared_reference"
     )
@@ -240,11 +246,17 @@ add_amspaf <- function(
     prep_ref <- prepare_reference(
       reference,
       analyte_metadata = meta,
-      percentile       = ref_percentile_for_anchor
+      summary          = ref_summary
     )
   }
 
-  ref_quantiles <- prep_ref$normalised_quantiles
+  ## Use only analyte+ref_norm columns for the join (avoid polluting tox_rows
+  ## with n_obs / ref_lower / ref_upper if bootstrap_ci was used)
+  ref_quantiles <- if (nrow(prep_ref$normalised_quantiles) > 0L) {
+    dplyr::select(prep_ref$normalised_quantiles, "analyte", "ref_norm")
+  } else {
+    prep_ref$normalised_quantiles
+  }
 
   ## ================================================================
   ## Step 3: Compute AmsPAF per feature, per sample.
@@ -266,50 +278,15 @@ add_amspaf <- function(
     dplyr::ungroup() |>
     dplyr::mutate(
       analyte  = "AmsPAF",
-      detected = TRUE,
-      RL_low = 0,
-
-      ## ================================================================
-      ## Guideline columns — tier breaks anchored to ANZG species
-      ## protection levels.
-      ## ================================================================
-
-      value.guideline_1 = .AMSPAF_BREAK_T1_T2 * 100,
-      level_name.guideline_1 = "Background",
-      guideline.guideline_1 = "AmsPAF threshold",
-      comments.guideline_1 = paste0(
-        "1% of species potentially affected by the mixture. Corresponds to ",
-        "the ANZG 99% species protection level. Concentrations are adjusted ",
-        "for local geogenic background via the Added Risk Approach before ",
-        "SSD evaluation, so background metals do not contribute to AmsPAF."
-      ),
-
-      value.guideline_2 = .AMSPAF_BREAK_T2_T3 * 100,
-      level_name.guideline_2 = "Elevated",
-      guideline.guideline_2 = "AmsPAF threshold",
-      comments.guideline_2 = paste0(
-        "5% of species potentially affected by the mixture. Corresponds to ",
-        "the ANZG 95% species protection level (the standard default for ",
-        "slightly-to-moderately disturbed ecosystems)."
-      ),
-
-      value.guideline_3 = .AMSPAF_BREAK_T3_T4 * 100,
-      level_name.guideline_3 = "Impacted",
-      guideline.guideline_3 = "AmsPAF threshold",
-      comments.guideline_3 = paste0(
-        "10% of species potentially affected by the mixture. Corresponds to ",
-        "the ANZG 90% species protection level."
-      ),
-
-      value.guideline_4 = .AMSPAF_CEILING * 100,
-      level_name.guideline_4 = "Severely impacted",
-      guideline.guideline_4 = "AmsPAF threshold",
-      comments.guideline_4 = paste0(
-        "20% of species potentially affected by the mixture. Corresponds to ",
-        "the ANZG 80% species protection level. Values may exceed this; the ",
-        "boundary exists for consistent reporting and colour-scaling."
-      )
+      detected = TRUE
     )
+
+  ## Tier breaks / regulatory interpretation are intentionally NOT provided
+  ## by this package.  AmsPAF is a continuous risk metric (% of species
+  ## potentially affected); the threshold at which a community is
+  ## "impacted" depends on the assessment context (mixture composition,
+  ## site-specific calibration, target protection level) and is a
+  ## consumer-side decision.  See vignette("chronic-amspaf-interpretation").
 
   ## Propagate datetime from input df to AmsPAF rows (per-sample pipeline).
   if ("datetime" %in% names(df)) {
@@ -623,21 +600,3 @@ compute_amspaf_per_sample <- function(
 }
 
 
-## ============================================================================
-## Utility: classify AmsPAF value into tier label
-## ============================================================================
-
-#' Classify an AmsPAF value into a reporting tier
-#'
-#' @param amspaf_pct Numeric vector of AmsPAF values in percent.
-#' @return Character vector of tier labels.
-#' @export
-classify_amspaf_tier <- function(amspaf_pct) {
-  checkmate::assert_numeric(amspaf_pct, lower = 0)
-  dplyr::case_when(
-    amspaf_pct < .AMSPAF_BREAK_T1_T2 * 100 ~ "1_background",
-    amspaf_pct < .AMSPAF_BREAK_T2_T3 * 100 ~ "2_elevated",
-    amspaf_pct < .AMSPAF_BREAK_T3_T4 * 100 ~ "3_impacted",
-    TRUE ~ "4_severely_impacted"
-  )
-}
