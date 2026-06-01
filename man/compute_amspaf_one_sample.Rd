@@ -11,7 +11,8 @@ compute_amspaf_one_sample(
   min_analytes,
   method,
   guideline_dir,
-  has_imputed = FALSE
+  has_imputed = FALSE,
+  ara_enabled = TRUE
 )
 }
 \arguments{
@@ -21,16 +22,19 @@ a \code{detected} column.}
 
 \item{ref_table}{Tibble \verb{(analyte, ref_norm)} from \code{prep_ref$ref_table}.}
 
-\item{ssd_params}{Tibble from \code{\link[=derive_ssd_params]{derive_ssd_params()}}.}
+\item{ssd_params}{Tibble from \code{\link[=derive_ssd_params]{derive_ssd_params()}} (incl. the \code{fit} column).}
 
 \item{min_analytes}{Minimum analytes required.}
 
-\item{method}{SSD method.}
+\item{method}{SSD method (used only for the rare NULL-fit fallback).}
 
-\item{guideline_dir}{Path to ANZG XLSX folder.}
+\item{guideline_dir}{Path to ANZG XLSX folder (NULL-fit fallback only).}
 
 \item{has_imputed}{Logical; whether the input carried an \code{imputed} column
 (controls \code{n_analytes_imputed} accounting).}
+
+\item{ara_enabled}{Logical; whether the caller supplied a reference.
+Controls the \code{ref_source} diagnostic (see \code{\link[=.amspaf_adjust]{.amspaf_adjust()}}).}
 }
 \value{
 A one-row tibble (or zero-row tibble if the sample fails
@@ -39,12 +43,11 @@ A one-row tibble (or zero-row tibble if the sample fails
 \code{dropped_analytes}.
 }
 \description{
-The per-sample workhorse extracted from \code{\link[=compute_amspaf_per_sample]{compute_amspaf_per_sample()}}.
-Given the chemistry rows for one sample (toxicants plus any co-analyte
-rows such as pH/DOC), it applies chemistry normalisation, the ARA shift,
-per-analyte PAF lookup, and CA/IA mixture combination, returning a
-single-row diagnostic tibble.  Factored out so the normalisation / ARA /
-CA / IA steps can be unit-tested in isolation; behaviour is identical to
-the previous in-line \code{group_modify} body.
+Thin wrapper over the shared AmsPAF helpers (\code{\link[=.amspaf_adjust]{.amspaf_adjust()}},
+\code{\link[=.amspaf_add_paf]{.amspaf_add_paf()}}, \code{\link[=.amspaf_combine]{.amspaf_combine()}}) that processes one sample in
+isolation.  Retained so the normalisation / ARA / CA / IA steps can be
+driven (and unit-tested) for a single sample; the batched
+\code{\link[=compute_amspaf_per_sample]{compute_amspaf_per_sample()}} path uses the same helpers so behaviour is
+guaranteed identical.
 }
 \keyword{internal}

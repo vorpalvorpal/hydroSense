@@ -42,8 +42,8 @@
 #'   `"p95"`.
 #' @param bootstrap_ci Logical.  If `TRUE`, compute a 95% bootstrap CI on the
 #'   reference summary statistic for each analyte (1,000 replicates by
-#'   default).  Adds `ref_lower` and `ref_upper` columns to `$ref_table`.
-#'   Default `FALSE`.
+#'   default).  Adds `ref_lower`, `ref_upper`, and `n_boot_valid` columns to
+#'   `$ref_table`.  Default `FALSE`.
 #' @param n_boot Number of bootstrap replicates if `bootstrap_ci = TRUE`.
 #'   Default `1000L`.
 #' @param eps Small positive guard added inside the log for geometric-mean
@@ -54,7 +54,9 @@
 #'     \item `$ref_table`: tibble with columns `analyte`, `ref_norm`
 #'       (normalised summary concentration), `n_obs` (count of observations
 #'       contributing).  If `bootstrap_ci = TRUE`, also `ref_lower` /
-#'       `ref_upper` (95% CI).
+#'       `ref_upper` (95% CI) and `n_boot_valid` (number of bootstrap draws
+#'       that yielded a finite summary; CIs built from far fewer than `n_boot`
+#'       draws are flagged with a warning).
 #'     \item `$dropped`: character vector of analytes excluded due to no
 #'       reference observations.
 #'     \item `$summary`: the summary statistic used.
@@ -176,6 +178,21 @@ prepare_reference <- function(
       tidyr::unnest_wider(".ci")
 
     qnt <- dplyr::left_join(qnt, ci_tbl, by = "analyte")
+
+    ## Flag analytes where a large share of bootstrap draws were lost to
+    ## non-finite summaries — the CI is built from too few effective draws to
+    ## be trustworthy.
+    if ("n_boot_valid" %in% names(qnt)) {
+      shaky <- qnt$analyte[!is.na(qnt$n_boot_valid) &
+                             qnt$n_boot_valid < 0.9 * n_boot]
+      if (length(shaky) > 0L) {
+        cli::cli_warn(c(
+          "!" = "{length(shaky)} analyte{?s} lost > 10% of bootstrap draws to \\
+                 non-finite values — CI may be unreliable: {.val {shaky}}.",
+          "i" = "Inspect with the `n_boot_valid` column of `ref_table`."
+        ))
+      }
+    }
   }
 
   # Analytes that ended up with no usable reference observations:
@@ -234,14 +251,18 @@ prepare_reference <- function(
   x <- x[!is.na(x)]
   n <- length(x)
   if (n < 3L) {
-    return(list(ref_lower = NA_real_, ref_upper = NA_real_))
+    return(list(ref_lower = NA_real_, ref_upper = NA_real_, n_boot_valid = 0L))
   }
   draws <- vapply(seq_len(n_boot), function(.) {
     .ref_summary(sample(x, size = n, replace = TRUE), summary, eps)
   }, numeric(1))
+  ## Some draws can be non-finite (e.g. a resample that summarises to NA);
+  ## quantile() drops them via na.rm but the caller needs to know how many
+  ## draws actually contributed so it can flag unreliable CIs.
   list(
-    ref_lower = unname(stats::quantile(draws, 0.025, na.rm = TRUE)),
-    ref_upper = unname(stats::quantile(draws, 0.975, na.rm = TRUE))
+    ref_lower    = unname(stats::quantile(draws, 0.025, na.rm = TRUE)),
+    ref_upper    = unname(stats::quantile(draws, 0.975, na.rm = TRUE)),
+    n_boot_valid = sum(is.finite(draws))
   )
 }
 

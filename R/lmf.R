@@ -211,7 +211,7 @@
 #'   nitrified NH4 to NO3. Default \code{20}.
 #' @param rsd_default Default relative analytical uncertainty, applied as
 #'   \code{sigma_meas = rsd_default * |x|} with a floor at
-#'   \code{rsd_default * |R|}. Default \code{0.05} (5\% RSD).
+#'   \code{rsd_default * |R|}. Default \code{0.05} (5% RSD).
 #' @param min_ref_samples Minimum reference samples required in the calibration
 #'   window. Features matched to a reference site with fewer samples are
 #'   skipped silently. Default \code{10}.
@@ -1046,7 +1046,7 @@ compute_lmf_for_sample <- function(
 #' @param reason Character reason code, or \code{NA_character_} on success.
 #' @param n_ions Integer count of ions used in the calculation.
 #' @param n_downweighted Integer count of ions whose weight was meaningfully
-#'   reduced (> 1\% reduction) by robust reweighting.
+#'   reduced (> 1% reduction) by robust reweighting.
 #' @param sigma Numeric \code{sigma_lmf} uncertainty estimate (from robust
 #'   weights).
 #' @param chi2 Numeric chi-squared per degree of freedom (on original weights;
@@ -1065,7 +1065,6 @@ compute_lmf_for_sample <- function(
 #'   through \code{_4}).
 #'
 #' @keywords internal
-
 make_lmf_row <- function(
   value,
   lmf_naive,

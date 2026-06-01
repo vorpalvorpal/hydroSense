@@ -47,8 +47,13 @@ did not pass the threshold (non-protected only), so callers can record
 what was dropped.
 
 When \code{return = "table"}: a tibble with columns \code{analyte},
-\code{n_samples}, \code{n_detected}, \code{detect_freq}, \code{protected} (logical),
-\code{included} (logical).
+\code{n_samples}, \code{n_detected}, \code{detect_freq}, \code{limiting_site},
+\code{protected} (logical), \code{included} (logical).  When
+\code{group_by_feature = TRUE}, \code{n_samples} / \code{n_detected} / \code{detect_freq}
+describe the \emph{limiting} site (the worst-case feature that drove the
+inclusion decision) and \code{limiting_site} names it; when
+\code{group_by_feature = FALSE}, counts are pooled across all samples and
+\code{limiting_site} is \code{NA}.
 }
 \description{
 Computes detection frequency (proportion of samples with \code{detected == TRUE})

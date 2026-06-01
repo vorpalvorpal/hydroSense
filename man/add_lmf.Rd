@@ -66,7 +66,7 @@ nitrified NH4 to NO3. Default \code{20}.}
 
 \item{rsd_default}{Default relative analytical uncertainty, applied as
 \code{sigma_meas = rsd_default * |x|} with a floor at
-\code{rsd_default * |R|}. Default \code{0.05} (5\\% RSD).}
+\code{rsd_default * |R|}. Default \code{0.05} (5\% RSD).}
 
 \item{min_ref_samples}{Minimum reference samples required in the calibration
 window. Features matched to a reference site with fewer samples are

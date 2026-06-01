@@ -30,8 +30,8 @@ data frame or a file path string. Must contain columns \code{analyte},
 
 \item{bootstrap_ci}{Logical.  If \code{TRUE}, compute a 95\% bootstrap CI on the
 reference summary statistic for each analyte (1,000 replicates by
-default).  Adds \code{ref_lower} and \code{ref_upper} columns to \verb{$ref_table}.
-Default \code{FALSE}.}
+default).  Adds \code{ref_lower}, \code{ref_upper}, and \code{n_boot_valid} columns to
+\verb{$ref_table}.  Default \code{FALSE}.}
 
 \item{n_boot}{Number of bootstrap replicates if \code{bootstrap_ci = TRUE}.
 Default \code{1000L}.}
@@ -45,7 +45,9 @@ A list of class \code{"prepared_reference"} with elements:
 \item \verb{$ref_table}: tibble with columns \code{analyte}, \code{ref_norm}
 (normalised summary concentration), \code{n_obs} (count of observations
 contributing).  If \code{bootstrap_ci = TRUE}, also \code{ref_lower} /
-\code{ref_upper} (95\% CI).
+\code{ref_upper} (95\% CI) and \code{n_boot_valid} (number of bootstrap draws
+that yielded a finite summary; CIs built from far fewer than \code{n_boot}
+draws are flagged with a warning).
 \item \verb{$dropped}: character vector of analytes excluded due to no
 reference observations.
 \item \verb{$summary}: the summary statistic used.

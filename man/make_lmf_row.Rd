@@ -31,7 +31,7 @@ make_lmf_row(
 \item{n_ions}{Integer count of ions used in the calculation.}
 
 \item{n_downweighted}{Integer count of ions whose weight was meaningfully
-reduced (> 1\\% reduction) by robust reweighting.}
+reduced (> 1\% reduction) by robust reweighting.}
 
 \item{sigma}{Numeric \code{sigma_lmf} uncertainty estimate (from robust
 weights).}

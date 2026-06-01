@@ -42,8 +42,13 @@
 #'   what was dropped.
 #'
 #'   When `return = "table"`: a tibble with columns `analyte`,
-#'   `n_samples`, `n_detected`, `detect_freq`, `protected` (logical),
-#'   `included` (logical).
+#'   `n_samples`, `n_detected`, `detect_freq`, `limiting_site`,
+#'   `protected` (logical), `included` (logical).  When
+#'   `group_by_feature = TRUE`, `n_samples` / `n_detected` / `detect_freq`
+#'   describe the *limiting* site (the worst-case feature that drove the
+#'   inclusion decision) and `limiting_site` names it; when
+#'   `group_by_feature = FALSE`, counts are pooled across all samples and
+#'   `limiting_site` is `NA`.
 #'
 #' @examples
 #' \dontrun{
@@ -120,22 +125,32 @@ prescreen_analytes <- function(
       ) |>
       dplyr::mutate(feat_freq = .data$n_detected / .data$n_samples)
 
+    # An analyte's inclusion is decided by its WORST-CASE (limiting) site —
+    # the site with the lowest detection frequency.  Report that site's own
+    # counts (not pooled sums across sites), so n_samples / n_detected /
+    # detect_freq are mutually consistent and describe the site that actually
+    # drove the decision.  `limiting_site` names it.
     tbl <- per_feat |>
       dplyr::group_by(.data$analyte) |>
-      dplyr::summarise(
-        n_samples   = sum(.data$n_samples),
-        n_detected  = sum(.data$n_detected),
-        detect_freq = min(.data$feat_freq),  # worst-case feature
-        .groups     = "drop"
+      dplyr::arrange(.data$feat_freq, .by_group = TRUE) |>
+      dplyr::slice(1L) |>
+      dplyr::ungroup() |>
+      dplyr::transmute(
+        .data$analyte,
+        n_samples     = .data$n_samples,
+        n_detected    = .data$n_detected,
+        detect_freq   = .data$feat_freq,  # worst-case feature
+        limiting_site = .data$site_id
       )
   } else {
     tbl <- df |>
       dplyr::group_by(.data$analyte) |>
       dplyr::summarise(
-        n_samples   = dplyr::n_distinct(.data$sample_id),
-        n_detected  = dplyr::n_distinct(.data$sample_id[.data$detected]),
-        detect_freq = .data$n_detected / .data$n_samples,
-        .groups     = "drop"
+        n_samples     = dplyr::n_distinct(.data$sample_id),
+        n_detected    = dplyr::n_distinct(.data$sample_id[.data$detected]),
+        detect_freq   = .data$n_detected / .data$n_samples,
+        limiting_site = NA_character_,  # schema parity with group_by_feature
+        .groups       = "drop"
       )
   }
 

@@ -10,7 +10,8 @@ compute_amspaf_per_sample(
   ssd_params,
   min_analytes,
   method,
-  guideline_dir
+  guideline_dir,
+  ara_enabled = TRUE
 )
 }
 \arguments{
@@ -19,13 +20,16 @@ such as pH, DOC alongside toxicant rows).}
 
 \item{ref_table}{Tibble \verb{(analyte, ref_norm)} from \code{prep_ref$ref_table}.}
 
-\item{ssd_params}{Tibble from \code{\link[=derive_ssd_params]{derive_ssd_params()}}.}
+\item{ssd_params}{Tibble from \code{\link[=derive_ssd_params]{derive_ssd_params()}} (incl. the \code{fit} column).}
 
 \item{min_analytes}{Minimum analytes required.}
 
-\item{method}{SSD method.}
+\item{method}{SSD method (used only for the rare NULL-fit fallback).}
 
-\item{guideline_dir}{Path to ANZG XLSX folder.}
+\item{guideline_dir}{Path to ANZG XLSX folder (NULL-fit fallback only).}
+
+\item{ara_enabled}{Logical; whether the caller supplied a reference.
+Controls the \code{ref_source} diagnostic (see \code{\link[=.amspaf_adjust]{.amspaf_adjust()}}).}
 }
 \value{
 Tibble with one row per sample that passes \code{min_analytes}, columns:
@@ -33,8 +37,14 @@ Tibble with one row per sample that passes \code{min_analytes}, columns:
 \code{dominant_analyte}, \code{max_paf}, \code{analyte_pafs}, \code{dropped_analytes}.
 }
 \description{
-Internal workhorse called by \code{\link[=add_amspaf]{add_amspaf()}} for each \code{uuid.feature} group.
-Applies chemistry normalisation, ARA adjustment, and CA/IA mixture
-combination per sample.
+Internal workhorse called by \code{\link[=add_amspaf]{add_amspaf()}} for each \code{site_id} group.  Runs
+in three phases so the (relatively expensive) SSD evaluation is \strong{batched
+across samples} rather than called once per (sample × analyte):
+\enumerate{
+\item per-sample chemistry normalisation + ARA shift (\code{\link[=.amspaf_adjust]{.amspaf_adjust()}});
+\item one vectorised \code{\link[ssdtools:ssd_hp]{ssdtools::ssd_hp()}} call per analyte across every
+sample (\code{\link[=.amspaf_add_paf]{.amspaf_add_paf()}});
+\item per-sample CA/IA mixture combination (\code{\link[=.amspaf_combine]{.amspaf_combine()}}).
+}
 }
 \keyword{internal}

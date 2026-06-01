@@ -63,7 +63,10 @@ The input \code{df} with AmsPAF rows appended. Each AmsPAF row carries:
 \code{analyte = "AmsPAF"}, \code{n_analytes_used} (integer),
 \code{n_analytes_imputed} (integer, 0 if \code{imputed} column absent),
 \code{dominant_analyte} (character), \code{max_paf} (numeric),
-\code{analyte_pafs} (list column of per-analyte diagnostic tibbles).
+\code{analyte_pafs} (list column of per-analyte diagnostic tibbles, each with
+\code{analyte}, \code{C_adj}, \code{PAF}, \code{moa_group}, and \code{ref_source} — one of
+\code{"disabled"}, \code{"matched"}, \code{"unmatched"} recording how the ARA reference
+was resolved for that analyte).
 
 Tier breaks are not provided by this package — AmsPAF is a continuous
 risk metric and the threshold at which a community is "impacted"
