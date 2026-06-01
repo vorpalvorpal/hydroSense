@@ -4,58 +4,95 @@
 \alias{prepare_reference}
 \title{Prepare reference chemistry for AmsPAF background subtraction}
 \usage{
-prepare_reference(reference_data, analyte_metadata = NULL, percentile = 0.8)
+prepare_reference(
+  reference_data,
+  analyte_metadata = NULL,
+  summary = c("geom_mean", "median", "arith_mean", "p80", "p90", "p95"),
+  bootstrap_ci = FALSE,
+  n_boot = 1000L,
+  eps = 1e-09
+)
 }
 \arguments{
 \item{reference_data}{Long-format chemistry data frame for the reference
 (background) site(s). Same schema as the input to \code{add_amspaf()}:
-\code{analyte}, \code{value}, \code{detected}. If \code{detected == FALSE} for a row,
-it is excluded from the quantile calculation (BDL observations are treated
-as absent at the reference site).}
+\code{analyte}, \code{value}, \code{detected}. BDL (\code{detected == FALSE}) observations
+contribute \code{0} to the summary statistic.}
 
 \item{analyte_metadata}{Data frame of analyte metadata, or \code{NULL} to load
 the bundled \code{inst/extdata/anzecc_analyte_metadata.csv}. Accepts either a
 data frame or a file path string. Must contain columns \code{analyte},
 \code{coanalytes_required}, and \code{normalisation_formula}.}
 
-\item{percentile}{Quantile (0–1) of the reference distribution used as the
-background anchor for Added Risk Approach (ARA) subtraction. Default
-\code{0.80} (80th percentile — the concentration the reference site does not
-exceed 80 \% of the time).}
+\item{summary}{Summary statistic for the reference distribution. One of
+\code{"geom_mean"} (default), \code{"median"}, \code{"arith_mean"}, \code{"p80"}, \code{"p90"},
+\code{"p95"}.}
+
+\item{bootstrap_ci}{Logical.  If \code{TRUE}, compute a 95\% bootstrap CI on the
+reference summary statistic for each analyte (1,000 replicates by
+default).  Adds \code{ref_lower} and \code{ref_upper} columns to \verb{$ref_table}.
+Default \code{FALSE}.}
+
+\item{n_boot}{Number of bootstrap replicates if \code{bootstrap_ci = TRUE}.
+Default \code{1000L}.}
+
+\item{eps}{Small positive guard added inside the log for geometric-mean
+computation, to handle BDL contributions of \code{0}.  Default \code{1e-9}.}
 }
 \value{
 A list of class \code{"prepared_reference"} with elements:
 \itemize{
-\item \verb{$normalised_quantiles}: tibble with columns \code{analyte},
-\code{ref_norm} (normalised concentration at \code{percentile}).
-\item \verb{$dropped}: character vector of analytes excluded due to no detected
+\item \verb{$ref_table}: tibble with columns \code{analyte}, \code{ref_norm}
+(normalised summary concentration), \code{n_obs} (count of observations
+contributing).  If \code{bootstrap_ci = TRUE}, also \code{ref_lower} /
+\code{ref_upper} (95\% CI).
+\item \verb{$dropped}: character vector of analytes excluded due to no
 reference observations.
-\item \verb{$percentile}: the \code{percentile} value used.
+\item \verb{$summary}: the summary statistic used.
 }
 }
 \description{
 Applies chemistry normalisation (if formulas are populated in the metadata)
-and computes per-analyte quantile concentrations from reference-site data.
-The resulting object is passed as the \code{reference} argument to
-\code{add_amspaf()}.
+and computes a per-analyte central-tendency summary from reference-site
+data, optionally with a bootstrap confidence interval.  The resulting
+object is passed as the \code{reference} argument to \code{add_amspaf()}.
 }
 \details{
 This is a pure function — it has no side effects and no internal cache.
 In the chronic pipeline, call it once after computing chronic chemistry for
 the reference feature(s), then pass the object into \code{add_amspaf()} for
-every focal date. In the per-sample pipeline, call it once on the raw
+every focal date.  In the per-sample pipeline, call it once on the raw
 reference chemistry.
+
+\strong{Summary statistic.}  The default is \code{"geom_mean"} — the geometric mean
+of all detected observations.  This is preferred over a fixed quantile
+because:
+\itemize{
+\item it is the maximum-likelihood central tendency for log-normal
+concentrations (which is how aquatic concentration data typically
+distribute);
+\item it uses all observations rather than a single ranked point, so
+it is more robust to small reference datasets;
+\item it is PICT-consistent: the resident community has adapted to the
+integrated typical exposure over time, not to a particular upper
+quantile.
+}
+BDL observations contribute \code{0} to the geometric mean via an
+\eqn{\epsilon}-shifted log: \code{exp(mean(log(value + eps)))}.  Other
+summaries available: \code{"median"}, \code{"arith_mean"}, \code{"p80"}, \code{"p90"},
+\code{"p95"}.
 }
 \examples{
 \dontrun{
-# Per-sample pipeline
+# Default: geometric mean (recommended)
 prep_ref <- prepare_reference(ref_df)
-out <- add_amspaf(sample_df, reference = prep_ref)
 
-# Chronic pipeline: integrate reference chemistry first
-chr_ref  <- compute_chronic_chemistry(ref_df, focal_dates = bio_dates)
-prep_chr <- prepare_reference(chr_ref)
-out_chr  <- add_amspaf(chr_chem, reference = prep_chr)
+# 80th percentile
+prep_ref <- prepare_reference(ref_df, summary = "p80")
+
+# With bootstrap CI
+prep_ref <- prepare_reference(ref_df, bootstrap_ci = TRUE)
+prep_ref$ref_table
 }
 
 }

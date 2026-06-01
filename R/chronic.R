@@ -150,16 +150,23 @@ time_weighted_aggregate <- function(
     )
   }
 
+  # Split the data by site ONCE, up front, rather than re-filtering the full
+  # df inside every (focal_date × site_id) iteration below.  `split()` keys
+  # the resulting list by site_id, so each iteration is an O(1) list lookup
+  # instead of an O(nrow(df)) scan — a large saving when there are many focal
+  # dates.  (dplyr::group_split() would also work but returns an unnamed list,
+  # forcing a separate key lookup; base split() gives us the named list
+  # directly.)
+  df_by_site <- split(df, df$site_id)
+
   # ── Per (focal_date, site_id): compute chronic values ─────────────────────
   results <- purrr::pmap(focal_grid, function(focal_date, site_id) {
     window_start <- focal_date - window_days
 
-    # Samples for this feature
-    feat_df <- dplyr::filter(df,
-      .data$site_id == .env$site_id
-    )
+    # Samples for this feature (pre-split list lookup)
+    feat_df <- df_by_site[[site_id]]
 
-    if (nrow(feat_df) == 0L) {
+    if (is.null(feat_df) || nrow(feat_df) == 0L) {
       return(NULL)
     }
 

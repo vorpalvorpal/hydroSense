@@ -6,7 +6,7 @@
 \usage{
 compute_amspaf_per_sample(
   sample_data,
-  ref_quantiles,
+  ref_table,
   ssd_params,
   min_analytes,
   method,
@@ -17,8 +17,7 @@ compute_amspaf_per_sample(
 \item{sample_data}{Per-feature long-format df (may include co-analyte rows
 such as pH, DOC alongside toxicant rows).}
 
-\item{ref_quantiles}{Tibble \verb{(name.analyte, ref_norm)} from
-\code{prep_ref$normalised_quantiles}.}
+\item{ref_table}{Tibble \verb{(analyte, ref_norm)} from \code{prep_ref$ref_table}.}
 
 \item{ssd_params}{Tibble from \code{\link[=derive_ssd_params]{derive_ssd_params()}}.}
 
@@ -30,8 +29,8 @@ such as pH, DOC alongside toxicant rows).}
 }
 \value{
 Tibble with one row per sample that passes \code{min_analytes}, columns:
-\code{uuid.sample}, \code{value}, \code{n_analytes_used}, \code{n_analytes_imputed},
-\code{dominant_analyte}, \code{max_paf}, \code{analyte_pafs}.
+\code{sample_id}, \code{value}, \code{n_analytes_used}, \code{n_analytes_imputed},
+\code{dominant_analyte}, \code{max_paf}, \code{analyte_pafs}, \code{dropped_analytes}.
 }
 \description{
 Internal workhorse called by \code{\link[=add_amspaf]{add_amspaf()}} for each \code{uuid.feature} group.

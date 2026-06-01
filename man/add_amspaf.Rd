@@ -11,7 +11,7 @@ add_amspaf(
   method = c("multi", "anzecc"),
   guideline_dir = getOption("leachatetools.guideline_dir"),
   min_analytes = 3,
-  ref_percentile_for_anchor = 0.8
+  ref_summary = c("geom_mean", "median", "arith_mean", "p80", "p90", "p95")
 )
 }
 \arguments{
@@ -49,18 +49,26 @@ XLSX files. Falls back to \code{getOption("leachatetools.guideline_dir")}.}
 \item{min_analytes}{Minimum number of analytes with fitted SSDs required
 to compute AmsPAF for a sample. Default \code{3}.}
 
-\item{ref_percentile_for_anchor}{Percentile used when \code{reference} is a raw
-data frame. Default \code{0.80} (80th percentile, per ANZG convention).}
+\item{ref_summary}{Summary statistic for the reference distribution when
+\code{reference} is a raw data frame.  Passed through to
+\code{\link[=prepare_reference]{prepare_reference()}}.  Default \code{"geom_mean"} — the maximum-likelihood
+central tendency for log-normal concentrations, and a PICT-consistent
+estimate of the "typical" exposure the resident community has adapted
+to.  Other options: \code{"median"}, \code{"arith_mean"}, \code{"p80"}, \code{"p90"},
+\code{"p95"}.}
 }
 \value{
 The input \code{df} with AmsPAF rows appended. Each AmsPAF row carries:
-\code{value} (AmsPAF as a percentage, 0–100+), \code{quantified = TRUE},
-\code{name.analyte = "AmsPAF"}, \code{n_analytes_used} (integer),
+\code{value} (AmsPAF as a percentage, 0–100+), \code{detected = TRUE},
+\code{analyte = "AmsPAF"}, \code{n_analytes_used} (integer),
 \code{n_analytes_imputed} (integer, 0 if \code{imputed} column absent),
 \code{dominant_analyte} (character), \code{max_paf} (numeric),
-\code{analyte_pafs} (list column of per-analyte diagnostic tibbles), and four
-guideline columns (\code{value/level_name/guideline/comments.guideline_1}
-through \verb{_4}).
+\code{analyte_pafs} (list column of per-analyte diagnostic tibbles).
+
+Tier breaks are not provided by this package — AmsPAF is a continuous
+risk metric and the threshold at which a community is "impacted"
+depends on the assessment context.  See
+\code{vignette("chronic-amspaf-interpretation")} for guidance.
 }
 \description{
 Appends AmsPAF rows to a long-format water quality dataframe. AmsPAF
@@ -71,7 +79,7 @@ detail.
 }
 \details{
 The function accepts either per-sample or chronic-integrated chemistry (from
-\code{\link[=compute_chronic_chemistry]{compute_chronic_chemistry()}}). It does not need to know which — the
+\code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}). It does not need to know which — the
 distinction is entirely in the input data. Similarly, \code{reference} may be a
 raw long-format chemistry data frame or a pre-built \code{\link[=prepare_reference]{prepare_reference()}}
 object.
@@ -82,5 +90,5 @@ De Zwart D, Posthuma L (2005) Environmental Toxicology and Chemistry
 }
 \seealso{
 \code{\link[=ssd_paf]{ssd_paf()}}, \code{\link[=ssd_hc50]{ssd_hc50()}}, \code{\link[=prepare_reference]{prepare_reference()}},
-\code{\link[=compute_chronic_chemistry]{compute_chronic_chemistry()}}, \code{\link[=prescreen_analytes]{prescreen_analytes()}}, \code{\link[=impute_chemistry]{impute_chemistry()}}
+\code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}, \code{\link[=prescreen_analytes]{prescreen_analytes()}}, \code{\link[=impute_chemistry]{impute_chemistry()}}
 }

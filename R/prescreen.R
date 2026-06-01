@@ -91,6 +91,20 @@ prescreen_analytes <- function(
   ))
   coanalytes_from_meta <- coanalytes_from_meta[nzchar(coanalytes_from_meta)]
 
+  # Warn if any user-supplied `protect` name does not appear in the data —
+  # a common sign of a typo or a stale analyte name that would silently
+  # protect nothing.
+  if (!is.null(protect)) {
+    protect_missing <- setdiff(protect, unique(df$analyte))
+    if (length(protect_missing) > 0L) {
+      cli::cli_warn(c(
+        "!" = "{length(protect_missing)} {.arg protect} analyte{?s} not found \\
+               in {.arg df$analyte} — protecting nothing: {.val {protect_missing}}.",
+        "i" = "Check for typos or stale analyte names."
+      ))
+    }
+  }
+
   protected_analytes <- unique(c(protect, coanalytes_from_meta))
 
   # ── Compute detection frequency ───────────────────────────────────────────

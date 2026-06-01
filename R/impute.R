@@ -259,17 +259,22 @@ fit_imputation_model <- function(
     ))
   }
 
-  # ── 3. Filter pca_vars by detection frequency ─────────────────────────────
-  # Required vars always pass regardless of detection frequency.
+  # ── 3. Filter pca_vars by presence frequency ──────────────────────────────
+  # Required vars always pass regardless of presence frequency.
+  # NB: this is a PRESENCE frequency (fraction of samples that have a row for
+  # the analyte at all), not a detection frequency — a PCA variable is useful
+  # as a predictor whether or not it was above the detection limit, so BDL
+  # rows count towards retention here. (Contrast prescreen_analytes(), which
+  # screens toxicants on true detection frequency.)
   n_samples_total <- dplyr::n_distinct(df$sample_id)
   pca_vars_present <- df |>
     dplyr::filter(.data$analyte %in% .env$pca_vars) |>
     dplyr::group_by(.data$analyte) |>
     dplyr::summarise(
-      detect_freq = dplyr::n_distinct(.data$sample_id) / n_samples_total,
+      presence_freq = dplyr::n_distinct(.data$sample_id) / n_samples_total,
       .groups = "drop"
     ) |>
-    dplyr::filter(.data$detect_freq >= min_detect_freq) |>
+    dplyr::filter(.data$presence_freq >= min_detect_freq) |>
     dplyr::pull(.data$analyte)
 
   pca_vars_present <- union(
@@ -331,7 +336,7 @@ fit_imputation_model <- function(
   }
 
   # ── 5. Fit unified chemistry PCA ──────────────────────────────────────────
-  pca_obj <- .prepare_wq_pca(
+  pca_obj <- .prepare_chem_pca(
     df, wq_vars        = pca_vars_present,
     min_var_explained  = min_var_explained,
     max_pcs            = max_pcs
@@ -616,7 +621,7 @@ impute_coanalytes <- function(
 
   # ── Compute PC scores for all samples ─────────────────────────────────────
   pca_scores <- .compute_pca_scores(df, model$pca)
-  pc_cols    <- paste0("WQ_PC", seq_len(model$pca$n_pcs))
+  pc_cols    <- paste0("PC", seq_len(model$pca$n_pcs))
 
   # Skip targets not represented in the PCA (they can't be predicted)
   targets_ok <- intersect(targets, model$pca_vars)
@@ -729,12 +734,11 @@ impute_coanalytes <- function(
 
 #' Fit the unified chemistry PCA on training data
 #'
-#' Despite the historical `wq_*` naming, this PCA spans the full unified
-#' chemistry predictor set (`pca_vars` in `fit_imputation_model()`), not just
-#' the WQ block.  PC column names retain the `WQ_PC` prefix for consistency
-#' with stored `.qs` model files.
+#' This PCA spans the full unified chemistry predictor set (`pca_vars` in
+#' `fit_imputation_model()`) — major ions, pH, EC, NH3-N, DOC, nutrients and
+#' redox indicators.  PC score columns are named `PC1`, `PC2`, ….
 #' @keywords internal
-.prepare_wq_pca <- function(df, wq_vars, min_var_explained = 0.75, max_pcs = 4L) {
+.prepare_chem_pca <- function(df, wq_vars, min_var_explained = 0.75, max_pcs = 4L) {
   # Pivot chemistry vars to wide (one row per sample); missing cells → NA
   wq_wide <- df |>
     dplyr::filter(.data$analyte %in% .env$wq_vars) |>
@@ -789,7 +793,7 @@ impute_coanalytes <- function(
   n_pcs <- min(n_pcs, length(cum_var))
 
   pc_scores <- tibble::as_tibble(pca_fit$scores[, seq_len(n_pcs), drop = FALSE]) |>
-    stats::setNames(paste0("WQ_PC", seq_len(n_pcs))) |>
+    stats::setNames(paste0("PC", seq_len(n_pcs))) |>
     dplyr::mutate(sample_id = wq_wide$sample_id)
 
   list(
@@ -850,7 +854,7 @@ impute_coanalytes <- function(
                         loadings = loadings, n_pcs = pca_obj$n_pcs))
 
   tibble::as_tibble(scores_mat) |>
-    stats::setNames(paste0("WQ_PC", seq_len(pca_obj$n_pcs))) |>
+    stats::setNames(paste0("PC", seq_len(pca_obj$n_pcs))) |>
     dplyr::mutate(sample_id = wq_wide$sample_id)
 }
 
@@ -916,7 +920,7 @@ impute_coanalytes <- function(
     ))
 
   # ── Join PC scores with targets ───────────────────────────────────────────
-  pc_cols <- paste0("WQ_PC", seq_len(pca_obj$n_pcs))
+  pc_cols <- paste0("PC", seq_len(pca_obj$n_pcs))
   wide_df <- pca_obj$pc_scores |>
     dplyr::select("sample_id", dplyr::all_of(pc_cols)) |>
     dplyr::left_join(target_wide, by = "sample_id")

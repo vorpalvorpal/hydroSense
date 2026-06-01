@@ -473,131 +473,182 @@ compute_amspaf_per_sample <- function(
   sample_data |>
     dplyr::group_by(.data$sample_id) |>
     dplyr::group_modify(\(.x, .y) {
-      ## Build co-analyte lookup (all detected values in this sample)
-      coanalyte_vals <- .x |>
-        dplyr::filter(.data$detected) |>
-        dplyr::select("analyte", "value") |>
-        tibble::deframe()  # named numeric vector
-
-      ## Filter to SSD-eligible analytes
-      tox_rows <- .x |>
-        dplyr::filter(.data$analyte %in% ssd_params$analyte) |>
-        dplyr::left_join(
-          dplyr::select(ssd_params, "analyte", "hc50", "sigma",
-                        "moa_group", "parsed_formula", "coanalytes_req"),
-          by = "analyte"
-        ) |>
-        dplyr::left_join(ref_table, by = "analyte") |>
-        dplyr::mutate(
-          ref_norm = tidyr::replace_na(.data$ref_norm, 0)
-        )
-
-      empty_row <- tibble::tibble(
-        value              = numeric(0),
-        n_analytes_used    = integer(0),
-        n_analytes_imputed = integer(0),
-        dominant_analyte   = character(0),
-        max_paf            = numeric(0),
-        analyte_pafs       = list(),
-        dropped_analytes   = list()
-      )
-
-      if (nrow(tox_rows) < min_analytes) return(empty_row)
-
-      ## ── Chemistry normalisation ────────────────────────────────────────
-      ##
-      ## BDL (quantified == FALSE): treated as zero exposure; C_norm = 0.
-      ## Detected: apply normalisation formula using co-analyte values.
-      ## Rows where normalisation returns NA (missing required co-analyte)
-      ## are dropped and recorded (per-sample list column; summarised
-      ## at the end of add_amspaf()).
-      tox_rows <- dplyr::mutate(
-        tox_rows,
-        C_norm = purrr::pmap_dbl(
-          list(
-            q   = .data$detected,
-            C   = .data$value,
-            pf  = .data$parsed_formula,
-            cr  = .data$coanalytes_req
-          ),
-          function(q, C, pf, cr) {
-            if (!q) return(0)             # BDL → zero exposure
-            co_names <- if (nzchar(cr %||% "")) {
-              trimws(strsplit(cr, ",")[[1L]])
-            } else character(0)
-            co_names <- co_names[nzchar(co_names)]
-            co_vals  <- coanalyte_vals[co_names[co_names %in% names(coanalyte_vals)]]
-            .apply_normalisation(pf, C, co_vals)
-          }
-        )
-      )
-
-      ## Capture dropped analyte names + reason before filtering
-      dropped <- dplyr::filter(tox_rows, is.na(.data$C_norm)) |>
-        dplyr::transmute(
-          .data$analyte,
-          reason = "missing_co_analyte"
-        )
-      tox_rows <- dplyr::filter(tox_rows, !is.na(.data$C_norm))
-
-      if (nrow(tox_rows) < min_analytes) return(empty_row)
-
-      ## ARA shift
-      tox_rows <- dplyr::mutate(
-        tox_rows,
-        C_adj = pmax(.data$C_norm - .data$ref_norm, 0)
-      )
-
-      ## Count imputed analytes (rows from impute_chemistry() that were BDL/missing)
-      n_analytes_imputed <- if (has_imputed && "imputed" %in% names(tox_rows)) {
-        sum(tox_rows$imputed, na.rm = TRUE)
-      } else 0L
-
-      ## ── Per-analyte PAF (diagnostic + dominant-analyte identification) ─
-      tox_rows <- dplyr::mutate(tox_rows,
-        PAF = purrr::map2_dbl(
-          .data$C_adj, .data$analyte,
-          function(c, a) {
-            if (is.na(c) || c <= 0) return(0)
-            paf_result <- tryCatch(
-              ssd_paf(a, c, method = method, guideline_dir = guideline_dir, nboot = 0L),
-              error = function(e) list(pct = NA_real_)
-            )
-            if (is.na(paf_result$pct)) NA_real_ else paf_result$pct / 100
-          }
-        )
-      )
-
-      ## ── CA msPAF per mode-of-action group ─────────────────────────────
-      groups         <- unique(tox_rows$moa_group)
-      mspaf_by_group <- vapply(
-        groups,
-        function(g) {
-          compute_ca_group_mspaf(dplyr::filter(tox_rows, .data$moa_group == g))
-        },
-        numeric(1)
-      )
-
-      ## ── Combine groups via Independent Action ─────────────────────────
-      amspaf <- 1 - prod(1 - mspaf_by_group)
-
-      dominant <- if (any(!is.na(tox_rows$PAF))) {
-        tox_rows$analyte[which.max(tox_rows$PAF)]
-      } else NA_character_
-
-      tibble::tibble(
-        value              = amspaf * 100,
-        n_analytes_used    = nrow(tox_rows),
-        n_analytes_imputed = as.integer(n_analytes_imputed),
-        dominant_analyte   = dominant,
-        max_paf            = if (nrow(tox_rows) > 0L) max(tox_rows$PAF, na.rm = TRUE) else NA_real_,
-        analyte_pafs       = list(
-          dplyr::select(tox_rows, "analyte", "C_adj", "PAF", "moa_group")
-        ),
-        dropped_analytes   = list(dropped)
+      compute_amspaf_one_sample(
+        sample_rows   = .x,
+        ref_table     = ref_table,
+        ssd_params    = ssd_params,
+        min_analytes  = min_analytes,
+        method        = method,
+        guideline_dir = guideline_dir,
+        has_imputed   = has_imputed
       )
     }) |>
     dplyr::ungroup()
+}
+
+
+## ============================================================================
+## compute_amspaf_one_sample
+## ============================================================================
+
+#' Compute AmsPAF for a single sample
+#'
+#' The per-sample workhorse extracted from [compute_amspaf_per_sample()].
+#' Given the chemistry rows for one sample (toxicants plus any co-analyte
+#' rows such as pH/DOC), it applies chemistry normalisation, the ARA shift,
+#' per-analyte PAF lookup, and CA/IA mixture combination, returning a
+#' single-row diagnostic tibble.  Factored out so the normalisation / ARA /
+#' CA / IA steps can be unit-tested in isolation; behaviour is identical to
+#' the previous in-line `group_modify` body.
+#'
+#' @param sample_rows Long-format chemistry rows for one sample (one row per
+#'   analyte; may include co-analyte rows used for normalisation). Must carry
+#'   a `detected` column.
+#' @param ref_table Tibble `(analyte, ref_norm)` from `prep_ref$ref_table`.
+#' @param ssd_params Tibble from [derive_ssd_params()].
+#' @param min_analytes Minimum analytes required.
+#' @param method SSD method.
+#' @param guideline_dir Path to ANZG XLSX folder.
+#' @param has_imputed Logical; whether the input carried an `imputed` column
+#'   (controls `n_analytes_imputed` accounting).
+#'
+#' @return A one-row tibble (or zero-row tibble if the sample fails
+#'   `min_analytes`) with columns `value`, `n_analytes_used`,
+#'   `n_analytes_imputed`, `dominant_analyte`, `max_paf`, `analyte_pafs`,
+#'   `dropped_analytes`.
+#' @keywords internal
+compute_amspaf_one_sample <- function(
+    sample_rows,
+    ref_table,
+    ssd_params,
+    min_analytes,
+    method,
+    guideline_dir,
+    has_imputed = FALSE
+) {
+  ## Build co-analyte lookup (all detected values in this sample)
+  coanalyte_vals <- sample_rows |>
+    dplyr::filter(.data$detected) |>
+    dplyr::select("analyte", "value") |>
+    tibble::deframe()  # named numeric vector
+
+  ## Filter to SSD-eligible analytes
+  tox_rows <- sample_rows |>
+    dplyr::filter(.data$analyte %in% ssd_params$analyte) |>
+    dplyr::left_join(
+      dplyr::select(ssd_params, "analyte", "hc50", "sigma",
+                    "moa_group", "parsed_formula", "coanalytes_req"),
+      by = "analyte"
+    ) |>
+    dplyr::left_join(ref_table, by = "analyte") |>
+    dplyr::mutate(
+      ref_norm = tidyr::replace_na(.data$ref_norm, 0)
+    )
+
+  empty_row <- tibble::tibble(
+    value              = numeric(0),
+    n_analytes_used    = integer(0),
+    n_analytes_imputed = integer(0),
+    dominant_analyte   = character(0),
+    max_paf            = numeric(0),
+    analyte_pafs       = list(),
+    dropped_analytes   = list()
+  )
+
+  if (nrow(tox_rows) < min_analytes) return(empty_row)
+
+  ## ── Chemistry normalisation ──────────────────────────────────────────
+  ##
+  ## BDL (quantified == FALSE): treated as zero exposure; C_norm = 0.
+  ## Detected: apply normalisation formula using co-analyte values.
+  ## Rows where normalisation returns NA (missing required co-analyte)
+  ## are dropped and recorded (per-sample list column; summarised
+  ## at the end of add_amspaf()).
+  tox_rows <- dplyr::mutate(
+    tox_rows,
+    C_norm = purrr::pmap_dbl(
+      list(
+        q   = .data$detected,
+        C   = .data$value,
+        pf  = .data$parsed_formula,
+        cr  = .data$coanalytes_req
+      ),
+      function(q, C, pf, cr) {
+        if (!q) return(0)             # BDL → zero exposure
+        co_names <- if (nzchar(cr %||% "")) {
+          trimws(strsplit(cr, ",")[[1L]])
+        } else character(0)
+        co_names <- co_names[nzchar(co_names)]
+        co_vals  <- coanalyte_vals[co_names[co_names %in% names(coanalyte_vals)]]
+        .apply_normalisation(pf, C, co_vals)
+      }
+    )
+  )
+
+  ## Capture dropped analyte names + reason before filtering
+  dropped <- dplyr::filter(tox_rows, is.na(.data$C_norm)) |>
+    dplyr::transmute(
+      .data$analyte,
+      reason = "missing_co_analyte"
+    )
+  tox_rows <- dplyr::filter(tox_rows, !is.na(.data$C_norm))
+
+  if (nrow(tox_rows) < min_analytes) return(empty_row)
+
+  ## ARA shift
+  tox_rows <- dplyr::mutate(
+    tox_rows,
+    C_adj = pmax(.data$C_norm - .data$ref_norm, 0)
+  )
+
+  ## Count imputed analytes (rows from impute_chemistry() that were BDL/missing)
+  n_analytes_imputed <- if (has_imputed && "imputed" %in% names(tox_rows)) {
+    sum(tox_rows$imputed, na.rm = TRUE)
+  } else 0L
+
+  ## ── Per-analyte PAF (diagnostic + dominant-analyte identification) ────
+  tox_rows <- dplyr::mutate(tox_rows,
+    PAF = purrr::map2_dbl(
+      .data$C_adj, .data$analyte,
+      function(c, a) {
+        if (is.na(c) || c <= 0) return(0)
+        paf_result <- tryCatch(
+          ssd_paf(a, c, method = method, guideline_dir = guideline_dir, nboot = 0L),
+          error = function(e) list(pct = NA_real_)
+        )
+        if (is.na(paf_result$pct)) NA_real_ else paf_result$pct / 100
+      }
+    )
+  )
+
+  ## ── CA msPAF per mode-of-action group ───────────────────────────────
+  groups         <- unique(tox_rows$moa_group)
+  mspaf_by_group <- vapply(
+    groups,
+    function(g) {
+      compute_ca_group_mspaf(dplyr::filter(tox_rows, .data$moa_group == g))
+    },
+    numeric(1)
+  )
+
+  ## ── Combine groups via Independent Action ───────────────────────────
+  amspaf <- 1 - prod(1 - mspaf_by_group)
+
+  dominant <- if (any(!is.na(tox_rows$PAF))) {
+    tox_rows$analyte[which.max(tox_rows$PAF)]
+  } else NA_character_
+
+  tibble::tibble(
+    value              = amspaf * 100,
+    n_analytes_used    = nrow(tox_rows),
+    n_analytes_imputed = as.integer(n_analytes_imputed),
+    dominant_analyte   = dominant,
+    max_paf            = if (nrow(tox_rows) > 0L) max(tox_rows$PAF, na.rm = TRUE) else NA_real_,
+    analyte_pafs       = list(
+      dplyr::select(tox_rows, "analyte", "C_adj", "PAF", "moa_group")
+    ),
+    dropped_analytes   = list(dropped)
+  )
 }
 
 #' Summarise per-sample dropped-analyte tally and emit a single cli message

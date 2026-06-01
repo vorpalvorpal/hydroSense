@@ -7,33 +7,48 @@
 prescreen_analytes(
   df,
   k = 0.05,
+  protect = NULL,
   group_by_feature = FALSE,
+  analyte_metadata = NULL,
   return = c("vector", "table")
 )
 }
 \arguments{
-\item{df}{Long-format chemistry data frame with at least columns
-\code{analyte} (character) and \code{detected} (logical). Typically also
-contains \code{sample_id} and \code{site_id}.}
+\item{df}{Long-format chemistry data frame.  Required columns:
+\code{sample_id} (character), \code{analyte} (character), \code{detected} (logical).
+When \code{group_by_feature = TRUE}, also requires \code{site_id} (character).}
 
 \item{k}{Minimum detection frequency (proportion, 0–1). Analytes with
-\code{n_detected / n_samples < k} are excluded. Default \code{0.05} (5 \%).}
+\code{n_detected / n_samples < k} are excluded unless protected. Default
+\code{0.05} (5 \%).}
+
+\item{protect}{Optional character vector of additional analyte names to
+protect from prescreen exclusion, on top of the metadata-derived
+co-analytes.  Default \code{NULL}.  Pass the \code{required_vars} from your
+downstream imputation step here.}
 
 \item{group_by_feature}{Logical. If \code{TRUE}, detection frequency is computed
 per \code{site_id} and an analyte is included only if it passes in \emph{all}
-features. If \code{FALSE} (default), frequency is pooled across all samples.}
+features (worst-case feature, pooled counts). If \code{FALSE} (default),
+frequency is pooled across all samples.}
+
+\item{analyte_metadata}{Data frame of analyte metadata, or \code{NULL} to load
+the bundled \code{inst/extdata/anzecc_analyte_metadata.csv}. Used to identify
+co-analytes that must be protected from exclusion.}
 
 \item{return}{Either \code{"vector"} (default) to return a character vector of
 included analyte names, or \code{"table"} to return a tibble with one row per
 analyte showing detection statistics and inclusion flag.}
 }
 \value{
-When \code{return = "vector"}: a named character vector of passing analyte
+When \code{return = "vector"}: a character vector of passing analyte
 names. The vector carries an attribute \code{"excluded"} listing analytes that
-did not pass the threshold, so callers can record what was dropped.
+did not pass the threshold (non-protected only), so callers can record
+what was dropped.
 
 When \code{return = "table"}: a tibble with columns \code{analyte},
-\code{n_samples}, \code{n_detected}, \code{detect_freq}, \code{included}.
+\code{n_samples}, \code{n_detected}, \code{detect_freq}, \code{protected} (logical),
+\code{included} (logical).
 }
 \description{
 Computes detection frequency (proportion of samples with \code{detected == TRUE})
@@ -41,6 +56,16 @@ per analyte and returns the names that meet a minimum threshold. Use this
 before \code{impute_chemistry()} to drop analytes that were almost never detected —
 imputing such analytes from near-zero priors adds noise without ecological
 signal.
+}
+\details{
+Analytes listed in \code{coanalytes_required} in the bundled metadata (e.g. pH,
+DOC, Ca, Mg, hardness, temperature) are \strong{automatically protected} from
+exclusion regardless of detection frequency, because they are needed for
+chemistry normalisation in \code{\link[=add_amspaf]{add_amspaf()}}.  Additional analytes can be
+protected via the \code{protect} argument (typical use: pass the
+\code{required_vars} you intend to use in \code{\link[=fit_imputation_model]{fit_imputation_model()}} here so
+those vars survive prescreen).  Protected analytes that fall below the
+threshold are reported separately so the caller is aware.
 }
 \examples{
 \dontrun{

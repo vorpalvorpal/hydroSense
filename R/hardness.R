@@ -68,9 +68,30 @@ derive_hardness <- function(df, tolerance = 0.05, verbose = TRUE) {
   k_Mg <- 4.118
 
   # Pivot the three analytes wide per sample
-  trio <- df |>
+  trio_long <- df |>
     dplyr::filter(.data$analyte %in% c("Ca", "Mg", "hardness"),
-                  .data$detected) |>
+                  .data$detected)
+
+  # Detect duplicate detected rows for the same (sample, analyte) before the
+  # de-duplicating slice() below silently keeps only the first.  This usually
+  # signals lab replicates, unit mismatches, or a join that fanned out rows —
+  # the caller should resolve which value is authoritative.
+  dups <- trio_long |>
+    dplyr::count(.data$sample_id, .data$analyte, name = "n") |>
+    dplyr::filter(.data$n > 1L)
+  if (nrow(dups) > 0L) {
+    dup_msgs <- sprintf("  %s / %s: %d detected rows",
+      dups$sample_id, dups$analyte, dups$n)
+    cli::cli_warn(c(
+      "!" = "{nrow(dups)} (sample, analyte) combination{?s} have multiple \\
+             detected Ca/Mg/hardness rows; keeping the first of each:",
+      dup_msgs,
+      "i" = "Resolve duplicates (replicates, unit mismatches, or a fan-out \\
+             join) before deriving hardness to avoid silent value selection."
+    ))
+  }
+
+  trio <- trio_long |>
     dplyr::group_by(.data$sample_id, .data$analyte) |>
     dplyr::slice(1L) |>
     dplyr::ungroup() |>

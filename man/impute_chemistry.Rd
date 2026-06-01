@@ -2,128 +2,61 @@
 % Please edit documentation in R/impute.R
 \name{impute_chemistry}
 \alias{impute_chemistry}
-\title{Impute missing and below-detection-limit chemistry using a Bayesian
-multivariate GAM}
+\title{Impute missing and BDL chemistry using a fitted imputation model}
 \usage{
 impute_chemistry(
   df,
-  drivers = c("pH", "EC", "DOC"),
-  formula_template = NULL,
-  family = "gaussian",
-  iter = 2000,
-  warmup = 1000,
-  chains = 4,
-  cores = parallel::detectCores(),
+  model,
+  metal_hurdle = TRUE,
+  organic_hurdle = TRUE,
   bdl_cap = TRUE,
-  return = c("point", "draws"),
-  ...
+  return = c("point", "draws")
 )
 }
 \arguments{
-\item{df}{Long-format chemistry data frame. Required columns:
-\itemize{
-\item \code{sample_id} (character)
-\item \code{site_id} (character)
-\item \code{datetime} (Date or POSIXct)
-\item \code{analyte} (character)
-\item \code{value} (numeric) — for BDL rows, set to the detection limit
-\item \code{detected} (logical) — \code{FALSE} for BDL, \code{TRUE} for detected values
-Driver analytes (e.g. pH, EC, DOC) must be present as rows in \code{df} and
-must have \code{detected == TRUE} for every sample.
-}}
+\item{df}{Long-format chemistry data frame (same schema as used for fitting).}
 
-\item{drivers}{Character vector of analyte names to use as GAM predictors.
-Default \code{c("pH", "EC", "DOC")}. These analytes are extracted from \code{df},
-pivoted to wide columns, and used as spline predictors. They are
-\strong{not} themselves imputed.}
+\item{model}{Fitted model from \code{\link[=fit_imputation_model]{fit_imputation_model()}}.}
 
-\item{formula_template}{\code{brms::brmsformula} or \code{NULL}. If \code{NULL}, a default
-formula is constructed: \code{mvbind(analyte_1, ...) ~ s(d1) + s(d2) + ...}
-with one smooth per driver.}
+\item{metal_hurdle}{Logical.  Apply metal-presence hurdle?  Default \code{TRUE}.}
 
-\item{family}{brms family for the log-transformed response. Default
-\code{"gaussian"}. Concentrations are always log-transformed before fitting
-(i.e. the model is \code{log(conc) ~ ...}), so \code{"gaussian"} produces
-log-normal marginals. \code{"gaussian"} is required for \code{set_rescor(TRUE)} to
-be available in brms; \code{"lognormal"} is not supported with residual
-correlations. Posterior predictions are back-transformed with \code{exp()} so
-the returned \code{value} column is always on the original concentration scale.}
+\item{organic_hurdle}{Logical.  Apply DOC-like-presence hurdle?  Default
+\code{TRUE}.}
 
-\item{iter}{Total MCMC iterations per chain. Default \code{2000}.}
+\item{bdl_cap}{Logical.  Cap imputed BDL values at the original detection
+limit?  Default \code{TRUE}.}
 
-\item{warmup}{Warmup iterations per chain. Default \code{1000}.}
-
-\item{chains}{Number of MCMC chains. Default \code{4}.}
-
-\item{cores}{Number of parallel cores. Default \code{parallel::detectCores()}.}
-
-\item{bdl_cap}{Logical. If \code{TRUE} (default), imputed values for BDL
-observations that exceed the original detection limit are capped at the
-detection limit and a warning is issued. If \code{FALSE}, no capping is applied
-but a warning is still issued when imputed BDL values exceed the DL.
-Set to \code{FALSE} if you want to inspect the uncapped posterior means.}
-
-\item{return}{Either \code{"point"} (default) to return posterior mean estimates
-for imputed cells, or \code{"draws"} to return one row per
-(sample × analyte × draw).}
-
-\item{...}{Additional arguments passed to \code{brms::brm()}.}
+\item{return}{\code{"point"} (default) for posterior mean per cell; \code{"draws"} for
+one row per (sample × analyte × draw).}
 }
 \value{
-When \code{return = "point"}: the input \code{df} with imputed \code{value} for
-BDL and missing rows, plus two new columns:
+\code{df} with BDL and missing cells in the metals/organics groups
+replaced by posterior mean estimates, plus columns:
 \itemize{
-\item \code{imputed} (logical) — \code{TRUE} for BDL or missing rows (now filled)
-\item \code{imputed_kind} (character) — \code{"observed"}, \code{"censored_left"}, or
-\code{"missing"}
-The fitted \code{brmsfit} object is stored as \code{attr(result, "brmsfit")}.
+\item \code{imputed} (logical) — \code{TRUE} for filled cells
+\item \code{imputed_kind} — \code{"observed"}, \code{"censored_left"}, or \code{"missing"}
 }
-
-When \code{return = "draws"}: as above but with an additional \code{draw_id}
-(integer) column and one row per (sample × analyte × draw). Heavier but
-propagates posterior uncertainty into \code{compute_chronic_chemistry()}.
 }
 \description{
-Fits a multivariate log-normal GAM via \code{brms::brm()} with
-\code{set_rescor(TRUE)} to capture cross-analyte covariance. Left-censored
-observations (below-detection-limit, BDL) and missing analyte measurements
-are treated as latent values and imputed from the multivariate joint
-posterior using \code{mi()} (missing indicator). Missing analyte measurements at
-a sample are imputed from the cross-analyte covariance structure and the
-driver predictors.
+Applies the models fitted by \code{\link[=fit_imputation_model]{fit_imputation_model()}} to \code{df}, returning
+posterior mean estimates for missing and below-detection-limit (BDL)
+observations in the metals and organics groups.
 }
 \details{
-After fitting, the function returns a long-format data frame with all BDL
-and missing cells replaced by posterior means (or draws), plus an \code{imputed}
-column to flag which values were filled in.
+\strong{Hurdles}
 
-\strong{Note on BDL handling:} \code{brms} does not support \code{cens()} (left-censored
-likelihood) when \code{rescor = TRUE} is set — only \code{se}, \code{weights}, and \code{mi}
-are supported addition arguments when residual correlations are estimated.
-This function therefore uses \code{mi()} for both BDL and missing observations:
-BDL values are set to \code{NA} before fitting and imputed from the multivariate
-posterior. The strict left-censor constraint (concentration ≤ detection
-limit) is not enforced during fitting. A post-hoc check (Option B) warns
-and optionally caps imputed BDL values that exceed the original detection
-limit.
-
-\strong{Future improvement — Option D (custom Stan model):} A statistically
-correct treatment would use a custom Stan likelihood that combines
-left-censoring with cross-analyte residual correlations. This would enforce
-the constraint \verb{imputed_C ≤ DL} for BDL observations throughout the MCMC
-chain rather than as a post-hoc correction. Option D is feasible but
-requires bypassing brms and writing a custom Stan program. It is listed as
-a planned future improvement.
-
-\strong{Installation note:} \code{brms} requires a working Stan toolchain (rstan or
-cmdstanr). If Stan is not installed, this function will abort with a message
-pointing to the installation documentation.
-}
-\examples{
-\dontrun{
-imp <- impute_chemistry(chem_filtered, drivers = c("pH", "EC", "DOC"))
-fit <- attr(imp, "brmsfit")
-brms::pp_check(fit)
+Imputed values are only returned for samples that meet the relevant hurdle:
+\itemize{
+\item \emph{Metals}: at least one metal analyte present (detected or BDL) at the
+sample.  Samples with no metals recorded are not imputed — a leachate
+metal pulse may simply not have arrived at this location yet.
+\item \emph{Organics}: at least one of {DOC, TOC, BOD, COD, cBOD} present at the
+sample.
 }
 
+Samples failing a hurdle pass through unchanged (non-imputed values are
+preserved; BDL values remain flagged as BDL).
+}
+\seealso{
+\code{\link[=fit_imputation_model]{fit_imputation_model()}}
 }

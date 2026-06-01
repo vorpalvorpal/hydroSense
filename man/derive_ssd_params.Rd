@@ -14,7 +14,7 @@ derive_ssd_params(meta, method, guideline_dir)
 \item{guideline_dir}{Path to ANZG guideline data folder.}
 }
 \value{
-Tibble with columns \code{name.analyte}, \code{hc50}, \code{sigma}, \code{moa_group},
+Tibble with columns \code{analyte}, \code{hc50}, \code{sigma}, \code{moa_group},
 \code{parsed_formula} (list of language objects or NULLs),
 \code{coanalytes_req} (character).
 }
