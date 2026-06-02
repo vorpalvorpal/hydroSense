@@ -54,3 +54,14 @@ $note           character vector — caveats
 \description{
 Estimate the fraction of species potentially affected at a concentration.
 }
+\examples{
+\dontrun{
+# Fraction of species affected by 9.3 mg/L total ammonia-N at the
+# pH 7.0 / 20 degC index condition (requires the ANZG guideline data):
+options(leachatetools.guideline_dir = "path/to/guideline data")
+ssd_paf("NH3-N", conc_ug_L = 9321)
+
+# NO3-N needs hardness for automatic soft/moderate/hard SSD selection:
+ssd_paf("NO3-N", conc_ug_L = 50000, hardness_mg_L = 90)
+}
+}

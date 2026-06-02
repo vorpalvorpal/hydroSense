@@ -57,6 +57,13 @@ sample.
 Samples failing a hurdle pass through unchanged (non-imputed values are
 preserved; BDL values remain flagged as BDL).
 }
+\examples{
+\dontrun{
+model <- fit_imputation_model(monitoring_long)
+# Point estimates (default), or full posterior draws with return = "draws":
+imputed <- impute_chemistry(monitoring_long, model, return = "point")
+}
+}
 \seealso{
 \code{\link[=fit_imputation_model]{fit_imputation_model()}}
 }

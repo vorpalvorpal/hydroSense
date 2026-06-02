@@ -1,0 +1,82 @@
+url: https://vorpalvorpal.github.io/leachatetools/
+
+template:
+  bootstrap: 5
+  bslib:
+    primary: "#1c6b8c"
+    base_font: {google: "Source Sans Pro"}
+    heading_font: {google: "Source Sans Pro"}
+    code_font: {google: "JetBrains Mono"}
+
+home:
+  title: leachatetools
+  description: >
+    Species-sensitivity-distribution toxicity, multi-substance PAF with local
+    background adjustment, and end-member mixing for leachate-impacted
+    freshwaters.
+
+navbar:
+  structure:
+    left: [intro, reference, articles]
+    right: [search, github]
+  components:
+    articles:
+      text: Articles
+      menu:
+        - text: Analyte normalisation
+          href: articles/normalisation.html
+        - text: Interpreting chronic AmsPAF outputs
+          href: articles/chronic-amspaf-interpretation.html
+
+reference:
+  - title: Leachate detection (LMF)
+    desc: >
+      End-member mixing analysis to quantify the leachate-mixing fraction of a
+      sample.
+    contents:
+      - add_lmf
+      - to_meq
+
+  - title: Chemistry imputation
+    desc: >
+      Bayesian multivariate imputation of below-detection and missing analyte
+      concentrations, plus deterministic co-analyte imputation.
+    contents:
+      - fit_imputation_model
+      - impute_chemistry
+      - impute_coanalytes
+
+  - title: Toxicity & single-substance PAF
+    desc: >
+      Species sensitivity distributions and the potentially affected fraction
+      for an individual analyte.
+    contents:
+      - ssd_paf
+      - ssd_pct
+      - ssd_hc50
+
+  - title: Multi-substance PAF (AmsPAF)
+    desc: >
+      Concentration- and response-addition mixture PAF with Added-Risk local
+      background adjustment.
+    contents:
+      - add_amspaf
+      - prepare_reference
+
+  - title: Water chemistry & normalisation
+    desc: >
+      Bioavailability and physicochemical adjustments that bring measured
+      concentrations to the SSD index condition.
+    contents:
+      - correct_ammonia_ph_temp
+      - derive_hardness
+      - estimate_water_temp
+      - get_silo_air_temp
+
+  - title: Screening & temporal aggregation
+    desc: >
+      Detection-frequency prescreening and chronic time-weighted averaging.
+    contents:
+      - prescreen_analytes
+      - time_weighted_aggregate
+      - expand_focal_dates

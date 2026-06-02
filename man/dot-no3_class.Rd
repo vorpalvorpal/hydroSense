@@ -19,3 +19,4 @@ Character: "NO3-N_soft", "NO3-N_mod", or "NO3-N_hard".
 \description{
 Resolve the appropriate NO3-N hardness-class analyte name.
 }
+\keyword{internal}

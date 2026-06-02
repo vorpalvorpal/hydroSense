@@ -133,6 +133,17 @@ source-detection index estimating what fraction of a sample's chemistry
 can be attributed to the leachate end-member under a two-component mixing
 model. See the file-level header for full methodological detail.
 }
+\examples{
+\dontrun{
+# Quantify each sample's leachate-mixing fraction from its major-ion
+# signature, calibrated against leachate and reference end-members.
+add_lmf(
+  df             = samples_long,
+  leachate_data  = leachate_long,
+  reference_data = reference_long
+)
+}
+}
 \references{
 Christophersen N, Hooper RP (1992) Water Resources Research 28(1):99-107.
 Christensen JB et al. (2001) Applied Geochemistry 16(7-8):659-718.

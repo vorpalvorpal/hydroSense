@@ -248,6 +248,22 @@
 #' De Zwart D, Posthuma L (2005) Environmental Toxicology and Chemistry
 #' 24(10):2665-2676.
 #'
+#' @examples
+#' \dontrun{
+#' # Long-format monitoring data: one row per sample x analyte.
+#' obs <- tibble::tibble(
+#'   sample_id = c("S1", "S1", "S1"),
+#'   site_id   = "downstream",
+#'   analyte   = c("Cu", "Zn", "temperature"),
+#'   value     = c(3.2, 18, 19)
+#' )
+#' ref <- tibble::tibble(
+#'   sample_id = "R1", site_id = "upstream",
+#'   analyte   = c("Cu", "Zn"), value = c(1.1, 6)
+#' )
+#' options(leachatetools.guideline_dir = "path/to/guideline data")
+#' add_amspaf(obs, reference = ref)
+#' }
 #' @export
 add_amspaf <- function(
     df,

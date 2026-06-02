@@ -23,3 +23,16 @@ Appends meq/L-converted rows to the input dataframe. Converted rows have
 \code{name.analyte} suffixed with \code{"_"} to distinguish them from the
 original rows, which are preserved unchanged.
 }
+\examples{
+\dontrun{
+df <- tibble::tibble(
+  analyte             = "Ca",
+  value               = 40.08,   # mg/L
+  units.analyte       = "mg/L",
+  valence.analyte     = 2,
+  atomic_mass.analyte = 40.08    # g/mol
+)
+to_meq(df)   # appends a "Ca_" row expressed in meq/L
+}
+
+}

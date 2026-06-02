@@ -24,3 +24,4 @@ A fitted ssdtools object with provenance attributes, or NULL on error.
 \description{
 Called by \code{.load_or_fit()} in paf.R on a cache miss.
 }
+\keyword{internal}

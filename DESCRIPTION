@@ -10,24 +10,32 @@ Description: Tools for analysing water quality in systems potentially impacted
     local background adjustment via the Added Risk Approach; and end-member
     mixing analysis for leachate detection (LMF).
 License: MIT + file LICENSE
+URL: https://vorpalvorpal.github.io/leachatetools/, https://github.com/vorpalvorpal/leachatetools
+BugReports: https://github.com/vorpalvorpal/leachatetools/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Imports:
+    assertr,
     checkmate,
     cli,
     dplyr,
+    glue,
     lubridate,
     mgcv,
     nipals,
+    parallel,
     purrr,
     qs,
     readr,
     readxl,
     ssdtools (>= 2.0.0),
+    stats,
+    stringr,
     tibble,
     tidyr,
     tools,
+    units,
     uuid
 SystemRequirements: Stan (rstan or cmdstanr); required by brms for Bayesian imputation
 Suggests:

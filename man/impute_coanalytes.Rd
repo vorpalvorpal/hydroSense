@@ -46,6 +46,13 @@ univariate GAM on PC scores is unbiased and fast (no Stan required); (c)
 the same PCA is used for the metals model so the co-analyte predictions
 are conditioned on the same chemical environment summary.
 }
+\examples{
+\dontrun{
+# Deterministic GAM-based imputation of normalisation co-analytes
+# (pH, DOC, hardness, ...) from the measured analyte suite.
+impute_coanalytes(monitoring_long)
+}
+}
 \seealso{
 \code{\link[=fit_imputation_model]{fit_imputation_model()}}, \code{\link[=impute_chemistry]{impute_chemistry()}}
 }

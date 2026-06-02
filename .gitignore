@@ -20,3 +20,9 @@ references/
 # R build artefacts
 /doc/
 /Meta/
+
+# pkgdown site (built and deployed to the gh-pages branch by GitHub Actions)
+docs/
+
+# README render preview (generated from README.Rmd)
+/README.html

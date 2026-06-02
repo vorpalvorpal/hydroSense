@@ -17,7 +17,8 @@ data.  ORP and DO are included because they are valuable at sites where they
 are measured, but at most sites they will be filtered out by prescreen.
 }
 \details{
-Note: SO4 uses \verb{\\u00b2\\u207b} (\u00b2\u207b) escape sequences to ensure correct
-string matching regardless of how the source file is parsed by devtools.
+Note: the sulfate entry encodes its superscript charge (the SO4
+two-minus symbol) with Unicode escape sequences in the source string, so
+that matching works regardless of how the source file is parsed.
 }
 \keyword{internal}

@@ -150,6 +150,13 @@ When a \code{required_vars} analyte (pH or EC) is below the detection limit for 
 sample, the stored detection-limit value is used as-is (conservative upper
 bound).  A message is issued but the sample is retained.
 }
+\examples{
+\dontrun{
+# Requires a Stan toolchain (brms). Fit once, then reuse for imputation.
+model <- fit_imputation_model(monitoring_long)
+draws <- impute_chemistry(monitoring_long, model, return = "draws")
+}
+}
 \seealso{
 \code{\link[=impute_chemistry]{impute_chemistry()}}
 }

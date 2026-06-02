@@ -7,8 +7,9 @@
 #' data.  ORP and DO are included because they are valuable at sites where they
 #' are measured, but at most sites they will be filtered out by prescreen.
 #'
-#' Note: SO4 uses `\u00b2\u207b` (\u00b2\u207b) escape sequences to ensure correct
-#' string matching regardless of how the source file is parsed by devtools.
+#' Note: the sulfate entry encodes its superscript charge (the SO4
+#' two-minus symbol) with Unicode escape sequences in the source string, so
+#' that matching works regardless of how the source file is parsed.
 #' @keywords internal
 .WQ_BLOCK_CANDIDATES <- c(
   # Field parameters / redox
@@ -241,6 +242,12 @@
 #'   `attr(result, "save_path")`.
 #'
 #' @seealso [impute_chemistry()]
+#' @examples
+#' \dontrun{
+#' # Requires a Stan toolchain (brms). Fit once, then reuse for imputation.
+#' model <- fit_imputation_model(monitoring_long)
+#' draws <- impute_chemistry(monitoring_long, model, return = "draws")
+#' }
 #' @export
 fit_imputation_model <- function(
     df,
@@ -519,6 +526,12 @@ print.imputation_model <- function(x, ...) {
 #'   - `imputed_kind` — `"observed"`, `"censored_left"`, or `"missing"`
 #'
 #' @seealso [fit_imputation_model()]
+#' @examples
+#' \dontrun{
+#' model <- fit_imputation_model(monitoring_long)
+#' # Point estimates (default), or full posterior draws with return = "draws":
+#' imputed <- impute_chemistry(monitoring_long, model, return = "point")
+#' }
 #' @export
 impute_chemistry <- function(
     df,
@@ -653,6 +666,12 @@ impute_chemistry <- function(
 #'   unchanged.
 #'
 #' @seealso [fit_imputation_model()], [impute_chemistry()]
+#' @examples
+#' \dontrun{
+#' # Deterministic GAM-based imputation of normalisation co-analytes
+#' # (pH, DOC, hardness, ...) from the measured analyte suite.
+#' impute_coanalytes(monitoring_long)
+#' }
 #' @export
 impute_coanalytes <- function(
     df,

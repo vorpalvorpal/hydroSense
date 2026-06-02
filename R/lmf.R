@@ -294,6 +294,16 @@
 #' Christensen JB et al. (2001) Applied Geochemistry 16(7-8):659-718.
 #' Kjeldsen P et al. (2002) Crit Rev Environ Sci Technol 32(4).
 #'
+#' @examples
+#' \dontrun{
+#' # Quantify each sample's leachate-mixing fraction from its major-ion
+#' # signature, calibrated against leachate and reference end-members.
+#' add_lmf(
+#'   df             = samples_long,
+#'   leachate_data  = leachate_long,
+#'   reference_data = reference_long
+#' )
+#' }
 #' @export
 
 add_lmf <- function(
@@ -1782,6 +1792,18 @@ build_leachate_endmember <- function(
 #'   \code{"_"} and \code{value} in meq/L. Rows lacking \code{valence.analyte}
 #'   or \code{atomic_mass.analyte} are excluded from conversion but retained
 #'   in the original rows.
+#'
+#' @examples
+#' \dontrun{
+#' df <- tibble::tibble(
+#'   analyte             = "Ca",
+#'   value               = 40.08,   # mg/L
+#'   units.analyte       = "mg/L",
+#'   valence.analyte     = 2,
+#'   atomic_mass.analyte = 40.08    # g/mol
+#' )
+#' to_meq(df)   # appends a "Ca_" row expressed in meq/L
+#' }
 #'
 #' @export
 

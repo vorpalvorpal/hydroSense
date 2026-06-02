@@ -139,6 +139,7 @@
 #'   Only required for ANZG_XLSX analytes; may be NULL for Warne2000 analytes.
 #'
 #' @return A fitted ssdtools object with provenance attributes, or NULL on error.
+#' @keywords internal
 .fit_for_analyte <- function(analyte, stem, meta, dists, guideline_dir) {
 
   # ── Load raw data ──────────────────────────────────────────────────────────

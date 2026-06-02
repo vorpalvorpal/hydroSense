@@ -210,6 +210,7 @@
 #'   measurement (default 0.05 = 5%). Reserved for future probabilistic
 #'   weighting — currently unused (hard cutoffs applied).
 #' @return Character: "NO3-N_soft", "NO3-N_mod", or "NO3-N_hard".
+#' @keywords internal
 .no3_class <- function(hardness_mg_L, hardness_cv = 0.05) {
   # TODO: implement probabilistic weighting using log-normal hardness
   # uncertainty (CV = hardness_cv). See module header for the formula.
@@ -255,6 +256,16 @@
 #'   $lower          numeric — lower CI %
 #'   $upper          numeric — upper CI %
 #'   $note           character vector — caveats
+#' @examples
+#' \dontrun{
+#' # Fraction of species affected by 9.3 mg/L total ammonia-N at the
+#' # pH 7.0 / 20 degC index condition (requires the ANZG guideline data):
+#' options(leachatetools.guideline_dir = "path/to/guideline data")
+#' ssd_paf("NH3-N", conc_ug_L = 9321)
+#'
+#' # NO3-N needs hardness for automatic soft/moderate/hard SSD selection:
+#' ssd_paf("NO3-N", conc_ug_L = 50000, hardness_mg_L = 90)
+#' }
 #' @export
 ssd_paf <- function(analyte,
                     conc_ug_L,
@@ -283,7 +294,7 @@ ssd_paf <- function(analyte,
     return(result)
   }
 
-  stem <- .SSD_NAME_MAP[[analyte]]
+  stem <- if (analyte %in% names(.SSD_NAME_MAP)) .SSD_NAME_MAP[[analyte]] else NULL
   if (is.null(stem)) {
     result$note <- paste0("Unknown analyte '", analyte, "'.")
     return(result)
@@ -333,6 +344,12 @@ ssd_paf <- function(analyte,
 #'
 #' @inheritParams ssd_paf
 #' @return Numeric scalar — HC50 in µg/L, or NA.
+#' @examples
+#' \dontrun{
+#' # HC50 (50% of species affected) for copper, used as the
+#' # Toxic-Unit denominator in the msPAF concentration-addition step:
+#' ssd_hc50("Cu")
+#' }
 #' @export
 ssd_hc50 <- function(analyte,
                      method        = c("multi", "anzecc"),
@@ -342,7 +359,7 @@ ssd_hc50 <- function(analyte,
   if (analyte == "NO3-N") analyte <- .no3_class(hardness_mg_L)
   if (analyte %in% .SSD_NO_MODEL) return(NA_real_)
 
-  stem <- .SSD_NAME_MAP[[analyte]]
+  stem <- if (analyte %in% names(.SSD_NAME_MAP)) .SSD_NAME_MAP[[analyte]] else NULL
   if (is.null(stem)) return(NA_real_)
 
   fit <- tryCatch(
@@ -361,6 +378,10 @@ ssd_hc50 <- function(analyte,
 #'
 #' @inheritParams ssd_paf
 #' @return Numeric — % species affected, or NA.
+#' @examples
+#' \dontrun{
+#' ssd_pct("Zn", conc_ug_L = 30)
+#' }
 #' @export
 ssd_pct <- function(analyte, conc_ug_L, method = "multi",
                     hardness_mg_L = NULL,
@@ -381,7 +402,7 @@ ssd_pct <- function(analyte, conc_ug_L, method = "multi",
 .ssd_sigma <- function(analyte, method, guideline_dir) {
   if (analyte == "NO3-N") analyte <- .no3_class(NULL)
   if (analyte %in% .SSD_NO_MODEL) return(NA_real_)
-  stem <- .SSD_NAME_MAP[[analyte]]
+  stem <- if (analyte %in% names(.SSD_NAME_MAP)) .SSD_NAME_MAP[[analyte]] else NULL
   if (is.null(stem)) return(NA_real_)
 
   fit <- tryCatch(
