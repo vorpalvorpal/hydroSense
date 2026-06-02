@@ -132,7 +132,7 @@
   # 2. Disk cache
   cache_file <- file.path(.cache_dir(), paste0(key, ".qs"))
   if (file.exists(cache_file)) {
-    fit <- qs::qread(cache_file)
+    fit <- qs2::qs_read(cache_file)
     assign(key, fit, envir = .paf_mem_cache)
     return(fit)
   }
@@ -140,7 +140,7 @@
   # 3. Fit from raw data
   fit <- .fit_model(analyte, stem, method, guideline_dir)
   if (!is.null(fit)) {
-    qs::qsave(fit, cache_file)
+    qs2::qs_save(fit, cache_file)
     assign(key, fit, envir = .paf_mem_cache)
   }
   fit

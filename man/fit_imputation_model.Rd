@@ -58,7 +58,7 @@ Gaussian family).}
 \item{iter, warmup, chains, cores}{brms MCMC settings.}
 
 \item{save_dir}{If non-NULL, save the returned model object as a \code{.qs} file
-in this directory using \code{qs::qsave()}.}
+in this directory using \code{qs2::qs_save()}.}
 
 \item{...}{Additional arguments passed to \code{brms::brm()}.}
 }

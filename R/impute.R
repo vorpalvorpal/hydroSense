@@ -229,7 +229,7 @@
 #'   Gaussian family).
 #' @param iter,warmup,chains,cores brms MCMC settings.
 #' @param save_dir If non-NULL, save the returned model object as a `.qs` file
-#'   in this directory using `qs::qsave()`.
+#'   in this directory using `qs2::qs_save()`.
 #' @param ... Additional arguments passed to `brms::brm()`.
 #'
 #' @return A named list of class `"imputation_model"`:
@@ -467,7 +467,7 @@ fit_imputation_model <- function(
     if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
     fname     <- sprintf("imputation_model_%s.qs", format(Sys.Date(), "%Y%m%d"))
     save_path <- file.path(save_dir, fname)
-    qs::qsave(result, save_path)
+    qs2::qs_save(result, save_path)
     cli::cli_inform(c("v" = "Model saved to {.path {save_path}}"))
     attr(result, "save_path") <- save_path
   }

@@ -26,7 +26,7 @@ Imports:
     nipals,
     parallel,
     purrr,
-    qs,
+    qs2,
     readr,
     readxl,
     ssdtools (>= 2.0.0),

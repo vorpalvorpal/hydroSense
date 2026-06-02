@@ -302,7 +302,7 @@ get_silo_air_temp <- function(
     )
     cache_path <- file.path(cache_dir, key)
     if (!refresh && file.exists(cache_path)) {
-      return(qs::qread(cache_path))
+      return(qs2::qs_read(cache_path))
     }
   }
 
@@ -336,6 +336,6 @@ get_silo_air_temp <- function(
     air_temp_mean_C = (as.numeric(dt[["max_temp"]]) + as.numeric(dt[["min_temp"]])) / 2
   )
 
-  if (cache && !is.null(cache_path)) qs::qsave(out, cache_path)
+  if (cache && !is.null(cache_path)) qs2::qs_save(out, cache_path)
   out
 }
