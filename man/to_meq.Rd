@@ -24,7 +24,6 @@ Appends meq/L-converted rows to the input dataframe. Converted rows have
 original rows, which are preserved unchanged.
 }
 \examples{
-\dontrun{
 df <- tibble::tibble(
   analyte             = "Ca",
   value               = 40.08,   # mg/L
@@ -32,7 +31,6 @@ df <- tibble::tibble(
   valence.analyte     = 2,
   atomic_mass.analyte = 40.08    # g/mol
 )
-to_meq(df)   # appends a "Ca_" row expressed in meq/L
-}
+to_meq(df)   # appends a "Ca_" row of 2 meq/L (1 mmol/L x |valence| = 2)
 
 }
