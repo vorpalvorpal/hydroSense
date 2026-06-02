@@ -9,7 +9,10 @@ estimate_water_temp(
   water_temp_obs,
   target_dates = NULL,
   lag_days = 0L,
-  site_id = NA_character_
+  site_id = NA_character_,
+  seasonal = c("auto", "off", "on"),
+  seasonal_min_n = 8L,
+  seasonal_min_quarters = 3L
 )
 }
 \arguments{
@@ -42,6 +45,22 @@ day \code{t - lag_days}. A lag of 1–3 days is appropriate for streams; 0
 
 \item{site_id}{Character. Value to use for the \code{site_id} column in the
 returned chemistry rows. Default \code{NA_character_}.}
+
+\item{seasonal}{One of \code{"auto"} (default), \code{"off"}, or \code{"on"}. Controls
+whether a day-of-year seasonal term is added to the air-temperature
+regression (see \emph{Model selection}). \code{"auto"} fits both the air-only and
+air + season models and keeps whichever has the lower AICc; \code{"off"}
+forces the air-only model (the legacy behaviour); \code{"on"} forces the
+seasonal model whenever it is eligible.}
+
+\item{seasonal_min_n}{Integer. Minimum number of paired observations before
+the seasonal model is even considered (default 8). The seasonal model adds
+two parameters, so a small buffer above that is needed for AICc to behave.}
+
+\item{seasonal_min_quarters}{Integer 1-4. Minimum number of distinct
+calendar quarters the training observations must span before the seasonal
+model is considered (default 3). Calibration data confined to one or two
+seasons cannot anchor an annual cycle and would extrapolate badly.}
 }
 \value{
 A tibble suitable for binding onto a chemistry data frame, with
@@ -53,7 +72,12 @@ columns:
 \item \code{detected} — \code{TRUE}
 \item \code{site_id} — from \code{site_id} argument
 \item \code{sample_id} — \code{NA_character_} (set by caller if needed)
-Attach \code{attr(result, "lm_fit")} — the fitted \code{lm} object for inspection.
+Attributes attached for inspection:
+\item \code{attr(result, "lm_fit")} — the selected fitted \code{lm} object.
+\item \code{attr(result, "model")} — label of the selected model.
+\item \code{attr(result, "seasonal_used")} — \code{TRUE} if the seasonal model won.
+\item \code{attr(result, "model_comparison")} — data frame of AICc / R² per
+candidate model and which was selected.
 }
 }
 \description{
@@ -81,6 +105,24 @@ the un-ionised fraction changes steeply with temperature and pH (roughly
 doubling for each 5 °C increase near 20 °C), using the wrong temperature
 has a large effect on the normalised concentration. A default value is not
 provided: you must supply site-appropriate temperature estimates.
+}
+
+\section{Model selection}{
+
+Water temperature lags air temperature seasonally (thermal hysteresis): at
+the same air temperature, water tends to be cooler in spring and warmer in
+autumn. A same-day air-only regression averages through that loop. Adding a
+\strong{first-harmonic day-of-year term} — \code{sin(2*pi*doy/365.25)} and
+\code{cos(2*pi*doy/365.25)} — lets the regression represent it. Day-of-year is
+cyclic, so it must enter as these harmonics, not as a raw linear term.
+
+Under \code{seasonal = "auto"} both candidate models are fitted and compared by
+\strong{AICc} (Akaike Information Criterion with the small-sample correction);
+the lower-AICc model is used. AICc — not in-sample R² or RMSE — is the
+selection rule, because a larger model's in-sample fit can only improve and
+would always be chosen even when it overfits. The seasonal model is only
+eligible when there are at least \code{seasonal_min_n} observations spanning at
+least \code{seasonal_min_quarters} quarters; otherwise the air-only model is used.
 }
 
 \examples{

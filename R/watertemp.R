@@ -43,6 +43,35 @@
 #'   (default) is appropriate for ponds or when using aggregated data.
 #' @param site_id Character. Value to use for the `site_id` column in the
 #'   returned chemistry rows. Default `NA_character_`.
+#' @param seasonal One of `"auto"` (default), `"off"`, or `"on"`. Controls
+#'   whether a day-of-year seasonal term is added to the air-temperature
+#'   regression (see *Model selection*). `"auto"` fits both the air-only and
+#'   air + season models and keeps whichever has the lower AICc; `"off"`
+#'   forces the air-only model (the legacy behaviour); `"on"` forces the
+#'   seasonal model whenever it is eligible.
+#' @param seasonal_min_n Integer. Minimum number of paired observations before
+#'   the seasonal model is even considered (default 8). The seasonal model adds
+#'   two parameters, so a small buffer above that is needed for AICc to behave.
+#' @param seasonal_min_quarters Integer 1-4. Minimum number of distinct
+#'   calendar quarters the training observations must span before the seasonal
+#'   model is considered (default 3). Calibration data confined to one or two
+#'   seasons cannot anchor an annual cycle and would extrapolate badly.
+#'
+#' @section Model selection:
+#' Water temperature lags air temperature seasonally (thermal hysteresis): at
+#' the same air temperature, water tends to be cooler in spring and warmer in
+#' autumn. A same-day air-only regression averages through that loop. Adding a
+#' **first-harmonic day-of-year term** — `sin(2*pi*doy/365.25)` and
+#' `cos(2*pi*doy/365.25)` — lets the regression represent it. Day-of-year is
+#' cyclic, so it must enter as these harmonics, not as a raw linear term.
+#'
+#' Under `seasonal = "auto"` both candidate models are fitted and compared by
+#' **AICc** (Akaike Information Criterion with the small-sample correction);
+#' the lower-AICc model is used. AICc — not in-sample R² or RMSE — is the
+#' selection rule, because a larger model's in-sample fit can only improve and
+#' would always be chosen even when it overfits. The seasonal model is only
+#' eligible when there are at least `seasonal_min_n` observations spanning at
+#' least `seasonal_min_quarters` quarters; otherwise the air-only model is used.
 #'
 #' @return A tibble suitable for binding onto a chemistry data frame, with
 #'   columns:
@@ -52,7 +81,12 @@
 #'   - `detected` — `TRUE`
 #'   - `site_id` — from `site_id` argument
 #'   - `sample_id` — `NA_character_` (set by caller if needed)
-#'   Attach `attr(result, "lm_fit")` — the fitted `lm` object for inspection.
+#'   Attributes attached for inspection:
+#'   - `attr(result, "lm_fit")` — the selected fitted `lm` object.
+#'   - `attr(result, "model")` — label of the selected model.
+#'   - `attr(result, "seasonal_used")` — `TRUE` if the seasonal model won.
+#'   - `attr(result, "model_comparison")` — data frame of AICc / R² per
+#'     candidate model and which was selected.
 #'
 #' @examples
 #' \dontrun{
@@ -76,10 +110,14 @@
 estimate_water_temp <- function(
     air_temp_df,
     water_temp_obs,
-    target_dates  = NULL,
-    lag_days      = 0L,
-    site_id       = NA_character_
+    target_dates          = NULL,
+    lag_days              = 0L,
+    site_id               = NA_character_,
+    seasonal              = c("auto", "off", "on"),
+    seasonal_min_n        = 8L,
+    seasonal_min_quarters = 3L
 ) {
+  seasonal <- match.arg(seasonal)
   checkmate::assert_data_frame(air_temp_df)
   checkmate::assert_names(names(air_temp_df),
     must.include = c("datetime", "air_temp_mean_C"))
@@ -88,6 +126,8 @@ estimate_water_temp <- function(
     must.include = c("datetime", "water_temp_C"))
   checkmate::assert_int(lag_days, lower = 0L)
   checkmate::assert_character(site_id, len = 1L)
+  checkmate::assert_int(seasonal_min_n, lower = 7L)
+  checkmate::assert_int(seasonal_min_quarters, lower = 1L, upper = 4L)
 
   # Normalise dates
   air_df <- dplyr::mutate(air_temp_df,
@@ -137,20 +177,60 @@ estimate_water_temp <- function(
     ))
   }
 
-  # Fit linear regression: water_temp_C ~ air_temp_mean_C
-  fit <- stats::lm(water_temp_C ~ air_temp_mean_C, data = train_df)
+  # Day-of-year first-harmonic terms (cyclic seasonal signal).
+  train_df <- .add_doy_harmonics(train_df, ".date")
+
+  # Candidate 1: air temperature only (the baseline; always fitted).
+  fit_air <- stats::lm(water_temp_C ~ air_temp_mean_C, data = train_df)
+
+  # Candidate 2: air + first-harmonic day-of-year. Captures the air-water
+  # thermal hysteresis (water lags air seasonally) that same-day air temp
+  # alone cannot. Only eligible with enough observations AND enough seasonal
+  # coverage, otherwise the annual sinusoid is unidentifiable and extrapolates
+  # wildly out of the sampled season.
+  n_train  <- nrow(train_df)
+  quarters <- length(unique((as.integer(format(train_df$.date, "%m")) - 1L) %/% 3L))
+  seasonal_eligible <-
+    n_train >= seasonal_min_n && quarters >= seasonal_min_quarters
+
+  fit_seas <- NULL
+  if (seasonal != "off" && seasonal_eligible) {
+    fit_seas <- stats::lm(
+      water_temp_C ~ air_temp_mean_C + sin_doy + cos_doy, data = train_df)
+  }
+
+  # Select by AICc (small-sample-corrected). Prefer the seasonal model only if
+  # it genuinely improves AICc (or seasonal = "on" forces it when eligible).
+  aicc_air  <- .aicc(fit_air)
+  aicc_seas <- if (!is.null(fit_seas)) .aicc(fit_seas) else NA_real_
+  use_seasonal <- !is.null(fit_seas) && is.finite(aicc_seas) &&
+    (seasonal == "on" || aicc_seas < aicc_air)
+
+  fit       <- if (use_seasonal) fit_seas else fit_air
+  model_lbl <- if (use_seasonal) "air + season (day-of-year harmonic)" else "air only"
 
   r2   <- summary(fit)$r.squared
   rmse <- sqrt(mean(stats::residuals(fit)^2))
   cli::cli_inform(c(
-    "i" = "Air-water temperature regression: R\u00b2 = {round(r2, 3)}, \\
-           RMSE = {round(rmse, 2)} \u00b0C \\
-           (n = {nrow(train_df)} paired observations{if (lag_days > 0L) paste0(', lag = ', lag_days, ' d') else ''})."
+    "i" = "Selected air-water model: {model_lbl}. R\u00b2 = {round(r2, 3)}, \\
+           RMSE = {round(rmse, 2)} \u00b0C, AICc = {round(if (use_seasonal) aicc_seas else aicc_air, 1)} \\
+           (n = {n_train}{if (lag_days > 0L) paste0(', lag = ', lag_days, ' d') else ''})."
   ))
+  if (!is.null(fit_seas)) {
+    cli::cli_inform(c(
+      " " = "AICc comparison (lower preferred): air only = {round(aicc_air, 1)}, \\
+             air + season = {round(aicc_seas, 1)}."
+    ))
+  } else if (seasonal != "off" && !seasonal_eligible) {
+    cli::cli_inform(c(
+      "i" = "Seasonal model not considered: needs >= {seasonal_min_n} observations \\
+             across >= {seasonal_min_quarters} quarters (have {n_train} across {quarters})."
+    ))
+  }
 
   if (r2 < 0.70) {
     cli::cli_warn(c(
-      "!" = "Air-water temperature regression R\u00b2 = {round(r2, 3)} (below 0.70).",
+      "!" = "Air-water temperature model R\u00b2 = {round(r2, 3)} (below 0.70).",
       "i" = "Consider collecting more paired observations or checking for \\
              unusual thermal conditions at your site."
     ))
@@ -189,7 +269,8 @@ estimate_water_temp <- function(
     pred_df <- dplyr::filter(pred_df, !is.na(.data$air_temp_mean_C))
   }
 
-  # Predict
+  # Predict (seasonal terms indexed to the target/water date)
+  pred_df <- .add_doy_harmonics(pred_df, "datetime")
   predicted_wt <- stats::predict(fit, newdata = pred_df)
 
   result <- tibble::tibble(
@@ -201,8 +282,39 @@ estimate_water_temp <- function(
     sample_id = NA_character_
   )
 
-  attr(result, "lm_fit") <- fit
+  attr(result, "lm_fit")        <- fit            # chosen model (back-compat)
+  attr(result, "model")         <- model_lbl
+  attr(result, "seasonal_used") <- use_seasonal
+  attr(result, "model_comparison") <- data.frame(
+    model    = c("air_only", "air_plus_season"),
+    aicc     = c(aicc_air, aicc_seas),
+    r2       = c(summary(fit_air)$r.squared,
+                 if (!is.null(fit_seas)) summary(fit_seas)$r.squared else NA_real_),
+    selected = c(!use_seasonal, use_seasonal)
+  )
   result
+}
+
+# Append first-harmonic day-of-year terms for a Date column. Day-of-year is
+# cyclic (Dec 31 ~ Jan 1), so it enters a linear model as sin/cos of the annual
+# angle rather than as a raw linear term.
+.add_doy_harmonics <- function(df, date_col) {
+  doy <- as.integer(format(as.Date(df[[date_col]]), "%j"))
+  ang <- 2 * pi * doy / 365.25
+  df$sin_doy <- sin(ang)
+  df$cos_doy <- cos(ang)
+  df
+}
+
+# Small-sample-corrected Akaike Information Criterion. k counts estimated
+# parameters including the residual variance. Returns Inf when n is too small
+# for the correction to be defined (n <= k + 1), so an over-parameterised model
+# is never selected.
+.aicc <- function(fit) {
+  n <- length(stats::residuals(fit))
+  k <- length(stats::coef(fit)) + 1L
+  if (n - k - 1L <= 0L) return(Inf)
+  stats::AIC(fit) + (2 * k * (k + 1)) / (n - k - 1L)
 }
 
 # ── SILO air-temperature lookup ───────────────────────────────────────────────
