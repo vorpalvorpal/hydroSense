@@ -27,7 +27,6 @@ conversion but retained in the original rows.
 ## Examples
 
 ``` r
-if (FALSE) { # \dontrun{
 df <- tibble::tibble(
   analyte             = "Ca",
   value               = 40.08,   # mg/L
@@ -35,6 +34,10 @@ df <- tibble::tibble(
   valence.analyte     = 2,
   atomic_mass.analyte = 40.08    # g/mol
 )
-to_meq(df)   # appends a "Ca_" row expressed in meq/L
-} # }
+to_meq(df)   # appends a "Ca_" row of 2 meq/L (1 mmol/L x |valence| = 2)
+#> # A tibble: 2 × 5
+#>   analyte value units.analyte valence.analyte atomic_mass.analyte
+#>   <chr>   <dbl> <chr>                   <dbl>               <dbl>
+#> 1 Ca       40.1 mg/L                        2                40.1
+#> 2 Ca_       2   mg/L                        2                40.1
 ```
