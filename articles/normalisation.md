@@ -1,0 +1,213 @@
+# Analyte normalisation: bioavailability adjustments in leachatetools
+
+## Overview
+
+The ANZG freshwater toxicant guideline values are derived at a specific
+**index water-chemistry condition**. When ambient water chemistry
+differs from that condition, the guideline — and therefore the effective
+toxicity — changes. leachatetools adjusts measured concentrations to
+index-condition equivalents before computing PAF values so that all
+samples are compared on the same basis.
+
+The adjustment is:
+
+``` math
+C_\text{norm} = C_\text{field} \times \frac{\text{EC10}_\text{index}}{\text{EC10}_\text{field}}
+```
+
+This normalised concentration is what enters the SSD lookup. A value of
+$`C_\text{norm} > C_\text{field}`$ means the measured concentration is
+*more toxic* at site conditions than the same concentration would be at
+index conditions; $`C_\text{norm} < C_\text{field}`$ means it is less
+toxic.
+
+Normalisation formulas are stored in the bundled analyte metadata CSV
+(`inst/extdata/anzecc_analyte_metadata.csv`). You can inspect or
+override them by supplying your own CSV via the `analyte_metadata`
+argument to
+[`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md)
+and
+[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md).
+
+------------------------------------------------------------------------
+
+## Implemented normalisations
+
+### Ammonia-N (NH₃-N)
+
+**Source:** ANZG (2021) ammonia freshwater DGV technical brief. **Index
+condition:** pH 7.0, temperature 20 °C. **Required co-analytes:** `pH`,
+`temperature` (°C).
+
+NH₃-N toxicity is driven by the un-ionised fraction, which increases
+sharply with pH and temperature. The normalisation converts field total
+ammonia-N to the equivalent concentration at the index condition using
+the ionisation equilibrium:
+
+``` math
+f_\text{un}(\text{pH}, T) = \frac{1}{1 + 10^{\,pK_a(T) - \text{pH}}}
+```
+
+where $`pK_a(T) = 0.09018 + 2729.92 / (T + 273.15)`$.
+
+Water temperature must be supplied as `analyte = "temperature"` rows in
+your chemistry data frame. Use
+[`estimate_water_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/estimate_water_temp.md)
+if only air temperature records are available.
+
+### Cadmium (Cd)
+
+**Source:** ANZECC & ARMCANZ (2000) Table 3.4.1 hardness correction.
+**Index condition:** hardness 30 mg/L CaCO₃. **Required co-analyte:**
+`hardness` (mg/L CaCO₃).
+
+``` math
+C_\text{norm} = C \times \left(\frac{30}{\text{hardness}}\right)^{0.8}
+```
+
+### Lead (Pb)
+
+**Source:** ANZECC & ARMCANZ (2000) Table 3.4.1 hardness correction.
+**Index condition:** hardness 30 mg/L CaCO₃. **Required co-analyte:**
+`hardness` (mg/L CaCO₃).
+
+``` math
+C_\text{norm} = C \times \left(\frac{30}{\text{hardness}}\right)^{1.0}
+```
+
+### Copper (Cu)
+
+**Source:** ANZG (2024) copper freshwater DGV draft technical brief,
+Figure 3. **Index condition:** DOC 0.5 mg/L. **Required co-analyte:**
+`DOC` (mg/L).
+
+``` math
+C_\text{norm} = C \times \left(\frac{0.5}{\text{DOC}}\right)^{0.977}
+```
+
+DOC is clamped to \[0.5, 30\] mg/L before applying the formula:
+
+- **Upper cap (30 mg/L):** the formula is not validated above 30 mg/L
+  DOC; use the DGV at 30 mg/L in those cases and consider site-specific
+  assessment.
+- **Lower cap (0.5 mg/L):** below the index condition DOC, the formula
+  extrapolates into an unvalidated range; the cap prevents an unbounded
+  upward correction.
+
+### Nickel (Ni)
+
+**Source:** ANZG (2024) nickel freshwater DGV draft technical brief;
+invertebrate-trophic-level MLR from Peters et al. (2021). **Index
+condition:** pH 7.5, Ca 6 mg/L, Mg 4 mg/L, DOC 0.5 mg/L. **Required
+co-analytes:** `pH`, `DOC`, `Ca`, `Mg` (all in mg/L for Ca and Mg).
+**Valid range:** pH 6.0–8.5, Ca 2–70 mg/L, Mg 1.6–54 mg/L, DOC 0.5–20
+mg/L.
+
+The Peters et al. (2021) MLR for invertebrates:
+
+``` math
+\log_e(\text{EC10}) = S + 2.09\log_e[\text{DOC}] + 0.19\log_e[\text{Ca}] + 0.40\log_e[\text{Mg}] - 0.40\,\text{pH} - 0.24\log_e[\text{DOC}]\cdot\text{pH}
+```
+
+The sensitivity coefficient $`S`$ cancels in the field-to-index ratio,
+so:
+
+``` math
+C_\text{norm} = C \times \exp\!\Big(\text{MLR}(\text{index}) - \text{MLR}(\text{field})\Big)
+```
+
+**Important limitation:** The ANZG Ni DGVs were derived using
+trophic-level-specific MLRs for algae, aquatic plants, invertebrates and
+fish applied to all species in the SSD. The invertebrate MLR used here
+is the most appropriate single model for macroinvertebrate-focused
+assessment, but it will not exactly reproduce the published lookup-table
+DGVs, which are based on a full multi-trophic SSD re-derivation at each
+water chemistry combination. Users whose assessments span a full range
+of trophic levels may wish to supply a geometric-mean correction across
+all four MLRs via a custom analyte metadata CSV.
+
+### Zinc (Zn)
+
+**Source:** ANZG (2024) zinc freshwater DGV draft technical brief;
+*Daphnia magna* (Arthropoda / crustacean) MLR from Gadd et al. (in
+prep.). **Index condition:** pH 7.5, hardness 30 mg/L CaCO₃, DOC 0.5
+mg/L. **Required co-analytes:** `pH`, `hardness` (mg/L CaCO₃), `DOC`
+(mg/L). **Valid range:** pH 6.2–8.3, hardness 20–440 mg/L CaCO₃, DOC
+0.5–15 mg/L.
+
+The *D. magna* MLR:
+
+``` math
+\log_e(\text{EC10}) = S - 0.52\,\text{pH} + 0.31\log_e[\text{hardness}] - 1.4\log_e[\text{DOC}] + 0.24\log_e[\text{DOC}]\cdot\text{pH}
+```
+
+Note that **lower pH → higher Zn DGV** (Zn is less bioavailable at low
+pH because H⁺ competes with Zn²⁺ at biotic ligands). pH and DOC are
+clamped to the published valid range before applying the formula.
+
+**Limitation — accuracy degrades above pH 8:** The published Zn DGVs
+were derived by applying all four trophic-level MLRs to 31 species and
+re-fitting the SSD at each water chemistry combination. The *D. magna*
+model alone gives a reasonable approximation at low to neutral pH
+(within ~15% of the lookup-table DGV), but diverges substantially at
+high pH. At pH 8.3, the Daphnia-model-derived DGV is approximately 2.4
+µg/L versus the published 1.0 µg/L, because the highly sensitive
+*Chlorella* sp. (PNG isolate, EC10 = 0.91 µg/L at index) and
+*Raphidocelis subcapitata* have stronger negative pH coefficients and
+dominate the lower tail of the SSD at alkaline pH. The practical
+consequence: for high-pH receiving waters (\> 8.0), this formula will
+**underestimate Zn toxicity** and should be treated with caution. Users
+assessing alkaline sites should consider supplying a geometric-mean
+correction across all four trophic-level MLRs via a custom analyte
+metadata CSV.
+
+------------------------------------------------------------------------
+
+## Analytes not yet normalised
+
+The following metals have chemistry-dependent toxicity but normalisation
+formulas have not yet been added to the bundled metadata:
+
+| Analyte | Reason |
+|----|----|
+| Al | pH-dependent; ANZECC 2000 equation requires total and dissolved fractions |
+| Cr(III) | Hardness correction exists but species data are limited |
+
+------------------------------------------------------------------------
+
+## Summary table
+
+| Analyte | Model | Co-analytes | Valid range |
+|----|----|----|----|
+| NH₃-N | ANZG (2021) ionisation equilibrium | pH, temperature (°C) | — |
+| Cd | ANZECC 2000 hardness | hardness | — |
+| Pb | ANZECC 2000 hardness | hardness | — |
+| Cu | ANZG (2024) DOC power law | DOC | DOC 0.5–30 mg/L |
+| Ni | Peters et al. (2021) invertebrate MLR | pH, DOC, Ca, Mg | pH 6.0–8.5; Ca 2–70; Mg 1.6–54; DOC 0.5–20 mg/L |
+| Zn | Gadd et al. (in prep.) *D. magna* MLR | pH, hardness, DOC | pH 6.2–8.3; H 20–440 mg/L CaCO₃; DOC 0.5–15 mg/L |
+
+------------------------------------------------------------------------
+
+## Providing custom normalisation formulas
+
+To override any formula — or add normalisation for analytes not listed
+above — supply your own metadata CSV via the `analyte_metadata`
+argument:
+
+``` r
+
+add_amspaf(
+  chemistry_df,
+  reference      = prep_ref,
+  analyte_metadata = "path/to/my_metadata.csv"
+)
+```
+
+The CSV must contain at least the columns `name.analyte`,
+`normalisation_formula`, and `coanalytes_required`. Rows absent from
+your CSV fall back to the bundled metadata. The `normalisation_formula`
+column holds a plain R expression with `C` as the measured concentration
+and co-analyte names as free variables. For example:
+
+    normalisation_formula = "C * (0.5 / pmin(pmax(DOC, 0.5), 30))^0.977"
+    coanalytes_required   = "DOC"
