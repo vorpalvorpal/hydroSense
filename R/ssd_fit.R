@@ -161,7 +161,7 @@
     if (use_xlsx) {
       reader <- .XLSX_READERS[[analyte]]
       if (is.null(reader)) {
-        warning("No XLSX reader registered for '", analyte, "' — falling back to bundled CSV.")
+        warning("No XLSX reader registered for '", analyte, "' \u2014 falling back to bundled CSV.")
         use_xlsx <- FALSE
       }
     }
@@ -225,7 +225,7 @@
   n_min <- if (!is.na(meta$n_min_override)) as.integer(meta$n_min_override) else 6L
   if (nrow(df) < n_min) {
     warning("Analyte '", analyte, "': only ", nrow(df), " observations (min ",
-            n_min, ") — cannot fit model.")
+            n_min, ") \u2014 cannot fit model.")
     return(NULL)
   }
 

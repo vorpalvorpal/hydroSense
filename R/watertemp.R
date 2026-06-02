@@ -143,14 +143,14 @@ estimate_water_temp <- function(
   r2   <- summary(fit)$r.squared
   rmse <- sqrt(mean(stats::residuals(fit)^2))
   cli::cli_inform(c(
-    "i" = "Air-water temperature regression: R² = {round(r2, 3)}, \\
-           RMSE = {round(rmse, 2)} °C \\
+    "i" = "Air-water temperature regression: R\u00b2 = {round(r2, 3)}, \\
+           RMSE = {round(rmse, 2)} \u00b0C \\
            (n = {nrow(train_df)} paired observations{if (lag_days > 0L) paste0(', lag = ', lag_days, ' d') else ''})."
   ))
 
   if (r2 < 0.70) {
     cli::cli_warn(c(
-      "!" = "Air-water temperature regression R² = {round(r2, 3)} (below 0.70).",
+      "!" = "Air-water temperature regression R\u00b2 = {round(r2, 3)} (below 0.70).",
       "i" = "Consider collecting more paired observations or checking for \\
              unusual thermal conditions at your site."
     ))

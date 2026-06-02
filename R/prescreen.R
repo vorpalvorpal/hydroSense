@@ -104,7 +104,7 @@ prescreen_analytes <- function(
     if (length(protect_missing) > 0L) {
       cli::cli_warn(c(
         "!" = "{length(protect_missing)} {.arg protect} analyte{?s} not found \\
-               in {.arg df$analyte} — protecting nothing: {.val {protect_missing}}.",
+               in {.arg df$analyte} \u2014 protecting nothing: {.val {protect_missing}}.",
         "i" = "Check for typos or stale analyte names."
       ))
     }

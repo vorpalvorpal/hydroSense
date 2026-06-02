@@ -165,7 +165,7 @@
 
   meta <- meta_all |> dplyr::filter(analyte == !!analyte)
   if (nrow(meta) == 0) {
-    warning("No metadata for analyte '", analyte, "' — cannot fit model.")
+    warning("No metadata for analyte '", analyte, "' \u2014 cannot fit model.")
     return(NULL)
   }
 
@@ -216,7 +216,7 @@
   # uncertainty (CV = hardness_cv). See module header for the formula.
   # For now: hard cutoffs per ANZG 2025 class boundaries.
   if (is.null(hardness_mg_L) || is.na(hardness_mg_L)) {
-    warning("NO3-N: hardness_mg_L not supplied — defaulting to soft-water ",
+    warning("NO3-N: hardness_mg_L not supplied \u2014 defaulting to soft-water ",
             "class (most conservative). Supply hardness_mg_L for correct ",
             "class selection.")
     return("NO3-N_soft")
@@ -310,7 +310,7 @@ ssd_paf <- function(analyte,
   if (isTRUE(attr(fit, "acute_data")))
     notes <- c(notes, "SSD fitted to acute data (MR method); PAF is approximate")
   if (isTRUE(attr(fit, "acr_applied")))
-    notes <- c(notes, paste0("ACR pre-applied (÷", attr(fit, "trigger_divisor"),
+    notes <- c(notes, paste0("ACR pre-applied (\u00f7", attr(fit, "trigger_divisor"),
                              "); conc_ug_L should be on chronic-equivalent scale"))
 
   ci_flag <- nboot > 0L

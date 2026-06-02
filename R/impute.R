@@ -117,7 +117,7 @@
      isn't installed yet.",
     "i" = "{.pkg brms} fits the Bayesian model that fills in missing and \\
            below-detection-limit results. It's optional, so it isn't \\
-           installed automatically — only this imputation step uses it.",
+           installed automatically \u2014 only this imputation step uses it.",
     " " = "",
     "*" = "To install it, run this once at the R console:",
     " " = "{.code install.packages(\"brms\")}",
@@ -125,7 +125,7 @@
     "i" = "{.pkg brms} also needs a working Stan engine (a C++ compiler). If \\
            the line above isn't enough, follow the short setup guide at \\
            {.url https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started}.",
-    "i" = "Once {.pkg brms} is installed, re-run this function — no other \\
+    "i" = "Once {.pkg brms} is installed, re-run this function \u2014 no other \\
            changes are needed."
   ))
 }
@@ -289,7 +289,7 @@ fit_imputation_model <- function(
     nrow()
   if (n_bdl_req > 0L) {
     cli::cli_inform(c(
-      "i" = "{n_bdl_req} BDL row{?s} for required variable{?s} — using \\
+      "i" = "{n_bdl_req} BDL row{?s} for required variable{?s} \u2014 using \\
              detection-limit value{?s} as conservative estimate."
     ))
   }
@@ -315,7 +315,7 @@ fit_imputation_model <- function(
   if (length(samples_with_required) < min_samples) {
     cli::cli_abort(c(
       "Only {length(samples_with_required)} sample{?s} remain after \\
-       required-var filtering — fewer than {.arg min_samples} = {min_samples}.",
+       required-var filtering \u2014 fewer than {.arg min_samples} = {min_samples}.",
       "i" = "Lower {.arg min_samples}, add more data, or choose different \\
              {.arg required_vars}."
     ))
@@ -412,7 +412,7 @@ fit_imputation_model <- function(
   # ── 6. Fit metals model ────────────────────────────────────────────────────
   metals_fit <- NULL
   if (length(metals_in_df) >= 1L) {
-    cli::cli_inform(c("i" = "Fitting metals model …"))
+    cli::cli_inform(c("i" = "Fitting metals model \u2026"))
     metals_fit <- .fit_group_model(
       df              = df,
       target_analytes = metals_in_df,
@@ -429,7 +429,7 @@ fit_imputation_model <- function(
   # ── 7. Fit organics model ──────────────────────────────────────────────────
   organics_fit <- NULL
   if (length(organics_in_df) >= 1L) {
-    cli::cli_inform(c("i" = "Fitting organics model …"))
+    cli::cli_inform(c("i" = "Fitting organics model \u2026"))
     organics_fit <- .fit_group_model(
       df              = df,
       target_analytes = organics_in_df,
@@ -461,9 +461,9 @@ fit_imputation_model <- function(
 
   # ── 9. Save if requested ───────────────────────────────────────────────────
   if (!is.null(save_dir)) {
-    if (!requireNamespace("qs", quietly = TRUE))
-      cli::cli_abort("Package {.pkg qs} is required for saving models. \\
-                      Install with: {.code install.packages('qs')}")
+    if (!requireNamespace("qs2", quietly = TRUE))
+      cli::cli_abort("Package {.pkg qs2} is required for saving models. \\
+                      Install with: {.code install.packages('qs2')}")
     if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
     fname     <- sprintf("imputation_model_%s.qs", format(Sys.Date(), "%Y%m%d"))
     save_path <- file.path(save_dir, fname)
@@ -690,7 +690,7 @@ impute_coanalytes <- function(
     )
   if (is.null(model$pca))
     cli::cli_abort(
-      "Model has no fitted PCA — did {.fn fit_imputation_model} find any \\
+      "Model has no fitted PCA \u2014 did {.fn fit_imputation_model} find any \\
        target analytes?"
     )
 
@@ -704,7 +704,7 @@ impute_coanalytes <- function(
   if (length(skipped) > 0L)
     cli::cli_warn(c(
       "!" = "{length(skipped)} co-analyte target{?s} not in fitted \\
-             {.arg pca_vars} — skipping: {.val {skipped}}."
+             {.arg pca_vars} \u2014 skipping: {.val {skipped}}."
     ))
 
   # Per-sample metadata for constructing new rows
@@ -731,7 +731,7 @@ impute_coanalytes <- function(
     if (n_obs < min_obs) {
       cli::cli_warn(c(
         "!" = "Co-analyte {.val {tgt}}: only {n_obs} quantified sample{?s} \\
-               (< {.arg min_obs} = {min_obs}) — skipping."
+               (< {.arg min_obs} = {min_obs}) \u2014 skipping."
       ))
       next
     }
@@ -867,7 +867,7 @@ impute_coanalytes <- function(
   col_sds   <- apply(wq_matrix, 2, stats::sd, na.rm = TRUE)
   keep_cols <- !is.na(col_sds) & col_sds > 0
   if (!any(keep_cols))
-    cli::cli_abort("All PCA variables have zero variance — cannot fit PCA.")
+    cli::cli_abort("All PCA variables have zero variance \u2014 cannot fit PCA.")
   if (!all(keep_cols)) {
     dropped <- colnames(wq_matrix)[!keep_cols]
     cli::cli_inform(c("!" = "Chemistry PCA: dropping zero-variance variable{?s}: \\
@@ -1056,7 +1056,7 @@ impute_coanalytes <- function(
   brms_formula <- do.call(brms::mvbf, c(bf_list, list(rescor = TRUE)))
 
   cli::cli_inform(c(
-    "i" = "brms: {length(target_analytes)} analyte{?s} × \\
+    "i" = "brms: {length(target_analytes)} analyte{?s} \u00d7 \\
            {nrow(wide_df)} sample{?s}. This may take several minutes."
   ))
 

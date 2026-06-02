@@ -188,7 +188,7 @@ prepare_reference <- function(
       if (length(shaky) > 0L) {
         cli::cli_warn(c(
           "!" = "{length(shaky)} analyte{?s} lost > 10% of bootstrap draws to \\
-                 non-finite values — CI may be unreliable: {.val {shaky}}.",
+                 non-finite values \u2014 CI may be unreliable: {.val {shaky}}.",
           "i" = "Inspect with the `n_boot_valid` column of `ref_table`."
         ))
       }
@@ -203,7 +203,7 @@ prepare_reference <- function(
 
   if (length(dropped) > 0L) {
     cli::cli_inform(c(
-      "i" = "prepare_reference: {length(dropped)} analyte{?s} dropped — \\
+      "i" = "prepare_reference: {length(dropped)} analyte{?s} dropped \u2014 \\
              no usable normalised reference values: {.val {dropped}}."
     ))
   }
@@ -213,7 +213,7 @@ prepare_reference <- function(
   if (length(low_n) > 0L) {
     cli::cli_warn(c(
       "!" = "{length(low_n)} analyte{?s} have < 5 reference observations \\
-             — `ref_norm` estimate may be unreliable: {.val {low_n}}."
+             \u2014 `ref_norm` estimate may be unreliable: {.val {low_n}}."
     ))
   }
 
