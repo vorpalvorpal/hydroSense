@@ -3,7 +3,7 @@
 Computes detection frequency (proportion of samples with
 `detected == TRUE`) per analyte and returns the names that meet a
 minimum threshold. Use this before
-[`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md)
+[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
 to drop analytes that were almost never detected — imputing such
 analytes from near-zero priors adds noise without ecological signal.
 
@@ -81,17 +81,17 @@ Analytes listed in `coanalytes_required` in the bundled metadata (e.g.
 pH, DOC, Ca, Mg, hardness, temperature) are **automatically protected**
 from exclusion regardless of detection frequency, because they are
 needed for chemistry normalisation in
-[`add_amspaf()`](https://www.kedumba.com.au/leachatetools/reference/add_amspaf.md).
+[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md).
 Additional analytes can be protected via the `protect` argument (typical
 use: pass the `required_vars` you intend to use in
-[`fit_imputation_model()`](https://www.kedumba.com.au/leachatetools/reference/fit_imputation_model.md)
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
 here so those vars survive prescreen). Protected analytes that fall
 below the threshold are reported separately so the caller is aware.
 
 ## Examples
 
 ``` r
-included <- prescreen_analytes(leachate_demo, k = 0.05)
+included <- prescreen_analytes(leachate_demo(), k = 0.05)
 included                    # analytes retained
 #>  [1] "CO3-CaCO3"   "Ca"          "Cl"          "Cu"          "DOC"        
 #>  [6] "F"           "HCO3-CaCO3"  "K"           "Mg"          "NH3-N"      

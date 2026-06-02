@@ -1,9 +1,9 @@
 # Interpreting chronic AmsPAF outputs
 
 This vignette covers how to interpret the values returned by
-[`add_amspaf()`](https://www.kedumba.com.au/leachatetools/reference/add_amspaf.md)
+[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
 and
-[`time_weighted_aggregate()`](https://www.kedumba.com.au/leachatetools/reference/time_weighted_aggregate.md)
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md)
 in the context of an environmental assessment. The package deliberately
 stops short of providing regulatory tier breaks — those depend on the
 assessment context and are a consumer decision. This document gives you
@@ -47,7 +47,7 @@ What you *can* do:
 
 ## Chronic vs per-sample AmsPAF
 
-[`add_amspaf()`](https://www.kedumba.com.au/leachatetools/reference/add_amspaf.md)
+[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
 operates on a chemistry data frame regardless of whether each row is a
 single field sample or a chronic-aggregated value — it treats every row
 as a snapshot of exposure and computes the AmsPAF that snapshot implies.
@@ -114,7 +114,7 @@ AmsPAF values) is the correct aggregation.
 
 ## Choosing `tau_days`
 
-[`time_weighted_aggregate()`](https://www.kedumba.com.au/leachatetools/reference/time_weighted_aggregate.md)
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md)
 uses exponential-decay temporal weighting with parameter `tau_days`
 (default 90). The effective half-life is `tau_days * log(2)` ≈ 62 days
 at the default.
@@ -140,7 +140,7 @@ concentration before evaluating the SSD, so the AmsPAF reflects only the
 *increment above* what the local community is already adapted to. The
 summary statistic used to define that background is chosen by the
 `summary` argument to
-[`prepare_reference()`](https://www.kedumba.com.au/leachatetools/reference/prepare_reference.md).
+[`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md).
 
 The package default is `"geom_mean"`. Rationale:
 
@@ -223,7 +223,7 @@ AmsPAF outputs are best-effort predictions of chronic toxicity; they
 have not been empirically tied to observed community impact.
 
 **Below-detection handling in imputation.** The
-[`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md)
+[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
 function uses `mi()` (missing imputation) rather than `cens("left")`
 (left-censoring) because brms does not currently support censored
 likelihoods with multivariate residual correlation (`rescor = TRUE`).
@@ -232,5 +232,5 @@ original detection limit when the model predicts above DL. For sites
 where the chemistry context legitimately suggests high concentrations
 the cap may fire frequently; results in that regime should be inspected.
 See the roxygen documentation of
-[`fit_imputation_model()`](https://www.kedumba.com.au/leachatetools/reference/fit_imputation_model.md)
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
 for details on the trade-off.

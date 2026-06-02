@@ -169,9 +169,9 @@ Christophersen N, Hooper RP (1992) Water Resources Research
 
 ## See also
 
-[`build_leachate_endmember`](https://www.kedumba.com.au/leachatetools/reference/build_leachate_endmember.md),
-[`build_reference_endmember`](https://www.kedumba.com.au/leachatetools/reference/build_reference_endmember.md),
-[`compute_lmf_for_sample`](https://www.kedumba.com.au/leachatetools/reference/compute_lmf_for_sample.md)
+[`build_leachate_endmember`](https://vorpalvorpal.github.io/leachatetools/reference/build_leachate_endmember.md),
+[`build_reference_endmember`](https://vorpalvorpal.github.io/leachatetools/reference/build_reference_endmember.md),
+[`compute_lmf_for_sample`](https://vorpalvorpal.github.io/leachatetools/reference/compute_lmf_for_sample.md)
 
 ## Examples
 
@@ -180,10 +180,11 @@ Christophersen N, Hooper RP (1992) Water Resources Research
 # Quantify each downstream sample's leachate-mixing fraction from its
 # major-ion signature, calibrated against the leachate and reference
 # end-members in the bundled demo data.
+demo <- leachate_demo()
 out <- add_lmf(
-  df             = subset(leachate_demo, site_id == "downstream"),
-  leachate_data  = subset(leachate_demo, site_id == "leachate"),
-  reference_data = subset(leachate_demo, site_id == "reference")
+  df             = subset(demo, site_id == "downstream"),
+  leachate_data  = subset(demo, site_id == "leachate"),
+  reference_data = subset(demo, site_id == "reference")
 )
 subset(out, analyte == "LMF", c("sample_id", "value"))
 #> # A tibble: 6 × 2

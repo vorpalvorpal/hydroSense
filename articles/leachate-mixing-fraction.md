@@ -2,7 +2,7 @@
 
 ## What the LMF answers
 
-[`add_lmf()`](https://www.kedumba.com.au/leachatetools/reference/add_lmf.md)
+[`add_lmf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md)
 asks a single question of each water sample:
 
 > *What fraction of this sample’s chemistry can be explained as a
@@ -23,7 +23,7 @@ the major-ion signature is used to estimate the blend ratio.
 ## The method in brief
 
 For each sample,
-[`add_lmf()`](https://www.kedumba.com.au/leachatetools/reference/add_lmf.md):
+[`add_lmf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md):
 
 1.  **Converts to milliequivalents.** Concentrations are converted to
     meq/L with \[to_meq()\] so that ions combine on a charge-equivalent
@@ -66,9 +66,10 @@ so the example is reproducible.)
 
 ``` r
 
-str(unique(leachate_demo$site_id))
-#>  chr [1:3] "downstream" "reference" "leachate"
-head(subset(leachate_demo, site_id == "downstream"), 4)
+demo <- leachate_demo()
+unique(demo$site_id)
+#> [1] "downstream" "reference"  "leachate"
+head(subset(demo, site_id == "downstream"), 4)
 #>   sample_id    site_id   datetime analyte    value detected units.analyte
 #> 1     DS-01 downstream 2024-01-15      Na 149.4775     TRUE          mg/L
 #> 2     DS-01 downstream 2024-01-15       K  29.9655     TRUE          mg/L
@@ -88,9 +89,9 @@ required):
 ``` r
 
 out <- add_lmf(
-  df             = subset(leachate_demo, site_id == "downstream"),
-  leachate_data  = subset(leachate_demo, site_id == "leachate"),
-  reference_data = subset(leachate_demo, site_id == "reference")
+  df             = subset(demo, site_id == "downstream"),
+  leachate_data  = subset(demo, site_id == "leachate"),
+  reference_data = subset(demo, site_id == "reference")
 )
 
 lmf <- subset(out, analyte == "LMF",
@@ -116,7 +117,7 @@ story).
 
 ## Interpreting the result
 
-[`add_lmf()`](https://www.kedumba.com.au/leachatetools/reference/add_lmf.md)
+[`add_lmf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md)
 attaches indicative tier breaks to each LMF row (in the `*.guideline_*`
 columns). The defaults are:
 

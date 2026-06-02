@@ -1,10 +1,10 @@
 # Pivot and collapse transforming ion species to conserved totals
 
 Internal helper used by
-[`add_lmf`](https://www.kedumba.com.au/leachatetools/reference/add_lmf.md),
-[`build_reference_endmember`](https://www.kedumba.com.au/leachatetools/reference/build_reference_endmember.md),
+[`add_lmf`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md),
+[`build_reference_endmember`](https://vorpalvorpal.github.io/leachatetools/reference/build_reference_endmember.md),
 and
-[`build_leachate_endmember`](https://www.kedumba.com.au/leachatetools/reference/build_leachate_endmember.md)
+[`build_leachate_endmember`](https://vorpalvorpal.github.io/leachatetools/reference/build_leachate_endmember.md)
 to avoid code duplication. Pivots long-format meq data to wide format
 and replaces the individual N species (NH4-N, NO3-N, NO2-N) with
 `total_N_` and the carbonate species (CO3, HCO3) with `total_alk_`.

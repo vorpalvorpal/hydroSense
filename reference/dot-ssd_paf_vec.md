@@ -6,7 +6,7 @@ fitted SSD object is available it is evaluated in a single
 [`ssdtools::ssd_hp()`](https://bcgov.github.io/ssdtools/reference/ssd_hp.html)
 call over the positive concentrations; otherwise it falls back to a
 per-value
-[`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md)
+[`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md)
 lookup (which re-resolves the model internally).
 
 ## Usage
@@ -28,7 +28,7 @@ lookup (which re-resolves the model internally).
 - analyte:
 
   Analyte name (fallback
-  [`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md)
+  [`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md)
   lookup only).
 
 - method:

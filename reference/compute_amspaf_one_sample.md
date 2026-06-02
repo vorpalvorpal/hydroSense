@@ -1,13 +1,13 @@
 # Compute AmsPAF for a single sample
 
 Thin wrapper over the shared AmsPAF helpers
-([`.amspaf_adjust()`](https://www.kedumba.com.au/leachatetools/reference/dot-amspaf_adjust.md),
-[`.amspaf_add_paf()`](https://www.kedumba.com.au/leachatetools/reference/dot-amspaf_add_paf.md),
-[`.amspaf_combine()`](https://www.kedumba.com.au/leachatetools/reference/dot-amspaf_combine.md))
+([`.amspaf_adjust()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-amspaf_adjust.md),
+[`.amspaf_add_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-amspaf_add_paf.md),
+[`.amspaf_combine()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-amspaf_combine.md))
 that processes one sample in isolation. Retained so the normalisation /
 ARA / CA / IA steps can be driven (and unit-tested) for a single sample;
 the batched
-[`compute_amspaf_per_sample()`](https://www.kedumba.com.au/leachatetools/reference/compute_amspaf_per_sample.md)
+[`compute_amspaf_per_sample()`](https://vorpalvorpal.github.io/leachatetools/reference/compute_amspaf_per_sample.md)
 path uses the same helpers so behaviour is guaranteed identical.
 
 ## Usage
@@ -40,7 +40,7 @@ compute_amspaf_one_sample(
 - ssd_params:
 
   Tibble from
-  [`derive_ssd_params()`](https://www.kedumba.com.au/leachatetools/reference/derive_ssd_params.md)
+  [`derive_ssd_params()`](https://vorpalvorpal.github.io/leachatetools/reference/derive_ssd_params.md)
   (incl. the `fit` column).
 
 - min_analytes:
@@ -64,7 +64,7 @@ compute_amspaf_one_sample(
 
   Logical; whether the caller supplied a reference. Controls the
   `ref_source` diagnostic (see
-  [`.amspaf_adjust()`](https://www.kedumba.com.au/leachatetools/reference/dot-amspaf_adjust.md)).
+  [`.amspaf_adjust()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-amspaf_adjust.md)).
 
 ## Value
 

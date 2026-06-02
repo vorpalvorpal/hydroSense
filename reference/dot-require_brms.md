@@ -1,9 +1,9 @@
 # Stop with a friendly, actionable message if brms is not installed
 
 The Bayesian imputation step
-([`fit_imputation_model()`](https://www.kedumba.com.au/leachatetools/reference/fit_imputation_model.md)
+([`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
 /
-[`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md))
+[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md))
 is the only part of the package that needs brms, so brms is an optional
 ("Suggests") dependency rather than a hard requirement. This keeps the
 package quick to install for users who only need the LMF or AmsPAF

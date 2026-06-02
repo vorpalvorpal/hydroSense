@@ -3,7 +3,7 @@
 Fits one or two `brms` multivariate GAMs — one for metals and one for
 organics — using a PCA-compressed water-quality (WQ) block as additional
 environmental predictors. The returned model object is passed to
-[`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md)
+[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
 for prediction on new data.
 
 ## Usage
@@ -139,7 +139,7 @@ makes multivariate imputation borrow strength across analytes.
 **Costs of `rescor = TRUE`** — brms cannot combine `set_rescor(TRUE)`
 with `cens("left")`, so this implementation uses `mi()` for BDL values
 and applies a post-hoc cap (see
-[`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md)).
+[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)).
 The cap clips imputed BDL cells to the original detection limit when the
 model predicts above DL. For sites where the chemistry context
 legitimately suggests high concentrations the cap can fire frequently;
@@ -174,7 +174,7 @@ explained reaches `min_var_explained` or `max_pcs` is reached. A minimum
 of two PCs is always used.
 
 **Hurdles (applied at prediction time by
-[`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md))**
+[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md))**
 
 - *Metals*: a sample is only imputed if at least one metal analyte is
   present (detected or BDL) in `df` for that sample.
@@ -191,7 +191,7 @@ retained.
 
 ## See also
 
-[`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md)
+[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
 
 ## Examples
 

@@ -35,7 +35,7 @@ Current state: uncertainty exists in pieces but is collapsed too
 early. - `impute_chemistry(return = "draws")` already emits posterior
 draws, but the chronic/AmsPAF pipeline consumes point estimates
 (`return = "point"`). -
-[`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md)
+[`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md)
 can return CIs (`ci = TRUE`) but the AmsPAF path uses point PAFs. - The
 analytic CA combination (`compute_ca_group_mspaf`) uses a single sigma
 per group with no uncertainty on HC50/sigma themselves.
@@ -45,9 +45,9 @@ posterior draws (Monte Carlo, composable, heavy) vs. parametric moments
 (mean + variance, light, needs a propagation rule at each step). Draws
 are the honest default given imputation is already Bayesian. -
 **Plumbing:** thread a `draw_id` dimension through
-[`time_weighted_aggregate()`](https://www.kedumba.com.au/leachatetools/reference/time_weighted_aggregate.md)
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md)
 and
-[`add_amspaf()`](https://www.kedumba.com.au/leachatetools/reference/add_amspaf.md)
+[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
 so a single posterior draw flows coherently from chemistry → PAF → msPAF
 → time-average, then summarise at the very end. - **SSD parameter
 uncertainty:** draw HC50/HC05 (hence sigma) from the fitted `ssdtools`
@@ -70,7 +70,7 @@ imputation generalisation (§6) lands so the draws interface is stable.
   `β̄_TMoA`; `β = √3·σ/π`), NOT a TU-weighted mean and NOT the old
   `sqrt(sum(w²σ²))` variance form. HUs/TUs are summed (non-log) then the
   combined PAF is read off one log-normal CDF.
-  [`compute_ca_group_mspaf()`](https://www.kedumba.com.au/leachatetools/reference/compute_ca_group_mspaf.md)
+  [`compute_ca_group_mspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/compute_ca_group_mspaf.md)
   now uses `sigma_mix <- mean(sigma)`; pinned by
   `tests/testthat/test-mspaf-ca.R`.
 
@@ -158,17 +158,17 @@ formula**.
   risk at high pH and overstated it at low pH — substantial, so the
   corrected direction is pinned by tests in `test-normalise.R`.
 - **Two-path asymmetry documented, not unified:**
-  [`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md)
+  [`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md)
   is the manual path (caller pre-corrects);
-  [`add_amspaf()`](https://www.kedumba.com.au/leachatetools/reference/add_amspaf.md)
+  [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
   auto-applies the metadata formula. Added the exported helper
   **`correct_ammonia_ph_temp(conc, pH, temperature_C)`** so
-  [`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md)
+  [`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md)
   callers can do the external step with the *identical* maths
   (`test-normalise.R` asserts helper == metadata formula at several pH/T
   points). Roxygen on the helper + the `R/paf.R` header now warn loudly
   NOT to pre-correct before
-  [`add_amspaf()`](https://www.kedumba.com.au/leachatetools/reference/add_amspaf.md)
+  [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
   (double-application).
 - **Incidental fix:** repaired CSV encoding corruption (`<c2><b5>`→µ ×8,
   `<e2><80><94>`→— ×1) and a malformed As row (unquoted commas in
@@ -190,24 +190,24 @@ error if any sample reports NH3-N but has no water `temperature` row
 [`weatherOz::get_data_drill()`](https://docs.ropensci.org/weatherOz/reference/get_data_drill.html)
 (SILO Data Drill, CC-BY 4.0), returns daily mean air temp
 `(Tmax+Tmin)/2` in the shape
-[`estimate_water_temp()`](https://www.kedumba.com.au/leachatetools/reference/estimate_water_temp.md)
+[`estimate_water_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/estimate_water_temp.md)
 wants; disk-cached under `R_user_dir(..,"cache")/silo`. `weatherOz`
 added to Suggests. - Air→water imputation kept as the existing per-site
 `lm` in
-[`estimate_water_temp()`](https://www.kedumba.com.au/leachatetools/reference/estimate_water_temp.md)
+[`estimate_water_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/estimate_water_temp.md)
 with its hard ≥5-pairs requirement (decision: no pooled fallback — a
 site with no water-temp pairs cannot proceed). - The
-[`correct_ammonia_ph_temp()`](https://www.kedumba.com.au/leachatetools/reference/correct_ammonia_ph_temp.md)
+[`correct_ammonia_ph_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/correct_ammonia_ph_temp.md)
 helper is now documented as a standalone
-[`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md)
+[`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md)
 spot-check convenience only; `paf.R` header rewritten to state
-[`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md)
+[`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md)
 applies no chemistry normalisation for any analyte. - Tests:
 `test-silo.R` (mocked weatherOz: mean transform, caching, validation),
 `test-temperature-mandatory.R` (the gate). Full suite 164 pass / 0 fail.
 
 Still genuinely optional: upgrade
-[`estimate_water_temp()`](https://www.kedumba.com.au/leachatetools/reference/estimate_water_temp.md)
+[`estimate_water_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/estimate_water_temp.md)
 to a hierarchical Bayesian air→water model (partial pooling + predictive
 distributions) when the uncertainty-propagation work lands — would also
 dissolve the no-pairs hard stop.
@@ -216,7 +216,7 @@ dissolve the no-pairs hard stop.
 
 ## 4. Prescreen — detection-frequency escape hatch (agreed)
 
-[`prescreen_analytes()`](https://www.kedumba.com.au/leachatetools/reference/prescreen_analytes.md)
+[`prescreen_analytes()`](https://vorpalvorpal.github.io/leachatetools/reference/prescreen_analytes.md)
 drops analytes below a detection-frequency threshold. Rare-but-potent
 toxicants (e.g. a pesticide detected in 2% of samples but at
 ecotoxicologically significant concentrations) can be screened out. Add
@@ -261,11 +261,11 @@ appropriate measure and justify it. Lives in `R/reference.R` /
 The package uses an SSD in two distinct ways that currently coexist
 without a clear narrative: - **Analytic log-normal** (HC50 + sigma) for
 the CA mixture combination in
-[`compute_ca_group_mspaf()`](https://www.kedumba.com.au/leachatetools/reference/compute_ca_group_mspaf.md). -
+[`compute_ca_group_mspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/compute_ca_group_mspaf.md). -
 **Model-averaged “multi” curve** (6 distributions via
 [`ssdtools::ssd_hp`](https://bcgov.github.io/ssdtools/reference/ssd_hp.html))
 for per-analyte diagnostic PAF in
-[`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md).
+[`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md).
 These can disagree (the log-normal is an approximation of the
 model-averaged curve). Document why each is used where, quantify the
 disagreement on real analytes, and decide whether the CA step should
@@ -276,7 +276,7 @@ draw sigma from the model-averaged fit for consistency. Lives in
 
 ## 8. Chronic chemistry aggregation — clarify role in the pipeline
 
-[`time_weighted_aggregate()`](https://www.kedumba.com.au/leachatetools/reference/time_weighted_aggregate.md)
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md)
 (`R/chronic.R`) is value-agnostic (geomean for chemistry, arithmetic
 mean for AmsPAF). Clarify and document: - Where it sits relative to
 imputation and AmsPAF (Path B: per-sample AmsPAF then time-average). -
@@ -301,26 +301,26 @@ interface is designed once.
 ## 9a. BUG — PCA train/predict score-scale mismatch (imputation) — FIXED (2026-06)
 
 **Status: FIXED.**
-[`.prepare_chem_pca()`](https://www.kedumba.com.au/leachatetools/reference/dot-prepare_chem_pca.md)
+[`.prepare_chem_pca()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-prepare_chem_pca.md)
 previously returned `pc_scores` copied from `nipals::nipals()$scores`,
 but
-[`.compute_pca_scores()`](https://www.kedumba.com.au/leachatetools/reference/dot-compute_pca_scores.md)
+[`.compute_pca_scores()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-compute_pca_scores.md)
 (used at prediction) produces a regression projection
 (`X_scaled %*% loadings` via `.nipals_score_row`). These differ by a
 per-component eigenvalue factor
 (`nipals$scores[,k] == projection[,k] / eig[k]`), so the brms smooths
 were trained on one scale and predicted on another → silently wrong
 imputations. Fix:
-[`.prepare_chem_pca()`](https://www.kedumba.com.au/leachatetools/reference/dot-prepare_chem_pca.md)
+[`.prepare_chem_pca()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-prepare_chem_pca.md)
 now builds `pc_scores` by calling
-[`.compute_pca_scores()`](https://www.kedumba.com.au/leachatetools/reference/dot-compute_pca_scores.md)
+[`.compute_pca_scores()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-compute_pca_scores.md)
 on the training data, guaranteeing train==predict by construction.
 Pinned by `tests/testthat/test-impute-pca.R` (asserts equality and that
 the scores are NOT the eigenvalue-shrunk nipals scores).
 
-[`impute_coanalytes()`](https://www.kedumba.com.au/leachatetools/reference/impute_coanalytes.md)
+[`impute_coanalytes()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_coanalytes.md)
 was never affected — it both fits and predicts its GAM with
-[`.compute_pca_scores()`](https://www.kedumba.com.au/leachatetools/reference/dot-compute_pca_scores.md).
+[`.compute_pca_scores()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-compute_pca_scores.md).
 
 Also fixed in passing: `cum_var <- pca_fit$R2cum` was `NULL` under
 nipals 1.0 (per-component `$R2`, no `$R2cum`); now `cumsum(pca_fit$R2)`

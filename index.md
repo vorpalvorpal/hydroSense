@@ -9,22 +9,22 @@ conditions.
 The package has three pillars:
 
 - **Leachate detection (LMF).** End-member mixing analysis
-  ([`add_lmf()`](https://www.kedumba.com.au/leachatetools/reference/add_lmf.md))
+  ([`add_lmf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md))
   estimates the *leachate-mixing fraction* of each sample from its
   major-ion signature, distinguishing leachate influence from natural
   variation.
 - **Chemistry imputation.** A Bayesian multivariate model
-  ([`fit_imputation_model()`](https://www.kedumba.com.au/leachatetools/reference/fit_imputation_model.md)
+  ([`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
   /
-  [`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md))
+  [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md))
   imputes below-detection and missing analyte concentrations while
   preserving cross-analyte correlation structure, and can return full
   posterior draws.
 - **Multi-substance toxicity (AmsPAF).** Species sensitivity
   distributions
-  ([`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md))
+  ([`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md))
   feed a multi-substance potentially-affected-fraction
-  ([`add_amspaf()`](https://www.kedumba.com.au/leachatetools/reference/add_amspaf.md))
+  ([`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md))
   that combines toxicants by concentration- and response-addition and
   subtracts the *local* background via the Added Risk Approach.
 
@@ -82,14 +82,14 @@ ssd_hc50("Cu")
 ## Learn more
 
 - [Analyte
-  normalisation](https://www.kedumba.com.au/leachatetools/articles/normalisation.html)
+  normalisation](https://vorpalvorpal.github.io/leachatetools/articles/normalisation.html)
   — how bioavailability and physicochemical corrections bring
   concentrations to the SSD index condition.
 - [Interpreting chronic AmsPAF
-  outputs](https://www.kedumba.com.au/leachatetools/articles/chronic-amspaf-interpretation.html)
+  outputs](https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.html)
   — what the returned PAF values mean for an environmental assessment.
 - [Function
-  reference](https://www.kedumba.com.au/leachatetools/reference/index.html)
+  reference](https://vorpalvorpal.github.io/leachatetools/reference/index.html)
   — all exported functions, grouped by pillar.
 
 ## License

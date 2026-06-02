@@ -7,7 +7,7 @@ condition of pH 7.0 and 20 °C**. Ammonia toxicity is driven by the
 measured total ammonia-N must therefore be converted to the equivalent
 reference-condition concentration — the one that holds the same
 un-ionised NH3 — before it is compared against a DGV or passed to
-[`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md)
+[`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md)
 as `"NH3-N"`.
 
 ## Usage
@@ -57,14 +57,14 @@ at the reference), and a sample at low pH/temperature **downward**.
 
 ## Do not double-correct
 
-[`add_amspaf()`](https://www.kedumba.com.au/leachatetools/reference/add_amspaf.md)
+[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
 applies this same correction **automatically** from the metadata
 `normalisation_formula` (it reads the per-sample `pH` and `temperature`
 columns). Use this helper only for the manual
-[`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md)
+[`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md)
 path. Do **not** pre-correct with this helper and then pass the result
 to
-[`add_amspaf()`](https://www.kedumba.com.au/leachatetools/reference/add_amspaf.md),
+[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md),
 or ammonia will be corrected twice.
 
 ## References

@@ -39,12 +39,12 @@ add_amspaf(
   forms:
 
   - A `prepared_reference` object from
-    [`prepare_reference()`](https://www.kedumba.com.au/leachatetools/reference/prepare_reference.md)
+    [`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md)
     — normalisation has already been applied; used directly.
 
   - A raw long-format data frame (same schema as `df`) — will be passed
     to
-    [`prepare_reference()`](https://www.kedumba.com.au/leachatetools/reference/prepare_reference.md)
+    [`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md)
     internally.
 
   - `NULL` (default) — no ARA adjustment; raw concentrations assessed
@@ -54,16 +54,16 @@ add_amspaf(
 
   Data frame of analyte metadata, or `NULL` to load the bundled
   `inst/extdata/anzecc_analyte_metadata.csv`. Passed to
-  [`prepare_reference()`](https://www.kedumba.com.au/leachatetools/reference/prepare_reference.md)
+  [`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md)
   and
-  [`derive_ssd_params()`](https://www.kedumba.com.au/leachatetools/reference/derive_ssd_params.md).
+  [`derive_ssd_params()`](https://vorpalvorpal.github.io/leachatetools/reference/derive_ssd_params.md).
 
 - method:
 
   SSD method passed to
-  [`ssd_hc50()`](https://www.kedumba.com.au/leachatetools/reference/ssd_hc50.md)
+  [`ssd_hc50()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_hc50.md)
   and
-  [`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md).
+  [`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md).
   `"multi"` (default) fits all 6 BCANZ distributions and model-averages;
   `"anzecc"` uses the per-analyte distribution matching the original
   ANZG derivation.
@@ -82,7 +82,7 @@ add_amspaf(
 
   Summary statistic for the reference distribution when `reference` is a
   raw data frame. Passed through to
-  [`prepare_reference()`](https://www.kedumba.com.au/leachatetools/reference/prepare_reference.md).
+  [`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md).
   Default `"geom_mean"` — the maximum-likelihood central tendency for
   log-normal concentrations, and a PICT-consistent estimate of the
   "typical" exposure the resident community has adapted to. Other
@@ -95,9 +95,9 @@ add_amspaf(
   ammonia un-ionised-fraction normalisation is undefined without it); a
   missing temperature is a hard error rather than a silent drop of
   ammonia. Supply temperature via direct measurement, or derive it with
-  [`estimate_water_temp()`](https://www.kedumba.com.au/leachatetools/reference/estimate_water_temp.md)
+  [`estimate_water_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/estimate_water_temp.md)
   (optionally fed by
-  [`get_silo_air_temp()`](https://www.kedumba.com.au/leachatetools/reference/get_silo_air_temp.md)).
+  [`get_silo_air_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/get_silo_air_temp.md)).
   Set `FALSE` only for datasets that do not assess ammonia.
 
 ## Value
@@ -114,18 +114,18 @@ recording how the ARA reference was resolved for that analyte).
 Tier breaks are not provided by this package — AmsPAF is a continuous
 risk metric and the threshold at which a community is "impacted" depends
 on the assessment context. See
-[`vignette("chronic-amspaf-interpretation")`](https://www.kedumba.com.au/leachatetools/articles/chronic-amspaf-interpretation.md)
+[`vignette("chronic-amspaf-interpretation")`](https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.md)
 for guidance.
 
 ## Details
 
 The function accepts either per-sample or chronic-integrated chemistry
 (from
-[`time_weighted_aggregate()`](https://www.kedumba.com.au/leachatetools/reference/time_weighted_aggregate.md)).
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md)).
 It does not need to know which — the distinction is entirely in the
 input data. Similarly, `reference` may be a raw long-format chemistry
 data frame or a pre-built
-[`prepare_reference()`](https://www.kedumba.com.au/leachatetools/reference/prepare_reference.md)
+[`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md)
 object.
 
 ## References
@@ -135,12 +135,12 @@ De Zwart D, Posthuma L (2005) Environmental Toxicology and Chemistry
 
 ## See also
 
-[`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md),
-[`ssd_hc50()`](https://www.kedumba.com.au/leachatetools/reference/ssd_hc50.md),
-[`prepare_reference()`](https://www.kedumba.com.au/leachatetools/reference/prepare_reference.md),
-[`time_weighted_aggregate()`](https://www.kedumba.com.au/leachatetools/reference/time_weighted_aggregate.md),
-[`prescreen_analytes()`](https://www.kedumba.com.au/leachatetools/reference/prescreen_analytes.md),
-[`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md)
+[`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md),
+[`ssd_hc50()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_hc50.md),
+[`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md),
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md),
+[`prescreen_analytes()`](https://vorpalvorpal.github.io/leachatetools/reference/prescreen_analytes.md),
+[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
 
 ## Examples
 
@@ -148,8 +148,9 @@ De Zwart D, Posthuma L (2005) Environmental Toxicology and Chemistry
 # \donttest{
 # Per-sample multi-substance PAF for the impacted site, with local
 # background subtracted via the reference site. Uses the bundled SSD data.
-ds  <- subset(leachate_demo, site_id == "downstream")
-ref <- subset(leachate_demo, site_id == "reference")
+demo <- leachate_demo()
+ds  <- subset(demo, site_id == "downstream")
+ref <- subset(demo, site_id == "reference")
 out <- add_amspaf(ds, reference = ref)
 subset(out, analyte == "AmsPAF", c("sample_id", "value"))
 #> # A tibble: 6 × 2

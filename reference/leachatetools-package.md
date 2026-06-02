@@ -11,7 +11,7 @@ mixing analysis for leachate detection (LMF).
 
 Useful links:
 
-- <https://www.kedumba.com.au/leachatetools/>
+- <https://vorpalvorpal.github.io/leachatetools/>
 
 - <https://github.com/vorpalvorpal/leachatetools>
 

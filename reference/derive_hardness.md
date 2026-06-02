@@ -63,7 +63,7 @@ three are present but inconsistent.
 
 Call twice — once **before** imputation to fill samples where the third
 member can be derived from raw measurements, and again **after**
-[`impute_coanalytes()`](https://www.kedumba.com.au/leachatetools/reference/impute_coanalytes.md)
+[`impute_coanalytes()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_coanalytes.md)
 to fill hardness for samples whose Ca and Mg were just imputed.
 Idempotent if all three are already consistent.
 
@@ -71,7 +71,7 @@ Idempotent if all three are already consistent.
 
 ``` r
 # Derive hardness from Ca + Mg where it is not measured directly.
-chem <- subset(leachate_demo,
+chem <- subset(leachate_demo(),
                site_id == "downstream" & analyte %in% c("Ca", "Mg"))
 out <- derive_hardness(chem)
 #> ℹ derive_hardness: 6 rows derived (hardness=6); 0 samples flagged inconsistent.

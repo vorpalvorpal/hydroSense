@@ -13,7 +13,7 @@ Apply a parsed normalisation formula to a concentration value
 - parsed_expr:
 
   Parsed expression from
-  [`.parse_normalisation_formula()`](https://www.kedumba.com.au/leachatetools/reference/dot-parse_normalisation_formula.md),
+  [`.parse_normalisation_formula()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-parse_normalisation_formula.md),
   or `NULL` for identity.
 
 - C:

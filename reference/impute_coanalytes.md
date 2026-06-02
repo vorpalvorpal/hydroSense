@@ -3,7 +3,7 @@
 Fits a univariate log-Gaussian GAM
 ([`mgcv::gam`](https://rdrr.io/pkg/mgcv/man/gam.html)) for each target
 co-analyte using the PC scores already computed by
-[`fit_imputation_model()`](https://www.kedumba.com.au/leachatetools/reference/fit_imputation_model.md).
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md).
 Only samples where the co-analyte is entirely absent are filled; BDL
 observations are left unchanged.
 
@@ -18,15 +18,15 @@ impute_coanalytes(df, model, targets = NULL, min_obs = 10L)
 - df:
 
   Long-format chemistry data frame (same schema as
-  [`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md),
+  [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md),
   with `imputed`/`imputed_kind` columns if
-  [`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md)
+  [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
   has already been called).
 
 - model:
 
   Fitted model from
-  [`fit_imputation_model()`](https://www.kedumba.com.au/leachatetools/reference/fit_imputation_model.md)
+  [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
   (provides the PCA object and the list of `pca_vars`).
 
 - targets:
@@ -49,9 +49,9 @@ unchanged.
 ## Details
 
 This step belongs **after**
-[`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md)
+[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
 and **before**
-[`time_weighted_aggregate()`](https://www.kedumba.com.au/leachatetools/reference/time_weighted_aggregate.md).
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md).
 Imputed co-analyte values are never fed back into the metals/organics
 model — the brms model ran on measured values only and is already done.
 
@@ -64,8 +64,8 @@ summary.
 
 ## See also
 
-[`fit_imputation_model()`](https://www.kedumba.com.au/leachatetools/reference/fit_imputation_model.md),
-[`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md)
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md),
+[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
 
 ## Examples
 
