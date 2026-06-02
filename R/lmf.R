@@ -380,12 +380,12 @@ add_lmf <- function(
   df_meq <-
     df |>
     to_meq() |>
-    filter(analyte %in% .LMF_ANALYTES_MEQ)
+    dplyr::filter(analyte %in% .LMF_ANALYTES_MEQ)
 
   ## Verify no duplicate analyte values per sample.
   df_meq |>
-    group_by(sample_id, analyte) |>
-    mutate(n_values = n()) |>
+    dplyr::group_by(sample_id, analyte) |>
+    dplyr::mutate(n_values = dplyr::n()) |>
     assertr::verify(
       n_values == 1,
       description = paste0(
@@ -393,13 +393,13 @@ add_lmf <- function(
         "Resolve duplicates before calling `add_lmf()`."
       )
     ) |>
-    ungroup()
+    dplyr::ungroup()
 
   ## BDL: replace detection-limit values with half the detection limit.
   ## Applied before collapsing so totals are correct.
   df_meq <-
     df_meq |>
-    mutate(value = if_else(!detected, value * 0.5, value))
+    dplyr::mutate(value = dplyr::if_else(!detected, value * 0.5, value))
 
   ## Pivot and collapse. The working wide panel has:
   ##   Cl_, Na_, K_, Ca_, Mg_   (conservative major ions)
@@ -409,7 +409,7 @@ add_lmf <- function(
   ##   F_                        (optional)
   df_wide <-
     df_meq |>
-    select(sample_id, site_id, datetime, analyte, value) |>
+    dplyr::select(sample_id, site_id, datetime, analyte, value) |>
     collapse_species(
       id_cols = c("sample_id", "site_id", "datetime")
     )
@@ -428,9 +428,9 @@ add_lmf <- function(
       cli::cli_inform(
         "i" = paste0(
           "Using leachate_data (",
-          n_distinct(leachate_data$sample_id),
+          dplyr::n_distinct(leachate_data$sample_id),
           " samples, ",
-          n_distinct(leachate_data$site_id),
+          dplyr::n_distinct(leachate_data$site_id),
           " feature(s))."
         )
       )
@@ -467,9 +467,9 @@ add_lmf <- function(
       cli::cli_inform(
         "i" = paste0(
           "Using reference_data for informativeness calibration (",
-          n_distinct(reference_data$sample_id),
+          dplyr::n_distinct(reference_data$sample_id),
           " samples, ",
-          n_distinct(reference_data$site_id),
+          dplyr::n_distinct(reference_data$site_id),
           " feature(s))."
         )
       )
@@ -487,36 +487,36 @@ add_lmf <- function(
 
   informativeness_tbl <-
     pooled_ref |>
-    inner_join(leachate_em$L_values |> select(ion, L), by = "ion") |>
-    mutate(
+    dplyr::inner_join(leachate_em$L_values |> dplyr::select(ion, L), by = "ion") |>
+    dplyr::mutate(
       gradient = abs(L - R),
-      informativeness = if_else(
+      informativeness = dplyr::if_else(
         gradient > .Machine$double.eps * 1000,
         sigma_R / gradient,
         Inf
       ),
       high_info = informativeness <= informativeness_threshold
     ) |>
-    arrange(informativeness)
+    dplyr::arrange(informativeness)
 
   high_info_ions <- informativeness_tbl |>
-    filter(high_info) |>
-    pull(ion)
+    dplyr::filter(high_info) |>
+    dplyr::pull(ion)
 
   ## ---------------------------------------------------------------
   ## Optionally report the informativeness table.
   ## ---------------------------------------------------------------
   if (verbose) {
     rows <- informativeness_tbl |>
-      mutate(
+      dplyr::mutate(
         label = sprintf(
           "  %-18s  %.4f  [%s]",
           ion,
           informativeness,
-          if_else(high_info, "HIGH", "low")
+          dplyr::if_else(high_info, "HIGH", "low")
         )
       ) |>
-      pull(label)
+      dplyr::pull(label)
 
     cli::cli_inform(c(
       "i" = "Ion informativeness (threshold = {informativeness_threshold}):",
@@ -559,8 +559,8 @@ add_lmf <- function(
 
   lsi_results <-
     df_wide |>
-    group_by(site_id) |>
-    group_modify(\(.x, .y) {
+    dplyr::group_by(site_id) |>
+    dplyr::group_modify(\(.x, .y) {
       feature_id <- .y[[1, 1]]
       if (!is.null(ref_endmember_override)) {
         ## Use the pre-built override end-member (same for all features).
@@ -578,7 +578,7 @@ add_lmf <- function(
         message(glue::glue(
           "No reference data for feature {feature_id}. Skipping."
         ))
-        return(tibble())
+        return(dplyr::tibble())
       }
 
       ## Apply minimum sample count only when NOT using an override.
@@ -591,20 +591,20 @@ add_lmf <- function(
           "Only {ref_endmember$n_samples} reference samples for ",
           "feature {feature_id} (min {min_ref_samples}). Skipping."
         ))
-        return(tibble())
+        return(dplyr::tibble())
       }
 
       ## Join R and L; exclude zero-gradient ions.
       endmembers <-
         ref_endmember$stats |>
-        filter(ion %in% leachate_em$L_values$ion) |>
-        left_join(leachate_em$L_values |> select(ion, L), by = "ion") |>
-        filter(abs(L - R) > .Machine$double.eps * 1000)
+        dplyr::filter(ion %in% leachate_em$L_values$ion) |>
+        dplyr::left_join(leachate_em$L_values |> dplyr::select(ion, L), by = "ion") |>
+        dplyr::filter(abs(L - R) > .Machine$double.eps * 1000)
 
       ## Compute LMF per sample.
       .x |>
-        group_by(sample_id) |>
-        group_modify(\(.s, .sid) {
+        dplyr::group_by(sample_id) |>
+        dplyr::group_modify(\(.s, .sid) {
           compute_lmf_for_sample(
             sample_wide = .s,
             endmembers = endmembers,
@@ -625,7 +625,7 @@ add_lmf <- function(
             datetime_sample = as.character(.s$datetime[[1]])
           )
         }) |>
-        ungroup()
+        dplyr::ungroup()
     }) |>
     dplyr::ungroup()
 
@@ -776,7 +776,7 @@ compute_lmf_for_sample <- function(
 
   ion_data <-
     endmembers[available_mask, ] |>
-    mutate(
+    dplyr::mutate(
       x = all_vals[available_mask],
 
       ## Per-ion mixing fraction.
@@ -794,7 +794,7 @@ compute_lmf_for_sample <- function(
       var_f = (sigma_meas^2 + sigma_R^2) / (L - R)^2,
       weight = 1 / var_f
     ) |>
-    filter(is.finite(weight), weight > 0)
+    dplyr::filter(is.finite(weight), weight > 0)
 
   n_ions <- nrow(ion_data)
 
@@ -921,16 +921,16 @@ compute_lmf_for_sample <- function(
 
     diag_rows <-
       ion_data |>
-      mutate(
+      dplyr::mutate(
         f_pct = f * 100,
         wt_orig_pct = weight / sum_w_orig * 100,
         wt_rob_pct = robust_weights / sum_w_robust * 100,
-        hi_flag = if_else(ion %in% high_info_ions, "[H]", "[-]"),
+        hi_flag = dplyr::if_else(ion %in% high_info_ions, "[H]", "[-]"),
         ## Flag ions that were meaningfully downweighted
-        dw_flag = if_else(robust_weights < 0.99 * weight, "*", " ")
+        dw_flag = dplyr::if_else(robust_weights < 0.99 * weight, "*", " ")
       ) |>
-      arrange(desc(wt_rob_pct)) |>
-      mutate(
+      dplyr::arrange(dplyr::desc(wt_rob_pct)) |>
+      dplyr::mutate(
         row_str = sprintf(
           "  %-14s  x=%7.3f  R=%7.3f  L=%8.3f  f%%=%6.1f  wt%%=%5.1f->%5.1f  %s%s",
           ion,
@@ -944,7 +944,7 @@ compute_lmf_for_sample <- function(
           dw_flag
         )
       ) |>
-      pull(row_str)
+      dplyr::pull(row_str)
 
     dt_label <- if (!is.na(datetime_sample)) datetime_sample else "unknown date"
 
@@ -1091,7 +1091,7 @@ make_lmf_row <- function(
   leach_window_end,
   cl_anchor
 ) {
-  tibble(
+  dplyr::tibble(
     value = value,
     lmf_naive = lmf_naive,
     units.analyte = "%",
@@ -1176,23 +1176,23 @@ make_lmf_row <- function(
 collapse_species <- function(df_meq, id_cols) {
   wide <-
     df_meq |>
-    select(all_of(c(id_cols, "analyte", "value"))) |>
-    pivot_wider(names_from = analyte, values_from = value)
+    dplyr::select(dplyr::all_of(c(id_cols, "analyte", "value"))) |>
+    tidyr::pivot_wider(names_from = analyte, values_from = value)
 
   ## Collapse N species to total inorganic N.
   n_cols <- c("NH3-N_", "NO3-N_", "NO2-N_")
   n_present <- intersect(n_cols, names(wide))
 
   wide <- wide |>
-    mutate(
+    dplyr::mutate(
       total_N_ = if (length(n_present) > 0) {
-        rowSums(pick(all_of(n_present)), na.rm = TRUE)
+        rowSums(dplyr::pick(dplyr::all_of(n_present)), na.rm = TRUE)
       } else {
         NA_real_
       },
       total_N_ = if (length(n_present) > 0) {
-        if_else(
-          rowSums(!is.na(pick(all_of(n_present)))) == 0,
+        dplyr::if_else(
+          rowSums(!is.na(dplyr::pick(dplyr::all_of(n_present)))) == 0,
           NA_real_,
           total_N_
         )
@@ -1206,15 +1206,15 @@ collapse_species <- function(df_meq, id_cols) {
   alk_present <- intersect(alk_cols, names(wide))
 
   wide <- wide |>
-    mutate(
+    dplyr::mutate(
       total_alk_ = if (length(alk_present) > 0) {
-        rowSums(pick(all_of(alk_present)), na.rm = TRUE)
+        rowSums(dplyr::pick(dplyr::all_of(alk_present)), na.rm = TRUE)
       } else {
         NA_real_
       },
       total_alk_ = if (length(alk_present) > 0) {
-        if_else(
-          rowSums(!is.na(pick(all_of(alk_present)))) == 0,
+        dplyr::if_else(
+          rowSums(!is.na(dplyr::pick(dplyr::all_of(alk_present)))) == 0,
           NA_real_,
           total_alk_
         )
@@ -1224,7 +1224,7 @@ collapse_species <- function(df_meq, id_cols) {
     )
 
   wide |>
-    select(-any_of(c(n_cols, alk_cols)))
+    dplyr::select(-dplyr::any_of(c(n_cols, alk_cols)))
 }
 
 
@@ -1278,8 +1278,8 @@ build_endmember_from_override <- function(override_df, type) {
   override_meq <-
     override_df |>
     to_meq() |>
-    filter(analyte %in% .LMF_ANALYTES_MEQ) |>
-    mutate(value = if_else(!detected, value * 0.5, value))
+    dplyr::filter(analyte %in% .LMF_ANALYTES_MEQ) |>
+    dplyr::mutate(value = dplyr::if_else(!detected, value * 0.5, value))
 
   if (nrow(override_meq) == 0) {
     stop(glue::glue(
@@ -1311,17 +1311,17 @@ build_endmember_from_override <- function(override_df, type) {
     ## ---------------------------------------------------------------
     stats <-
       override_wide |>
-      select(all_of(intersect(.LMF_PANEL_COLLAPSED, names(override_wide)))) |>
-      pivot_longer(everything(), names_to = "ion", values_to = "value") |>
-      filter(!is.na(value)) |>
-      group_by(ion) |>
-      summarise(
-        n_ref = n(),
+      dplyr::select(dplyr::all_of(intersect(.LMF_PANEL_COLLAPSED, names(override_wide)))) |>
+      tidyr::pivot_longer(dplyr::everything(), names_to = "ion", values_to = "value") |>
+      dplyr::filter(!is.na(value)) |>
+      dplyr::group_by(ion) |>
+      dplyr::summarise(
+        n_ref = dplyr::n(),
         R = mean(value, na.rm = TRUE),
         sigma_R = sd(value, na.rm = TRUE),
         .groups = "drop"
       ) |>
-      filter(n_ref >= 3)
+      dplyr::filter(n_ref >= 3)
 
     if (nrow(stats) == 0) {
       stop(paste0(
@@ -1359,8 +1359,8 @@ build_endmember_from_override <- function(override_df, type) {
 
     leachate_ratios <-
       override_wide |>
-      filter(!is.na(Cl_), Cl_ > 0) |>
-      mutate(across(all_of(ratio_cols), \(x) x / Cl_, .names = "ratio_{.col}"))
+      dplyr::filter(!is.na(Cl_), Cl_ > 0) |>
+      dplyr::mutate(dplyr::across(dplyr::all_of(ratio_cols), \(x) x / Cl_, .names = "ratio_{.col}"))
 
     ## F availability: same threshold as standard builder.
     f_col <- "ratio_F_"
@@ -1370,19 +1370,19 @@ build_endmember_from_override <- function(override_df, type) {
 
     L_values <-
       leachate_ratios |>
-      select(starts_with("ratio_")) |>
-      summarise(across(everything(), \(x) mean(x, na.rm = TRUE))) |>
-      pivot_longer(everything(), names_to = "ion", values_to = "mean_ratio") |>
-      mutate(
+      dplyr::select(dplyr::starts_with("ratio_")) |>
+      dplyr::summarise(dplyr::across(dplyr::everything(), \(x) mean(x, na.rm = TRUE))) |>
+      tidyr::pivot_longer(dplyr::everything(), names_to = "ion", values_to = "mean_ratio") |>
+      dplyr::mutate(
         ion = stringr::str_remove(ion, "^ratio_"),
         L = mean_ratio * cl_anchor
       ) |>
-      filter(!is.na(L)) |>
-      filter(!(ion == "F_" & !f_available))
+      dplyr::filter(!is.na(L)) |>
+      dplyr::filter(!(ion == "F_" & !f_available))
 
-    L_values <- bind_rows(
+    L_values <- dplyr::bind_rows(
       L_values,
-      tibble(ion = "Cl_", mean_ratio = 1, L = cl_anchor)
+      dplyr::tibble(ion = "Cl_", mean_ratio = 1, L = cl_anchor)
     )
 
     return(list(
@@ -1437,10 +1437,10 @@ build_reference_endmember <- function(
 ) {
   all_ref <-
     data_df() |>
-    filter(site_id == reference_feature_uuid) |>
+    dplyr::filter(site_id == reference_feature_uuid) |>
     to_meq() |>
-    filter(analyte %in% .LMF_ANALYTES_MEQ) |>
-    mutate(value = if_else(!detected, value * 0.5, value))
+    dplyr::filter(analyte %in% .LMF_ANALYTES_MEQ) |>
+    dplyr::mutate(value = dplyr::if_else(!detected, value * 0.5, value))
 
   if (nrow(all_ref) == 0) {
     return(NULL)
@@ -1459,7 +1459,7 @@ build_reference_endmember <- function(
 
   ref_window <-
     all_ref |>
-    filter(
+    dplyr::filter(
       as.Date(datetime) >= window_start,
       as.Date(datetime) <= window_end
     )
@@ -1468,17 +1468,17 @@ build_reference_endmember <- function(
 
   R_stats <-
     ref_wide |>
-    select(all_of(intersect(.LMF_PANEL_COLLAPSED, names(ref_wide)))) |>
-    pivot_longer(everything(), names_to = "ion", values_to = "value") |>
-    filter(!is.na(value)) |>
-    group_by(ion) |>
-    summarise(
-      n_ref = n(),
+    dplyr::select(dplyr::all_of(intersect(.LMF_PANEL_COLLAPSED, names(ref_wide)))) |>
+    tidyr::pivot_longer(dplyr::everything(), names_to = "ion", values_to = "value") |>
+    dplyr::filter(!is.na(value)) |>
+    dplyr::group_by(ion) |>
+    dplyr::summarise(
+      n_ref = dplyr::n(),
       R = mean(value, na.rm = TRUE),
       sigma_R = sd(value, na.rm = TRUE),
       .groups = "drop"
     ) |>
-    filter(n_ref >= 3)
+    dplyr::filter(n_ref >= 3)
 
   list(
     stats = R_stats,
@@ -1521,8 +1521,8 @@ build_pooled_reference_endmember <- function(
 ) {
   ref_uuids <-
     feature_sfc() |>
-    filter(reference == TRUE) |>
-    pull(uuid)
+    dplyr::filter(reference == TRUE) |>
+    dplyr::pull(uuid)
 
   if (length(ref_uuids) == 0) {
     stop(
@@ -1532,10 +1532,10 @@ build_pooled_reference_endmember <- function(
 
   all_ref <-
     data_df() |>
-    filter(site_id %in% ref_uuids) |>
+    dplyr::filter(site_id %in% ref_uuids) |>
     to_meq() |>
-    filter(analyte %in% .LMF_ANALYTES_MEQ) |>
-    mutate(value = if_else(!detected, value * 0.5, value))
+    dplyr::filter(analyte %in% .LMF_ANALYTES_MEQ) |>
+    dplyr::mutate(value = dplyr::if_else(!detected, value * 0.5, value))
 
   if (nrow(all_ref) == 0) {
     stop("No reference data found for any reference features.")
@@ -1553,7 +1553,7 @@ build_pooled_reference_endmember <- function(
 
   ref_window <-
     all_ref |>
-    filter(
+    dplyr::filter(
       as.Date(datetime) >= window_start,
       as.Date(datetime) <= window_end
     )
@@ -1561,17 +1561,17 @@ build_pooled_reference_endmember <- function(
   ref_wide <- collapse_species(ref_window, id_cols = "sample_id")
 
   ref_wide |>
-    select(all_of(intersect(.LMF_PANEL_COLLAPSED, names(ref_wide)))) |>
-    pivot_longer(everything(), names_to = "ion", values_to = "value") |>
-    filter(!is.na(value)) |>
-    group_by(ion) |>
-    summarise(
-      n_ref = n(),
+    dplyr::select(dplyr::all_of(intersect(.LMF_PANEL_COLLAPSED, names(ref_wide)))) |>
+    tidyr::pivot_longer(dplyr::everything(), names_to = "ion", values_to = "value") |>
+    dplyr::filter(!is.na(value)) |>
+    dplyr::group_by(ion) |>
+    dplyr::summarise(
+      n_ref = dplyr::n(),
       R = mean(value, na.rm = TRUE),
       sigma_R = sd(value, na.rm = TRUE),
       .groups = "drop"
     ) |>
-    filter(n_ref >= 3)
+    dplyr::filter(n_ref >= 3)
 }
 
 
@@ -1624,7 +1624,7 @@ build_leachate_endmember <- function(
 ) {
   leachate_features <-
     feature_df() |>
-    filter(stringr::str_detect(name, "\\.L\\d"))
+    dplyr::filter(stringr::str_detect(name, "\\.L\\d"))
 
   if (nrow(leachate_features) == 0) {
     stop(paste0(
@@ -1635,7 +1635,7 @@ build_leachate_endmember <- function(
 
   leachate_raw <-
     data_df() |>
-    filter(site_id %in% leachate_features$uuid)
+    dplyr::filter(site_id %in% leachate_features$uuid)
 
   if (nrow(leachate_raw) == 0) {
     stop("No leachate data found for identified leachate features.")
@@ -1657,7 +1657,7 @@ build_leachate_endmember <- function(
 
   leachate_window <-
     leachate_raw |>
-    filter(
+    dplyr::filter(
       as.Date(datetime) >= window_start,
       as.Date(datetime) <= window_end
     )
@@ -1670,17 +1670,17 @@ build_leachate_endmember <- function(
 
   valid_samples <-
     leachate_window |>
-    filter(analyte %in% c("NH3-N", "NO3-N", "NO2-N")) |>
-    group_by(sample_id) |>
-    summarise(total_N_mgl = sum(value, na.rm = TRUE), .groups = "drop") |>
-    filter(total_N_mgl >= min_leachate_total_n_mgl) |>
-    pull(sample_id)
+    dplyr::filter(analyte %in% c("NH3-N", "NO3-N", "NO2-N")) |>
+    dplyr::group_by(sample_id) |>
+    dplyr::summarise(total_N_mgl = sum(value, na.rm = TRUE), .groups = "drop") |>
+    dplyr::filter(total_N_mgl >= min_leachate_total_n_mgl) |>
+    dplyr::pull(sample_id)
 
   leachate_valid <-
     leachate_window |>
-    filter(sample_id %in% valid_samples)
+    dplyr::filter(sample_id %in% valid_samples)
 
-  n_valid <- n_distinct(leachate_valid$sample_id)
+  n_valid <- dplyr::n_distinct(leachate_valid$sample_id)
 
   if (n_valid < min_leachate_samples) {
     stop(glue::glue(
@@ -1696,8 +1696,8 @@ build_leachate_endmember <- function(
   leachate_wide <-
     leachate_valid |>
     to_meq() |>
-    filter(analyte %in% .LMF_ANALYTES_MEQ) |>
-    mutate(value = if_else(!detected, value * 0.5, value)) |>
+    dplyr::filter(analyte %in% .LMF_ANALYTES_MEQ) |>
+    dplyr::mutate(value = dplyr::if_else(!detected, value * 0.5, value)) |>
     collapse_species(id_cols = "sample_id")
 
   ## Cl anchor: median Cl across valid leachate samples.
@@ -1717,8 +1717,8 @@ build_leachate_endmember <- function(
 
   leachate_ratios <-
     leachate_wide |>
-    filter(!is.na(Cl_), Cl_ > 0) |>
-    mutate(across(all_of(ratio_cols), \(x) x / Cl_, .names = "ratio_{.col}"))
+    dplyr::filter(!is.na(Cl_), Cl_ > 0) |>
+    dplyr::mutate(dplyr::across(dplyr::all_of(ratio_cols), \(x) x / Cl_, .names = "ratio_{.col}"))
 
   ## F availability check.
   f_available <- FALSE
@@ -1741,20 +1741,20 @@ build_leachate_endmember <- function(
   ## Average ratios and construct L_i values.
   L_values <-
     leachate_ratios |>
-    select(starts_with("ratio_")) |>
-    summarise(across(everything(), \(x) mean(x, na.rm = TRUE))) |>
-    pivot_longer(everything(), names_to = "ion", values_to = "mean_ratio") |>
-    mutate(
+    dplyr::select(dplyr::starts_with("ratio_")) |>
+    dplyr::summarise(dplyr::across(dplyr::everything(), \(x) mean(x, na.rm = TRUE))) |>
+    tidyr::pivot_longer(dplyr::everything(), names_to = "ion", values_to = "mean_ratio") |>
+    dplyr::mutate(
       ion = stringr::str_remove(ion, "^ratio_"),
       L = mean_ratio * cl_anchor
     ) |>
-    filter(!is.na(L)) |>
-    filter(!(ion == "F_" & !f_available))
+    dplyr::filter(!is.na(L)) |>
+    dplyr::filter(!(ion == "F_" & !f_available))
 
   ## Add Cl itself (ratio = 1, L_Cl = cl_anchor by definition).
-  L_values <- bind_rows(
+  L_values <- dplyr::bind_rows(
     L_values,
-    tibble(ion = "Cl_", mean_ratio = 1, L = cl_anchor)
+    dplyr::tibble(ion = "Cl_", mean_ratio = 1, L = cl_anchor)
   )
 
   list(
@@ -1836,10 +1836,10 @@ to_meq <- function(df) {
 
   to_convert <-
     df |>
-    filter(!is.na(valence.analyte), !is.na(atomic_mass.analyte))
+    dplyr::filter(!is.na(valence.analyte), !is.na(atomic_mass.analyte))
 
   if (nrow(to_convert) == 0) {
-    return(bind_rows(df))
+    return(dplyr::bind_rows(df))
   }
 
   converted <-
@@ -1857,5 +1857,5 @@ to_meq <- function(df) {
     }) |>
     purrr::list_rbind()
 
-  bind_rows(df, converted)
+  dplyr::bind_rows(df, converted)
 }
