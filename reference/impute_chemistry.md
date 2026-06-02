@@ -1,7 +1,7 @@
 # Impute missing and BDL chemistry using a fitted imputation model
 
 Applies the models fitted by
-[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
+[`fit_imputation_model()`](https://www.kedumba.com.au/leachatetools/reference/fit_imputation_model.md)
 to `df`, returning posterior mean estimates for missing and
 below-detection-limit (BDL) observations in the metals and organics
 groups.
@@ -28,7 +28,7 @@ impute_chemistry(
 - model:
 
   Fitted model from
-  [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md).
+  [`fit_imputation_model()`](https://www.kedumba.com.au/leachatetools/reference/fit_imputation_model.md).
 
 - metal_hurdle:
 
@@ -76,7 +76,7 @@ preserved; BDL values remain flagged as BDL).
 
 ## See also
 
-[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
+[`fit_imputation_model()`](https://www.kedumba.com.au/leachatetools/reference/fit_imputation_model.md)
 
 ## Examples
 

@@ -1,9 +1,9 @@
 # Co-analytes required by ANZECC/ANZG metal normalisation formulas
 
 These are imputed separately (after metals/organics imputation) via
-[`impute_coanalytes()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_coanalytes.md)
+[`impute_coanalytes()`](https://www.kedumba.com.au/leachatetools/reference/impute_coanalytes.md)
 so that
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_amspaf()`](https://www.kedumba.com.au/leachatetools/reference/add_amspaf.md)
 has values to normalise against. pH and EC are excluded — they are
 always present (required vars).
 

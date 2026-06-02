@@ -25,9 +25,9 @@ Normalisation formulas are stored in the bundled analyte metadata CSV
 (`inst/extdata/anzecc_analyte_metadata.csv`). You can inspect or
 override them by supplying your own CSV via the `analyte_metadata`
 argument to
-[`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md)
+[`prepare_reference()`](https://www.kedumba.com.au/leachatetools/reference/prepare_reference.md)
 and
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md).
+[`add_amspaf()`](https://www.kedumba.com.au/leachatetools/reference/add_amspaf.md).
 
 ------------------------------------------------------------------------
 
@@ -52,7 +52,7 @@ where $`pK_a(T) = 0.09018 + 2729.92 / (T + 273.15)`$.
 
 Water temperature must be supplied as `analyte = "temperature"` rows in
 your chemistry data frame. Use
-[`estimate_water_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/estimate_water_temp.md)
+[`estimate_water_temp()`](https://www.kedumba.com.au/leachatetools/reference/estimate_water_temp.md)
 if only air temperature records are available.
 
 ### Cadmium (Cd)

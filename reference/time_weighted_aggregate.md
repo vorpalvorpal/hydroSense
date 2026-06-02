@@ -134,7 +134,7 @@ samples, with a half-life of approximately `tau_days * log(2)` days.
   time."
 
 For chronic AmsPAF specifically, the recommended pipeline is
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_amspaf()`](https://www.kedumba.com.au/leachatetools/reference/add_amspaf.md)
 on per-sample chemistry, then `time_weighted_aggregate()` on the
 resulting AmsPAF rows with `summary = "arith_mean"`. This computes the
 time-averaged AmsPAF, which integrates the toxic response over time

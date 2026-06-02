@@ -11,12 +11,12 @@ Source:
 
 Shannon R (2026). *leachatetools: Water Quality Analysis Tools for
 Leachate-Impacted Waters*. R package version 0.2.0,
-<https://vorpalvorpal.github.io/leachatetools/>.
+<https://www.kedumba.com.au/leachatetools/>.
 
     @Manual{,
       title = {leachatetools: Water Quality Analysis Tools for Leachate-Impacted Waters},
       author = {Robin Shannon},
       year = {2026},
       note = {R package version 0.2.0},
-      url = {https://vorpalvorpal.github.io/leachatetools/},
+      url = {https://www.kedumba.com.au/leachatetools/},
     }

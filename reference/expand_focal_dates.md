@@ -3,7 +3,7 @@
 A thin convenience wrapper around
 [`base::seq.Date()`](https://rdrr.io/r/base/seq.Date.html) for
 generating the `focal_dates` vector passed to
-[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md).
+[`time_weighted_aggregate()`](https://www.kedumba.com.au/leachatetools/reference/time_weighted_aggregate.md).
 The most common use is a daily sequence for time-series analysis.
 
 ## Usage

@@ -11,11 +11,11 @@ assessing water quality in leachate-impacted freshwater systems:
 
 | Function family | File | Exports |
 |----|----|----|
-| SSD-based PAF lookup | `R/paf.R` + `R/ssd_fit.R` | [`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md), [`ssd_hc50()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_hc50.md) |
-| Multi-substance PAF (msPAF / AmsPAF) | `R/mspaf.R` | [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md), `classify_amspaf_tier()` |
-| Leachate mixing fraction | `R/lmf.R` | [`add_lmf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md) |
-| Chronic AmsPAF pipeline | `R/prescreen.R`, `R/impute.R`, `R/chronic.R`, `R/reference.R` | [`prescreen_analytes()`](https://vorpalvorpal.github.io/leachatetools/reference/prescreen_analytes.md), [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md), `compute_chronic_chemistry()`, [`expand_focal_dates()`](https://vorpalvorpal.github.io/leachatetools/reference/expand_focal_dates.md), [`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md) |
-| Internal normalisation | `R/normalise.R` | (internal: [`.parse_normalisation_formula()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-parse_normalisation_formula.md), [`.apply_normalisation()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-apply_normalisation.md)) |
+| SSD-based PAF lookup | `R/paf.R` + `R/ssd_fit.R` | [`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md), [`ssd_hc50()`](https://www.kedumba.com.au/leachatetools/reference/ssd_hc50.md) |
+| Multi-substance PAF (msPAF / AmsPAF) | `R/mspaf.R` | [`add_amspaf()`](https://www.kedumba.com.au/leachatetools/reference/add_amspaf.md), `classify_amspaf_tier()` |
+| Leachate mixing fraction | `R/lmf.R` | [`add_lmf()`](https://www.kedumba.com.au/leachatetools/reference/add_lmf.md) |
+| Chronic AmsPAF pipeline | `R/prescreen.R`, `R/impute.R`, `R/chronic.R`, `R/reference.R` | [`prescreen_analytes()`](https://www.kedumba.com.au/leachatetools/reference/prescreen_analytes.md), [`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md), `compute_chronic_chemistry()`, [`expand_focal_dates()`](https://www.kedumba.com.au/leachatetools/reference/expand_focal_dates.md), [`prepare_reference()`](https://www.kedumba.com.au/leachatetools/reference/prepare_reference.md) |
+| Internal normalisation | `R/normalise.R` | (internal: [`.parse_normalisation_formula()`](https://www.kedumba.com.au/leachatetools/reference/dot-parse_normalisation_formula.md), [`.apply_normalisation()`](https://www.kedumba.com.au/leachatetools/reference/dot-apply_normalisation.md)) |
 
 ### Chronic pipeline overview
 
@@ -43,10 +43,10 @@ exposure over weeks to months. The pipeline is:
        ▼  prepare_reference(chr_ref) → add_amspaf(reference = prep_chr_ref)
             chronic AmsPAF (calibration target vs macroinvertebrate data)
 
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_amspaf()`](https://www.kedumba.com.au/leachatetools/reference/add_amspaf.md)
 is content-agnostic — the same function handles both per-sample and
 chronic chemistry. The
-[`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md)
+[`prepare_reference()`](https://www.kedumba.com.au/leachatetools/reference/prepare_reference.md)
 function is pure (no cache): call it once on reference data, pass the
 object in.
 
@@ -155,7 +155,7 @@ al. (2021) Table 3 (index conditions: pH 7.5, Ca 6 mg/L, Mg 4 mg/L, DOC
 ### 3.2 Distributions
 
 **method = “multi”** (default for
-[`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md)):
+[`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md)):
 Fits all 6 BCANZ-recommended distributions and model-averages the
 result: `lnorm`, `llogis`, `burrIII3`, `lgumbel`, `gamma`, `weibull`.
 This is current best practice and produces good results for all
@@ -195,7 +195,7 @@ The three analyte names used throughout the package:
 
 Callers can either supply the explicit class name or pass
 `analyte = "NO3-N"` with `hardness_mg_L` to let
-[`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md)
+[`ssd_paf()`](https://www.kedumba.com.au/leachatetools/reference/ssd_paf.md)
 / `ssd_lookup()` resolve the class.
 
 **Known problem — class-boundary discontinuity**: When measured hardness
@@ -280,7 +280,7 @@ at session init if NO3-N is in the analyte list.
 
 ### 5.2 Install brms and validate impute_chemistry() (HIGH PRIORITY)
 
-[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
+[`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md)
 requires brms (\>= 2.20.0) and a Stan toolchain (rstan or cmdstanr). The
 full brms smoke test is skipped unless:
 
@@ -331,7 +331,7 @@ See `ideas/macroinvertebrate_calibration_plan.md` for full design. Not
 yet implemented: - Baselga beta-diversity partitioning of
 macroinvertebrate data - Logit-logit calibration regression of
 J_nestedness on chronic AmsPAF - Chronic LMF predictor (per-sample
-[`add_lmf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md)
+[`add_lmf()`](https://www.kedumba.com.au/leachatetools/reference/add_lmf.md)
 exists; chronic integration to `compute_chronic_chemistry()` output not
 yet wired)
 
@@ -427,7 +427,7 @@ All long-format chemistry data frames use:
 | `analyte` | character | Analyte name (matches metadata `analyte` column) |
 | `value` | numeric | Concentration (µg/L or analyte-specific units) |
 | `detected` | logical | `FALSE` for BDL; `TRUE` for detected values |
-| `imputed` | logical | `TRUE` if filled by [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md) |
+| `imputed` | logical | `TRUE` if filled by [`impute_chemistry()`](https://www.kedumba.com.au/leachatetools/reference/impute_chemistry.md) |
 | `imputed_kind` | character | `"observed"`, `"censored_left"`, or `"missing"` |
 
 **Breaking change from v0.2.0**: columns were `uuid.sample`,

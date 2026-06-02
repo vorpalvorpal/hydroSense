@@ -15,7 +15,7 @@ tibble. Operates on a *single* sample's rows.
 - tox:
 
   Rows for one sample from
-  [`.amspaf_add_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-amspaf_add_paf.md)
+  [`.amspaf_add_paf()`](https://www.kedumba.com.au/leachatetools/reference/dot-amspaf_add_paf.md)
   (needs `C_adj`, `hc50`, `sigma`, `moa_group`, `PAF`; `analyte`,
   `ref_source` carried into the `analyte_pafs` diagnostic if present).
 

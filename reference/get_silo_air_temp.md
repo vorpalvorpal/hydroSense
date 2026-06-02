@@ -4,7 +4,7 @@ Retrieves daily air temperature from the SILO Data Drill (a ~5 km
 gridded, spatially interpolated climate surface covering Australia,
 1889–present) for a single latitude/longitude, and returns **daily mean
 air temperature** (`(Tmax + Tmin) / 2`, °C) in exactly the shape
-[`estimate_water_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/estimate_water_temp.md)
+[`estimate_water_temp()`](https://www.kedumba.com.au/leachatetools/reference/estimate_water_temp.md)
 expects as its `air_temp_df`. The typical workflow is:
 
 ## Usage
@@ -56,7 +56,7 @@ A tibble with one row per day:
 - `datetime` (`Date`)
 
 - `air_temp_mean_C` (numeric, °C) Ready to pass as `air_temp_df` to
-  [`estimate_water_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/estimate_water_temp.md).
+  [`estimate_water_temp()`](https://www.kedumba.com.au/leachatetools/reference/estimate_water_temp.md).
 
 ## Details
 
@@ -86,7 +86,7 @@ one-time setup, or pass `api_key` directly.
 
 ## See also
 
-[`estimate_water_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/estimate_water_temp.md)
+[`estimate_water_temp()`](https://www.kedumba.com.au/leachatetools/reference/estimate_water_temp.md)
 
 ## Examples
 

@@ -27,7 +27,7 @@ per-sample grouping downstream.
 - ssd_params:
 
   Tibble from
-  [`derive_ssd_params()`](https://vorpalvorpal.github.io/leachatetools/reference/derive_ssd_params.md).
+  [`derive_ssd_params()`](https://www.kedumba.com.au/leachatetools/reference/derive_ssd_params.md).
 
 - ara_enabled:
 
@@ -45,7 +45,7 @@ for a missing required co-analyte.
 `ref_source` distinguishes:
 
 - `"disabled"` — ARA off (no reference supplied to
-  [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md));
+  [`add_amspaf()`](https://www.kedumba.com.au/leachatetools/reference/add_amspaf.md));
 
 - `"matched"` — ARA on and a reference value was found for the analyte;
 
