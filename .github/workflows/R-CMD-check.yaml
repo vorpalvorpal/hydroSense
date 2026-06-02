@@ -20,12 +20,16 @@ jobs:
       fail-fast: false
       matrix:
         config:
+          # Run the brms/Stan imputation smoke tests on Ubuntu only (reliable
+          # rstan binaries via RSPM); macOS stays Stan-free and fast.
           - {os: macos-latest,   r: 'release'}
-          - {os: ubuntu-latest,  r: 'release'}
+          - {os: ubuntu-latest,  r: 'release', brms: '1'}
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
+      # "1" on the Ubuntu runner, "" elsewhere -> brms smoke tests gated on == "1".
+      BRMS_SMOKE_TEST: ${{ matrix.config.brms }}
 
     steps:
       - uses: actions/checkout@v4
