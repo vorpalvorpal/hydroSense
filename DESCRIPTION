@@ -10,7 +10,9 @@ Description: Tools for analysing water quality in systems potentially impacted
     local background adjustment via the Added Risk Approach; and end-member
     mixing analysis for leachate detection (LMF).
 License: MIT + file LICENSE
-URL: https://vorpalvorpal.github.io/leachatetools/, https://github.com/vorpalvorpal/leachatetools
+Depends:
+    R (>= 4.1.0)
+URL: https://www.kedumba.com.au/leachatetools/, https://github.com/vorpalvorpal/leachatetools
 BugReports: https://github.com/vorpalvorpal/leachatetools/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -44,6 +46,7 @@ Suggests:
     knitr,
     rmarkdown,
     testthat (>= 3.0.0),
-    weatherOz
+    weatherOz,
+    withr
 VignetteBuilder: knitr
 Config/testthat/edition: 3

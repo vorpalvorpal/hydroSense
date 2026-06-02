@@ -427,7 +427,7 @@ add_amspaf <- function(
 #' Derive SSD parameters for AmsPAF computation
 #'
 #' Reads analyte eligibility and mode-of-action groups from the bundled
-#' metadata CSV, then calls [ssd_hc50()] and [.ssd_sigma()] to populate the
+#' metadata CSV, then calls [ssd_hc50()] and `.ssd_sigma()` to populate the
 #' HC50 and effective sigma needed for Concentration Addition. Chemistry
 #' normalisation formulas (currently all stubs) are parsed once and stored
 #' as a list column for use in [compute_amspaf_per_sample()].
@@ -439,7 +439,7 @@ add_amspaf <- function(
 #'   \item `ssd_hc50()` returns a non-NA value (model fits successfully)
 #' }
 #'
-#' @param meta Analyte metadata tibble from [.load_analyte_metadata()].
+#' @param meta Analyte metadata tibble from `.load_analyte_metadata()`.
 #' @param method SSD method: `"multi"` or `"anzecc"`.
 #' @param guideline_dir Path to ANZG guideline data folder.
 #'
@@ -447,7 +447,7 @@ add_amspaf <- function(
 #'   `parsed_formula` (list of language objects or NULLs),
 #'   `coanalytes_req` (character), and `fit` (list column of fitted SSD
 #'   objects, one per analyte).  The fitted SSD is loaded **once per analyte
-#'   here** (via the cached [.load_or_fit()] path) so that
+#'   here** (via the cached `.load_or_fit()` path) so that
 #'   [compute_amspaf_per_sample()] can evaluate every sample's PAF in a single
 #'   vectorised [ssdtools::ssd_hp()] call per analyte, rather than refitting /
 #'   re-resolving the SSD inside a per-(sample × analyte) loop.

@@ -7,7 +7,7 @@
 derive_ssd_params(meta, method, guideline_dir)
 }
 \arguments{
-\item{meta}{Analyte metadata tibble from \code{\link[=.load_analyte_metadata]{.load_analyte_metadata()}}.}
+\item{meta}{Analyte metadata tibble from \code{.load_analyte_metadata()}.}
 
 \item{method}{SSD method: \code{"multi"} or \code{"anzecc"}.}
 
@@ -18,14 +18,14 @@ Tibble with columns \code{analyte}, \code{hc50}, \code{sigma}, \code{moa_group},
 \code{parsed_formula} (list of language objects or NULLs),
 \code{coanalytes_req} (character), and \code{fit} (list column of fitted SSD
 objects, one per analyte).  The fitted SSD is loaded \strong{once per analyte
-here} (via the cached \code{\link[=.load_or_fit]{.load_or_fit()}} path) so that
+here} (via the cached \code{.load_or_fit()} path) so that
 \code{\link[=compute_amspaf_per_sample]{compute_amspaf_per_sample()}} can evaluate every sample's PAF in a single
 vectorised \code{\link[ssdtools:ssd_hp]{ssdtools::ssd_hp()}} call per analyte, rather than refitting /
 re-resolving the SSD inside a per-(sample × analyte) loop.
 }
 \description{
 Reads analyte eligibility and mode-of-action groups from the bundled
-metadata CSV, then calls \code{\link[=ssd_hc50]{ssd_hc50()}} and \code{\link[=.ssd_sigma]{.ssd_sigma()}} to populate the
+metadata CSV, then calls \code{\link[=ssd_hc50]{ssd_hc50()}} and \code{.ssd_sigma()} to populate the
 HC50 and effective sigma needed for Concentration Addition. Chemistry
 normalisation formulas (currently all stubs) are parsed once and stored
 as a list column for use in \code{\link[=compute_amspaf_per_sample]{compute_amspaf_per_sample()}}.
