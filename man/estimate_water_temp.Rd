@@ -99,3 +99,8 @@ wt <- estimate_water_temp(air, wt_obs)
 }
 
 }
+\seealso{
+\code{\link[=get_silo_air_temp]{get_silo_air_temp()}} to source \code{air_temp_df} from SILO for an
+Australian location; \code{\link[=add_amspaf]{add_amspaf()}}, which requires the resulting water
+\code{temperature} rows for ammonia.
+}

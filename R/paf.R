@@ -13,8 +13,24 @@
 #                                   replicate the original ANZG derivation
 #                                   (see fit_dist column in analyte metadata)
 #
-# External corrections (apply before calling):
-#   NH3-N : apply pH / temperature correction for un-ionised fraction
+# Chemistry normalisation (index-condition / bioavailability corrections):
+#   ssd_paf() applies NONE of these — it evaluates the SSD at the concentration
+#   you pass, as-is, for every analyte. Six analytes carry an index-condition
+#   normalisation_formula in the metadata (NH3-N: pH/temperature un-ionised
+#   fraction; Cu/Ni/Zn/Cd/Pb: hardness/DOC bioavailability). Those formulas are
+#   applied automatically — and only — by add_amspaf(), which reads the required
+#   co-analyte rows (pH, temperature, hardness, DOC, ...) from the data frame.
+#
+#   So: for a pipeline assessment, pass RAW measured concentrations plus the
+#   co-analyte rows to add_amspaf() and let it correct once, internally. Do not
+#   pre-correct. For a standalone single-sample ssd_paf() spot-check you may
+#   pre-correct ammonia with correct_ammonia_ph_temp(conc, pH, temperature_C);
+#   this is a convenience for the manual path only, never a pipeline step.
+#
+#   Water temperature is mandatory for any sample assessed for NH3-N (see
+#   add_amspaf(require_temperature=)). Source it by measurement, or derive it
+#   with estimate_water_temp() — optionally fed by get_silo_air_temp(), which
+#   pulls daily mean air temperature from SILO for an Australian lat/lon.
 #   Cr    : no external correction needed (freshwater subset already applied)
 #   NO3-N : supply hardness_mg_L to select the appropriate hardness class;
 #            probabilistic class weighting (CV = 5%) is a TODO (see below)
@@ -47,7 +63,15 @@
   "Ni"                     = "Ni",
   "Zn"                     = "Zn",
   "Al"                     = "Al",
-  "As"                     = "As_V",      # unspeciated → As(V) SSD (conservative default)
+  # Unspeciated As → As(V) SSD. This is the conservative max-PAF ENVELOPE of
+  # the two speciation SSDs, not a redox/oxygenation assumption: the As(V) SSD
+  # yields a HIGHER PAF than the As(III) SSD at every environmentally realistic
+  # concentration (verified 0.1–5000 µg/L; they only cross above ~10 mg/L
+  # dissolved As). Although As(III) is more toxic to the single most-sensitive
+  # diatom, the whole-assemblage As(V) SSD sits lower (its lower tail is pulled
+  # down by corrected algal acute points), so As(V) is conservative regardless
+  # of which species is actually present. Pinned by test-paf-as-envelope.R.
+  "As"                     = "As_V",
   "As(V)"                  = "As_V",
   "As(III)"                = "As_III",
   "Cd"                     = "Cd",

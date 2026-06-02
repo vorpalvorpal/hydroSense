@@ -76,6 +76,59 @@
 #' @keywords internal
 .COANALYTE_TARGETS <- c("DOC", "Ca", "Mg", "hardness")
 
+#' PCA variables that must NOT be log-transformed before the chemistry PCA
+#'
+#' Every other PCA variable is concentration-like — strictly positive and
+#' strongly right-skewed, spanning orders of magnitude — so it is
+#' `log10`-transformed before centring/scaling.  Without that, the PCA is
+#' dominated by a handful of high-magnitude major ions (e.g. Cl, SO4, TDS) and
+#' the leading axes mostly track absolute ionic strength rather than the
+#' multiplicative covariance structure that drives metal/organic behaviour.
+#'
+#' The exclusions are the variables for which a log is meaningless or undefined:
+#'   - `pH` — already a logarithmic scale (−log10 of H+ activity).
+#'   - `temperature` — interval scale (°C); zero/negative values are valid.
+#'   - `ORP` — redox potential (mV); routinely negative.
+#'   - `DO` — dissolved oxygen (mg/L); legitimately ~0 in anoxic leachate
+#'     plumes and only spans a narrow, near-linear range.
+#' @keywords internal
+.PCA_NO_LOG_VARS <- c("pH", "temperature", "ORP", "DO")
+
+
+# ── brms availability guard ───────────────────────────────────────────────────
+
+#' Stop with a friendly, actionable message if brms is not installed
+#'
+#' The Bayesian imputation step ([fit_imputation_model()] /
+#' [impute_chemistry()]) is the only part of the package that needs
+#' \pkg{brms}, so brms is an optional ("Suggests") dependency rather than a
+#' hard requirement.  This keeps the package quick to install for users who
+#' only need the LMF or AmsPAF tools.  When someone actually calls an
+#' imputation function without brms installed, this guard explains — in plain
+#' language — what to install and why.
+#' @keywords internal
+.require_brms <- function() {
+  if (requireNamespace("brms", quietly = TRUE)) {
+    return(invisible(TRUE))
+  }
+  cli::cli_abort(c(
+    "The chemistry imputation step needs the {.pkg brms} package, which \\
+     isn't installed yet.",
+    "i" = "{.pkg brms} fits the Bayesian model that fills in missing and \\
+           below-detection-limit results. It's optional, so it isn't \\
+           installed automatically — only this imputation step uses it.",
+    " " = "",
+    "*" = "To install it, run this once at the R console:",
+    " " = "{.code install.packages(\"brms\")}",
+    " " = "",
+    "i" = "{.pkg brms} also needs a working Stan engine (a C++ compiler). If \\
+           the line above isn't enough, follow the short setup guide at \\
+           {.url https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started}.",
+    "i" = "Once {.pkg brms} is installed, re-run this function — no other \\
+           changes are needed."
+  ))
+}
+
 
 # ── fit_imputation_model() ────────────────────────────────────────────────────
 
@@ -207,6 +260,8 @@ fit_imputation_model <- function(
     save_dir          = NULL,
     ...
 ) {
+  .require_brms()
+
   if (is.null(pca_vars))          pca_vars          <- c("pH", "EC", "NH3-N",
                                                           .WQ_BLOCK_CANDIDATES)
   if (is.null(metal_analytes))    metal_analytes    <- .METAL_ANALYTES
@@ -474,6 +529,7 @@ impute_chemistry <- function(
     return         = c("point", "draws")
 ) {
   return <- match.arg(return)
+  .require_brms()
   checkmate::assert_data_frame(df)
   checkmate::assert_names(names(df),
     must.include = c("sample_id", "site_id", "datetime",
@@ -732,11 +788,32 @@ impute_coanalytes <- function(
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
+#' Log10-transform the concentration-like columns of a PCA matrix
+#'
+#' Applies `log10()` to every column whose name is not in [.PCA_NO_LOG_VARS],
+#' leaving pH / temperature / ORP / DO on their native scale.  `NA` cells are
+#' preserved (so NIPALS can still handle within-sample missingness), and a small
+#' floor guards against `log10(0)` for genuine zeros.  Both the training PCA
+#' (`.prepare_chem_pca()`) and the scoring projection (`.compute_pca_scores()`)
+#' call this so the transform is identical on both paths.
+#' @param mat Numeric matrix with named columns (samples × variables).
+#' @param eps Positive floor applied before the log (default `1e-9`).
+#' @keywords internal
+.log_transform_pca <- function(mat, eps = 1e-9) {
+  log_cols <- setdiff(colnames(mat), .PCA_NO_LOG_VARS)
+  if (length(log_cols) > 0L) {
+    mat[, log_cols] <- log10(pmax(mat[, log_cols, drop = FALSE], eps))
+  }
+  mat
+}
+
 #' Fit the unified chemistry PCA on training data
 #'
 #' This PCA spans the full unified chemistry predictor set (`pca_vars` in
 #' `fit_imputation_model()`) — major ions, pH, EC, NH3-N, DOC, nutrients and
-#' redox indicators.  PC score columns are named `PC1`, `PC2`, ….
+#' redox indicators.  Concentration-like variables are `log10`-transformed (see
+#' [.log_transform_pca()]) before centring/scaling.  PC score columns are named
+#' `PC1`, `PC2`, ….
 #' @keywords internal
 .prepare_chem_pca <- function(df, wq_vars, min_var_explained = 0.75, max_pcs = 4L) {
   # Pivot chemistry vars to wide (one row per sample); missing cells → NA
@@ -757,7 +834,15 @@ impute_coanalytes <- function(
 
   # Training medians — kept as fallback for columns entirely absent in
   # scoring data.  Per-cell NAs within a column are handled by nipals.
+  # Stored on the RAW scale: scoring fills absent columns with these medians
+  # and then re-applies the same log transform below.
   train_medians <- apply(wq_matrix, 2, stats::median, na.rm = TRUE)
+
+  # Log10-transform concentration-like variables (everything except
+  # pH / temperature / ORP / DO).  Done before centring/scaling so the PCA
+  # reflects multiplicative chemical variation rather than being dominated by
+  # the highest-magnitude major ions.  NAs are preserved for NIPALS.
+  wq_matrix <- .log_transform_pca(wq_matrix)
 
   # Remove zero-variance or all-NA columns
   col_sds   <- apply(wq_matrix, 2, stats::sd, na.rm = TRUE)
@@ -774,7 +859,14 @@ impute_coanalytes <- function(
   # NIPALS PCA — handles missing cells without prior imputation
   ncomp   <- min(max_pcs, ncol(wq_matrix), nrow(wq_matrix) - 1L)
   pca_fit <- nipals::nipals(wq_matrix, ncomp = ncomp, center = TRUE, scale = TRUE)
-  cum_var <- pca_fit$R2cum  # cumulative proportion of variance explained
+  # nipals (>= 1.0) returns per-component proportions in `$R2`; older/other
+  # builds expose a cumulative `$R2cum`. Accept either, deriving the cumulative
+  # curve from `$R2` when needed.
+  cum_var <- if (!is.null(pca_fit$R2cum)) {
+    pca_fit$R2cum
+  } else {
+    cumsum(pca_fit$R2)
+  }
 
   # Determine number of PCs
   n_needed <- which(cum_var >= min_var_explained)[1L]
@@ -792,18 +884,24 @@ impute_coanalytes <- function(
   }
   n_pcs <- min(n_pcs, length(cum_var))
 
-  pc_scores <- tibble::as_tibble(pca_fit$scores[, seq_len(n_pcs), drop = FALSE]) |>
-    stats::setNames(paste0("PC", seq_len(n_pcs))) |>
-    dplyr::mutate(sample_id = wq_wide$sample_id)
-
-  list(
+  pca_obj <- list(
     fit           = pca_fit,
     medians       = train_medians,         # all WQ vars (before zero-var removal)
     active_vars   = colnames(wq_matrix),   # after zero-var removal
     n_pcs         = n_pcs,
-    var_explained = cum_var[n_pcs],
-    pc_scores     = pc_scores
+    var_explained = cum_var[n_pcs]
   )
+
+  # Training scores MUST be produced by the same projection used at prediction
+  # time (`.compute_pca_scores()`), otherwise the brms model is trained on one
+  # score scale and predicted on another.  `nipals$scores` are NOT equal to the
+  # regression projection used at scoring — they differ by a per-component
+  # factor (the component eigenvalue) — so copying them here would silently
+  # break imputation.  Deriving `pc_scores` via `.compute_pca_scores()` on the
+  # training data guarantees train/predict consistency by construction.
+  pca_obj$pc_scores <- .compute_pca_scores(df, pca_obj)
+
+  pca_obj
 }
 
 #' Project new data onto stored NIPALS PCA axes
@@ -844,6 +942,11 @@ impute_coanalytes <- function(
     }
   }
 
+  # Apply the same log10 transform used at training time.  Done AFTER the
+  # raw-scale median fills above so filled values are transformed identically
+  # to how the training medians were, keeping centre/scale parameters valid.
+  wq_mat <- .log_transform_pca(wq_mat)
+
   # Centre and scale using training parameters stored in the nipals object
   wq_scaled <- sweep(wq_mat,    2, pca_obj$fit$center, "-")
   wq_scaled <- sweep(wq_scaled, 2, pca_obj$fit$scale,  "/")
@@ -852,9 +955,9 @@ impute_coanalytes <- function(
   loadings   <- pca_obj$fit$loadings[, seq_len(pca_obj$n_pcs), drop = FALSE]
   scores_mat <- t(apply(wq_scaled, 1, .nipals_score_row,
                         loadings = loadings, n_pcs = pca_obj$n_pcs))
+  colnames(scores_mat) <- paste0("PC", seq_len(pca_obj$n_pcs))
 
   tibble::as_tibble(scores_mat) |>
-    stats::setNames(paste0("PC", seq_len(pca_obj$n_pcs))) |>
     dplyr::mutate(sample_id = wq_wide$sample_id)
 }
 

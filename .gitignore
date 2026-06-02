@@ -14,6 +14,9 @@ test data/
 # Pipeline helper and exploratory scripts (not package code)
 scripts/
 
+# Reference papers / PDFs (copyright; local reading copies only)
+references/
+
 # R build artefacts
 /doc/
 /Meta/

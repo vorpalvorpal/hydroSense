@@ -9,6 +9,8 @@
 \description{
 This PCA spans the full unified chemistry predictor set (\code{pca_vars} in
 \code{fit_imputation_model()}) — major ions, pH, EC, NH3-N, DOC, nutrients and
-redox indicators.  PC score columns are named \code{PC1}, \code{PC2}, ….
+redox indicators.  Concentration-like variables are \code{log10}-transformed (see
+\code{\link[=.log_transform_pca]{.log_transform_pca()}}) before centring/scaling.  PC score columns are named
+\code{PC1}, \code{PC2}, ….
 }
 \keyword{internal}

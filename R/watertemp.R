@@ -69,6 +69,9 @@
 #' # chemistry <- dplyr::bind_rows(chemistry, dplyr::mutate(wt, sample_id = ...))
 #' }
 #'
+#' @seealso [get_silo_air_temp()] to source `air_temp_df` from SILO for an
+#'   Australian location; [add_amspaf()], which requires the resulting water
+#'   `temperature` rows for ammonia.
 #' @export
 estimate_water_temp <- function(
     air_temp_df,
@@ -200,4 +203,139 @@ estimate_water_temp <- function(
 
   attr(result, "lm_fit") <- fit
   result
+}
+
+# ── SILO air-temperature lookup ───────────────────────────────────────────────
+
+#' Fetch daily mean air temperature from SILO for an Australian location
+#'
+#' Retrieves daily air temperature from the SILO Data Drill (a ~5 km gridded,
+#' spatially interpolated climate surface covering Australia, 1889–present) for
+#' a single latitude/longitude, and returns **daily mean air temperature**
+#' (`(Tmax + Tmin) / 2`, °C) in exactly the shape [estimate_water_temp()]
+#' expects as its `air_temp_df`. The typical workflow is:
+#'
+#' ```
+#' air   <- get_silo_air_temp(lat, lon, start, end)   # SILO mean air temp
+#' wt    <- estimate_water_temp(air, water_temp_obs)  # calibrate water = f(air)
+#' chem  <- dplyr::bind_rows(chem, dplyr::mutate(wt, sample_id = ...))
+#' ```
+#'
+#' This wraps [weatherOz::get_data_drill()]; the **weatherOz** package must be
+#' installed (it is listed under `Suggests`). Results are cached on disk so
+#' repeat calls for the same grid cell and date range do not re-hit the API.
+#'
+#' @section Attribution:
+#' SILO data are © State of Queensland (Department of Environment, Science and
+#' Innovation) and released under CC-BY 4.0. Cite SILO when you publish results
+#' derived from this function.
+#'
+#' @section API key:
+#' SILO requires an API key, which is simply your email address. By default it
+#' is auto-detected via [weatherOz::get_key()] (from `.Renviron`/`.Rprofile`);
+#' see the weatherOz documentation for one-time setup, or pass `api_key`
+#' directly.
+#'
+#' @param latitude,longitude Numeric decimal-degree coordinates of the point of
+#'   interest. Must fall within the SILO grid (approximately latitude -44 to
+#'   -10, longitude 112 to 154). Snapped to the 0.05° grid by SILO.
+#' @param start_date,end_date Start and end of the (inclusive) date range, as
+#'   `Date` objects or `"YYYY-MM-DD"` strings.
+#' @param api_key Character SILO API key (your email address). Default `NULL`
+#'   defers to [weatherOz::get_key()].
+#' @param cache Logical; cache the result on disk under
+#'   `tools::R_user_dir("leachatetools", "cache")/silo`. Default `TRUE`.
+#' @param refresh Logical; if `TRUE`, ignore and overwrite any cached result.
+#'   Default `FALSE`.
+#'
+#' @return A tibble with one row per day:
+#'   - `datetime` (`Date`)
+#'   - `air_temp_mean_C` (numeric, °C)
+#'   Ready to pass as `air_temp_df` to [estimate_water_temp()].
+#'
+#' @seealso [estimate_water_temp()]
+#'
+#' @examples
+#' \dontrun{
+#' air <- get_silo_air_temp(
+#'   latitude = -33.87, longitude = 151.21,
+#'   start_date = "2020-01-01", end_date = "2023-12-31"
+#' )
+#' }
+#' @export
+get_silo_air_temp <- function(
+    latitude,
+    longitude,
+    start_date,
+    end_date,
+    api_key = NULL,
+    cache   = TRUE,
+    refresh = FALSE
+) {
+  if (!requireNamespace("weatherOz", quietly = TRUE)) {
+    cli::cli_abort(c(
+      "The {.pkg weatherOz} package is required to fetch SILO climate data.",
+      "i" = "Install it with {.run install.packages(\"weatherOz\")}."
+    ))
+  }
+  checkmate::assert_number(latitude,  lower = -44, upper = -10)
+  checkmate::assert_number(longitude, lower = 112, upper = 154)
+  checkmate::assert_flag(cache)
+  checkmate::assert_flag(refresh)
+  start_date <- as.Date(start_date)
+  end_date   <- as.Date(end_date)
+  if (is.na(start_date) || is.na(end_date)) {
+    cli::cli_abort("{.arg start_date} and {.arg end_date} must be valid dates.")
+  }
+  if (end_date < start_date) {
+    cli::cli_abort("{.arg end_date} ({end_date}) is before {.arg start_date} ({start_date}).")
+  }
+
+  # ── Disk cache keyed by grid cell (0.05°) + date range ──────────────────────
+  cache_path <- NULL
+  if (cache) {
+    cache_dir <- file.path(tools::R_user_dir("leachatetools", "cache"), "silo")
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    key <- sprintf(
+      "silo_%+07.2f_%+07.2f_%s_%s.qs",
+      latitude, longitude, format(start_date, "%Y%m%d"), format(end_date, "%Y%m%d")
+    )
+    cache_path <- file.path(cache_dir, key)
+    if (!refresh && file.exists(cache_path)) {
+      return(qs::qread(cache_path))
+    }
+  }
+
+  if (is.null(api_key)) api_key <- weatherOz::get_key(service = "SILO")
+
+  dt <- weatherOz::get_data_drill(
+    longitude  = longitude,
+    latitude   = latitude,
+    start_date = start_date,
+    end_date   = end_date,
+    values     = c("max_temp", "min_temp"),
+    api_key    = api_key
+  )
+
+  if (!all(c("max_temp", "min_temp", "date") %in% names(dt))) {
+    cli::cli_abort(
+      "SILO response is missing expected columns ({.field date}, \\
+       {.field max_temp}, {.field min_temp})."
+    )
+  }
+
+  # weatherOz returns `date` as Date (or YYYYMMDD); parse defensively.
+  raw_date <- dt[["date"]]
+  dts <- suppressWarnings(as.Date(raw_date))
+  if (anyNA(dts)) {
+    dts <- as.Date(as.character(raw_date), format = "%Y%m%d")
+  }
+
+  out <- tibble::tibble(
+    datetime        = dts,
+    air_temp_mean_C = (as.numeric(dt[["max_temp"]]) + as.numeric(dt[["min_temp"]])) / 2
+  )
+
+  if (cache && !is.null(cache_path)) qs::qsave(out, cache_path)
+  out
 }

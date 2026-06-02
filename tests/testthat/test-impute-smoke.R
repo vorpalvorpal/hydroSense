@@ -43,8 +43,12 @@ make_impute_chem <- function(n = 20, n_bdl = 3, n_missing = 2) {
   rows
 }
 
-test_that("brms is available (now a hard Imports dependency)", {
-  expect_true(requireNamespace("brms", quietly = TRUE))
+test_that(".require_brms() passes when brms is installed (brms is Suggests)", {
+  # brms moved from Imports to Suggests: only the imputation step needs it.
+  # The guard returns TRUE invisibly when present, else aborts with install
+  # guidance (exercised in real use where brms is absent).
+  skip_if_not_installed("brms")
+  expect_true(leachatetools:::.require_brms())
 })
 
 test_that("fit_imputation_model errors when required_vars are missing entirely", {

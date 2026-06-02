@@ -52,8 +52,9 @@
 ## measured field concentrations to these index conditions before SSD lookup.
 ## Formulas are stored as R-expression strings in the analyte metadata CSV
 ## (`normalisation_formula` column) and parsed once at startup via
-## `.parse_normalisation_formula()`. All formulas are stubs (identity) until
-## populated from the ANZG technical briefs.
+## `.parse_normalisation_formula()`. Bioavailability/index-condition formulas
+## are populated for Cu, Ni, Zn, Cd, Pb and NH3-N; analytes with an empty cell
+## are treated as identity (no chemistry dependence).
 ##
 ## ## SSD derivation
 ##
@@ -68,11 +69,30 @@
 ## MOA group assignments are read from the `moa_group` column in the bundled
 ## analyte metadata CSV. Analytes with the same `moa_group` are combined by
 ## Concentration Addition (CA); groups are then combined via Independent Action
-## (IA).
+## (IA). Users can override the bundled classification by supplying their own
+## metadata CSV/data frame (see `.load_analyte_metadata()`).
 ##
-## Day-1 state: metals and inorganic nitrogen/sulphide species have
-## `moa_group = "ionoregulatory"` (one CA group). Organics/pesticides have
-## `moa_group = NA` → each gets a unique synthetic solo group `"_solo_<name>"`.
+## The bundled `moa_group` values follow the toxic-mode-of-action (TMoA)
+## vocabulary of De Zwart & Posthuma (2005, Table 3/4), assigned from the
+## mechanism of action stated in each substance's ANZG/Warne guidance document:
+##   * Metals & inorganic ions — grouped by the mechanism stated in each ANZG
+##     guidance doc, since De Zwart & Posthuma (2005) give only a principle
+##     (CA within a shared *primary target receptor*; RA across) plus a single
+##     two-metal example, not a metals lookup. Gill-ionoregulatory metals
+##     (Al, Cd, Cu, Ni, Pb, Zn) share `"ionoregulatory (gill)"` (one CA group);
+##     Hg and Se share `"sulfhydryl binding"`; As is `"arsenic"` (speciation-
+##     specific); Cr, B, Mn each stay solo (no mechanism stated in their docs);
+##     `"ammonia"` and `"nitrate"` are each their own group. Groups combine
+##     across by IA.
+##   * Organics are grouped by shared mechanism and CA-combined within a group:
+##     "nonpolar narcosis" (PAHs, BTEX, HCB), "polar narcosis" (phenol,
+##     mono-chlorophenol), "uncoupler oxidative phosphorylation" (poly-
+##     chlorophenols), "AChE inhibition: organophosphate" (OP insecticides),
+##     "neurotoxicant: cyclodiene" (aldrin/dieldrin/endrin/lindane), and
+##     "neurotoxicant: DDT" (DDT/DDE/methoxychlor).
+##
+## Any analyte with `moa_group = NA` gets a unique synthetic solo group
+## `"_solo_<name>"` (combined by IA, i.e. treated as its own TMoA).
 ##
 ## ## Output interpretation
 ##
@@ -115,6 +135,38 @@
 ## ============================================================================
 ## add_amspaf
 ## ============================================================================
+
+#' Assert every ammonia-bearing sample carries a water temperature
+#'
+#' The NH3-N un-ionised-fraction normalisation requires water temperature.
+#' Rather than silently dropping ammonia when temperature is absent, we fail
+#' loudly: any `sample_id` that has an `NH3-N` row but no non-missing
+#' `temperature` row triggers an error listing the offending samples.
+#'
+#' @param df Long-format chemistry data frame (`sample_id`, `analyte`, `value`).
+#' @return Invisibly `TRUE`; called for its side effect (error on violation).
+#' @keywords internal
+.assert_temperature_present <- function(df) {
+  if (!"NH3-N" %in% df$analyte) return(invisible(TRUE))
+
+  amm_samples <- unique(df$sample_id[df$analyte == "NH3-N"])
+
+  temp_ok <- df$analyte == "temperature" & !is.na(df$value)
+  temp_samples <- unique(df$sample_id[temp_ok])
+
+  missing <- setdiff(amm_samples, temp_samples)
+  if (length(missing) == 0L) return(invisible(TRUE))
+
+  n_missing <- length(missing)
+  shown <- missing[seq_len(min(10L, n_missing))]
+  more  <- if (n_missing > 10L) paste0(" (+", n_missing - 10L, " more)") else ""
+  cli::cli_abort(c(
+    "{n_missing} sample{?s} report NH3-N but have no water temperature.",
+    "x" = "Affected: {.val {shown}}{more}",
+    "i" = "Water temperature is mandatory for the ammonia pH/temperature correction. Supply a {.field temperature} row per sample, or derive one with {.fn estimate_water_temp} (optionally fed by {.fn get_silo_air_temp}).",
+    "i" = "To assess a dataset that does not include ammonia, call {.code add_amspaf(..., require_temperature = FALSE)}."
+  ))
+}
 
 #' Compute the Adjusted multi-substance PAF (AmsPAF) for water quality samples
 #'
@@ -165,6 +217,14 @@
 #'   estimate of the "typical" exposure the resident community has adapted
 #'   to.  Other options: `"median"`, `"arith_mean"`, `"p80"`, `"p90"`,
 #'   `"p95"`.
+#' @param require_temperature Logical (default `TRUE`). When `TRUE`, any sample
+#'   that reports an `NH3-N` measurement **must** also carry a water
+#'   `temperature` row (the ammonia un-ionised-fraction normalisation is
+#'   undefined without it); a missing temperature is a hard error rather than a
+#'   silent drop of ammonia. Supply temperature via direct measurement, or
+#'   derive it with [estimate_water_temp()] (optionally fed by
+#'   [get_silo_air_temp()]). Set `FALSE` only for datasets that do not assess
+#'   ammonia.
 #'
 #' @return The input `df` with AmsPAF rows appended. Each AmsPAF row carries:
 #'   `value` (AmsPAF as a percentage, 0–100+), `detected = TRUE`,
@@ -197,7 +257,8 @@ add_amspaf <- function(
     guideline_dir    = getOption("leachatetools.guideline_dir"),
     min_analytes     = 3,
     ref_summary      = c("geom_mean", "median", "arith_mean",
-                          "p80", "p90", "p95")
+                          "p80", "p90", "p95"),
+    require_temperature = TRUE
 ) {
   checkmate::assert_data_frame(df)
   checkmate::assert_names(
@@ -207,6 +268,14 @@ add_amspaf <- function(
   method      <- match.arg(method)
   ref_summary <- match.arg(ref_summary)
   checkmate::assert_int(min_analytes, lower = 1L)
+  checkmate::assert_flag(require_temperature)
+
+  ## Temperature is mandatory for ammonia: the NH3-N un-ionised-fraction
+  ## normalisation is undefined without it.  Fail loudly (rather than silently
+  ## dropping ammonia) for any sample that reports NH3-N but lacks a water
+  ## temperature.  See estimate_water_temp() / get_silo_air_temp() for sourcing
+  ## temperature.
+  if (require_temperature) .assert_temperature_present(df)
 
   ## ================================================================
   ## Step 1: Load analyte metadata and derive SSD parameters.
@@ -394,8 +463,11 @@ derive_ssd_params <- function(meta, method, guideline_dir) {
                error = function(e) NULL)
     } else NULL
 
-    ## MOA group from metadata column; NA/empty → unique solo group
-    mg_raw <- eligible$moa_group[i]
+    ## MOA group from metadata column; NA/empty → unique solo group.
+    ## A user-supplied metadata CSV may omit `moa_group` entirely; treat an
+    ## absent column as all-NA so every analyte falls into its own solo group
+    ## (i.e. pure Response Addition across analytes).
+    mg_raw <- if ("moa_group" %in% names(eligible)) eligible$moa_group[i] else NA_character_
     moa_group <- if (is.na(mg_raw) || !nzchar(mg_raw)) {
       paste0("_solo_", nm)
     } else {
@@ -440,6 +512,20 @@ derive_ssd_params <- function(meta, method, guideline_dir) {
 
 #' Compute msPAF for a single Concentration Addition group
 #'
+#' Implements the multispecies Concentration Addition model of De Zwart &
+#' Posthuma (2005, Environ Toxicol Chem 24(10):2665-2676), eq. 6: hazard units
+#' (here `TU = C_adj / HC50`) are summed across the components sharing a toxic
+#' mode of action, and the combined proportion affected is the log-normal CDF
+#' evaluated at `log10(ΣTU)` with a mixture slope equal to the **arithmetic
+#' mean of the component slopes** (their `β̄_TMoA`; in the normal-CDF form the
+#' slope is the standard deviation `σ̄ = mean(σ)`):
+#'
+#' \deqn{msPAF_{CA} = \Phi\!\left( \frac{\log_{10}(\sum TU)}{\bar{\sigma}} \right)}
+#'
+#' Note this is a plain (unweighted) average of the per-analyte sigmas, per the
+#' primary source — NOT a TU-weighted or variance-style combination.  A
+#' single-component group therefore reduces exactly to that component's own SSD.
+#'
 #' @param group_data Tibble with columns `C_adj`, `hc50`, `sigma`, `moa_group`;
 #'   one row per analyte in the CA group.
 #' @return msPAF as a proportion (not percentage).
@@ -458,8 +544,8 @@ compute_ca_group_mspaf <- function(group_data) {
   TU_mix <- sum(group_data$TU)
   if (TU_mix <= 0) return(0)
 
-  group_data <- dplyr::mutate(group_data, w = .data$TU / TU_mix)
-  sigma_mix  <- sqrt(sum(group_data$w^2 * group_data$sigma^2))
+  # De Zwart & Posthuma (2005) eq. 6: mixture slope = mean of component slopes.
+  sigma_mix <- mean(group_data$sigma)
 
   pnorm(log10(TU_mix) / sigma_mix)
 }

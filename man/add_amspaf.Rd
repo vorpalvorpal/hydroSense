@@ -11,7 +11,8 @@ add_amspaf(
   method = c("multi", "anzecc"),
   guideline_dir = getOption("leachatetools.guideline_dir"),
   min_analytes = 3,
-  ref_summary = c("geom_mean", "median", "arith_mean", "p80", "p90", "p95")
+  ref_summary = c("geom_mean", "median", "arith_mean", "p80", "p90", "p95"),
+  require_temperature = TRUE
 )
 }
 \arguments{
@@ -56,6 +57,15 @@ central tendency for log-normal concentrations, and a PICT-consistent
 estimate of the "typical" exposure the resident community has adapted
 to.  Other options: \code{"median"}, \code{"arith_mean"}, \code{"p80"}, \code{"p90"},
 \code{"p95"}.}
+
+\item{require_temperature}{Logical (default \code{TRUE}). When \code{TRUE}, any sample
+that reports an \code{NH3-N} measurement \strong{must} also carry a water
+\code{temperature} row (the ammonia un-ionised-fraction normalisation is
+undefined without it); a missing temperature is a hard error rather than a
+silent drop of ammonia. Supply temperature via direct measurement, or
+derive it with \code{\link[=estimate_water_temp]{estimate_water_temp()}} (optionally fed by
+\code{\link[=get_silo_air_temp]{get_silo_air_temp()}}). Set \code{FALSE} only for datasets that do not assess
+ammonia.}
 }
 \value{
 The input \code{df} with AmsPAF rows appended. Each AmsPAF row carries:
