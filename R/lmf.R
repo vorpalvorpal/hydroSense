@@ -1794,7 +1794,6 @@ build_leachate_endmember <- function(
 #'   in the original rows.
 #'
 #' @examples
-#' \dontrun{
 #' df <- tibble::tibble(
 #'   analyte             = "Ca",
 #'   value               = 40.08,   # mg/L
@@ -1802,8 +1801,7 @@ build_leachate_endmember <- function(
 #'   valence.analyte     = 2,
 #'   atomic_mass.analyte = 40.08    # g/mol
 #' )
-#' to_meq(df)   # appends a "Ca_" row expressed in meq/L
-#' }
+#' to_meq(df)   # appends a "Ca_" row of 2 meq/L (1 mmol/L x |valence| = 2)
 #'
 #' @export
 
@@ -1822,15 +1820,19 @@ to_meq <- function(df) {
 
   ## Split by units.analyte, convert each subset, then recombine.
   ##
-  ## The original approach used group_by() + unique(units.analyte) inside
-  ## mutate(), but set_units() requires a plain length-1 character scalar.
-  ## unique() inside a mutate group can return a vector rather than a scalar
-  ## in some contexts, causing:
-  ##   "length(x) == 1 is not TRUE"
+  ## We split by unit string (a guaranteed length-1 scalar per group) because
+  ## set_units(mode = "standard") needs a scalar unit. Each subset is converted
+  ## with explicit, plain-vector arithmetic using only standard udunits
+  ## (mg, g, mol, mmol, L). A milliequivalent per litre is, for an ion of
+  ## absolute charge |z|, simply (mmol of substance per litre) * |z|, so no
+  ## custom "equivalent" unit is needed:
   ##
-  ## The fix: split the dataframe by units, extract the unit string directly
-  ## from the split key (a guaranteed scalar), convert each subset, then
-  ## recombine. This is equivalent to the grouped approach but robust.
+  ##   meq/L = [conc (mass/vol)] / [atomic mass (mass/mol)]  ->  mol/L
+  ##           expressed as mmol/L, then multiplied by |valence|.
+  ##
+  ## Doing this on extracted vectors (rather than inside dplyr::mutate) also
+  ## avoids a non-standard-evaluation pitfall where symbolic-mode set_units()
+  ## fails to resolve data columns inside a mutate data mask.
 
   to_convert <-
     df |>
@@ -1844,17 +1846,14 @@ to_meq <- function(df) {
     to_convert |>
     split(to_convert$units.analyte) |>
     purrr::imap(\(subset, unit_str) {
-      subset |>
-        mutate(
-          analyte = glue::glue("{analyte}_"),
-          value = units::set_units(value, unit_str, mode = "standard"),
-          value = value / units::set_units(atomic_mass.analyte, g / mol),
-          valence_abs = units::set_units(abs(valence.analyte), absValence),
-          value = value * valence_abs,
-          value = units::set_units(value, mEq / L),
-          value = units::drop_units(value)
-        ) |>
-        select(-valence_abs)
+      conc  <- units::set_units(subset$value, unit_str, mode = "standard")
+      molar <- conc / units::set_units(subset$atomic_mass.analyte, "g/mol",
+                                       mode = "standard")
+      meq_L <- units::set_units(molar, "mmol/L", mode = "standard") *
+               abs(subset$valence.analyte)
+      subset$value   <- as.numeric(units::drop_units(meq_L))   # meq/L
+      subset$analyte <- paste0(subset$analyte, "_")
+      subset
     }) |>
     purrr::list_rbind()
 
