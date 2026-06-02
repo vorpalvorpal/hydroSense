@@ -45,7 +45,7 @@
 #'
 #' @examples
 #' # Derive hardness from Ca + Mg where it is not measured directly.
-#' chem <- subset(leachate_demo,
+#' chem <- subset(leachate_demo(),
 #'                site_id == "downstream" & analyte %in% c("Ca", "Mg"))
 #' out <- derive_hardness(chem)
 #' subset(out, analyte == "hardness")

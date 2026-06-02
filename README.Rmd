@@ -92,12 +92,12 @@ ssd_hc50("Cu")
 
 ## Learn more
 
-- [Analyte normalisation](https://www.kedumba.com.au/leachatetools/articles/normalisation.html)
+- [Analyte normalisation](https://vorpalvorpal.github.io/leachatetools/articles/normalisation.html)
   — how bioavailability and physicochemical corrections bring concentrations to
   the SSD index condition.
-- [Interpreting chronic AmsPAF outputs](https://www.kedumba.com.au/leachatetools/articles/chronic-amspaf-interpretation.html)
+- [Interpreting chronic AmsPAF outputs](https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.html)
   — what the returned PAF values mean for an environmental assessment.
-- [Function reference](https://www.kedumba.com.au/leachatetools/reference/index.html)
+- [Function reference](https://vorpalvorpal.github.io/leachatetools/reference/index.html)
   — all exported functions, grouped by pillar.
 
 ## License

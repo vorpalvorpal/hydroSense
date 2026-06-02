@@ -75,8 +75,9 @@ end-member. (It is fictional — generated from a mixing model so the example is
 reproducible.)
 
 ```{r data}
-str(unique(leachate_demo$site_id))
-head(subset(leachate_demo, site_id == "downstream"), 4)
+demo <- leachate_demo()
+unique(demo$site_id)
+head(subset(demo, site_id == "downstream"), 4)
 ```
 
 Supplying the leachate and reference chemistry directly uses the
@@ -84,9 +85,9 @@ caller-provided end-member path (no site-matching infrastructure required):
 
 ```{r run-lmf}
 out <- add_lmf(
-  df             = subset(leachate_demo, site_id == "downstream"),
-  leachate_data  = subset(leachate_demo, site_id == "leachate"),
-  reference_data = subset(leachate_demo, site_id == "reference")
+  df             = subset(demo, site_id == "downstream"),
+  leachate_data  = subset(demo, site_id == "leachate"),
+  reference_data = subset(demo, site_id == "reference")
 )
 
 lmf <- subset(out, analyte == "LMF",

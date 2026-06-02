@@ -51,7 +51,7 @@
 #'   `limiting_site` is `NA`.
 #'
 #' @examples
-#' included <- prescreen_analytes(leachate_demo, k = 0.05)
+#' included <- prescreen_analytes(leachate_demo(), k = 0.05)
 #' included                    # analytes retained
 #' attr(included, "excluded")  # see what was dropped (and why)
 #'

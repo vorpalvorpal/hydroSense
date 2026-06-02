@@ -252,8 +252,9 @@
 #' \donttest{
 #' # Per-sample multi-substance PAF for the impacted site, with local
 #' # background subtracted via the reference site. Uses the bundled SSD data.
-#' ds  <- subset(leachate_demo, site_id == "downstream")
-#' ref <- subset(leachate_demo, site_id == "reference")
+#' demo <- leachate_demo()
+#' ds  <- subset(demo, site_id == "downstream")
+#' ref <- subset(demo, site_id == "reference")
 #' out <- add_amspaf(ds, reference = ref)
 #' subset(out, analyte == "AmsPAF", c("sample_id", "value"))
 #' }

@@ -11,7 +11,7 @@ Tools for analysing water quality in systems potentially impacted by landfill le
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://www.kedumba.com.au/leachatetools/}
+  \item \url{https://vorpalvorpal.github.io/leachatetools/}
   \item \url{https://github.com/vorpalvorpal/leachatetools}
   \item Report bugs at \url{https://github.com/vorpalvorpal/leachatetools/issues}
 }

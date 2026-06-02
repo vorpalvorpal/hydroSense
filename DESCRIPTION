@@ -12,7 +12,7 @@ Description: Tools for analysing water quality in systems potentially impacted
 License: MIT + file LICENSE
 Depends:
     R (>= 4.1.0)
-URL: https://www.kedumba.com.au/leachatetools/, https://github.com/vorpalvorpal/leachatetools
+URL: https://vorpalvorpal.github.io/leachatetools/, https://github.com/vorpalvorpal/leachatetools
 BugReports: https://github.com/vorpalvorpal/leachatetools/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -50,4 +50,3 @@ Suggests:
     withr
 VignetteBuilder: knitr
 Config/testthat/edition: 3
-LazyData: true

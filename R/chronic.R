@@ -88,7 +88,7 @@
 #' @examples
 #' # Chronic (time-weighted geometric-mean) chemistry for one downstream
 #' # analyte at two focal dates, from the bundled demo data.
-#' cu <- subset(leachate_demo, site_id == "downstream" & analyte == "Cu")
+#' cu <- subset(leachate_demo(), site_id == "downstream" & analyte == "Cu")
 #' time_weighted_aggregate(
 #'   cu,
 #'   focal_dates = as.Date(c("2024-06-01", "2024-12-01")),

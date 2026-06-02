@@ -92,4 +92,8 @@ leachate_demo$detected[leachate_demo$site_id == "downstream" &
                        leachate_demo$analyte == "F" &
                        leachate_demo$sample_id == "DS-03"] <- FALSE
 
-usethis::use_data(leachate_demo, overwrite = TRUE)
+# Stored in the qs2 "qdata" format (qs2 is already a hard dependency) and read
+# back by the exported accessor leachate_demo(). Not lazy-loaded R data, so it
+# lives under inst/extdata rather than data/.
+dir.create("inst/extdata", recursive = TRUE, showWarnings = FALSE)
+qs2::qd_save(leachate_demo, "inst/extdata/leachate_demo.qs2")

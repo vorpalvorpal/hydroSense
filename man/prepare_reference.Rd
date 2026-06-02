@@ -85,7 +85,7 @@ summaries available: \code{"median"}, \code{"arith_mean"}, \code{"p80"}, \code{"
 \code{"p95"}.
 }
 \examples{
-ref <- subset(leachate_demo, site_id == "reference")
+ref <- subset(leachate_demo(), site_id == "reference")
 
 # Default: geometric mean (recommended)
 prep_ref <- prepare_reference(ref)
