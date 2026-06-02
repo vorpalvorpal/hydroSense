@@ -50,7 +50,6 @@ Numeric — % species affected, or NA.
 ## Examples
 
 ``` r
-if (FALSE) { # \dontrun{
 ssd_pct("Zn", conc_ug_L = 30)
-} # }
+#> [1] 42.01064
 ```

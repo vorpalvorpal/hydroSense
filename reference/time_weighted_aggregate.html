@@ -26,7 +26,8 @@ biological community state."></head><body>
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/normalisation.html">Analyte normalisation</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/leachate-mixing-fraction.html">Detecting leachate with the LMF</a></li>
+    <li><a class="dropdown-item" href="../articles/normalisation.html">Analyte normalisation</a></li>
     <li><a class="dropdown-item" href="../articles/chronic-amspaf-interpretation.html">Interpreting chronic AmsPAF outputs</a></li>
   </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
@@ -168,22 +169,20 @@ pulsed exposures.</p>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="va">bio_dates</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/as.Date.html" class="external-link">as.Date</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"2024-04-01"</span>, <span class="st">"2025-04-01"</span>, <span class="st">"2026-04-01"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Chronic chemistry (e.g. for predictor variables in a calibration model)</span></span></span>
-<span class="r-in"><span><span class="va">chr_chem</span> <span class="op">&lt;-</span> <span class="fu">time_weighted_aggregate</span><span class="op">(</span></span></span>
-<span class="r-in"><span>  <span class="va">imp_chemistry</span>, focal_dates <span class="op">=</span> <span class="va">bio_dates</span>,</span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># Chronic (time-weighted geometric-mean) chemistry for one downstream</span></span></span>
+<span class="r-in"><span><span class="co"># analyte at two focal dates, from the bundled demo data.</span></span></span>
+<span class="r-in"><span><span class="va">cu</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">leachate_demo</span>, <span class="va">site_id</span> <span class="op">==</span> <span class="st">"downstream"</span> <span class="op">&amp;</span> <span class="va">analyte</span> <span class="op">==</span> <span class="st">"Cu"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu">time_weighted_aggregate</span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="va">cu</span>,</span></span>
+<span class="r-in"><span>  focal_dates <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/as.Date.html" class="external-link">as.Date</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"2024-06-01"</span>, <span class="st">"2024-12-01"</span><span class="op">)</span><span class="op">)</span>,</span></span>
 <span class="r-in"><span>  tau_days <span class="op">=</span> <span class="fl">90</span>, window_days <span class="op">=</span> <span class="fl">365</span>, summary <span class="op">=</span> <span class="st">"geom_mean"</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Chronic AmsPAF (Path B): per-sample AmsPAF then time-average</span></span></span>
-<span class="r-in"><span><span class="va">ps_amspaf</span>  <span class="op">&lt;-</span> <span class="fu"><a href="add_amspaf.html">add_amspaf</a></span><span class="op">(</span><span class="va">imp_chemistry</span>, reference <span class="op">=</span> <span class="va">prep_ref</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">chr_amspaf</span> <span class="op">&lt;-</span> <span class="fu">time_weighted_aggregate</span><span class="op">(</span></span></span>
-<span class="r-in"><span>  <span class="fu">dplyr</span><span class="fu">::</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span><span class="va">ps_amspaf</span>, <span class="va">analyte</span> <span class="op">==</span> <span class="st">"AmsPAF"</span><span class="op">)</span>,</span></span>
-<span class="r-in"><span>  focal_dates <span class="op">=</span> <span class="va">bio_dates</span>, summary <span class="op">=</span> <span class="st">"arith_mean"</span></span></span>
-<span class="r-in"><span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 2 × 8</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   focal_date site_id    sample_id     analyte value detected n_samples_in_window</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;date&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>      <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>         <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;lgl&gt;</span>                  <span style="color: #949494; font-style: italic;">&lt;int&gt;</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> 2024-06-01 downstream chronic_2024… Cu       7.56 TRUE                       3</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> 2024-12-01 downstream chronic_2024… Cu       7.50 TRUE                       6</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 1 more variable: n_imputed_in_window &lt;int&gt;</span></span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

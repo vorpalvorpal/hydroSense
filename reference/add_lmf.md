@@ -176,13 +176,24 @@ Christophersen N, Hooper RP (1992) Water Resources Research
 ## Examples
 
 ``` r
-if (FALSE) { # \dontrun{
-# Quantify each sample's leachate-mixing fraction from its major-ion
-# signature, calibrated against leachate and reference end-members.
-add_lmf(
-  df             = samples_long,
-  leachate_data  = leachate_long,
-  reference_data = reference_long
+# \donttest{
+# Quantify each downstream sample's leachate-mixing fraction from its
+# major-ion signature, calibrated against the leachate and reference
+# end-members in the bundled demo data.
+out <- add_lmf(
+  df             = subset(leachate_demo, site_id == "downstream"),
+  leachate_data  = subset(leachate_demo, site_id == "leachate"),
+  reference_data = subset(leachate_demo, site_id == "reference")
 )
-} # }
+subset(out, analyte == "LMF", c("sample_id", "value"))
+#> # A tibble: 6 × 2
+#>   sample_id value
+#>   <chr>     <dbl>
+#> 1 DS-01      15.1
+#> 2 DS-02      14.9
+#> 3 DS-03      14.2
+#> 4 DS-04      14.9
+#> 5 DS-05      14.7
+#> 6 DS-06      15.0
+# }
 ```

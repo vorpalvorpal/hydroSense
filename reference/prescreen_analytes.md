@@ -91,9 +91,14 @@ below the threshold are reported separately so the caller is aware.
 ## Examples
 
 ``` r
-if (FALSE) { # \dontrun{
-included <- prescreen_analytes(chemistry, k = 0.05)
-attr(included, "excluded")  # see what was dropped
-chem_f <- dplyr::filter(chemistry, analyte %in% included)
-} # }
+included <- prescreen_analytes(leachate_demo, k = 0.05)
+included                    # analytes retained
+#>  [1] "CO3-CaCO3"   "Ca"          "Cl"          "Cu"          "DOC"        
+#>  [6] "F"           "HCO3-CaCO3"  "K"           "Mg"          "NH3-N"      
+#> [11] "NO2-N"       "NO3-N"       "Na"          "SO4²⁻"       "Zn"         
+#> [16] "hardness"    "pH"          "temperature"
+#> attr(,"excluded")
+#> character(0)
+attr(included, "excluded")  # see what was dropped (and why)
+#> character(0)
 ```

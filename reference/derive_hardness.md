@@ -70,14 +70,21 @@ Idempotent if all three are already consistent.
 ## Examples
 
 ``` r
-if (FALSE) { # \dontrun{
-# Fill missing hardness where Ca and Mg are both measured
-chem2 <- derive_hardness(chem)
-
-# Call twice in a typical pipeline: pre- and post-imputation
-chem      <- derive_hardness(chem)
-chem_imp  <- impute_chemistry(chem, model)
-chem_imp2 <- impute_coanalytes(chem_imp, model)
-chem_imp3 <- derive_hardness(chem_imp2)
-} # }
+# Derive hardness from Ca + Mg where it is not measured directly.
+chem <- subset(leachate_demo,
+               site_id == "downstream" & analyte %in% c("Ca", "Mg"))
+out <- derive_hardness(chem)
+#> ℹ derive_hardness: 6 rows derived (hardness=6); 0 samples flagged inconsistent.
+subset(out, analyte == "hardness")
+#> # A tibble: 6 × 11
+#>   sample_id site_id    datetime   analyte  value detected units.analyte
+#>   <chr>     <chr>      <date>     <chr>    <dbl> <lgl>    <chr>        
+#> 1 DS-01     downstream 2024-01-15 hardness  295. TRUE     NA           
+#> 2 DS-02     downstream 2024-03-15 hardness  302. TRUE     NA           
+#> 3 DS-03     downstream 2024-05-15 hardness  306. TRUE     NA           
+#> 4 DS-04     downstream 2024-07-15 hardness  300. TRUE     NA           
+#> 5 DS-05     downstream 2024-09-15 hardness  296. TRUE     NA           
+#> 6 DS-06     downstream 2024-11-15 hardness  303. TRUE     NA           
+#> # ℹ 4 more variables: valence.analyte <dbl>, atomic_mass.analyte <dbl>,
+#> #   imputed <lgl>, imputed_kind <chr>
 ```

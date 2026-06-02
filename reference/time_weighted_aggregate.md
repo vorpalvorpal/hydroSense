@@ -146,20 +146,18 @@ exposures.
 ## Examples
 
 ``` r
-if (FALSE) { # \dontrun{
-bio_dates <- as.Date(c("2024-04-01", "2025-04-01", "2026-04-01"))
-
-# Chronic chemistry (e.g. for predictor variables in a calibration model)
-chr_chem <- time_weighted_aggregate(
-  imp_chemistry, focal_dates = bio_dates,
+# Chronic (time-weighted geometric-mean) chemistry for one downstream
+# analyte at two focal dates, from the bundled demo data.
+cu <- subset(leachate_demo, site_id == "downstream" & analyte == "Cu")
+time_weighted_aggregate(
+  cu,
+  focal_dates = as.Date(c("2024-06-01", "2024-12-01")),
   tau_days = 90, window_days = 365, summary = "geom_mean"
 )
-
-# Chronic AmsPAF (Path B): per-sample AmsPAF then time-average
-ps_amspaf  <- add_amspaf(imp_chemistry, reference = prep_ref)
-chr_amspaf <- time_weighted_aggregate(
-  dplyr::filter(ps_amspaf, analyte == "AmsPAF"),
-  focal_dates = bio_dates, summary = "arith_mean"
-)
-} # }
+#> # A tibble: 2 × 8
+#>   focal_date site_id    sample_id     analyte value detected n_samples_in_window
+#>   <date>     <chr>      <chr>         <chr>   <dbl> <lgl>                  <int>
+#> 1 2024-06-01 downstream chronic_2024… Cu       7.56 TRUE                       3
+#> 2 2024-12-01 downstream chronic_2024… Cu       7.50 TRUE                       6
+#> # ℹ 1 more variable: n_imputed_in_window <int>
 ```

@@ -145,19 +145,21 @@ De Zwart D, Posthuma L (2005) Environmental Toxicology and Chemistry
 ## Examples
 
 ``` r
-if (FALSE) { # \dontrun{
-# Long-format monitoring data: one row per sample x analyte.
-obs <- tibble::tibble(
-  sample_id = c("S1", "S1", "S1"),
-  site_id   = "downstream",
-  analyte   = c("Cu", "Zn", "temperature"),
-  value     = c(3.2, 18, 19)
-)
-ref <- tibble::tibble(
-  sample_id = "R1", site_id = "upstream",
-  analyte   = c("Cu", "Zn"), value = c(1.1, 6)
-)
-options(leachatetools.guideline_dir = "path/to/guideline data")
-add_amspaf(obs, reference = ref)
-} # }
+# \donttest{
+# Per-sample multi-substance PAF for the impacted site, with local
+# background subtracted via the reference site. Uses the bundled SSD data.
+ds  <- subset(leachate_demo, site_id == "downstream")
+ref <- subset(leachate_demo, site_id == "reference")
+out <- add_amspaf(ds, reference = ref)
+subset(out, analyte == "AmsPAF", c("sample_id", "value"))
+#> # A tibble: 6 × 2
+#>   sample_id value
+#>   <chr>     <dbl>
+#> 1 DS-01      92.7
+#> 2 DS-02      95.1
+#> 3 DS-03      96.0
+#> 4 DS-04      94.2
+#> 5 DS-05      95.8
+#> 6 DS-06      95.9
+# }
 ```

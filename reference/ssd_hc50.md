@@ -46,9 +46,8 @@ Numeric scalar — HC50 in µg/L, or NA.
 ## Examples
 
 ``` r
-if (FALSE) { # \dontrun{
 # HC50 (50% of species affected) for copper, used as the
 # Toxic-Unit denominator in the msPAF concentration-addition step:
 ssd_hc50("Cu")
-} # }
+#> [1] 4.225759
 ```

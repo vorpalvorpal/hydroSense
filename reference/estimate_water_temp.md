@@ -158,17 +158,22 @@ which requires the resulting water `temperature` rows for ammonia.
 ## Examples
 
 ``` r
-if (FALSE) { # \dontrun{
-air  <- tibble::tibble(
-  datetime       = seq(as.Date("2020-01-01"), as.Date("2023-12-31"), by = "day"),
-  air_temp_mean_C = rnorm(length(datetime), mean = 15, sd = 8)
+set.seed(1)
+air <- tibble::tibble(
+  datetime        = seq(as.Date("2020-01-01"), as.Date("2022-12-31"), by = "day")
 )
+air$air_temp_mean_C <- rnorm(nrow(air), mean = 15, sd = 8)
 wt_obs <- tibble::tibble(
-  datetime      = sample(air$datetime, 80),
-  water_temp_C  = air$air_temp_mean_C[match(datetime, air$datetime)] * 0.85 + 2 + rnorm(80, 0, 1)
+  datetime     = sample(air$datetime, 80),
+  water_temp_C = NA_real_
 )
+wt_obs$water_temp_C <-
+  air$air_temp_mean_C[match(wt_obs$datetime, air$datetime)] * 0.85 + 2 +
+  rnorm(80, 0, 1)
 wt <- estimate_water_temp(air, wt_obs)
-# Add to chemistry df:
-# chemistry <- dplyr::bind_rows(chemistry, dplyr::mutate(wt, sample_id = ...))
-} # }
+#> ℹ Selected air-water model: air + season (day-of-year harmonic). R² = 0.976,
+#>   RMSE = 1.01 °C, AICc = 239.4 (n = 80).
+#>   AICc comparison (lower preferred): air only = 243.7, air + season = 239.4.
+attr(wt, "model")  # which model was selected (air-only vs air + season)
+#> [1] "air + season (day-of-year harmonic)"
 ```

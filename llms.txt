@@ -100,6 +100,11 @@ licensing terms.
 
 # Package index
 
+## Example data
+
+- [`leachate_demo`](https://www.kedumba.com.au/leachatetools/reference/leachate_demo.md)
+  : Synthetic leachate-impacted water-quality data (demo)
+
 ## Leachate detection (LMF)
 
 End-member mixing analysis to quantify the leachate-mixing fraction of a
@@ -179,5 +184,7 @@ Detection-frequency prescreening and chronic time-weighted averaging.
 
 - [Interpreting chronic AmsPAF
   outputs](https://www.kedumba.com.au/leachatetools/articles/chronic-amspaf-interpretation.md):
+- [Detecting leachate with the Leachate Mixing Fraction
+  (LMF)](https://www.kedumba.com.au/leachatetools/articles/leachate-mixing-fraction.md):
 - [Analyte normalisation: bioavailability adjustments in
   leachatetools](https://www.kedumba.com.au/leachatetools/articles/normalisation.md):

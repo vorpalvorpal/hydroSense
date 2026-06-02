@@ -105,15 +105,54 @@ available: `"median"`, `"arith_mean"`, `"p80"`, `"p90"`, `"p95"`.
 ## Examples
 
 ``` r
-if (FALSE) { # \dontrun{
+ref <- subset(leachate_demo, site_id == "reference")
+
 # Default: geometric mean (recommended)
-prep_ref <- prepare_reference(ref_df)
-
-# 80th percentile
-prep_ref <- prepare_reference(ref_df, summary = "p80")
-
-# With bootstrap CI
-prep_ref <- prepare_reference(ref_df, bootstrap_ci = TRUE)
+prep_ref <- prepare_reference(ref)
 prep_ref$ref_table
-} # }
+#> # A tibble: 18 × 3
+#>    analyte     ref_norm n_obs
+#>    <chr>          <dbl> <int>
+#>  1 CO3-CaCO3     4.11       6
+#>  2 Ca           21.8        6
+#>  3 Cl           18.0        6
+#>  4 Cu            0.257      6
+#>  5 DOC           2.02       6
+#>  6 F             0.201      6
+#>  7 HCO3-CaCO3   54.3        6
+#>  8 K             3.01       6
+#>  9 Mg            6.08       6
+#> 10 NH3-N       150.         6
+#> 11 NO2-N         0.0302     6
+#> 12 NO3-N         0.790      6
+#> 13 Na           12.1        6
+#> 14 SO4²⁻        12.0        6
+#> 15 Zn            1.75       6
+#> 16 hardness     80.3        6
+#> 17 pH            7.62       6
+#> 18 temperature  15.6        6
+
+# Or a higher percentile of the local background distribution:
+prepare_reference(ref, summary = "p80")$ref_table
+#> # A tibble: 18 × 3
+#>    analyte     ref_norm n_obs
+#>    <chr>          <dbl> <int>
+#>  1 CO3-CaCO3     4.13       6
+#>  2 Ca           22.1        6
+#>  3 Cl           18.5        6
+#>  4 Cu            0.262      6
+#>  5 DOC           2.07       6
+#>  6 F             0.206      6
+#>  7 HCO3-CaCO3   54.4        6
+#>  8 K             3.04       6
+#>  9 Mg            6.28       6
+#> 10 NH3-N       159.         6
+#> 11 NO2-N         0.0308     6
+#> 12 NO3-N         0.804      6
+#> 13 Na           12.3        6
+#> 14 SO4²⁻        12.3        6
+#> 15 Zn            1.80       6
+#> 16 hardness     81.3        6
+#> 17 pH            7.64       6
+#> 18 temperature  16.3        6
 ```

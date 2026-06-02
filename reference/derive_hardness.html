@@ -20,7 +20,8 @@ in Ca and Mg:"></head><body>
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/normalisation.html">Analyte normalisation</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/leachate-mixing-fraction.html">Detecting leachate with the LMF</a></li>
+    <li><a class="dropdown-item" href="../articles/normalisation.html">Analyte normalisation</a></li>
     <li><a class="dropdown-item" href="../articles/chronic-amspaf-interpretation.html">Interpreting chronic AmsPAF outputs</a></li>
   </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
@@ -106,16 +107,23 @@ just imputed.  Idempotent if all three are already consistent.</p>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="co"># Fill missing hardness where Ca and Mg are both measured</span></span></span>
-<span class="r-in"><span><span class="va">chem2</span> <span class="op">&lt;-</span> <span class="fu">derive_hardness</span><span class="op">(</span><span class="va">chem</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Call twice in a typical pipeline: pre- and post-imputation</span></span></span>
-<span class="r-in"><span><span class="va">chem</span>      <span class="op">&lt;-</span> <span class="fu">derive_hardness</span><span class="op">(</span><span class="va">chem</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">chem_imp</span>  <span class="op">&lt;-</span> <span class="fu"><a href="impute_chemistry.html">impute_chemistry</a></span><span class="op">(</span><span class="va">chem</span>, <span class="va">model</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">chem_imp2</span> <span class="op">&lt;-</span> <span class="fu"><a href="impute_coanalytes.html">impute_coanalytes</a></span><span class="op">(</span><span class="va">chem_imp</span>, <span class="va">model</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">chem_imp3</span> <span class="op">&lt;-</span> <span class="fu">derive_hardness</span><span class="op">(</span><span class="va">chem_imp2</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># Derive hardness from Ca + Mg where it is not measured directly.</span></span></span>
+<span class="r-in"><span><span class="va">chem</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">leachate_demo</span>,</span></span>
+<span class="r-in"><span>               <span class="va">site_id</span> <span class="op">==</span> <span class="st">"downstream"</span> <span class="op">&amp;</span> <span class="va">analyte</span> <span class="op"><a href="https://rdrr.io/r/base/match.html" class="external-link">%in%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Ca"</span>, <span class="st">"Mg"</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">out</span> <span class="op">&lt;-</span> <span class="fu">derive_hardness</span><span class="op">(</span><span class="va">chem</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> derive_hardness: 6 rows derived (hardness=6); 0 samples flagged inconsistent.</span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">out</span>, <span class="va">analyte</span> <span class="op">==</span> <span class="st">"hardness"</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 6 × 11</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   sample_id site_id    datetime   analyte  value detected units.analyte</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>      <span style="color: #949494; font-style: italic;">&lt;date&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>    <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;lgl&gt;</span>    <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>        </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> DS-01     downstream 2024-01-15 hardness  295. TRUE     <span style="color: #BB0000;">NA</span>           </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> DS-02     downstream 2024-03-15 hardness  302. TRUE     <span style="color: #BB0000;">NA</span>           </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> DS-03     downstream 2024-05-15 hardness  306. TRUE     <span style="color: #BB0000;">NA</span>           </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">4</span> DS-04     downstream 2024-07-15 hardness  300. TRUE     <span style="color: #BB0000;">NA</span>           </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">5</span> DS-05     downstream 2024-09-15 hardness  296. TRUE     <span style="color: #BB0000;">NA</span>           </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">6</span> DS-06     downstream 2024-11-15 hardness  303. TRUE     <span style="color: #BB0000;">NA</span>           </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 4 more variables: valence.analyte &lt;dbl&gt;, atomic_mass.analyte &lt;dbl&gt;,</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;">#   imputed &lt;lgl&gt;, imputed_kind &lt;chr&gt;</span></span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

@@ -1,5 +1,10 @@
 # Package index
 
+## Example data
+
+- [`leachate_demo`](https://www.kedumba.com.au/leachatetools/reference/leachate_demo.md)
+  : Synthetic leachate-impacted water-quality data (demo)
+
 ## Leachate detection (LMF)
 
 End-member mixing analysis to quantify the leachate-mixing fraction of a

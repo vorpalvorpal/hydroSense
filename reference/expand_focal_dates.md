@@ -35,10 +35,9 @@ A `Date` vector from `start` to `end` at the specified increment.
 ## Examples
 
 ``` r
-if (FALSE) { # \dontrun{
-# Daily sequence for 2024–2025
-focal_dates <- expand_focal_dates("2024-01-01", "2025-12-31", by = "day")
-
-chr_chem <- time_weighted_aggregate(imp, focal_dates = focal_dates)
-} # }
+# Monthly focal dates across 2024, e.g. to feed time_weighted_aggregate().
+expand_focal_dates("2024-01-01", "2024-12-31", by = "month")
+#>  [1] "2024-01-01" "2024-02-01" "2024-03-01" "2024-04-01" "2024-05-01"
+#>  [6] "2024-06-01" "2024-07-01" "2024-08-01" "2024-09-01" "2024-10-01"
+#> [11] "2024-11-01" "2024-12-01"
 ```
