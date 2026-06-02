@@ -257,15 +257,13 @@
 #'   $upper          numeric — upper CI %
 #'   $note           character vector — caveats
 #' @examples
-#' \dontrun{
-#' # Fraction of species affected by 9.3 mg/L total ammonia-N at the
-#' # pH 7.0 / 20 degC index condition (requires the ANZG guideline data):
-#' options(leachatetools.guideline_dir = "path/to/guideline data")
+#' # Fraction of species affected by 9.3 mg/L total ammonia-N at the pH 7.0 /
+#' # 20 degC index condition. Uses the package's bundled SSD data; set
+#' # options(leachatetools.guideline_dir=) to fit from the ANZG XLSX files.
 #' ssd_paf("NH3-N", conc_ug_L = 9321)
 #'
 #' # NO3-N needs hardness for automatic soft/moderate/hard SSD selection:
 #' ssd_paf("NO3-N", conc_ug_L = 50000, hardness_mg_L = 90)
-#' }
 #' @export
 ssd_paf <- function(analyte,
                     conc_ug_L,
@@ -345,11 +343,9 @@ ssd_paf <- function(analyte,
 #' @inheritParams ssd_paf
 #' @return Numeric scalar — HC50 in µg/L, or NA.
 #' @examples
-#' \dontrun{
 #' # HC50 (50% of species affected) for copper, used as the
 #' # Toxic-Unit denominator in the msPAF concentration-addition step:
 #' ssd_hc50("Cu")
-#' }
 #' @export
 ssd_hc50 <- function(analyte,
                      method        = c("multi", "anzecc"),
@@ -379,9 +375,7 @@ ssd_hc50 <- function(analyte,
 #' @inheritParams ssd_paf
 #' @return Numeric — % species affected, or NA.
 #' @examples
-#' \dontrun{
 #' ssd_pct("Zn", conc_ug_L = 30)
-#' }
 #' @export
 ssd_pct <- function(analyte, conc_ug_L, method = "multi",
                     hardness_mg_L = NULL,

@@ -89,19 +89,20 @@
 #'     candidate model and which was selected.
 #'
 #' @examples
-#' \dontrun{
-#' air  <- tibble::tibble(
-#'   datetime       = seq(as.Date("2020-01-01"), as.Date("2023-12-31"), by = "day"),
-#'   air_temp_mean_C = rnorm(length(datetime), mean = 15, sd = 8)
+#' set.seed(1)
+#' air <- tibble::tibble(
+#'   datetime        = seq(as.Date("2020-01-01"), as.Date("2022-12-31"), by = "day")
 #' )
+#' air$air_temp_mean_C <- rnorm(nrow(air), mean = 15, sd = 8)
 #' wt_obs <- tibble::tibble(
-#'   datetime      = sample(air$datetime, 80),
-#'   water_temp_C  = air$air_temp_mean_C[match(datetime, air$datetime)] * 0.85 + 2 + rnorm(80, 0, 1)
+#'   datetime     = sample(air$datetime, 80),
+#'   water_temp_C = NA_real_
 #' )
+#' wt_obs$water_temp_C <-
+#'   air$air_temp_mean_C[match(wt_obs$datetime, air$datetime)] * 0.85 + 2 +
+#'   rnorm(80, 0, 1)
 #' wt <- estimate_water_temp(air, wt_obs)
-#' # Add to chemistry df:
-#' # chemistry <- dplyr::bind_rows(chemistry, dplyr::mutate(wt, sample_id = ...))
-#' }
+#' attr(wt, "model")  # which model was selected (air-only vs air + season)
 #'
 #' @seealso [get_silo_air_temp()] to source `air_temp_df` from SILO for an
 #'   Australian location; [add_amspaf()], which requires the resulting water

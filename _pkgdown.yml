@@ -23,12 +23,18 @@ navbar:
     articles:
       text: Articles
       menu:
+        - text: Detecting leachate with the LMF
+          href: articles/leachate-mixing-fraction.html
         - text: Analyte normalisation
           href: articles/normalisation.html
         - text: Interpreting chronic AmsPAF outputs
           href: articles/chronic-amspaf-interpretation.html
 
 reference:
+  - title: Example data
+    contents:
+      - leachate_demo
+
   - title: Leachate detection (LMF)
     desc: >
       End-member mixing analysis to quantify the leachate-mixing fraction of a

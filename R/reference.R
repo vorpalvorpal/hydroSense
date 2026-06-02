@@ -63,17 +63,14 @@
 #'   }
 #'
 #' @examples
-#' \dontrun{
+#' ref <- subset(leachate_demo, site_id == "reference")
+#'
 #' # Default: geometric mean (recommended)
-#' prep_ref <- prepare_reference(ref_df)
-#'
-#' # 80th percentile
-#' prep_ref <- prepare_reference(ref_df, summary = "p80")
-#'
-#' # With bootstrap CI
-#' prep_ref <- prepare_reference(ref_df, bootstrap_ci = TRUE)
+#' prep_ref <- prepare_reference(ref)
 #' prep_ref$ref_table
-#' }
+#'
+#' # Or a higher percentile of the local background distribution:
+#' prepare_reference(ref, summary = "p80")$ref_table
 #'
 #' @export
 prepare_reference <- function(

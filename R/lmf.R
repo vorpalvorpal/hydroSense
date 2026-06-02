@@ -295,14 +295,16 @@
 #' Kjeldsen P et al. (2002) Crit Rev Environ Sci Technol 32(4).
 #'
 #' @examples
-#' \dontrun{
-#' # Quantify each sample's leachate-mixing fraction from its major-ion
-#' # signature, calibrated against leachate and reference end-members.
-#' add_lmf(
-#'   df             = samples_long,
-#'   leachate_data  = leachate_long,
-#'   reference_data = reference_long
+#' \donttest{
+#' # Quantify each downstream sample's leachate-mixing fraction from its
+#' # major-ion signature, calibrated against the leachate and reference
+#' # end-members in the bundled demo data.
+#' out <- add_lmf(
+#'   df             = subset(leachate_demo, site_id == "downstream"),
+#'   leachate_data  = subset(leachate_demo, site_id == "leachate"),
+#'   reference_data = subset(leachate_demo, site_id == "reference")
 #' )
+#' subset(out, analyte == "LMF", c("sample_id", "value"))
 #' }
 #' @export
 

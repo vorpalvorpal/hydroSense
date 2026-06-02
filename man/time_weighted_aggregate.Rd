@@ -115,21 +115,13 @@ time-averaged chemistry, which can substantially under-state risk for
 pulsed exposures.
 }
 \examples{
-\dontrun{
-bio_dates <- as.Date(c("2024-04-01", "2025-04-01", "2026-04-01"))
-
-# Chronic chemistry (e.g. for predictor variables in a calibration model)
-chr_chem <- time_weighted_aggregate(
-  imp_chemistry, focal_dates = bio_dates,
+# Chronic (time-weighted geometric-mean) chemistry for one downstream
+# analyte at two focal dates, from the bundled demo data.
+cu <- subset(leachate_demo, site_id == "downstream" & analyte == "Cu")
+time_weighted_aggregate(
+  cu,
+  focal_dates = as.Date(c("2024-06-01", "2024-12-01")),
   tau_days = 90, window_days = 365, summary = "geom_mean"
 )
-
-# Chronic AmsPAF (Path B): per-sample AmsPAF then time-average
-ps_amspaf  <- add_amspaf(imp_chemistry, reference = prep_ref)
-chr_amspaf <- time_weighted_aggregate(
-  dplyr::filter(ps_amspaf, analyte == "AmsPAF"),
-  focal_dates = bio_dates, summary = "arith_mean"
-)
-}
 
 }

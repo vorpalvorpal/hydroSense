@@ -54,15 +54,10 @@ member can be derived from raw measurements, and again \strong{after}
 just imputed.  Idempotent if all three are already consistent.
 }
 \examples{
-\dontrun{
-# Fill missing hardness where Ca and Mg are both measured
-chem2 <- derive_hardness(chem)
-
-# Call twice in a typical pipeline: pre- and post-imputation
-chem      <- derive_hardness(chem)
-chem_imp  <- impute_chemistry(chem, model)
-chem_imp2 <- impute_coanalytes(chem_imp, model)
-chem_imp3 <- derive_hardness(chem_imp2)
-}
+# Derive hardness from Ca + Mg where it is not measured directly.
+chem <- subset(leachate_demo,
+               site_id == "downstream" & analyte \%in\% c("Ca", "Mg"))
+out <- derive_hardness(chem)
+subset(out, analyte == "hardness")
 
 }

@@ -51,11 +51,9 @@
 #'   `limiting_site` is `NA`.
 #'
 #' @examples
-#' \dontrun{
-#' included <- prescreen_analytes(chemistry, k = 0.05)
-#' attr(included, "excluded")  # see what was dropped
-#' chem_f <- dplyr::filter(chemistry, analyte %in% included)
-#' }
+#' included <- prescreen_analytes(leachate_demo, k = 0.05)
+#' included                    # analytes retained
+#' attr(included, "excluded")  # see what was dropped (and why)
 #'
 #' @export
 prescreen_analytes <- function(

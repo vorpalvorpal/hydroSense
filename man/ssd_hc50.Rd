@@ -36,9 +36,7 @@ affected. Used as the denominator when computing Toxic Units for the
 Concentration Addition combination step of msPAF.
 }
 \examples{
-\dontrun{
 # HC50 (50\% of species affected) for copper, used as the
 # Toxic-Unit denominator in the msPAF concentration-addition step:
 ssd_hc50("Cu")
-}
 }

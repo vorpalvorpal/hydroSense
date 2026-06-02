@@ -23,11 +23,7 @@ A thin convenience wrapper around \code{\link[base:seq.Date]{base::seq.Date()}} 
 common use is a daily sequence for time-series analysis.
 }
 \examples{
-\dontrun{
-# Daily sequence for 2024–2025
-focal_dates <- expand_focal_dates("2024-01-01", "2025-12-31", by = "day")
-
-chr_chem <- time_weighted_aggregate(imp, focal_dates = focal_dates)
-}
+# Monthly focal dates across 2024, e.g. to feed time_weighted_aggregate().
+expand_focal_dates("2024-01-01", "2024-12-31", by = "month")
 
 }

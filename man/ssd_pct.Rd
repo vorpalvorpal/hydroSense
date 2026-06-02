@@ -38,7 +38,5 @@ Numeric — \% species affected, or NA.
 Quick point-estimate only (no CI, no bootstrapping).
 }
 \examples{
-\dontrun{
 ssd_pct("Zn", conc_ug_L = 30)
-}
 }
