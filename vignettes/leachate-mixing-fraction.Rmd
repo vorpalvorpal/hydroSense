@@ -103,20 +103,22 @@ near 1 indicate the ions tell a consistent mixing story).
 
 ## Interpreting the result
 
-`add_lmf()` attaches indicative tier breaks to each LMF row (in the
-`*.guideline_*` columns). The defaults are:
+LMF is a continuous index: the raw percentage is the primary output. The
+following tier breaks are a suggested starting point for interpretation:
 
-| Tier | LMF (%) | Interpretation |
-|------|---------|----------------|
+| Tier | LMF (%) | Suggested interpretation |
+|------|---------|--------------------------|
 | 1 | ≤ 1 | Background — indistinguishable from local reference |
 | 2 | 1–5 | Trace impact — detectable signature, monitor trend |
 | 3 | 5–20 | Significant impact — clear signature, investigate |
 | 4 | > 20 | Severe impact — urgent investigation |
 
-These breaks are **starting points**, not regulatory thresholds. The tier 1/2
-boundary in particular should be reviewed against the LMF distribution of your
-own reference samples after deployment — ideally it should sit near the 95th
-percentile of LMF on known-clean water.
+> **Note:** These breaks are **starting points**, not regulatory thresholds.
+> Classification decisions should be made by the reporting system or analyst,
+> not imposed automatically. The tier 1/2 boundary in particular should be
+> reviewed against the LMF distribution of your own reference samples after
+> deployment — ideally it should sit near the 95th percentile of LMF on
+> known-clean water.
 
 ## When LMF returns `NA`
 

@@ -117,19 +117,6 @@
 ## NOTE: Full iterative per-species downweighting based on off-axis
 ## residuals is a planned future extension.
 ##
-## TIER SYSTEM
-## -----------
-## LMF is reported as a percentage (0 = pure reference, 100 = pure leachate).
-##
-##   Tier 1 (Background):          LMF <= 1    (<=1% leachate equivalent)
-##   Tier 2 (Trace impact):        LMF <= 5    (1-5%)
-##   Tier 3 (Significant impact):  LMF <= 20   (5-20%)
-##   Tier 4 (Severe impact):       LMF >  20   (>20%)
-##
-## Review these breaks against reference-site LMF distribution after
-## deployment. The tier 1/2 break should sit near the 95th percentile
-## of LMF on reference samples.
-##
 ## CALIBRATION WINDOW
 ## ------------------
 ## Mirrors the MTUI calibration window logic (see add_metal_index.R):
@@ -148,13 +135,6 @@
 ## ============================================================================
 ## File-level constants
 ## ============================================================================
-
-## Tier breaks in percentage units (0-100).
-## Review and adjust after deployment once you have reference-site LMF data.
-.LMF_BREAK_TRACE <- 1 ## 1% leachate equivalent
-.LMF_BREAK_MODERATE <- 5 ## 5% leachate equivalent
-.LMF_BREAK_SEVERE <- 20 ## 20% leachate equivalent
-.LMF_BREAK_CEILING <- 100 ## pure leachate end-member
 
 ## Candidate analyte names in the meq-converted panel (trailing "_").
 .LMF_ANALYTES_MEQ <- c(
@@ -279,11 +259,10 @@
 #'   (from the input), \code{lmf_naive} (the non-robust estimate for
 #'   comparison), \code{lmf_reason} (\code{NA} on success, reason code on
 #'   failure), \code{n_ions_used}, \code{n_ions_downweighted} (count of ions
-#'   whose weight was reduced by robust reweighting), \code{sigma_lmf},
-#'   \code{chi2_per_df} (diagnostic; computed on original weights), and four
-#'   guideline columns (\code{value/level_name/guideline/comments.guideline_1}
-#'   through \code{_4}). Columns present in \code{df} but not produced by
-#'   the LMF computation are \code{NA} in the appended rows.
+#'   whose weight was reduced by robust reweighting), \code{sigma_lmf}, and
+#'   \code{chi2_per_df} (diagnostic; computed on original weights). Columns
+#'   present in \code{df} but not produced by the LMF computation are
+#'   \code{NA} in the appended rows.
 #'
 #' @seealso \code{\link{build_leachate_endmember}},
 #'   \code{\link{build_reference_endmember}},
@@ -617,11 +596,6 @@ add_lmf <- function(
             max_sigma = max_sigma_lsi,
             max_chi2_df = max_chi2_per_df,
             uuid_lmf = uuid_lmf,
-            ref_window_start = ref_endmember$window_start,
-            ref_window_end = ref_endmember$window_end,
-            leach_window_start = leachate_em$window_start,
-            leach_window_end = leachate_em$window_end,
-            cl_anchor = leachate_em$cl_anchor,
             robust_iterations = robust_iterations,
             robust_threshold_k = robust_threshold_k,
             verbose = verbose,
@@ -679,12 +653,6 @@ add_lmf <- function(
 #' @param max_sigma Maximum permitted \code{sigma_lmf}.
 #' @param max_chi2_df Maximum permitted chi-squared per degree of freedom.
 #' @param uuid_lmf UUID of the LMF analyte entry in \code{analyteDF}.
-#' @param ref_window_start,ref_window_end Calibration window dates for the
-#'   reference end-member; stored in guideline comment strings.
-#' @param leach_window_start,leach_window_end Calibration window dates for the
-#'   leachate end-member; stored in guideline comment strings.
-#' @param cl_anchor Cl concentration (meq/L) used to anchor the leachate
-#'   end-member; stored in guideline comment strings.
 #' @param robust_iterations Number of Huber reweighting passes. Inherited from
 #'   \code{\link{add_lmf}}.
 #' @param robust_threshold_k MAD multiplier for Huber downweighting. Inherited
@@ -713,11 +681,6 @@ compute_lmf_for_sample <- function(
   max_sigma,
   max_chi2_df,
   uuid_lmf,
-  ref_window_start,
-  ref_window_end,
-  leach_window_start,
-  leach_window_end,
-  cl_anchor,
   robust_iterations = 3L,
   robust_threshold_k = 1.5,
   verbose = FALSE,
@@ -734,12 +697,7 @@ compute_lmf_for_sample <- function(
       sigma = sigma,
       chi2 = chi2,
       quantified = FALSE,
-      uuid_lmf = uuid_lmf,
-      ref_window_start = ref_window_start,
-      ref_window_end = ref_window_end,
-      leach_window_start = leach_window_start,
-      leach_window_end = leach_window_end,
-      cl_anchor = cl_anchor
+      uuid_lmf = uuid_lmf
     )
   }
 
@@ -1029,12 +987,7 @@ compute_lmf_for_sample <- function(
     sigma = sigma_lmf,
     chi2 = chi2_df,
     quantified = TRUE,
-    uuid_lmf = uuid_lmf,
-    ref_window_start = ref_window_start,
-    ref_window_end = ref_window_end,
-    leach_window_start = leach_window_start,
-    leach_window_end = leach_window_end,
-    cl_anchor = cl_anchor
+    uuid_lmf = uuid_lmf
   )
 }
 
@@ -1066,16 +1019,11 @@ compute_lmf_for_sample <- function(
 #'   diagnostic only).
 #' @param quantified Logical; \code{TRUE} on success, \code{FALSE} on failure.
 #' @param uuid_lmf UUID of the LMF analyte entry in \code{analyteDF}.
-#' @param ref_window_start,ref_window_end Reference calibration window dates.
-#' @param leach_window_start,leach_window_end Leachate calibration window dates.
-#' @param cl_anchor Cl anchor concentration (meq/L) for the leachate end-member.
 #'
 #' @return A one-row tibble with columns: \code{value} (robust LMF),
 #'   \code{lmf_naive}, \code{lmf_reason}, \code{n_ions_used},
 #'   \code{n_ions_downweighted}, \code{sigma_lmf}, \code{chi2_per_df},
-#'   \code{uuid.analyte}, \code{uuid}, \code{quantified}, and four sets of
-#'   guideline columns (\code{value/level_name/guideline/comments.guideline_1}
-#'   through \code{_4}).
+#'   \code{uuid.analyte}, \code{uuid}, \code{quantified}.
 #'
 #' @keywords internal
 make_lmf_row <- function(
@@ -1087,12 +1035,7 @@ make_lmf_row <- function(
   sigma,
   chi2,
   quantified,
-  uuid_lmf,
-  ref_window_start,
-  ref_window_end,
-  leach_window_start,
-  leach_window_end,
-  cl_anchor
+  uuid_lmf
 ) {
   dplyr::tibble(
     value = value,
@@ -1105,44 +1048,7 @@ make_lmf_row <- function(
     chi2_per_df = chi2,
     uuid.analyte = uuid_lmf,
     uuid = uuid::UUIDgenerate(),
-    detected = quantified,
-
-    ## Tier breaks: mixing-fraction units, reviewed after deployment.
-    value.guideline_1 = .LMF_BREAK_TRACE,
-    level_name.guideline_1 = "Background",
-    guideline.guideline_1 = "LMF threshold",
-    comments.guideline_1 = glue::glue(
-      "LMF <= {.LMF_BREAK_TRACE}%: chemistry indistinguishable from local ",
-      "reference water. Reference end-member: {ref_window_start} to ",
-      "{ref_window_end}."
-    ),
-
-    value.guideline_2 = .LMF_BREAK_MODERATE,
-    level_name.guideline_2 = "Trace impact",
-    guideline.guideline_2 = "LMF threshold",
-    comments.guideline_2 = glue::glue(
-      "LMF {.LMF_BREAK_TRACE}-{.LMF_BREAK_MODERATE}%: detectable leachate ",
-      "signature. Monitor trend."
-    ),
-
-    value.guideline_3 = .LMF_BREAK_SEVERE,
-    level_name.guideline_3 = "Significant impact",
-    guideline.guideline_3 = "LMF threshold",
-    comments.guideline_3 = glue::glue(
-      "LMF {.LMF_BREAK_MODERATE}-{.LMF_BREAK_SEVERE}%: clear leachate ",
-      "signature. Warrants investigation. Leachate end-member Cl anchor = ",
-      "{round(cl_anchor, 1)} meq/L, {leach_window_start} to {leach_window_end}."
-    ),
-
-    value.guideline_4 = .LMF_BREAK_CEILING,
-    level_name.guideline_4 = "Severe impact",
-    guideline.guideline_4 = "LMF threshold",
-    comments.guideline_4 = glue::glue(
-      "LMF > {.LMF_BREAK_SEVERE}%: severe leachate impact. ",
-      "Urgent investigation required. ",
-      "Values > 100 indicate sample chemistry exceeds the leachate ",
-      "end-member, possibly indicating proximity to a leachate source."
-    )
+    detected = quantified
   )
 }
 
