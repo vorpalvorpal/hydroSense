@@ -184,13 +184,14 @@ indicate the ions tell a consistent mixing story).</p>
 <div class="section level2">
 <h2 id="interpreting-the-result">Interpreting the result<a class="anchor" aria-label="anchor" href="#interpreting-the-result"></a>
 </h2>
-<p><code><a href="../reference/add_lmf.html">add_lmf()</a></code> attaches indicative tier breaks to each LMF
-row (in the <code>*.guideline_*</code> columns). The defaults are:</p>
+<p>LMF is a continuous index: the raw percentage is the primary output.
+The following tier breaks are a suggested starting point for
+interpretation:</p>
 <table class="table">
 <thead><tr class="header">
 <th>Tier</th>
 <th>LMF (%)</th>
-<th>Interpretation</th>
+<th>Suggested interpretation</th>
 </tr></thead>
 <tbody>
 <tr class="odd">
@@ -215,11 +216,15 @@ row (in the <code>*.guideline_*</code> columns). The defaults are:</p>
 </tr>
 </tbody>
 </table>
-<p>These breaks are <strong>starting points</strong>, not regulatory
-thresholds. The tier 1/2 boundary in particular should be reviewed
+<blockquote>
+<p><strong>Note:</strong> These breaks are <strong>starting
+points</strong>, not regulatory thresholds. Classification decisions
+should be made by the reporting system or analyst, not imposed
+automatically. The tier 1/2 boundary in particular should be reviewed
 against the LMF distribution of your own reference samples after
 deployment — ideally it should sit near the 95th percentile of LMF on
 known-clean water.</p>
+</blockquote>
 </div>
 <div class="section level2">
 <h2 id="when-lmf-returns-na">When LMF returns <code>NA</code><a class="anchor" aria-label="anchor" href="#when-lmf-returns-na"></a>
