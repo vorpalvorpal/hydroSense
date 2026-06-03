@@ -25,6 +25,8 @@ navbar:
       menu:
         - text: Detecting leachate with the LMF
           href: articles/leachate-mixing-fraction.html
+        - text: Imputing missing and below-detection chemistry
+          href: articles/imputation.html
         - text: Analyte normalisation
           href: articles/normalisation.html
         - text: Interpreting chronic AmsPAF outputs
