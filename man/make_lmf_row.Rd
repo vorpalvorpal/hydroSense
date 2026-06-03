@@ -13,12 +13,7 @@ make_lmf_row(
   sigma,
   chi2,
   quantified,
-  uuid_lmf,
-  ref_window_start,
-  ref_window_end,
-  leach_window_start,
-  leach_window_end,
-  cl_anchor
+  uuid_lmf
 )
 }
 \arguments{
@@ -42,20 +37,12 @@ diagnostic only).}
 \item{quantified}{Logical; \code{TRUE} on success, \code{FALSE} on failure.}
 
 \item{uuid_lmf}{UUID of the LMF analyte entry in \code{analyteDF}.}
-
-\item{ref_window_start, ref_window_end}{Reference calibration window dates.}
-
-\item{leach_window_start, leach_window_end}{Leachate calibration window dates.}
-
-\item{cl_anchor}{Cl anchor concentration (meq/L) for the leachate end-member.}
 }
 \value{
 A one-row tibble with columns: \code{value} (robust LMF),
 \code{lmf_naive}, \code{lmf_reason}, \code{n_ions_used},
 \code{n_ions_downweighted}, \code{sigma_lmf}, \code{chi2_per_df},
-\code{uuid.analyte}, \code{uuid}, \code{quantified}, and four sets of
-guideline columns (\code{value/level_name/guideline/comments.guideline_1}
-through \code{_4}).
+\code{uuid.analyte}, \code{uuid}, \code{quantified}.
 }
 \description{
 Internal helper that builds the one-row tibble returned by

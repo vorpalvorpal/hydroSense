@@ -13,11 +13,6 @@ compute_lmf_for_sample(
   max_sigma,
   max_chi2_df,
   uuid_lmf,
-  ref_window_start,
-  ref_window_end,
-  leach_window_start,
-  leach_window_end,
-  cl_anchor,
   robust_iterations = 3L,
   robust_threshold_k = 1.5,
   verbose = FALSE,
@@ -45,15 +40,6 @@ be present and non-NA in this sample.}
 \item{max_chi2_df}{Maximum permitted chi-squared per degree of freedom.}
 
 \item{uuid_lmf}{UUID of the LMF analyte entry in \code{analyteDF}.}
-
-\item{ref_window_start, ref_window_end}{Calibration window dates for the
-reference end-member; stored in guideline comment strings.}
-
-\item{leach_window_start, leach_window_end}{Calibration window dates for the
-leachate end-member; stored in guideline comment strings.}
-
-\item{cl_anchor}{Cl concentration (meq/L) used to anchor the leachate
-end-member; stored in guideline comment strings.}
 
 \item{robust_iterations}{Number of Huber reweighting passes. Inherited from
 \code{\link{add_lmf}}.}

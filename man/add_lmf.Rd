@@ -121,11 +121,10 @@ The input \code{df} with LMF rows appended. Each LMF row carries
 (from the input), \code{lmf_naive} (the non-robust estimate for
 comparison), \code{lmf_reason} (\code{NA} on success, reason code on
 failure), \code{n_ions_used}, \code{n_ions_downweighted} (count of ions
-whose weight was reduced by robust reweighting), \code{sigma_lmf},
-\code{chi2_per_df} (diagnostic; computed on original weights), and four
-guideline columns (\code{value/level_name/guideline/comments.guideline_1}
-through \code{_4}). Columns present in \code{df} but not produced by
-the LMF computation are \code{NA} in the appended rows.
+whose weight was reduced by robust reweighting), \code{sigma_lmf}, and
+\code{chi2_per_df} (diagnostic; computed on original weights). Columns
+present in \code{df} but not produced by the LMF computation are
+\code{NA} in the appended rows.
 }
 \description{
 Appends LMF rows to a long-format water quality dataframe. LMF is a
