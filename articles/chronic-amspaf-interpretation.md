@@ -167,33 +167,6 @@ summary statistic per analyte. Useful when the reference dataset is
 small (n \< 20 per analyte) and you want to propagate that uncertainty
 visually into downstream interpretation.
 
-## Why no tier breaks?
-
-Previous versions of this package shipped four tier breaks (1%, 5%, 10%,
-20% AmsPAF) mapped to ANZG species protection levels. These have been
-removed.
-
-Reasons:
-
-1.  As discussed above, AmsPAF and single-substance protection levels
-    are not interchangeable.
-2.  The “right” threshold for community impact is empirical — it depends
-    on biological calibration (which the package does not provide) and
-    on the management context (which the user knows).
-3.  Pre-baked tier breaks invite false confidence. Better to surface the
-    continuous AmsPAF value and let consumers attach interpretive
-    thresholds appropriate to their assessment.
-
-If you need tier breaks for reporting, consider:
-
-- Calibrating against macroinvertebrate community data and choosing
-  breakpoints empirically (e.g., the AmsPAF value above which Baselga
-  nestedness consistently exceeds a reference threshold).
-- Adopting external standards (e.g., NEMP guidance documents) and
-  documenting them explicitly as your interpretive choice.
-- Using a discrete classification (background / elevated / impacted)
-  with bands chosen from reference-site AmsPAF distribution percentiles.
-
 ## Known caveats
 
 **Mercury and methylation.** The Hg SSD bundled with this package is for
