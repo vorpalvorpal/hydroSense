@@ -99,7 +99,7 @@ ssd_paf("NH3-N", conc_ug_L = 9321)
 # NO3-N needs hardness for automatic soft/moderate/hard SSD selection:
 ssd_paf("NO3-N", conc_ug_L = 50000, hardness_mg_L = 90)
 #> $analyte
-#> [1] "NO3-N_mod"
+#> [1] "NO3-N"
 #> 
 #> $conc_ug_L
 #> [1] 50000
@@ -117,6 +117,6 @@ ssd_paf("NO3-N", conc_ug_L = 50000, hardness_mg_L = 90)
 #> [1] NA
 #> 
 #> $note
-#> character(0)
+#> [1] "NO3-N hardness blend (soft/mod/hard = 0.00/1.00/0.00)"
 #> 
 ```
