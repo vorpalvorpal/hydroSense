@@ -415,5 +415,5 @@ ssd_pct <- function(analyte, conc_ug_L, method = "multi",
   )
 
   if (anyNA(c(hc50, hc05)) || hc05 <= 0 || hc50 <= 0) return(NA_real_)
-  (log10(hc50) - log10(hc05)) / (-qnorm(0.05))
+  (log10(hc50) - log10(hc05)) / (-stats::qnorm(0.05))
 }

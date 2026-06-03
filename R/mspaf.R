@@ -557,7 +557,7 @@ compute_ca_group_mspaf <- function(group_data) {
   # De Zwart & Posthuma (2005) eq. 6: mixture slope = mean of component slopes.
   sigma_mix <- mean(group_data$sigma)
 
-  pnorm(log10(TU_mix) / sigma_mix)
+  stats::pnorm(log10(TU_mix) / sigma_mix)
 }
 
 

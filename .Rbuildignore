@@ -7,6 +7,8 @@
 ^pkgdown$
 ^\.github$
 ^data-raw$
+^ideas$
+^scripts$
 ^TODO\.md$
 ^HANDOVER\.md$
 ^LICENSE\.md$

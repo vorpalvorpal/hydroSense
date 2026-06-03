@@ -830,7 +830,7 @@ compute_lmf_for_sample <- function(
     ## Add a small floor to avoid division-by-zero when all ions agree
     ## perfectly (MAD = 0, which would downweight every non-zero residual
     ## to zero). The floor of 1e-6 is negligible on the 0-1 scale.
-    mad_resid <- max(median(abs(residuals)), 1e-6)
+    mad_resid <- max(stats::median(abs(residuals)), 1e-6)
     threshold <- robust_threshold_k * mad_resid
 
     ## Huber influence function: full weight within threshold,
@@ -1227,7 +1227,7 @@ build_endmember_from_override <- function(override_df, type) {
       dplyr::summarise(
         n_ref = dplyr::n(),
         R = mean(value, na.rm = TRUE),
-        sigma_R = sd(value, na.rm = TRUE),
+        sigma_R = stats::sd(value, na.rm = TRUE),
         .groups = "drop"
       ) |>
       dplyr::filter(n_ref >= 3)
@@ -1252,7 +1252,7 @@ build_endmember_from_override <- function(override_df, type) {
     ## Mirrors build_leachate_endmember() but without the total-N
     ## quality filter (caller supplies curated data).
     ## ---------------------------------------------------------------
-    cl_anchor <- median(override_wide$Cl_, na.rm = TRUE)
+    cl_anchor <- stats::median(override_wide$Cl_, na.rm = TRUE)
 
     if (is.na(cl_anchor) || cl_anchor <= 0) {
       stop(paste0(
@@ -1384,7 +1384,7 @@ build_reference_endmember <- function(
     dplyr::summarise(
       n_ref = dplyr::n(),
       R = mean(value, na.rm = TRUE),
-      sigma_R = sd(value, na.rm = TRUE),
+      sigma_R = stats::sd(value, na.rm = TRUE),
       .groups = "drop"
     ) |>
     dplyr::filter(n_ref >= 3)
@@ -1477,7 +1477,7 @@ build_pooled_reference_endmember <- function(
     dplyr::summarise(
       n_ref = dplyr::n(),
       R = mean(value, na.rm = TRUE),
-      sigma_R = sd(value, na.rm = TRUE),
+      sigma_R = stats::sd(value, na.rm = TRUE),
       .groups = "drop"
     ) |>
     dplyr::filter(n_ref >= 3)
@@ -1610,7 +1610,7 @@ build_leachate_endmember <- function(
     collapse_species(id_cols = "sample_id")
 
   ## Cl anchor: median Cl across valid leachate samples.
-  cl_anchor <- median(leachate_wide$Cl_, na.rm = TRUE)
+  cl_anchor <- stats::median(leachate_wide$Cl_, na.rm = TRUE)
 
   if (is.na(cl_anchor) || cl_anchor <= 0) {
     stop(
