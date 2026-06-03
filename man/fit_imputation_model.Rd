@@ -141,7 +141,7 @@ of two PCs is always used.
 \item \emph{Metals}: a sample is only imputed if at least one metal analyte is
 present (detected or BDL) in \code{df} for that sample.
 \item \emph{Organics}: a sample is only imputed if at least one of
-{DOC, TOC, BOD, COD, cBOD} is present.
+DOC, TOC, BOD, COD or cBOD is present.
 }
 
 \strong{BDL required variables}

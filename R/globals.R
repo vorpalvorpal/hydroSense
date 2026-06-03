@@ -12,7 +12,8 @@ utils::globalVariables(c(
   # imported from rlang in leachatetools-package.R instead.
   "analyte", "atomic_mass.analyte", "Cl_", "Conc", "datetime", "detected",
   "f", "f_pct", "gradient", "high_info", "informativeness", "ion", "L",
-  "label", "n_values", "name", "R", "sample_id", "sigma_R", "site_id",
+  "label", "mean_ratio", "n_ref", "n_values", "name", "R", "sample_id",
+  "sigma_R", "site_id",
   "species_id", "Species", "ssd_available", "total_alk_", "total_N_",
   "valence.analyte", "value", "value_ug_L", "var_f", "weight", "x",
   # host-environment (dashboard) functions used only on add_lmf()'s non-override

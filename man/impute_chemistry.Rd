@@ -50,7 +50,7 @@ Imputed values are only returned for samples that meet the relevant hurdle:
 \item \emph{Metals}: at least one metal analyte present (detected or BDL) at the
 sample.  Samples with no metals recorded are not imputed — a leachate
 metal pulse may simply not have arrived at this location yet.
-\item \emph{Organics}: at least one of {DOC, TOC, BOD, COD, cBOD} present at the
+\item \emph{Organics}: at least one of DOC, TOC, BOD, COD or cBOD present at the
 sample.
 }
 

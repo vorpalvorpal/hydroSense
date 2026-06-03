@@ -197,7 +197,7 @@
 #' - *Metals*: a sample is only imputed if at least one metal analyte is
 #'   present (detected or BDL) in `df` for that sample.
 #' - *Organics*: a sample is only imputed if at least one of
-#'   {DOC, TOC, BOD, COD, cBOD} is present.
+#'   DOC, TOC, BOD, COD or cBOD is present.
 #'
 #' **BDL required variables**
 #'
@@ -504,7 +504,7 @@ print.imputation_model <- function(x, ...) {
 #' - *Metals*: at least one metal analyte present (detected or BDL) at the
 #'   sample.  Samples with no metals recorded are not imputed — a leachate
 #'   metal pulse may simply not have arrived at this location yet.
-#' - *Organics*: at least one of {DOC, TOC, BOD, COD, cBOD} present at the
+#' - *Organics*: at least one of DOC, TOC, BOD, COD or cBOD present at the
 #'   sample.
 #'
 #' Samples failing a hurdle pass through unchanged (non-imputed values are
