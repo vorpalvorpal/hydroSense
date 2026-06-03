@@ -60,11 +60,6 @@ quality metrics, applying admission and quality gates before returning.</p>
 <span>  <span class="va">max_sigma</span>,</span>
 <span>  <span class="va">max_chi2_df</span>,</span>
 <span>  <span class="va">uuid_lmf</span>,</span>
-<span>  <span class="va">ref_window_start</span>,</span>
-<span>  <span class="va">ref_window_end</span>,</span>
-<span>  <span class="va">leach_window_start</span>,</span>
-<span>  <span class="va">leach_window_end</span>,</span>
-<span>  <span class="va">cl_anchor</span>,</span>
 <span>  robust_iterations <span class="op">=</span> <span class="fl">3L</span>,</span>
 <span>  robust_threshold_k <span class="op">=</span> <span class="fl">1.5</span>,</span>
 <span>  verbose <span class="op">=</span> <span class="cn">FALSE</span>,</span>
@@ -111,21 +106,6 @@ be present and non-NA in this sample.</p></dd>
 
 <dt id="arg-uuid-lmf">uuid_lmf<a class="anchor" aria-label="anchor" href="#arg-uuid-lmf"></a></dt>
 <dd><p>UUID of the LMF analyte entry in <code>analyteDF</code>.</p></dd>
-
-
-<dt id="arg-ref-window-start-ref-window-end">ref_window_start, ref_window_end<a class="anchor" aria-label="anchor" href="#arg-ref-window-start-ref-window-end"></a></dt>
-<dd><p>Calibration window dates for the
-reference end-member; stored in guideline comment strings.</p></dd>
-
-
-<dt id="arg-leach-window-start-leach-window-end">leach_window_start, leach_window_end<a class="anchor" aria-label="anchor" href="#arg-leach-window-start-leach-window-end"></a></dt>
-<dd><p>Calibration window dates for the
-leachate end-member; stored in guideline comment strings.</p></dd>
-
-
-<dt id="arg-cl-anchor">cl_anchor<a class="anchor" aria-label="anchor" href="#arg-cl-anchor"></a></dt>
-<dd><p>Cl concentration (meq/L) used to anchor the leachate
-end-member; stored in guideline comment strings.</p></dd>
 
 
 <dt id="arg-robust-iterations">robust_iterations<a class="anchor" aria-label="anchor" href="#arg-robust-iterations"></a></dt>

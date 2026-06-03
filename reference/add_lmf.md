@@ -154,11 +154,9 @@ leachate), `name.analyte = "LMF"`, `uuid.feature` (from the input),
 `lmf_naive` (the non-robust estimate for comparison), `lmf_reason` (`NA`
 on success, reason code on failure), `n_ions_used`,
 `n_ions_downweighted` (count of ions whose weight was reduced by robust
-reweighting), `sigma_lmf`, `chi2_per_df` (diagnostic; computed on
-original weights), and four guideline columns
-(`value/level_name/guideline/comments.guideline_1` through `_4`).
-Columns present in `df` but not produced by the LMF computation are `NA`
-in the appended rows.
+reweighting), `sigma_lmf`, and `chi2_per_df` (diagnostic; computed on
+original weights). Columns present in `df` but not produced by the LMF
+computation are `NA` in the appended rows.
 
 ## References
 

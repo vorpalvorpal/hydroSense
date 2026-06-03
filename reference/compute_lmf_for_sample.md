@@ -17,11 +17,6 @@ compute_lmf_for_sample(
   max_sigma,
   max_chi2_df,
   uuid_lmf,
-  ref_window_start,
-  ref_window_end,
-  leach_window_start,
-  leach_window_end,
-  cl_anchor,
   robust_iterations = 3L,
   robust_threshold_k = 1.5,
   verbose = FALSE,
@@ -66,21 +61,6 @@ compute_lmf_for_sample(
 - uuid_lmf:
 
   UUID of the LMF analyte entry in `analyteDF`.
-
-- ref_window_start, ref_window_end:
-
-  Calibration window dates for the reference end-member; stored in
-  guideline comment strings.
-
-- leach_window_start, leach_window_end:
-
-  Calibration window dates for the leachate end-member; stored in
-  guideline comment strings.
-
-- cl_anchor:
-
-  Cl concentration (meq/L) used to anchor the leachate end-member;
-  stored in guideline comment strings.
 
 - robust_iterations:
 

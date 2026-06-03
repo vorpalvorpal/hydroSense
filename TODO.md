@@ -22,6 +22,38 @@ deliberately. Pair each new test with a docstring/example so coverage
 and docs grow together. Run `BRMS_SMOKE_TEST=1` in CI so the brms path
 is actually exercised somewhere.
 
+**Progress (2026-06-03) — substantially done.** - Brms-independent tests
+added across the package: `test-paf-values`, `test-watertemp`,
+`test-to-meq`, `test-lmf` (LMF end-to-end), `test-impute-helpers`
+(`impute_coanalytes`, `.check_bdl_imputed`, `print`), plus existing
+`test-impute-pca`, `test-silo`, `test-temperature-mandatory`,
+`test-mspaf-ca`, `test-paf-as-envelope`. Suite now 242 pass / 0 fail / 2
+skip. - Coverage baseline established with covr: **~56% (≈66% with the
+brms path on)**; up from ~26%/41%. Big remaining gaps are `impute.R`
+(Stan-gated) and `ssd_fit.R` (needs the gitignored guideline XLSX + warm
+cache). - Docs: all 17 exports have <title/@return>/@examples and every
+argument documented; 13/17 examples are runnable (remaining are
+Stan-only + network-only). Added a bundled example dataset
+([`leachate_demo()`](https://vorpalvorpal.github.io/leachatetools/reference/leachate_demo.md),
+qs2 qdata format) and an LMF vignette; imputation + normalisation +
+chronic-AmsPAF vignettes also present. - Writing the LMF test surfaced
+and fixed three latent namespace bugs in `lmf.R` (unqualified dplyr
+verbs, unqualified tidyr pivots, unregistered units in `to_meq`); R CMD
+check now passes with 0 notes/warnings. - **Still open:** running
+`BRMS_SMOKE_TEST=1` in CI. Attempted on the Ubuntu runner but reverted —
+rstan cannot compile a model there (toolchain). The brms smoke tests
+pass locally; a separate, reliable Stan-in-CI setup (e.g. cmdstanr, or a
+dedicated job) is needed to exercise the brms path in CI.
+
+**Also completed this iteration (infrastructure, not originally listed
+here):** pkgdown website + GitHub Pages (now at
+vorpalvorpal.github.io/leachatetools, after removing a stale
+account-level CNAME), R-CMD-check + pkgdown CI workflows, README,
+LICENSE, `.Rbuildignore`; migrated archived `qs` → `qs2`; declared
+previously undeclared dependencies; fixed an unknown-analyte crash in
+[`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md);
+unified the codebase on qualified `pkg::` calls.
+
 ------------------------------------------------------------------------
 
 ## 1. Uncertainty propagation (cross-cutting — highest priority)
@@ -205,6 +237,14 @@ spot-check convenience only; `paf.R` header rewritten to state
 applies no chemistry normalisation for any analyte. - Tests:
 `test-silo.R` (mocked weatherOz: mean transform, caching, validation),
 `test-temperature-mandatory.R` (the gate). Full suite 164 pass / 0 fail.
+
+**Update (2026-06-03):**
+[`estimate_water_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/estimate_water_temp.md)
+now optionally adds a first-harmonic day-of-year term to the air→water
+regression and selects between the air-only and air+season models by
+AICc (args `seasonal`, `seasonal_min_n`, `seasonal_min_quarters`);
+covered by `test-watertemp`. This captures seasonal hysteresis without
+the full Bayesian model.
 
 Still genuinely optional: upgrade
 [`estimate_water_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/estimate_water_temp.md)

@@ -63,12 +63,7 @@ guaranteed consistent.</p>
 <span>  <span class="va">sigma</span>,</span>
 <span>  <span class="va">chi2</span>,</span>
 <span>  <span class="va">quantified</span>,</span>
-<span>  <span class="va">uuid_lmf</span>,</span>
-<span>  <span class="va">ref_window_start</span>,</span>
-<span>  <span class="va">ref_window_end</span>,</span>
-<span>  <span class="va">leach_window_start</span>,</span>
-<span>  <span class="va">leach_window_end</span>,</span>
-<span>  <span class="va">cl_anchor</span></span>
+<span>  <span class="va">uuid_lmf</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -114,27 +109,13 @@ diagnostic only).</p></dd>
 <dt id="arg-uuid-lmf">uuid_lmf<a class="anchor" aria-label="anchor" href="#arg-uuid-lmf"></a></dt>
 <dd><p>UUID of the LMF analyte entry in <code>analyteDF</code>.</p></dd>
 
-
-<dt id="arg-ref-window-start-ref-window-end">ref_window_start, ref_window_end<a class="anchor" aria-label="anchor" href="#arg-ref-window-start-ref-window-end"></a></dt>
-<dd><p>Reference calibration window dates.</p></dd>
-
-
-<dt id="arg-leach-window-start-leach-window-end">leach_window_start, leach_window_end<a class="anchor" aria-label="anchor" href="#arg-leach-window-start-leach-window-end"></a></dt>
-<dd><p>Leachate calibration window dates.</p></dd>
-
-
-<dt id="arg-cl-anchor">cl_anchor<a class="anchor" aria-label="anchor" href="#arg-cl-anchor"></a></dt>
-<dd><p>Cl anchor concentration (meq/L) for the leachate end-member.</p></dd>
-
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>A one-row tibble with columns: <code>value</code> (robust LMF),
 <code>lmf_naive</code>, <code>lmf_reason</code>, <code>n_ions_used</code>,
 <code>n_ions_downweighted</code>, <code>sigma_lmf</code>, <code>chi2_per_df</code>,
-<code>uuid.analyte</code>, <code>uuid</code>, <code>quantified</code>, and four sets of
-guideline columns (<code>value/level_name/guideline/comments.guideline_1</code>
-through <code>_4</code>).</p>
+<code>uuid.analyte</code>, <code>uuid</code>, <code>quantified</code>.</p>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

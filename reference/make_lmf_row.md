@@ -17,12 +17,7 @@ make_lmf_row(
   sigma,
   chi2,
   quantified,
-  uuid_lmf,
-  ref_window_start,
-  ref_window_end,
-  leach_window_start,
-  leach_window_end,
-  cl_anchor
+  uuid_lmf
 )
 ```
 
@@ -66,22 +61,8 @@ make_lmf_row(
 
   UUID of the LMF analyte entry in `analyteDF`.
 
-- ref_window_start, ref_window_end:
-
-  Reference calibration window dates.
-
-- leach_window_start, leach_window_end:
-
-  Leachate calibration window dates.
-
-- cl_anchor:
-
-  Cl anchor concentration (meq/L) for the leachate end-member.
-
 ## Value
 
 A one-row tibble with columns: `value` (robust LMF), `lmf_naive`,
 `lmf_reason`, `n_ions_used`, `n_ions_downweighted`, `sigma_lmf`,
-`chi2_per_df`, `uuid.analyte`, `uuid`, `quantified`, and four sets of
-guideline columns (`value/level_name/guideline/comments.guideline_1`
-through `_4`).
+`chi2_per_df`, `uuid.analyte`, `uuid`, `quantified`.
