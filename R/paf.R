@@ -32,10 +32,12 @@
 #   with estimate_water_temp() — optionally fed by get_silo_air_temp(), which
 #   pulls daily mean air temperature from SILO for an Australian lat/lon.
 #   Cr    : no external correction needed (freshwater subset already applied)
-#   NO3-N : supply hardness_mg_L to select the appropriate hardness class;
-#            probabilistic class weighting (CV = 5%) is a TODO (see below)
+#   NO3-N : supply hardness_mg_L; ssd_paf() blends the soft/moderate/hard SSDs
+#            by hardness-class probability (see below), smoothing the abrupt
+#            class boundaries. ssd_hc50()/the CA mixture step still use a single
+#            representative class (.no3_class()).
 #
-# TODO: probabilistic NO3-N hardness weighting
+# Probabilistic NO3-N hardness weighting (IMPLEMENTED; see .no3_weights()):
 #   True hardness is assumed log-normally distributed around the measured
 #   value with CV = hardness_cv (default 0.05, i.e. 5%).
 #   Weights: p_soft = plnorm(30,  log(h), log(1+cv^2)^0.5)
@@ -44,7 +46,6 @@
 #   Expected PAF = p_soft*PAF_soft + p_mod*PAF_mod + p_hard*PAF_hard
 #   This smooths the abrupt class transitions without requiring any
 #   biological interpolation between the three distinct SSDs.
-#   Pending implementation — currently uses a hard class cutoff.
 
 # ── Analyte registry ──────────────────────────────────────────────────────────
 
@@ -206,15 +207,15 @@
 #' Resolve the appropriate NO3-N hardness-class analyte name.
 #'
 #' @param hardness_mg_L Numeric. Measured hardness in mg/L as CaCO3.
-#' @param hardness_cv   Numeric. Coefficient of variation of hardness
-#'   measurement (default 0.05 = 5%). Reserved for future probabilistic
-#'   weighting — currently unused (hard cutoffs applied).
+#' @param hardness_cv   Numeric. Accepted for signature parity with
+#'   [ssd_paf()]; not used here (this helper applies hard cutoffs). The
+#'   probabilistic blend lives in `.no3_weights()`.
 #' @return Character: "NO3-N_soft", "NO3-N_mod", or "NO3-N_hard".
 #' @keywords internal
 .no3_class <- function(hardness_mg_L, hardness_cv = 0.05) {
-  # TODO: implement probabilistic weighting using log-normal hardness
-  # uncertainty (CV = hardness_cv). See module header for the formula.
-  # For now: hard cutoffs per ANZG 2025 class boundaries.
+  # Hard cutoffs per ANZG 2025 class boundaries. Used where a single
+  # representative class is needed (ssd_hc50() / the CA mixture step).
+  # ssd_paf() instead uses .no3_weights() for a smooth probabilistic blend.
   if (is.null(hardness_mg_L) || is.na(hardness_mg_L)) {
     warning("NO3-N: hardness_mg_L not supplied \u2014 defaulting to soft-water ",
             "class (most conservative). Supply hardness_mg_L for correct ",
@@ -224,6 +225,30 @@
   if      (hardness_mg_L <  30)  "NO3-N_soft"
   else if (hardness_mg_L <= 150) "NO3-N_mod"
   else                           "NO3-N_hard"
+}
+
+#' Probabilistic NO3-N hardness-class weights.
+#'
+#' The three nitrate SSDs (soft / moderate / hard) have abrupt class boundaries
+#' at 30 and 150 mg/L CaCO3. Rather than snap a sample to one class, treat the
+#' true hardness as log-normal around the measured value (CV = `hardness_cv`)
+#' and weight the classes by the probability mass falling in each band. This
+#' smooths the PAF across boundaries without biologically interpolating between
+#' the distinct SSDs.
+#'
+#' @param hardness_mg_L Numeric. Measured hardness in mg/L as CaCO3.
+#' @param hardness_cv   Numeric. CV of the hardness measurement (default 0.05).
+#' @return Named numeric vector `c(soft, mod, hard)` summing to 1, or all-`NA`
+#'   if `hardness_mg_L` is missing/non-positive.
+#' @keywords internal
+.no3_weights <- function(hardness_mg_L, hardness_cv = 0.05) {
+  if (is.null(hardness_mg_L) || is.na(hardness_mg_L) || hardness_mg_L <= 0)
+    return(c(soft = NA_real_, mod = NA_real_, hard = NA_real_))
+  s  <- sqrt(log(1 + hardness_cv^2))          # log-scale sd; 0 -> hard cutoff
+  ml <- log(hardness_mg_L)
+  p_soft <- stats::plnorm(30,  meanlog = ml, sdlog = s)
+  p_hard <- stats::plnorm(150, meanlog = ml, sdlog = s, lower.tail = FALSE)
+  c(soft = p_soft, mod = 1 - p_soft - p_hard, hard = p_hard)
 }
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -240,8 +265,10 @@
 #'   distribution that best matches the original ANZG derivation.
 #' @param hardness_mg_L Numeric or NULL. Required for NO3-N analyte.
 #'   Hardness in mg/L CaCO3 at the time of measurement.
-#' @param hardness_cv  Numeric. CV of hardness measurement for probabilistic
-#'   class weighting. Currently reserved — hard cutoffs used. Default 0.05.
+#' @param hardness_cv  Numeric. CV of the hardness measurement, used to weight
+#'   the three NO3-N hardness-class SSDs probabilistically (a log-normal blend
+#'   that smooths the soft/moderate/hard boundaries). Default 0.05 (5%). Set
+#'   to 0 to recover hard class cutoffs.
 #' @param guideline_dir Character. Path to the "guideline data" folder
 #'   containing ANZG XLSX files. Falls back to
 #'   getOption("leachatetools.guideline_dir").
@@ -281,8 +308,30 @@ ssd_paf <- function(analyte,
                  pct = NA_real_, lower = NA_real_, upper = NA_real_,
                  note = character(0))
 
-  # Resolve NO3-N to a hardness-specific class
+  # NO3-N: blend the soft/moderate/hard SSDs by hardness-class probability
+  # (smooth) rather than snapping to one class (abrupt). Falls back to the
+  # single-class path when hardness is missing.
   if (analyte == "NO3-N") {
+    w_full <- .no3_weights(hardness_mg_L, hardness_cv)
+    if (!anyNA(w_full)) {
+      classes <- c(soft = "NO3-N_soft", mod = "NO3-N_mod", hard = "NO3-N_hard")
+      # Ignore negligible-weight classes so a far class never contributes NA.
+      keep <- w_full > 1e-6
+      w    <- w_full[keep] / sum(w_full[keep])
+      sub  <- lapply(classes[keep], function(cl)
+        ssd_paf(cl, conc_ug_L, method = method, hardness_mg_L = NULL,
+                guideline_dir = guideline_dir, nboot = nboot, level = level))
+      result$pct <- sum(w * vapply(sub, function(x) x$pct, numeric(1)))
+      if (nboot > 0L) {
+        result$lower <- sum(w * vapply(sub, function(x) x$lower, numeric(1)))
+        result$upper <- sum(w * vapply(sub, function(x) x$upper, numeric(1)))
+      }
+      result$note <- sprintf(
+        "NO3-N hardness blend (soft/mod/hard = %.2f/%.2f/%.2f)",
+        w_full[["soft"]], w_full[["mod"]], w_full[["hard"]])
+      return(result)
+    }
+    # hardness missing -> single representative class (with the soft default warning)
     analyte <- .no3_class(hardness_mg_L, hardness_cv)
     result$analyte <- analyte
   }

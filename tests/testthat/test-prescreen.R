@@ -55,8 +55,48 @@ test_that("k = 0 includes all analytes", {
 
 test_that("k = 1 excludes analytes that are not 100 % detected", {
   df  <- make_chem()
-  inc <- prescreen_analytes(df, k = 1)
+  # potency_keep = FALSE isolates the pure frequency logic (Cu/Zn would
+  # otherwise be rescued by the potency hatch, see below).
+  inc <- prescreen_analytes(df, k = 1, potency_keep = FALSE)
   expect_length(inc, 0L)
+})
+
+test_that("potency hatch keeps a rare analyte that reaches its guideline", {
+  # Cu's 95% DGV is ~0.47 ug/L. A Cu detected in only 1/20 samples, but at
+  # 5 ug/L, is ecotoxicologically significant and should be rescued.
+  df <- tidyr::expand_grid(sample_id = paste0("s", 1:20),
+                           analyte = c("Cu", "Inert")) |>
+    dplyr::mutate(site_id = "f1", value = 5, detected = sample_id == "s1")
+  tbl <- prescreen_analytes(df, k = 0.10, return = "table")
+  expect_true(tbl$potency_kept[tbl$analyte == "Cu"])
+  expect_true(tbl$included[tbl$analyte == "Cu"])
+  # "Inert" has no guideline value in the metadata -> cannot be rescued.
+  expect_false(tbl$potency_kept[tbl$analyte == "Inert"])
+  expect_false(tbl$included[tbl$analyte == "Inert"])
+})
+
+test_that("potency_keep = FALSE disables the hatch", {
+  df <- tidyr::expand_grid(sample_id = paste0("s", 1:20), analyte = "Cu") |>
+    dplyr::mutate(site_id = "f1", value = 5, detected = sample_id == "s1")
+  expect_false("Cu" %in% prescreen_analytes(df, k = 0.10, potency_keep = FALSE))
+  expect_true("Cu"  %in% prescreen_analytes(df, k = 0.10))
+})
+
+test_that("a rare analyte below the guideline fraction is not rescued", {
+  # Cu well below its DGV (0.01 ug/L vs ~0.47) -> not significant -> dropped.
+  df <- tidyr::expand_grid(sample_id = paste0("s", 1:20), analyte = "Cu") |>
+    dplyr::mutate(site_id = "f1", value = 0.01, detected = sample_id == "s1")
+  expect_false("Cu" %in% prescreen_analytes(df, k = 0.10))
+})
+
+test_that("potency hatch warns and is skipped when value column is absent", {
+  df <- tidyr::expand_grid(sample_id = paste0("s", 1:20), analyte = "Cu") |>
+    dplyr::mutate(site_id = "f1", detected = sample_id == "s1")
+  expect_warning(
+    inc <- prescreen_analytes(df, k = 0.10),
+    "value"
+  )
+  expect_false("Cu" %in% inc)
 })
 
 test_that("group_by_feature requires site_id column", {

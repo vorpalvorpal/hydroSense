@@ -44,3 +44,41 @@ test_that("ssd_paf() returns the documented list shape", {
                       "lower", "upper", "note"))
   expect_true(is.numeric(res$pct) && res$pct >= 0 && res$pct <= 100)
 })
+
+## --- NO3-N probabilistic hardness weighting (§10a) -------------------------
+
+test_that(".no3_weights are a valid distribution and track hardness", {
+  expect_equal(sum(leachatetools:::.no3_weights(90)), 1)
+  # Soft water -> soft class dominates; hard water -> hard class dominates.
+  expect_gt(leachatetools:::.no3_weights(15)["soft"],  0.9)
+  expect_gt(leachatetools:::.no3_weights(500)["hard"], 0.9)
+  # On a boundary (150) mod and hard split evenly.
+  w150 <- leachatetools:::.no3_weights(150)
+  expect_equal(unname(w150["mod"]), 0.5, tolerance = 1e-6)
+  expect_equal(unname(w150["hard"]), 0.5, tolerance = 1e-6)
+  # Missing hardness -> all NA.
+  expect_true(all(is.na(leachatetools:::.no3_weights(NA))))
+})
+
+test_that("ssd_paf NO3-N blend equals the weighted mean of class PAFs", {
+  conc <- 50000
+  blend <- ssd_paf("NO3-N", conc, hardness_mg_L = 150)
+  mod   <- ssd_paf("NO3-N_mod",  conc)$pct
+  hard  <- ssd_paf("NO3-N_hard", conc)$pct
+  expect_equal(blend$pct, 0.5 * mod + 0.5 * hard, tolerance = 1e-6)
+  expect_match(blend$note, "hardness blend")
+})
+
+test_that("ssd_paf NO3-N is continuous across the hardness class boundary", {
+  conc <- 50000
+  lo <- ssd_paf("NO3-N", conc, hardness_mg_L = 149)$pct
+  hi <- ssd_paf("NO3-N", conc, hardness_mg_L = 151)$pct
+  # The smooth blend changes only slightly across 150 (the hard cutoff would
+  # jump by tens of percent between the moderate and hard SSDs).
+  expect_lt(abs(lo - hi), 10)
+})
+
+test_that("ssd_paf NO3-N without hardness falls back to the soft class", {
+  expect_warning(res <- ssd_paf("NO3-N", 50000), "hardness")
+  expect_equal(res$analyte, "NO3-N_soft")
+})

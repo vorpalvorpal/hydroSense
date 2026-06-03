@@ -210,14 +210,20 @@ uncertainty-propagation work lands — would also dissolve the no-pairs hard sto
 
 ---
 
-## 4. Prescreen — detection-frequency escape hatch (agreed)
+## 4. Prescreen — detection-frequency escape hatch — RESOLVED 2026-06-04
 
 `prescreen_analytes()` drops analytes below a detection-frequency threshold.
 Rare-but-potent toxicants (e.g. a pesticide detected in 2% of samples but at
-ecotoxicologically significant concentrations) can be screened out. Add an
-escape hatch: retain an analyte that fails the frequency screen if any detected
-concentration exceeds a potency-based threshold (e.g. a fraction of its HC05 /
-guideline value). Lives in `R/prescreen.R`.
+ecotoxicologically significant concentrations) could be screened out.
+
+**Implemented:** a potency-based escape hatch (`potency_keep = TRUE` by
+default). An analyte that fails the frequency screen is still kept if any
+detected concentration reaches `potency_frac` (default 1) times its
+95%-species-protection guideline value (`dgv_95pct_ug_L` in the metadata).
+Needs a numeric `value` column in µg/L (matching the DGV units); only analytes
+carrying a DGV (toxicants) are eligible, so major ions are unaffected. Reported
+via a new `potency_kept` column / cli message; pinned by `test-prescreen.R`.
+Analytes with no DGV (a few no-SSD organics) still rely on manual `protect`.
 
 ---
 
@@ -313,13 +319,15 @@ fallback. Also pinned by `test-impute-pca.R`.
 
 ## 10. In-code TODOs (smaller, well-specified)
 
-- **Probabilistic NO3-N hardness weighting** (`R/paf.R:22`, `:190`). Replace the
-  hard hardness-class cutoff (soft/mod/hard SSDs) with a smooth log-normal
-  weighting of the three class PAFs:
+- **Probabilistic NO3-N hardness weighting — RESOLVED 2026-06-04** (`R/paf.R`).
+  `ssd_paf("NO3-N", hardness_mg_L=)` now blends the soft/moderate/hard SSDs by
+  hardness-class probability instead of snapping to one class:
   `p_soft = plnorm(30, log(h), s)`, `p_hard = 1 - plnorm(150, log(h), s)`,
-  `p_mod = 1 - p_soft - p_hard`, `s = sqrt(log(1+cv^2))`, default `cv = 0.05`.
-  `ExpectedPAF = p_soft*PAF_soft + p_mod*PAF_mod + p_hard*PAF_hard`. Smooths
-  abrupt class transitions without biological interpolation between SSDs.
+  `p_mod = 1 - p_soft - p_hard`, `s = sqrt(log(1+cv^2))`, default `cv = 0.05`
+  (`.no3_weights()`); `ExpectedPAF = Σ w·PAF_class`. Continuous across the
+  class boundaries (at h=150 PAF is the mean of the mod/hard PAFs); pinned by
+  `test-paf-values.R`. `ssd_hc50()` / the CA mixture step still use a single
+  representative class (`.no3_class()`); revisit if CA needs the blend too.
 
 - **Benchmark the three BDL/imputation configs** (`R/impute.R` docstring of
   `fit_imputation_model`). On real hold-out data (mask 10% of detected cells,
