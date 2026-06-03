@@ -9,9 +9,9 @@
 \arguments{
 \item{hardness_mg_L}{Numeric. Measured hardness in mg/L as CaCO3.}
 
-\item{hardness_cv}{Numeric. Coefficient of variation of hardness
-measurement (default 0.05 = 5\%). Reserved for future probabilistic
-weighting — currently unused (hard cutoffs applied).}
+\item{hardness_cv}{Numeric. Accepted for signature parity with
+\code{\link[=ssd_paf]{ssd_paf()}}; not used here (this helper applies hard cutoffs). The
+probabilistic blend lives in \code{.no3_weights()}.}
 }
 \value{
 Character: "NO3-N_soft", "NO3-N_mod", or "NO3-N_hard".

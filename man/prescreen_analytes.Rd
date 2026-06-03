@@ -8,6 +8,8 @@ prescreen_analytes(
   df,
   k = 0.05,
   protect = NULL,
+  potency_keep = TRUE,
+  potency_frac = 1,
   group_by_feature = FALSE,
   analyte_metadata = NULL,
   return = c("vector", "table")
@@ -26,6 +28,15 @@ When \code{group_by_feature = TRUE}, also requires \code{site_id} (character).}
 protect from prescreen exclusion, on top of the metadata-derived
 co-analytes.  Default \code{NULL}.  Pass the \code{required_vars} from your
 downstream imputation step here.}
+
+\item{potency_keep}{Logical. Enable the potency escape hatch (keep a
+frequency-failing analyte whose concentration reaches its guideline value).
+Default \code{TRUE}. Set \code{FALSE} for a frequency-only prescreen.}
+
+\item{potency_frac}{Numeric (>= 0). Fraction of the 95 \% guideline value
+(\code{dgv_95pct_ug_L}) a detected concentration must reach to rescue an
+analyte. Default \code{1} (must reach the guideline). Lower it (e.g. \code{0.5}) to
+be more precautionary.}
 
 \item{group_by_feature}{Logical. If \code{TRUE}, detection frequency is computed
 per \code{site_id} and an analyte is included only if it passes in \emph{all}
@@ -48,7 +59,8 @@ what was dropped.
 
 When \code{return = "table"}: a tibble with columns \code{analyte},
 \code{n_samples}, \code{n_detected}, \code{detect_freq}, \code{limiting_site},
-\code{protected} (logical), \code{included} (logical).  When
+\code{protected} (logical), \code{potency_kept} (logical; rescued by the potency
+escape hatch), \code{included} (logical).  When
 \code{group_by_feature = TRUE}, \code{n_samples} / \code{n_detected} / \code{detect_freq}
 describe the \emph{limiting} site (the worst-case feature that drove the
 inclusion decision) and \code{limiting_site} names it; when
@@ -71,6 +83,16 @@ protected via the \code{protect} argument (typical use: pass the
 \code{required_vars} you intend to use in \code{\link[=fit_imputation_model]{fit_imputation_model()}} here so
 those vars survive prescreen).  Protected analytes that fall below the
 threshold are reported separately so the caller is aware.
+
+\strong{Potency escape hatch.} Frequency alone can screen out a rare-but-potent
+toxicant (e.g. a pesticide detected in 2 \% of samples but at
+ecotoxicologically significant concentrations). With \code{potency_keep = TRUE}
+(default), an analyte that fails the frequency threshold is still kept if any
+detected concentration reaches \code{potency_frac} times its 95 \%-species-
+protection guideline value (\code{dgv_95pct_ug_L} in the metadata). This needs a
+numeric \code{value} column in the same units as the guideline (µg/L); only
+analytes that carry a guideline value (toxicants) can be rescued this way, so
+major ions and analytes with no guideline are unaffected.
 }
 \examples{
 included <- prescreen_analytes(leachate_demo(), k = 0.05)

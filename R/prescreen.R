@@ -185,7 +185,7 @@ prescreen_analytes <- function(
   if (potency_keep && !"value" %in% names(df)) {
     cli::cli_warn(c(
       "!" = "The potency escape hatch needs a {.field value} column; none \\
-             found — using a frequency-only prescreen.",
+             found, so using a frequency-only prescreen.",
       "i" = "Pass {.code potency_keep = FALSE} to silence this."
     ))
     do_potency <- FALSE

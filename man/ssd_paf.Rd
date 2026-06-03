@@ -30,8 +30,10 @@ distribution that best matches the original ANZG derivation.}
 \item{hardness_mg_L}{Numeric or NULL. Required for NO3-N analyte.
 Hardness in mg/L CaCO3 at the time of measurement.}
 
-\item{hardness_cv}{Numeric. CV of hardness measurement for probabilistic
-class weighting. Currently reserved — hard cutoffs used. Default 0.05.}
+\item{hardness_cv}{Numeric. CV of the hardness measurement, used to weight
+the three NO3-N hardness-class SSDs probabilistically (a log-normal blend
+that smooths the soft/moderate/hard boundaries). Default 0.05 (5\%). Set
+to 0 to recover hard class cutoffs.}
 
 \item{guideline_dir}{Character. Path to the "guideline data" folder
 containing ANZG XLSX files. Falls back to
