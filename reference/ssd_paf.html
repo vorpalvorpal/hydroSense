@@ -84,8 +84,10 @@ Hardness in mg/L CaCO3 at the time of measurement.</p></dd>
 
 
 <dt id="arg-hardness-cv">hardness_cv<a class="anchor" aria-label="anchor" href="#arg-hardness-cv"></a></dt>
-<dd><p>Numeric. CV of hardness measurement for probabilistic
-class weighting. Currently reserved — hard cutoffs used. Default 0.05.</p></dd>
+<dd><p>Numeric. CV of the hardness measurement, used to weight
+the three NO3-N hardness-class SSDs probabilistically (a log-normal blend
+that smooths the soft/moderate/hard boundaries). Default 0.05 (5%). Set
+to 0 to recover hard class cutoffs.</p></dd>
 
 
 <dt id="arg-guideline-dir">guideline_dir<a class="anchor" aria-label="anchor" href="#arg-guideline-dir"></a></dt>

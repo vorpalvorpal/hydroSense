@@ -382,7 +382,8 @@ with an `R2cum` fallback. Also pinned by `test-impute-pca.R`.
   soft/moderate/hard SSDs by hardness-class probability instead of
   snapping to one class: `p_soft = plnorm(30, log(h), s)`,
   `p_hard = 1 - plnorm(150, log(h), s)`, `p_mod = 1 - p_soft - p_hard`,
-  `s = sqrt(log(1+cv^2))`, default `cv = 0.05` (`.no3_weights()`);
+  `s = sqrt(log(1+cv^2))`, default `cv = 0.05`
+  ([`.no3_weights()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-no3_weights.md));
   `ExpectedPAF = Σ w·PAF_class`. Continuous across the class boundaries
   (at h=150 PAF is the mean of the mod/hard PAFs); pinned by
   `test-paf-values.R`.

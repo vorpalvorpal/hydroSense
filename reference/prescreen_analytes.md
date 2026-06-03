@@ -14,6 +14,8 @@ prescreen_analytes(
   df,
   k = 0.05,
   protect = NULL,
+  potency_keep = TRUE,
+  potency_frac = 1,
   group_by_feature = FALSE,
   analyte_metadata = NULL,
   return = c("vector", "table")
@@ -40,6 +42,19 @@ prescreen_analytes(
   prescreen exclusion, on top of the metadata-derived co-analytes.
   Default `NULL`. Pass the `required_vars` from your downstream
   imputation step here.
+
+- potency_keep:
+
+  Logical. Enable the potency escape hatch (keep a frequency-failing
+  analyte whose concentration reaches its guideline value). Default
+  `TRUE`. Set `FALSE` for a frequency-only prescreen.
+
+- potency_frac:
+
+  Numeric (\>= 0). Fraction of the 95 % guideline value
+  (`dgv_95pct_ug_L`) a detected concentration must reach to rescue an
+  analyte. Default `1` (must reach the guideline). Lower it (e.g. `0.5`)
+  to be more precautionary.
 
 - group_by_feature:
 
@@ -69,6 +84,7 @@ was dropped.
 
 When `return = "table"`: a tibble with columns `analyte`, `n_samples`,
 `n_detected`, `detect_freq`, `limiting_site`, `protected` (logical),
+`potency_kept` (logical; rescued by the potency escape hatch),
 `included` (logical). When `group_by_feature = TRUE`, `n_samples` /
 `n_detected` / `detect_freq` describe the *limiting* site (the
 worst-case feature that drove the inclusion decision) and
@@ -87,6 +103,17 @@ use: pass the `required_vars` you intend to use in
 [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
 here so those vars survive prescreen). Protected analytes that fall
 below the threshold are reported separately so the caller is aware.
+
+**Potency escape hatch.** Frequency alone can screen out a
+rare-but-potent toxicant (e.g. a pesticide detected in 2 % of samples
+but at ecotoxicologically significant concentrations). With
+`potency_keep = TRUE` (default), an analyte that fails the frequency
+threshold is still kept if any detected concentration reaches
+`potency_frac` times its 95 %-species- protection guideline value
+(`dgv_95pct_ug_L` in the metadata). This needs a numeric `value` column
+in the same units as the guideline (µg/L); only analytes that carry a
+guideline value (toxicants) can be rescued this way, so major ions and
+analytes with no guideline are unaffected.
 
 ## Examples
 

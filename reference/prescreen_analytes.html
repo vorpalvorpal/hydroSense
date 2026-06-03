@@ -61,6 +61,8 @@ signal.</p>
 <span>  <span class="va">df</span>,</span>
 <span>  k <span class="op">=</span> <span class="fl">0.05</span>,</span>
 <span>  protect <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  potency_keep <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  potency_frac <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  group_by_feature <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  analyte_metadata <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  return <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"vector"</span>, <span class="st">"table"</span><span class="op">)</span></span>
@@ -90,6 +92,19 @@ co-analytes.  Default <code>NULL</code>.  Pass the <code>required_vars</code> fr
 downstream imputation step here.</p></dd>
 
 
+<dt id="arg-potency-keep">potency_keep<a class="anchor" aria-label="anchor" href="#arg-potency-keep"></a></dt>
+<dd><p>Logical. Enable the potency escape hatch (keep a
+frequency-failing analyte whose concentration reaches its guideline value).
+Default <code>TRUE</code>. Set <code>FALSE</code> for a frequency-only prescreen.</p></dd>
+
+
+<dt id="arg-potency-frac">potency_frac<a class="anchor" aria-label="anchor" href="#arg-potency-frac"></a></dt>
+<dd><p>Numeric (&gt;= 0). Fraction of the 95 % guideline value
+(<code>dgv_95pct_ug_L</code>) a detected concentration must reach to rescue an
+analyte. Default <code>1</code> (must reach the guideline). Lower it (e.g. <code>0.5</code>) to
+be more precautionary.</p></dd>
+
+
 <dt id="arg-group-by-feature">group_by_feature<a class="anchor" aria-label="anchor" href="#arg-group-by-feature"></a></dt>
 <dd><p>Logical. If <code>TRUE</code>, detection frequency is computed
 per <code>site_id</code> and an analyte is included only if it passes in <em>all</em>
@@ -117,7 +132,8 @@ did not pass the threshold (non-protected only), so callers can record
 what was dropped.</p>
 <p>When <code>return = "table"</code>: a tibble with columns <code>analyte</code>,
 <code>n_samples</code>, <code>n_detected</code>, <code>detect_freq</code>, <code>limiting_site</code>,
-<code>protected</code> (logical), <code>included</code> (logical).  When
+<code>protected</code> (logical), <code>potency_kept</code> (logical; rescued by the potency
+escape hatch), <code>included</code> (logical).  When
 <code>group_by_feature = TRUE</code>, <code>n_samples</code> / <code>n_detected</code> / <code>detect_freq</code>
 describe the <em>limiting</em> site (the worst-case feature that drove the
 inclusion decision) and <code>limiting_site</code> names it; when
@@ -134,6 +150,15 @@ protected via the <code>protect</code> argument (typical use: pass the
 <code>required_vars</code> you intend to use in <code><a href="fit_imputation_model.html">fit_imputation_model()</a></code> here so
 those vars survive prescreen).  Protected analytes that fall below the
 threshold are reported separately so the caller is aware.</p>
+<p><strong>Potency escape hatch.</strong> Frequency alone can screen out a rare-but-potent
+toxicant (e.g. a pesticide detected in 2 % of samples but at
+ecotoxicologically significant concentrations). With <code>potency_keep = TRUE</code>
+(default), an analyte that fails the frequency threshold is still kept if any
+detected concentration reaches <code>potency_frac</code> times its 95 %-species-
+protection guideline value (<code>dgv_95pct_ug_L</code> in the metadata). This needs a
+numeric <code>value</code> column in the same units as the guideline (µg/L); only
+analytes that carry a guideline value (toxicants) can be rescued this way, so
+major ions and analytes with no guideline are unaffected.</p>
     </div>
 
     <div class="section level2">

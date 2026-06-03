@@ -44,8 +44,10 @@ ssd_paf(
 
 - hardness_cv:
 
-  Numeric. CV of hardness measurement for probabilistic class weighting.
-  Currently reserved — hard cutoffs used. Default 0.05.
+  Numeric. CV of the hardness measurement, used to weight the three
+  NO3-N hardness-class SSDs probabilistically (a log-normal blend that
+  smooths the soft/moderate/hard boundaries). Default 0.05 (5%). Set to
+  0 to recover hard class cutoffs.
 
 - guideline_dir:
 
