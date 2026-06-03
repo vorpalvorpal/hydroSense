@@ -180,7 +180,7 @@ of two PCs is always used.
   present (detected or BDL) in `df` for that sample.
 
 - *Organics*: a sample is only imputed if at least one of DOC, TOC, BOD,
-  COD, cBOD is present.
+  COD or cBOD is present.
 
 **BDL required variables**
 

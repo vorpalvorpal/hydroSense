@@ -200,7 +200,7 @@ of two PCs is always used.</p>
 <p><strong>Hurdles (applied at prediction time by <code><a href="impute_chemistry.html">impute_chemistry()</a></code>)</strong></p><ul><li><p><em>Metals</em>: a sample is only imputed if at least one metal analyte is
 present (detected or BDL) in <code>df</code> for that sample.</p></li>
 <li><p><em>Organics</em>: a sample is only imputed if at least one of
-DOC, TOC, BOD, COD, cBOD is present.</p></li>
+DOC, TOC, BOD, COD or cBOD is present.</p></li>
 </ul><p><strong>BDL required variables</strong></p>
 <p>When a <code>required_vars</code> analyte (pH or EC) is below the detection limit for a
 sample, the stored detection-limit value is used as-is (conservative upper

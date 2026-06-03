@@ -68,7 +68,7 @@ hurdle:
   sample. Samples with no metals recorded are not imputed — a leachate
   metal pulse may simply not have arrived at this location yet.
 
-- *Organics*: at least one of DOC, TOC, BOD, COD, cBOD present at the
+- *Organics*: at least one of DOC, TOC, BOD, COD or cBOD present at the
   sample.
 
 Samples failing a hurdle pass through unchanged (non-imputed values are
