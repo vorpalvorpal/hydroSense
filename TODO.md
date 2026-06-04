@@ -430,14 +430,15 @@ with an `R2cum` fallback. Also pinned by `test-impute-pca.R`.
   are dropped (with an info message). This is what keeps the model
   tractable on real leachate panels.
 
-- **Update docs for the new imputation options.** The `imputation`
-  vignette and any tutorial text predate `impute_method` (rescor_mi /
-  cens / cens_factor) and `min_target_detect_freq`. Update the vignette
-  to explain the three methods, when to prefer each (point accuracy vs
-  calibrated/cheap uncertainty), and the target filter; refresh the
-  `fit_imputation_model` examples; cross-check the README and
-  `chronic-amspaf-interpretation` vignette for stale imputation
-  descriptions.
+- **Update docs for the new imputation options — DONE 2026-06-05.** The
+  `imputation` vignette now has a “Choosing the imputation method”
+  section (the three methods + trade-offs), an updated
+  detection-limit-cap note (applies to all methods),
+  `min_target_detect_freq` and `ndraws`/`batch_size` mentions, and the
+  method shown in the model print. The `chronic-amspaf-interpretation`
+  vignette’s BDL note was refreshed. README imputation text checked
+  (still accurate). `fit_imputation_model` / `impute_chemistry` roxygen
+  already updated.
 
 - **BDL cap inspection** (`.check_bdl_imputed`, `R/impute.R`). The cap
   clips imputed BDL cells to the detection limit; for sites whose

@@ -38,14 +38,15 @@ The design has three ideas at its core:
     the *whole* measured chemical context, not one or two surrogate
     analytes.
 
-2.  **Residual correlation across analytes (`rescor = TRUE`).** Metals
-    are modelled jointly. In a leachate- or AMD-impacted aquifer,
-    conservative tracers move ahead of redox-controlled metals, so a
-    post-pulse sample can look near-baseline on its major ions while
-    Cu/Pb/Zn/Mn stay co-elevated. That co-elevation is pure residual
-    correlation with no predictor driving it — modelling the residual
-    correlation matrix lets an *observed* metal at a sample inform the
-    *missing* ones.
+2.  **Cross-analyte coupling.** Metals are modelled jointly. In a
+    leachate- or AMD-impacted aquifer, conservative tracers move ahead
+    of redox-controlled metals, so a post-pulse sample can look
+    near-baseline on its major ions while Cu/Pb/Zn/Mn stay co-elevated.
+    That co-elevation is residual correlation with no predictor driving
+    it — capturing it lets an *observed* metal at a sample inform the
+    *missing* ones. By default this is a full residual correlation
+    matrix (`rescor = TRUE`); see *Choosing the imputation method* for
+    the alternatives.
 
 3.  **Hurdles, so silence is not mistaken for absence.** A sample is
     only imputed for a group if it carries at least one analyte from
@@ -118,6 +119,7 @@ model <- fit_imputation_model(
 
 model
 #> <imputation_model>  fitted 2026-06-03 | 248 samples | 14 PCA vars | 3 PCs (78% var)
+#>   method:   rescor_mi
 #>   metals:   8 analytes
 #>   organics: 2 analytes
 ```
@@ -127,6 +129,43 @@ The PCA axis count is chosen to reach a target cumulative variance
 floor of two axes. The console reports which variables entered the PCA,
 how many axes were retained, and the analytes in each group, so you can
 confirm the model saw what you expected.
+
+A metal or organic is only modelled if it is *detected* in at least
+`min_target_detect_freq` of samples (default 5%). Near- or
+all-below-detection analytes carry no signal to impute from and would
+otherwise inflate the model — on a panel with a hundred
+mostly-undetected organics this filter is what keeps the fit tractable.
+
+## Choosing the imputation method
+
+`fit_imputation_model(impute_method =)` controls how below-detection
+cells and cross-analyte coupling are handled. All three options share
+the same PCA predictors and mean structure; they differ only in the
+likelihood:
+
+| `impute_method` | BDL handling | Coupling | Notes |
+|----|----|----|----|
+| `"rescor_mi"` *(default)* | `mi()` (imputed) + DL cap | full residual correlation | most accurate recovery; posterior **draws are memory-heavy** |
+| `"cens"` | `cens("left")` (proper censoring) | none | fastest; clean BDL; no borrowing across metals |
+| `"cens_factor"` | `cens("left")` | shared per-sample latent factor | censoring **and** coupling; calibrated, cheap uncertainty |
+
+The trade-off is accuracy versus the cost of uncertainty. `brms` cannot
+combine a full residual correlation (`rescor = TRUE`) with proper
+left-censoring, so the default pairs residual correlation with `mi()`
+imputation and a post-hoc cap. A preliminary hold-out benchmark on real
+data found `"rescor_mi"` recovered masked metals most accurately
+(coupling helps most when it is strongest), which is why it is the
+default. But its posterior **draws** are expensive — and can exhaust
+memory — whereas `"cens"`/`"cens_factor"` give well-calibrated intervals
+cheaply and `"cens_factor"` recovers much of the coupling. Prefer a cens
+method when you need uncertainty (`return = "draws"`) or hit memory
+limits; prefer the default for point estimates.
+
+``` r
+
+# Proper censoring + cross-analyte coupling, with cheap calibrated uncertainty:
+model <- fit_imputation_model(monitoring_long, impute_method = "cens_factor")
+```
 
 ## Imputing new chemistry
 
@@ -153,20 +192,20 @@ posterior with `return = "draws"` to get one row per sample × analyte ×
 draw — feed those draws through
 [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
 to obtain a posterior distribution of mixture PAF rather than a point
-estimate.
+estimate. Draws can be memory-heavy (especially for `"rescor_mi"`);
+`ndraws =` subsamples the posterior and `batch_size =` predicts the
+samples in batches, both of which bound peak memory.
 
-### A note on the BDL cap
+### The detection-limit cap
 
-Combining `rescor = TRUE` with proper left-censoring is not possible in
-`brms`, so BDL cells are modelled as missing (`mi()`) and then
-**capped** at their original detection limit when the posterior mean
-lands above it (`bdl_cap = TRUE`, the default). The cap keeps BDL
-imputations physically consistent with what the laboratory reported.
-Where the surrounding chemistry genuinely points to a high concentration
-the cap can fire often;
+An imputed below-detection value must never exceed its detection limit.
+The posterior prediction is not itself constrained below the DL, so
 [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
-warns when it does, naming the affected analytes, so those samples can
-be inspected rather than trusted blindly.
+**caps** any imputed BDL cell at its original detection limit
+(`bdl_cap = TRUE`, the default) and warns, naming the affected analytes,
+when the cap fires — those samples can then be inspected rather than
+trusted blindly. Frequent cap firing signals tension between the
+modelled chemistry and the reported detection limits.
 
 ## Imputing normalisation co-analytes
 

@@ -108,14 +108,15 @@ which tolerates within-sample missing cells natively. These PC scores
 become the predictors, so a missing metal is estimated from the
 <em>whole</em> measured chemical context, not one or two surrogate
 analytes.</p></li>
-<li><p><strong>Residual correlation across analytes
-(<code>rescor = TRUE</code>).</strong> Metals are modelled jointly. In a
-leachate- or AMD-impacted aquifer, conservative tracers move ahead of
-redox-controlled metals, so a post-pulse sample can look near-baseline
-on its major ions while Cu/Pb/Zn/Mn stay co-elevated. That co-elevation
-is pure residual correlation with no predictor driving it — modelling
-the residual correlation matrix lets an <em>observed</em> metal at a
-sample inform the <em>missing</em> ones.</p></li>
+<li><p><strong>Cross-analyte coupling.</strong> Metals are modelled
+jointly. In a leachate- or AMD-impacted aquifer, conservative tracers
+move ahead of redox-controlled metals, so a post-pulse sample can look
+near-baseline on its major ions while Cu/Pb/Zn/Mn stay co-elevated. That
+co-elevation is residual correlation with no predictor driving it —
+capturing it lets an <em>observed</em> metal at a sample inform the
+<em>missing</em> ones. By default this is a full residual correlation
+matrix (<code>rescor = TRUE</code>); see <em>Choosing the imputation
+method</em> for the alternatives.</p></li>
 <li><p><strong>Hurdles, so silence is not mistaken for absence.</strong>
 A sample is only imputed for a group if it carries at least one analyte
 from that group — one metal for the metals model, one of {DOC, TOC, BOD,
@@ -210,6 +211,7 @@ takes minutes, not seconds — do it once and reuse the result.</p>
 <span></span>
 <span><span class="va">model</span></span>
 <span><span class="co">#&gt; &lt;imputation_model&gt;  fitted 2026-06-03 | 248 samples | 14 PCA vars | 3 PCs (78% var)</span></span>
+<span><span class="co">#&gt;   method:   rescor_mi</span></span>
 <span><span class="co">#&gt;   metals:   8 analytes</span></span>
 <span><span class="co">#&gt;   organics: 2 analytes</span></span></code></pre></div>
 <p>The PCA axis count is chosen to reach a target cumulative variance
@@ -217,6 +219,78 @@ takes minutes, not seconds — do it once and reuse the result.</p>
 (default 6), with a floor of two axes. The console reports which
 variables entered the PCA, how many axes were retained, and the analytes
 in each group, so you can confirm the model saw what you expected.</p>
+<p>A metal or organic is only modelled if it is <em>detected</em> in at
+least <code>min_target_detect_freq</code> of samples (default 5%). Near-
+or all-below-detection analytes carry no signal to impute from and would
+otherwise inflate the model — on a panel with a hundred
+mostly-undetected organics this filter is what keeps the fit
+tractable.</p>
+</div>
+<div class="section level2">
+<h2 id="choosing-the-imputation-method">Choosing the imputation method<a class="anchor" aria-label="anchor" href="#choosing-the-imputation-method"></a>
+</h2>
+<p><code>fit_imputation_model(impute_method =)</code> controls how
+below-detection cells and cross-analyte coupling are handled. All three
+options share the same PCA predictors and mean structure; they differ
+only in the likelihood:</p>
+<table class="table">
+<colgroup>
+<col width="35%">
+<col width="29%">
+<col width="20%">
+<col width="14%">
+</colgroup>
+<thead><tr class="header">
+<th><code>impute_method</code></th>
+<th>BDL handling</th>
+<th>Coupling</th>
+<th>Notes</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td>
+<code>"rescor_mi"</code> <em>(default)</em>
+</td>
+<td>
+<code>mi()</code> (imputed) + DL cap</td>
+<td>full residual correlation</td>
+<td>most accurate recovery; posterior <strong>draws are
+memory-heavy</strong>
+</td>
+</tr>
+<tr class="even">
+<td><code>"cens"</code></td>
+<td>
+<code>cens("left")</code> (proper censoring)</td>
+<td>none</td>
+<td>fastest; clean BDL; no borrowing across metals</td>
+</tr>
+<tr class="odd">
+<td><code>"cens_factor"</code></td>
+<td><code>cens("left")</code></td>
+<td>shared per-sample latent factor</td>
+<td>censoring <strong>and</strong> coupling; calibrated, cheap
+uncertainty</td>
+</tr>
+</tbody>
+</table>
+<p>The trade-off is accuracy versus the cost of uncertainty.
+<code>brms</code> cannot combine a full residual correlation
+(<code>rescor = TRUE</code>) with proper left-censoring, so the default
+pairs residual correlation with <code>mi()</code> imputation and a
+post-hoc cap. A preliminary hold-out benchmark on real data found
+<code>"rescor_mi"</code> recovered masked metals most accurately
+(coupling helps most when it is strongest), which is why it is the
+default. But its posterior <strong>draws</strong> are expensive — and
+can exhaust memory — whereas
+<code>"cens"</code>/<code>"cens_factor"</code> give well-calibrated
+intervals cheaply and <code>"cens_factor"</code> recovers much of the
+coupling. Prefer a cens method when you need uncertainty
+(<code>return = "draws"</code>) or hit memory limits; prefer the default
+for point estimates.</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Proper censoring + cross-analyte coupling, with cheap calibrated uncertainty:</span></span>
+<span><span class="va">model</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fit_imputation_model.html">fit_imputation_model</a></span><span class="op">(</span><span class="va">monitoring_long</span>, impute_method <span class="op">=</span> <span class="st">"cens_factor"</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="imputing-new-chemistry">Imputing new chemistry<a class="anchor" aria-label="anchor" href="#imputing-new-chemistry"></a>
@@ -233,7 +307,7 @@ filled.</li>
 <code>"censored_left"</code> (was BDL), or <code>"missing"</code> (had
 no row).</li>
 </ul>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">filled</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/impute_chemistry.html">impute_chemistry</a></span><span class="op">(</span><span class="va">monitoring_long</span>, <span class="va">model</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># Inspect what was filled, and how</span></span>
@@ -243,20 +317,21 @@ no row).</li>
 the full posterior with <code>return = "draws"</code> to get one row per
 sample × analyte × draw — feed those draws through
 <code><a href="../reference/add_amspaf.html">add_amspaf()</a></code> to obtain a posterior distribution of mixture
-PAF rather than a point estimate.</p>
+PAF rather than a point estimate. Draws can be memory-heavy (especially
+for <code>"rescor_mi"</code>); <code>ndraws =</code> subsamples the
+posterior and <code>batch_size =</code> predicts the samples in batches,
+both of which bound peak memory.</p>
 <div class="section level3">
-<h3 id="a-note-on-the-bdl-cap">A note on the BDL cap<a class="anchor" aria-label="anchor" href="#a-note-on-the-bdl-cap"></a>
+<h3 id="the-detection-limit-cap">The detection-limit cap<a class="anchor" aria-label="anchor" href="#the-detection-limit-cap"></a>
 </h3>
-<p>Combining <code>rescor = TRUE</code> with proper left-censoring is
-not possible in <code>brms</code>, so BDL cells are modelled as missing
-(<code>mi()</code>) and then <strong>capped</strong> at their original
-detection limit when the posterior mean lands above it
-(<code>bdl_cap = TRUE</code>, the default). The cap keeps BDL
-imputations physically consistent with what the laboratory reported.
-Where the surrounding chemistry genuinely points to a high concentration
-the cap can fire often; <code><a href="../reference/impute_chemistry.html">impute_chemistry()</a></code> warns when it
-does, naming the affected analytes, so those samples can be inspected
-rather than trusted blindly.</p>
+<p>An imputed below-detection value must never exceed its detection
+limit. The posterior prediction is not itself constrained below the DL,
+so <code><a href="../reference/impute_chemistry.html">impute_chemistry()</a></code> <strong>caps</strong> any imputed BDL
+cell at its original detection limit (<code>bdl_cap = TRUE</code>, the
+default) and warns, naming the affected analytes, when the cap fires —
+those samples can then be inspected rather than trusted blindly.
+Frequent cap firing signals tension between the modelled chemistry and
+the reported detection limits.</p>
 </div>
 </div>
 <div class="section level2">
@@ -270,7 +345,7 @@ normalisation</em> article). When one of these is missing,
 log-Gaussian GAM (<code><a href="https://rdrr.io/pkg/mgcv/man/gam.html" class="external-link">mgcv::gam</a></code>) on the <em>same</em> PC scores
 the metals model used, so the co-analyte estimate is conditioned on the
 same chemical context.</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">filled</span> <span class="op">&lt;-</span> <span class="va">filled</span> <span class="op">|&gt;</span></span>
 <span>  <span class="fu"><a href="../reference/impute_coanalytes.html">impute_coanalytes</a></span><span class="op">(</span><span class="va">model</span><span class="op">)</span>        <span class="co"># fills DOC / Ca / Mg / hardness where absent</span></span></code></pre></div>
 <p>Two deliberate boundaries:</p>
@@ -288,7 +363,7 @@ normalisation, not part of the Bayesian fit.</li>
 </h2>
 <p>The imputation steps slot in before mixture toxicity and temporal
 aggregation:</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">model</span>  <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fit_imputation_model.html">fit_imputation_model</a></span><span class="op">(</span><span class="va">monitoring_long</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">result</span> <span class="op">&lt;-</span> <span class="va">monitoring_long</span> <span class="op">|&gt;</span></span>
@@ -333,7 +408,7 @@ hard requirement — the LMF and AmsPAF tools install and run without it.
 To use <code><a href="../reference/fit_imputation_model.html">fit_imputation_model()</a></code> and
 <code><a href="../reference/impute_chemistry.html">impute_chemistry()</a></code>, install brms and a working Stan engine
 once:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"brms"</span><span class="op">)</span></span></code></pre></div>
 <p>If the install alone is not enough, follow the short Stan toolchain
 setup at <a href="https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started" class="external-link uri">https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started</a>.

@@ -298,17 +298,22 @@ community-state predictor is not yet calibrated. Until macroinvertebrate
 calibration is complete, AmsPAF outputs are best-effort predictions of
 chronic toxicity; they have not been empirically tied to observed
 community impact.</p>
-<p><strong>Below-detection handling in imputation.</strong> The
-<code><a href="../reference/impute_chemistry.html">impute_chemistry()</a></code> function uses <code>mi()</code> (missing
-imputation) rather than <code>cens("left")</code> (left-censoring)
-because brms does not currently support censored likelihoods with
-multivariate residual correlation (<code>rescor = TRUE</code>). The
-post-hoc cap (<code>bdl_cap = TRUE</code>) clips imputed BDL values to
-the original detection limit when the model predicts above DL. For sites
-where the chemistry context legitimately suggests high concentrations
-the cap may fire frequently; results in that regime should be inspected.
-See the roxygen documentation of <code><a href="../reference/fit_imputation_model.html">fit_imputation_model()</a></code> for
-details on the trade-off.</p>
+<p><strong>Below-detection handling in imputation.</strong>
+<code><a href="../reference/fit_imputation_model.html">fit_imputation_model()</a></code> offers three
+<code>impute_method</code> options for BDL cells and cross-analyte
+coupling: <code>"rescor_mi"</code> (default — full residual correlation
+with <code>mi()</code> imputation), <code>"cens"</code> (proper
+left-censoring, no coupling), and <code>"cens_factor"</code>
+(left-censoring plus a shared latent factor). The default cannot use
+<code>cens("left")</code> because brms does not support censored
+likelihoods together with multivariate residual correlation
+(<code>rescor = TRUE</code>), so it imputes BDL cells via
+<code>mi()</code>. In all methods an imputed BDL value is capped at its
+detection limit (<code>bdl_cap = TRUE</code>); frequent capping signals
+tension between the modelled chemistry and the reported limits and
+should be inspected. See the <em>Imputing missing and below-detection
+chemistry</em> article and the <code><a href="../reference/fit_imputation_model.html">fit_imputation_model()</a></code> docs
+for the trade-offs.</p>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>

@@ -195,15 +195,18 @@ is not yet calibrated. Until macroinvertebrate calibration is complete,
 AmsPAF outputs are best-effort predictions of chronic toxicity; they
 have not been empirically tied to observed community impact.
 
-**Below-detection handling in imputation.** The
-[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
-function uses `mi()` (missing imputation) rather than `cens("left")`
-(left-censoring) because brms does not currently support censored
-likelihoods with multivariate residual correlation (`rescor = TRUE`).
-The post-hoc cap (`bdl_cap = TRUE`) clips imputed BDL values to the
-original detection limit when the model predicts above DL. For sites
-where the chemistry context legitimately suggests high concentrations
-the cap may fire frequently; results in that regime should be inspected.
-See the roxygen documentation of
+**Below-detection handling in imputation.**
 [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
-for details on the trade-off.
+offers three `impute_method` options for BDL cells and cross-analyte
+coupling: `"rescor_mi"` (default — full residual correlation with `mi()`
+imputation), `"cens"` (proper left-censoring, no coupling), and
+`"cens_factor"` (left-censoring plus a shared latent factor). The
+default cannot use `cens("left")` because brms does not support censored
+likelihoods together with multivariate residual correlation
+(`rescor = TRUE`), so it imputes BDL cells via `mi()`. In all methods an
+imputed BDL value is capped at its detection limit (`bdl_cap = TRUE`);
+frequent capping signals tension between the modelled chemistry and the
+reported limits and should be inspected. See the *Imputing missing and
+below-detection chemistry* article and the
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
+docs for the trade-offs.
