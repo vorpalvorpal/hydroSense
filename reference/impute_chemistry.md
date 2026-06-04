@@ -15,7 +15,9 @@ impute_chemistry(
   metal_hurdle = TRUE,
   organic_hurdle = TRUE,
   bdl_cap = TRUE,
-  return = c("point", "draws")
+  return = c("point", "draws"),
+  ndraws = NULL,
+  batch_size = NULL
 )
 ```
 
@@ -41,12 +43,25 @@ impute_chemistry(
 - bdl_cap:
 
   Logical. Cap imputed BDL values at the original detection limit?
-  Default `TRUE`.
+  Default `TRUE`. Applied to all methods: an imputed below-detection
+  value should never exceed its detection limit.
 
 - return:
 
   `"point"` (default) for posterior mean per cell; `"draws"` for one row
   per (sample × analyte × draw).
+
+- ndraws:
+
+  Integer or `NULL`. Use only this many posterior draws for prediction
+  (subsampled). `NULL` (default) uses all draws. Lowering it reduces
+  memory/time, at some cost to interval precision.
+
+- batch_size:
+
+  Integer or `NULL`. Predict eligible samples in batches of this many
+  rows to bound peak memory (important for `"rescor_mi"`, whose `mi()`
+  prediction is memory-heavy). `NULL` (default) predicts all at once.
 
 ## Value
 
