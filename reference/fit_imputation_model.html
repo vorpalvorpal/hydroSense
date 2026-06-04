@@ -61,6 +61,7 @@ environmental predictors.  The returned model object is passed to
 <span>  metal_analytes <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  doc_like_analytes <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  min_detect_freq <span class="op">=</span> <span class="fl">0.05</span>,</span>
+<span>  min_target_detect_freq <span class="op">=</span> <span class="fl">0.05</span>,</span>
 <span>  min_samples <span class="op">=</span> <span class="fl">10L</span>,</span>
 <span>  min_var_explained <span class="op">=</span> <span class="fl">0.75</span>,</span>
 <span>  max_pcs <span class="op">=</span> <span class="fl">6L</span>,</span>
@@ -109,6 +110,14 @@ Samples missing any of these are dropped entirely.</p></dd>
 <dt id="arg-min-detect-freq">min_detect_freq<a class="anchor" aria-label="anchor" href="#arg-min-detect-freq"></a></dt>
 <dd><p>Minimum detection frequency for a PCA variable to be
 retained.  Default <code>0.05</code>.  Required vars are always retained regardless.</p></dd>
+
+
+<dt id="arg-min-target-detect-freq">min_target_detect_freq<a class="anchor" aria-label="anchor" href="#arg-min-target-detect-freq"></a></dt>
+<dd><p>Minimum detection frequency (fraction of
+samples in which the analyte is <em>detected</em>) for a metal/organic to be
+included as an imputation target. Targets below this are dropped (they have
+too few detections to model and would otherwise inflate the model on
+near-all-BDL panels). Default <code>0.05</code>.</p></dd>
 
 
 <dt id="arg-min-samples">min_samples<a class="anchor" aria-label="anchor" href="#arg-min-samples"></a></dt>

@@ -420,14 +420,24 @@ with an `R2cum` fallback. Also pinned by `test-impute-pca.R`.
       comparison. (Benchmark scripts live in the gitignored
       `test data/`.)
 
-- **Robustness gap found while benchmarking:** on a dataset with ~100
-  mostly all-BDL organics (and several near-undetected metals),
-  `fit_imputation_model` builds a huge organics/metals model (107-way
-  -\> Stan parser failure; 18-way metals -\> intractable). Add a
-  min-detection-frequency filter on the metals / organics target groups
-  (drop analytes below a detect-count/frequency floor), analogous to
-  [`prescreen_analytes()`](https://vorpalvorpal.github.io/leachatetools/reference/prescreen_analytes.md)
-  but for the imputation targets.
+- **Target detection-frequency filter — RESOLVED 2026-06-04.** On a
+  dataset with ~100 mostly all-BDL organics (and several near-undetected
+  metals), `fit_imputation_model` built a huge organics/metals model
+  (107-way -\> Stan parser failure; 18-way metals -\> intractable). The
+  existing `min_detect_freq` only filtered PCA *inputs*, not the
+  imputation *targets*. Added `min_target_detect_freq` (default 0.05):
+  metal/organic targets detected in fewer than that fraction of samples
+  are dropped (with an info message). This is what keeps the model
+  tractable on real leachate panels.
+
+- **Update docs for the new imputation options.** The `imputation`
+  vignette and any tutorial text predate `impute_method` (rescor_mi /
+  cens / cens_factor) and `min_target_detect_freq`. Update the vignette
+  to explain the three methods, when to prefer each (point accuracy vs
+  calibrated/cheap uncertainty), and the target filter; refresh the
+  `fit_imputation_model` examples; cross-check the README and
+  `chronic-amspaf-interpretation` vignette for stale imputation
+  descriptions.
 
 - **BDL cap inspection** (`.check_bdl_imputed`, `R/impute.R`). The cap
   clips imputed BDL cells to the detection limit; for sites whose
