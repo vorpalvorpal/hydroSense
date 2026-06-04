@@ -218,6 +218,11 @@
 #'   `.METAL_ANALYTES`.
 #' @param doc_like_analytes Analyte names used for the organics hurdle check
 #'   (the "organic carbon present" requirement).  Default `.DOC_LIKE_ANALYTES`.
+#' @param min_target_detect_freq Minimum detection frequency (fraction of
+#'   samples in which the analyte is *detected*) for a metal/organic to be
+#'   included as an imputation target. Targets below this are dropped (they have
+#'   too few detections to model and would otherwise inflate the model on
+#'   near-all-BDL panels). Default `0.05`.
 #' @param min_detect_freq Minimum detection frequency for a PCA variable to be
 #'   retained.  Default `0.05`.  Required vars are always retained regardless.
 #' @param min_samples Minimum training samples after required-var filtering.
@@ -272,6 +277,7 @@ fit_imputation_model <- function(
     metal_analytes    = NULL,
     doc_like_analytes = NULL,
     min_detect_freq   = 0.05,
+    min_target_detect_freq = 0.05,
     min_samples       = 10L,
     min_var_explained = 0.75,
     max_pcs           = 6L,
@@ -386,6 +392,27 @@ fit_imputation_model <- function(
 
   metals_in_df   <- intersect(non_pca_non_excl, metal_analytes)
   organics_in_df <- setdiff(non_pca_non_excl, metal_analytes)
+
+  # Drop target analytes detected too rarely to model. A brms regression needs
+  # enough *detected* observations; near-/all-BDL analytes (e.g. ~100 organics
+  # in a leachate panel) carry no signal and otherwise explode the model size.
+  det_freq <- df |>
+    dplyr::filter(.data$analyte %in% c(.env$metals_in_df, .env$organics_in_df)) |>
+    dplyr::group_by(.data$analyte) |>
+    dplyr::summarise(
+      det_freq = dplyr::n_distinct(.data$sample_id[.data$detected]) / n_samples_total,
+      .groups  = "drop"
+    )
+  keep_targets <- det_freq$analyte[det_freq$det_freq >= min_target_detect_freq]
+  dropped <- setdiff(c(metals_in_df, organics_in_df), keep_targets)
+  metals_in_df   <- intersect(metals_in_df,   keep_targets)
+  organics_in_df <- intersect(organics_in_df, keep_targets)
+  if (length(dropped) > 0L)
+    cli::cli_inform(c(
+      "i" = "Dropping {length(dropped)} target{?s} below \\
+             min_target_detect_freq = {min_target_detect_freq}: \\
+             {.val {sort(dropped)}}."
+    ))
 
   cli::cli_inform(c(
     "i" = "Metals group: {length(metals_in_df)} analyte{?s}: \\

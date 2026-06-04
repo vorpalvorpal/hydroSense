@@ -11,6 +11,7 @@ fit_imputation_model(
   metal_analytes = NULL,
   doc_like_analytes = NULL,
   min_detect_freq = 0.05,
+  min_target_detect_freq = 0.05,
   min_samples = 10L,
   min_var_explained = 0.75,
   max_pcs = 6L,
@@ -44,6 +45,12 @@ Samples missing any of these are dropped entirely.}
 
 \item{min_detect_freq}{Minimum detection frequency for a PCA variable to be
 retained.  Default \code{0.05}.  Required vars are always retained regardless.}
+
+\item{min_target_detect_freq}{Minimum detection frequency (fraction of
+samples in which the analyte is \emph{detected}) for a metal/organic to be
+included as an imputation target. Targets below this are dropped (they have
+too few detections to model and would otherwise inflate the model on
+near-all-BDL panels). Default \code{0.05}.}
 
 \item{min_samples}{Minimum training samples after required-var filtering.}
 
