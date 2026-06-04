@@ -65,6 +65,7 @@ environmental predictors.  The returned model object is passed to
 <span>  min_var_explained <span class="op">=</span> <span class="fl">0.75</span>,</span>
 <span>  max_pcs <span class="op">=</span> <span class="fl">6L</span>,</span>
 <span>  family <span class="op">=</span> <span class="st">"gaussian"</span>,</span>
+<span>  impute_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"rescor_mi"</span>, <span class="st">"cens"</span>, <span class="st">"cens_factor"</span><span class="op">)</span>,</span>
 <span>  iter <span class="op">=</span> <span class="fl">2000</span>,</span>
 <span>  warmup <span class="op">=</span> <span class="fl">1000</span>,</span>
 <span>  chains <span class="op">=</span> <span class="fl">4</span>,</span>
@@ -127,6 +128,29 @@ Default <code>0.75</code>.</p></dd>
 <dd><p>brms response family.  Must be <code>"gaussian"</code> (concentrations
 are log-transformed before fitting; residual correlations require
 Gaussian family).</p></dd>
+
+
+<dt id="arg-impute-method">impute_method<a class="anchor" aria-label="anchor" href="#arg-impute-method"></a></dt>
+<dd><p>How below-detection (BDL) values and cross-analyte
+coupling are handled. One of:</p><dl><dt><code>"rescor_mi"</code></dt>
+<dd><p>(default) Residual correlation across analytes
+(<code>rescor = TRUE</code>) with BDL/missing treated as imputable (<code>mi()</code>); the
+imputed BDL cells are capped at the detection limit post-hoc by
+<code><a href="impute_chemistry.html">impute_chemistry()</a></code> (brms cannot combine <code>rescor</code> with <code>cens()</code>).</p></dd>
+
+<dt><code>"cens"</code></dt>
+<dd><p>Proper left-censoring of BDL at the detection limit
+(<code>cens("left")</code>), no residual correlation – clean BDL handling but no
+cross-analyte coupling.</p></dd>
+
+<dt><code>"cens_factor"</code></dt>
+<dd><p>As <code>"cens"</code> plus a shared per-sample latent factor
+(<code>(1 | sample_id)</code> correlated across analytes), which re-introduces
+cross-analyte coupling while keeping proper censoring.</p></dd>
+
+
+</dl><p>See <code><a href="../articles/imputation.html">vignette("imputation")</a></code> and the package benchmark for guidance on
+which to prefer.</p></dd>
 
 
 <dt id="arg-iter-warmup-chains-cores">iter, warmup, chains, cores<a class="anchor" aria-label="anchor" href="#arg-iter-warmup-chains-cores"></a></dt>

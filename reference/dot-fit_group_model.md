@@ -14,6 +14,7 @@ Fit a single brms group model (metals or organics)
   warmup,
   chains,
   cores,
+  impute_method = "rescor_mi",
   ...
 )
 ```
