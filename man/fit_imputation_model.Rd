@@ -15,6 +15,7 @@ fit_imputation_model(
   min_var_explained = 0.75,
   max_pcs = 6L,
   family = "gaussian",
+  impute_method = c("rescor_mi", "cens", "cens_factor"),
   iter = 2000,
   warmup = 1000,
   chains = 4,
@@ -54,6 +55,23 @@ Default \code{0.75}.}
 \item{family}{brms response family.  Must be \code{"gaussian"} (concentrations
 are log-transformed before fitting; residual correlations require
 Gaussian family).}
+
+\item{impute_method}{How below-detection (BDL) values and cross-analyte
+coupling are handled. One of:
+\describe{
+\item{\code{"rescor_mi"}}{(default) Residual correlation across analytes
+(\code{rescor = TRUE}) with BDL/missing treated as imputable (\code{mi()}); the
+imputed BDL cells are capped at the detection limit post-hoc by
+\code{\link[=impute_chemistry]{impute_chemistry()}} (brms cannot combine \code{rescor} with \code{cens()}).}
+\item{\code{"cens"}}{Proper left-censoring of BDL at the detection limit
+(\code{cens("left")}), no residual correlation -- clean BDL handling but no
+cross-analyte coupling.}
+\item{\code{"cens_factor"}}{As \code{"cens"} plus a shared per-sample latent factor
+(\code{(1 | sample_id)} correlated across analytes), which re-introduces
+cross-analyte coupling while keeping proper censoring.}
+}
+See \code{vignette("imputation")} and the package benchmark for guidance on
+which to prefer.}
 
 \item{iter, warmup, chains, cores}{brms MCMC settings.}
 

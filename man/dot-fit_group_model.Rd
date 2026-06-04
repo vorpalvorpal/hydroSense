@@ -13,6 +13,7 @@
   warmup,
   chains,
   cores,
+  impute_method = "rescor_mi",
   ...
 )
 }

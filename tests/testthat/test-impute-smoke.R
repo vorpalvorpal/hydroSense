@@ -114,6 +114,37 @@ test_that("fit_imputation_model full run (brms smoke test)", {
   expect_true(any(imp$imputed))
 })
 
+test_that("fit_imputation_model rejects an unknown impute_method", {
+  skip_if_not_installed("brms")
+  df <- make_impute_chem()
+  # match.arg() runs before any Stan fitting, so this is fast and Stan-free.
+  expect_error(
+    fit_imputation_model(df, required_vars = c("pH","EC"),
+                         impute_method = "bogus"),
+    regexp = "should be one of"
+  )
+})
+
+test_that("cens / cens_factor impute methods fit and impute (brms smoke test)", {
+  skip_if_not(
+    requireNamespace("brms", quietly = TRUE) &&
+      identical(Sys.getenv("BRMS_SMOKE_TEST"), "1"),
+    "Skipping brms smoke test: brms not installed or BRMS_SMOKE_TEST != '1'"
+  )
+  df <- make_impute_chem(n = 30, n_bdl = 4, n_missing = 3)
+  for (meth in c("cens", "cens_factor")) {
+    m <- fit_imputation_model(df, required_vars = c("pH","EC"),
+                              impute_method = meth,
+                              iter = 400, warmup = 200, chains = 1, cores = 1)
+    expect_equal(m$impute_method, meth)
+    expect_equal(m$metals$impute_method, meth)
+    imp <- impute_chemistry(df, m)
+    expect_true(all(is.finite(imp$value)))
+    expect_true(any(imp$imputed))
+    expect_true(all(imp$imputed_kind %in% c("observed","censored_left","missing")))
+  }
+})
+
 test_that("impute_coanalytes skips targets not in pca_vars", {
   # Trivial test: construct an imputation_model with no PCA and confirm the
   # function gives a clear error rather than crashing.

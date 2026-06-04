@@ -227,6 +227,22 @@
 #' @param family brms response family.  Must be `"gaussian"` (concentrations
 #'   are log-transformed before fitting; residual correlations require
 #'   Gaussian family).
+#' @param impute_method How below-detection (BDL) values and cross-analyte
+#'   coupling are handled. One of:
+#'   \describe{
+#'     \item{`"rescor_mi"`}{(default) Residual correlation across analytes
+#'       (`rescor = TRUE`) with BDL/missing treated as imputable (`mi()`); the
+#'       imputed BDL cells are capped at the detection limit post-hoc by
+#'       [impute_chemistry()] (brms cannot combine `rescor` with `cens()`).}
+#'     \item{`"cens"`}{Proper left-censoring of BDL at the detection limit
+#'       (`cens("left")`), no residual correlation -- clean BDL handling but no
+#'       cross-analyte coupling.}
+#'     \item{`"cens_factor"`}{As `"cens"` plus a shared per-sample latent factor
+#'       (`(1 | sample_id)` correlated across analytes), which re-introduces
+#'       cross-analyte coupling while keeping proper censoring.}
+#'   }
+#'   See `vignette("imputation")` and the package benchmark for guidance on
+#'   which to prefer.
 #' @param iter,warmup,chains,cores brms MCMC settings.
 #' @param save_dir If non-NULL, save the returned model object as a `.qs` file
 #'   in this directory using `qs2::qs_save()`.
@@ -260,6 +276,7 @@ fit_imputation_model <- function(
     min_var_explained = 0.75,
     max_pcs           = 6L,
     family            = "gaussian",
+    impute_method     = c("rescor_mi", "cens", "cens_factor"),
     iter              = 2000,
     warmup            = 1000,
     chains            = 4,
@@ -268,6 +285,7 @@ fit_imputation_model <- function(
     ...
 ) {
   .require_brms()
+  impute_method <- match.arg(impute_method)
 
   if (is.null(pca_vars))          pca_vars          <- c("pH", "EC", "NH3-N",
                                                           .WQ_BLOCK_CANDIDATES)
@@ -422,6 +440,7 @@ fit_imputation_model <- function(
       warmup          = warmup,
       chains          = chains,
       cores           = cores,
+      impute_method   = impute_method,
       ...
     )
   }
@@ -439,6 +458,7 @@ fit_imputation_model <- function(
       warmup          = warmup,
       chains          = chains,
       cores           = cores,
+      impute_method   = impute_method,
       ...
     )
   }
@@ -453,6 +473,7 @@ fit_imputation_model <- function(
       pca_vars        = pca_vars,
       hurdle_metals   = metal_analytes,
       hurdle_organics = doc_like_analytes,
+      impute_method   = impute_method,
       fit_date        = Sys.Date(),
       n_samples       = length(samples_with_required)
     ),
@@ -482,6 +503,8 @@ print.imputation_model <- function(x, ...) {
     x$fit_date, x$n_samples, length(x$pca_vars),
     x$pca$n_pcs, 100 * x$pca$var_explained
   ))
+  if (!is.null(x$impute_method))
+    cat(sprintf("  method:   %s\n", x$impute_method))
   if (!is.null(x$metals))
     cat(sprintf("  metals:   %d analytes\n", length(x$metals$analytes)))
   if (!is.null(x$organics))
@@ -624,7 +647,15 @@ impute_chemistry <- function(
     )
   }
 
-  .check_bdl_imputed(result, dl_tbl, bdl_cap)
+  # The DL cap is the rescor_mi workaround (mi() does not enforce the censoring
+  # bound during MCMC). The cens / cens_factor methods enforce it natively, so
+  # their imputed values are not capped.
+  if (identical(model$impute_method, "cens") ||
+      identical(model$impute_method, "cens_factor")) {
+    result
+  } else {
+    .check_bdl_imputed(result, dl_tbl, bdl_cap)
+  }
 }
 
 
@@ -1013,50 +1044,70 @@ impute_coanalytes <- function(
 #' Fit a single brms group model (metals or organics)
 #' @keywords internal
 .fit_group_model <- function(df, target_analytes, pca_obj,
-                              family, iter, warmup, chains, cores, ...) {
+                              family, iter, warmup, chains, cores,
+                              impute_method = "rescor_mi", ...) {
   eps_log <- 1e-9
 
   safe_analytes <- stats::setNames(make.names(target_analytes), target_analytes)
   # safe_analytes: names = safe R names, values = original names
+  safe_vec <- unname(safe_analytes)
+  pc_cols  <- paste0("PC", seq_len(pca_obj$n_pcs))
+  rhs      <- paste(paste0("s(", pc_cols, ")"), collapse = " + ")
+  pc_wide  <- dplyr::select(pca_obj$pc_scores, "sample_id", dplyr::all_of(pc_cols))
 
-  # ── Wide targets (log scale; NA for BDL and missing) ─────────────────────
-  target_wide <- df |>
+  # One row per (sample, analyte) with a safe column name and log value.
+  base <- df |>
     dplyr::filter(.data$analyte %in% .env$target_analytes) |>
-    dplyr::select("sample_id", "analyte", "value", "detected") |>
+    dplyr::group_by(.data$sample_id, .data$analyte) |>
+    dplyr::slice(1L) |>
+    dplyr::ungroup() |>
     dplyr::mutate(
-      log_value = dplyr::if_else(
-        .data$detected,
-        log(pmax(.data$value, eps_log)),
-        NA_real_
-      )
-    ) |>
-    dplyr::summarise(
-      log_value = mean(.data$log_value, na.rm = TRUE),
-      .by        = c("sample_id", "analyte")
-    ) |>
-    tidyr::pivot_wider(names_from = "analyte", values_from = "log_value") |>
-    # Rename to safe R column names using the safe_analytes map
-    dplyr::rename(dplyr::any_of(
-      stats::setNames(names(safe_analytes), unname(safe_analytes))
-      # setNames(old_names, new_names): names = new safe names, values = old original names
-    ))
+      safe = unname(safe_analytes[.data$analyte]),
+      lv   = log(pmax(.data$value, eps_log))
+    )
 
-  # ── Join PC scores with targets ───────────────────────────────────────────
-  pc_cols <- paste0("PC", seq_len(pca_obj$n_pcs))
-  wide_df <- pca_obj$pc_scores |>
-    dplyr::select("sample_id", dplyr::all_of(pc_cols)) |>
-    dplyr::left_join(target_wide, by = "sample_id")
+  if (impute_method == "rescor_mi") {
+    # Residual correlation + mi() for BDL/missing. BDL and missing are NA and
+    # imputed; the post-hoc DL cap is applied in impute_chemistry().
+    target_wide <- base |>
+      dplyr::mutate(log_value = dplyr::if_else(.data$detected, .data$lv, NA_real_)) |>
+      dplyr::select("sample_id", "safe", "log_value") |>
+      tidyr::pivot_wider(names_from = "safe", values_from = "log_value")
+    wide_df <- dplyr::left_join(pc_wide, target_wide, by = "sample_id")
+    bf_list <- purrr::map(safe_vec, function(s)
+      brms::bf(stats::as.formula(paste0(s, " | mi() ~ ", rhs))))
+    brms_formula <- do.call(brms::mvbf, c(bf_list, list(rescor = TRUE)))
 
-  # ── brms formula (PC scores only — orthogonal, no collinearity) ──────────
-  rhs <- paste(paste0("s(", pc_cols, ")"), collapse = " + ")
-
-  bf_list <- purrr::map(unname(safe_analytes), function(safe_nm) {
-    brms::bf(stats::as.formula(paste0(safe_nm, " | mi() ~ ", rhs)))
-  })
-  brms_formula <- do.call(brms::mvbf, c(bf_list, list(rescor = TRUE)))
+  } else {
+    # cens / cens_factor: left-censor BDL at its detection limit (the BDL value),
+    # rescor = FALSE. subset() lets each analyte use only the samples that
+    # measured it; cens_factor adds a shared per-sample latent factor that
+    # induces cross-analyte coupling.
+    resp_wide <- base |>
+      dplyr::select("sample_id", "safe", "lv") |>
+      tidyr::pivot_wider(names_from = "safe", values_from = "lv")
+    cens_wide <- base |>
+      dplyr::mutate(cf = dplyr::if_else(.data$detected, "none", "left")) |>
+      dplyr::select("sample_id", "safe", "cf") |>
+      tidyr::pivot_wider(names_from = "safe", values_from = "cf",
+                         names_glue = "cens_{safe}")
+    wide_df <- pc_wide |>
+      dplyr::left_join(resp_wide, by = "sample_id") |>
+      dplyr::left_join(cens_wide, by = "sample_id")
+    for (s in safe_vec) {
+      wide_df[[paste0("sub_", s)]]  <- !is.na(wide_df[[s]])
+      wide_df[[s]]                  <- dplyr::coalesce(wide_df[[s]], 0)
+      wide_df[[paste0("cens_", s)]] <- dplyr::coalesce(wide_df[[paste0("cens_", s)]], "none")
+    }
+    grp <- if (impute_method == "cens_factor") " + (1 |q| sample_id)" else ""
+    bf_list <- purrr::map(safe_vec, function(s)
+      brms::bf(stats::as.formula(sprintf(
+        "%s | cens(cens_%s) + subset(sub_%s) ~ %s%s", s, s, s, rhs, grp))))
+    brms_formula <- do.call(brms::mvbf, c(bf_list, list(rescor = FALSE)))
+  }
 
   cli::cli_inform(c(
-    "i" = "brms: {length(target_analytes)} analyte{?s} \u00d7 \\
+    "i" = "brms ({impute_method}): {length(target_analytes)} analyte{?s} \u00d7 \\
            {nrow(wide_df)} sample{?s}. This may take several minutes."
   ))
 
@@ -1086,7 +1137,8 @@ impute_coanalytes <- function(
     analytes        = target_analytes,   # original names
     safe_names      = safe_analytes,     # names=safe, values=original
     pc_cols         = pc_cols,
-    wide_sample_ids = wide_df$sample_id
+    wide_sample_ids = wide_df$sample_id,
+    impute_method   = impute_method
   )
 }
 
@@ -1135,8 +1187,43 @@ impute_coanalytes <- function(
   wide_new <- pc_wide |>
     dplyr::left_join(target_wide, by = "sample_id")
 
+  # cens / cens_factor models reference <safe>__cens and <safe>__sub columns in
+  # the formula. For prediction we set them so every target cell is predicted
+  # (cens "none", subset TRUE); the response placeholder is ignored.
+  if (!is.null(group$impute_method) && group$impute_method != "rescor_mi") {
+    for (s in unname(safe_analytes)) {
+      if (!s %in% names(wide_new)) wide_new[[s]] <- 0
+      wide_new[[s]]                 <- dplyr::coalesce(wide_new[[s]], 0)
+      wide_new[[paste0("cens_", s)]] <- "none"
+      wide_new[[paste0("sub_", s)]]  <- TRUE
+    }
+  }
+
   # ── Posterior predictions ─────────────────────────────────────────────────
-  if (return == "point") {
+  cens_method <- !is.null(group$impute_method) &&
+    group$impute_method != "rescor_mi"
+  if (cens_method) {
+    # Models with subset() must be predicted one response at a time (brms
+    # disallows joint prediction), so loop over analytes and assemble pm_long.
+    pm_long <- purrr::map_dfr(unname(safe_analytes), function(s) {
+      orig <- names(safe_analytes)[safe_analytes == s]
+      if (return == "point") {
+        ep <- brms::posterior_epred(group$fit, newdata = wide_new, resp = s,
+                                    allow_new_levels = TRUE)
+        tibble::tibble(sample_id = wide_new$sample_id, analyte = orig,
+                       .post_mean = exp(colMeans(ep)))
+      } else {
+        pp <- brms::posterior_predict(group$fit, newdata = wide_new, resp = s,
+                                      allow_new_levels = TRUE)
+        nd <- nrow(pp)
+        tibble::tibble(
+          sample_id   = rep(wide_new$sample_id, each = nd),
+          analyte     = orig,
+          draw_id     = rep(seq_len(nd), times = ncol(pp)),
+          .post_value = exp(as.vector(pp)))
+      }
+    })
+  } else if (return == "point") {
     epred <- tryCatch(
       brms::posterior_epred(group$fit, newdata = wide_new,
                             allow_new_levels = TRUE),
