@@ -329,12 +329,36 @@ fallback. Also pinned by `test-impute-pca.R`.
   `test-paf-values.R`. `ssd_hc50()` / the CA mixture step still use a single
   representative class (`.no3_class()`); revisit if CA needs the blend too.
 
-- **Benchmark the three BDL/imputation configs** (`R/impute.R` docstring of
-  `fit_imputation_model`). On real hold-out data (mask 10% of detected cells,
-  compare RMSE / coverage):
-  1. `rescor = TRUE` + `mi()` + post-hoc DL cap (current).
-  2. `rescor = FALSE` + `cens("left")` (clean BDL; loses cross-analyte coupling).
-  3. `rescor = FALSE` + `cens("left")` + shared `(1 | sample_id)` latent factor.
+- **Benchmark the three BDL/imputation configs — IMPLEMENTED + first benchmark
+  2026-06-04.** The three configs are now a `fit_imputation_model(impute_method=)`
+  option (`"rescor_mi"` default, `"cens"`, `"cens_factor"`); see §10b below.
+  1. `rescor = TRUE` + `mi()` + post-hoc DL cap (current = `"rescor_mi"`).
+  2. `rescor = FALSE` + `cens("left")` (clean BDL; no coupling = `"cens"`).
+  3. `rescor = FALSE` + `cens("left")` + shared `(1 | sample_id)` factor
+     (= `"cens_factor"`).
+  First hold-out benchmark on B.S01 routine metals (As/Cr/Cu/Ni/Pb/Zn, 89
+  samples, 19 masked detected cells censored at 2x truth, log10 scale):
+  | method | RMSE | MAE | 90% coverage |
+  |--------|------|-----|--------------|
+  | rescor_mi | **0.18** | **0.15** | n/a (draws OOM) |
+  | cens | 0.54 | 0.38 | 0.89 |
+  | cens_factor | 0.49 | 0.36 | 0.89 |
+  Ordering is as expected — recovery improves with cross-analyte coupling
+  strength (full rescor > shared factor > none) — so the benchmark **supports
+  keeping `rescor_mi` as the default**. Caveats: n = 19 (single random mask,
+  one seed -> noisy); the DL cap can give rescor_mi a small edge (it never
+  raises error); rescor_mi's posterior draws hit the 16 GB memory limit (so no
+  coverage, and draws are costly for the §1 uncertainty work), whereas the cens
+  methods give well-calibrated intervals cheaply. Next: repeated CV / multiple
+  seeds, and disable the cap for a fully fair point comparison. (Benchmark
+  scripts live in the gitignored `test data/`.)
+
+- **Robustness gap found while benchmarking:** on a dataset with ~100 mostly
+  all-BDL organics (and several near-undetected metals), `fit_imputation_model`
+  builds a huge organics/metals model (107-way -> Stan parser failure; 18-way
+  metals -> intractable). Add a min-detection-frequency filter on the metals /
+  organics target groups (drop analytes below a detect-count/frequency floor),
+  analogous to `prescreen_analytes()` but for the imputation targets.
 
 - **BDL cap inspection** (`.check_bdl_imputed`, `R/impute.R`). The cap clips
   imputed BDL cells to the detection limit; for sites whose chemistry
