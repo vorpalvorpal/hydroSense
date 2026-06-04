@@ -566,9 +566,16 @@ print.imputation_model <- function(x, ...) {
 #' @param organic_hurdle Logical.  Apply DOC-like-presence hurdle?  Default
 #'   `TRUE`.
 #' @param bdl_cap Logical.  Cap imputed BDL values at the original detection
-#'   limit?  Default `TRUE`.
+#'   limit?  Default `TRUE`.  Applied to all methods: an imputed below-detection
+#'   value should never exceed its detection limit.
 #' @param return `"point"` (default) for posterior mean per cell; `"draws"` for
 #'   one row per (sample × analyte × draw).
+#' @param ndraws Integer or `NULL`.  Use only this many posterior draws for
+#'   prediction (subsampled).  `NULL` (default) uses all draws.  Lowering it
+#'   reduces memory/time, at some cost to interval precision.
+#' @param batch_size Integer or `NULL`.  Predict eligible samples in batches of
+#'   this many rows to bound peak memory (important for `"rescor_mi"`, whose
+#'   `mi()` prediction is memory-heavy).  `NULL` (default) predicts all at once.
 #'
 #' @return `df` with BDL and missing cells in the metals/organics groups
 #'   replaced by posterior mean estimates, plus columns:
@@ -589,7 +596,9 @@ impute_chemistry <- function(
     metal_hurdle   = TRUE,
     organic_hurdle = TRUE,
     bdl_cap        = TRUE,
-    return         = c("point", "draws")
+    return         = c("point", "draws"),
+    ndraws         = NULL,
+    batch_size     = NULL
 ) {
   return <- match.arg(return)
   .require_brms()
@@ -634,7 +643,9 @@ impute_chemistry <- function(
       group        = model$metals,
       pca_scores   = pca_scores,
       eligible_ids = eligible,
-      return       = return
+      return       = return,
+      ndraws       = ndraws,
+      batch_size   = batch_size
     )
   }
 
@@ -657,7 +668,9 @@ impute_chemistry <- function(
       group        = model$organics,
       pca_scores   = pca_scores,
       eligible_ids = eligible_org,
-      return       = return
+      return       = return,
+      ndraws       = ndraws,
+      batch_size   = batch_size
     )
   }
 
@@ -674,15 +687,12 @@ impute_chemistry <- function(
     )
   }
 
-  # The DL cap is the rescor_mi workaround (mi() does not enforce the censoring
-  # bound during MCMC). The cens / cens_factor methods enforce it natively, so
-  # their imputed values are not capped.
-  if (identical(model$impute_method, "cens") ||
-      identical(model$impute_method, "cens_factor")) {
-    result
-  } else {
-    .check_bdl_imputed(result, dl_tbl, bdl_cap)
-  }
+  # Cap imputed BDL values at their detection limit, for every method. An
+  # imputed below-detection value must not exceed its DL. (For rescor_mi this
+  # is the only enforcement of the censoring bound; for the cens methods the
+  # bound is enforced in the likelihood during fitting, but the emitted
+  # prediction is unconstrained, so the cap is still needed.)
+  .check_bdl_imputed(result, dl_tbl, bdl_cap)
 }
 
 
@@ -1171,7 +1181,8 @@ impute_coanalytes <- function(
 
 #' Predict and merge imputed values for one analyte group
 #' @keywords internal
-.predict_and_merge <- function(df, group, pca_scores, eligible_ids, return) {
+.predict_and_merge <- function(df, group, pca_scores, eligible_ids, return,
+                                ndraws = NULL, batch_size = NULL) {
   eps_log <- 1e-9
 
   target_analytes <- group$analytes
@@ -1226,45 +1237,56 @@ impute_coanalytes <- function(
     }
   }
 
-  # ── Posterior predictions ─────────────────────────────────────────────────
+  # ── Posterior predictions (batched + optional draw subsampling) ───────────
+  # Predicting all eligible samples at once can exhaust memory for rescor_mi
+  # (mi() materialises every imputed cell as a latent parameter). Predict in
+  # row-batches, and optionally use only `ndraws` posterior draws, to bound peak
+  # memory.
   cens_method <- !is.null(group$impute_method) &&
     group$impute_method != "rescor_mi"
-  if (cens_method) {
-    # Models with subset() must be predicted one response at a time (brms
-    # disallows joint prediction), so loop over analytes and assemble pm_long.
-    pm_long <- purrr::map_dfr(unname(safe_analytes), function(s) {
-      orig <- names(safe_analytes)[safe_analytes == s]
-      if (return == "point") {
-        ep <- brms::posterior_epred(group$fit, newdata = wide_new, resp = s,
-                                    allow_new_levels = TRUE)
-        tibble::tibble(sample_id = wide_new$sample_id, analyte = orig,
-                       .post_mean = exp(colMeans(ep)))
-      } else {
-        pp <- brms::posterior_predict(group$fit, newdata = wide_new, resp = s,
-                                      allow_new_levels = TRUE)
-        nd <- nrow(pp)
-        tibble::tibble(
-          sample_id   = rep(wide_new$sample_id, each = nd),
-          analyte     = orig,
-          draw_id     = rep(seq_len(nd), times = ncol(pp)),
-          .post_value = exp(as.vector(pp)))
-      }
-    })
-  } else if (return == "point") {
-    epred <- tryCatch(
-      brms::posterior_epred(group$fit, newdata = wide_new,
-                            allow_new_levels = TRUE),
-      error = function(e) cli::cli_abort(c(
-        "brms::posterior_epred() failed during imputation.",
-        "x" = "{conditionMessage(e)}"
-      ))
-    )
-    pm_long <- .reshape_posterior_means(epred, wide_new$sample_id, safe_analytes)
-  } else {
-    post_draws <- brms::posterior_predict(group$fit, newdata = wide_new,
-                                          allow_new_levels = TRUE)
-    pm_long <- .reshape_posterior_draws(post_draws, wide_new$sample_id, safe_analytes)
+
+  predict_chunk <- function(wn) {
+    if (cens_method) {
+      # subset() models must be predicted one response at a time.
+      purrr::map_dfr(unname(safe_analytes), function(s) {
+        orig <- names(safe_analytes)[safe_analytes == s]
+        if (return == "point") {
+          ep <- brms::posterior_epred(group$fit, newdata = wn, resp = s,
+                                      allow_new_levels = TRUE, ndraws = ndraws)
+          tibble::tibble(sample_id = wn$sample_id, analyte = orig,
+                         .post_mean = exp(colMeans(ep)))
+        } else {
+          pp <- brms::posterior_predict(group$fit, newdata = wn, resp = s,
+                                        allow_new_levels = TRUE, ndraws = ndraws)
+          nd <- nrow(pp)
+          tibble::tibble(
+            sample_id   = rep(wn$sample_id, each = nd),
+            analyte     = orig,
+            draw_id     = rep(seq_len(nd), times = ncol(pp)),
+            .post_value = exp(as.vector(pp)))
+        }
+      })
+    } else if (return == "point") {
+      ep <- brms::posterior_epred(group$fit, newdata = wn,
+                                  allow_new_levels = TRUE, ndraws = ndraws)
+      .reshape_posterior_means(ep, wn$sample_id, safe_analytes)
+    } else {
+      pp <- brms::posterior_predict(group$fit, newdata = wn,
+                                    allow_new_levels = TRUE, ndraws = ndraws)
+      .reshape_posterior_draws(pp, wn$sample_id, safe_analytes)
+    }
   }
+
+  n_new <- nrow(wide_new)
+  bs    <- if (is.null(batch_size)) n_new else max(1L, as.integer(batch_size))
+  batches <- split(seq_len(n_new), ceiling(seq_len(n_new) / bs))
+  pm_long <- tryCatch(
+    purrr::map_dfr(batches, function(idx) predict_chunk(wide_new[idx, , drop = FALSE])),
+    error = function(e) cli::cli_abort(c(
+      "brms prediction failed during imputation.",
+      "x" = "{conditionMessage(e)}"
+    ))
+  )
 
   # ── Tag imputation kind for each (sample, analyte) ─────────────────────────
   impute_kind <- df_eligible |>
@@ -1424,9 +1446,8 @@ impute_coanalytes <- function(
   cli::cli_warn(c(
     "!" = "{n_ex} imputed BDL value{?s} exceed the original detection limit.",
     "i" = "Affected analyte{?s}: {.val {analytes_ex}}.",
-    "i" = "Using {.code mi()} instead of {.code cens('left')} (required for \\
-           {.code rescor = TRUE}) means the left-censor constraint is not \\
-           enforced during MCMC.",
+    "i" = "The posterior prediction is not constrained below the detection \\
+           limit, so some imputed below-detection cells came out above it.",
     if (cap) "i" = "Values capped at DL ({.arg bdl_cap = TRUE})."
     else     "i" = "Values NOT capped ({.arg bdl_cap = FALSE})."
   ))

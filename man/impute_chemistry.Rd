@@ -10,7 +10,9 @@ impute_chemistry(
   metal_hurdle = TRUE,
   organic_hurdle = TRUE,
   bdl_cap = TRUE,
-  return = c("point", "draws")
+  return = c("point", "draws"),
+  ndraws = NULL,
+  batch_size = NULL
 )
 }
 \arguments{
@@ -24,10 +26,19 @@ impute_chemistry(
 \code{TRUE}.}
 
 \item{bdl_cap}{Logical.  Cap imputed BDL values at the original detection
-limit?  Default \code{TRUE}.}
+limit?  Default \code{TRUE}.  Applied to all methods: an imputed below-detection
+value should never exceed its detection limit.}
 
 \item{return}{\code{"point"} (default) for posterior mean per cell; \code{"draws"} for
 one row per (sample × analyte × draw).}
+
+\item{ndraws}{Integer or \code{NULL}.  Use only this many posterior draws for
+prediction (subsampled).  \code{NULL} (default) uses all draws.  Lowering it
+reduces memory/time, at some cost to interval precision.}
+
+\item{batch_size}{Integer or \code{NULL}.  Predict eligible samples in batches of
+this many rows to bound peak memory (important for \code{"rescor_mi"}, whose
+\code{mi()} prediction is memory-heavy).  \code{NULL} (default) predicts all at once.}
 }
 \value{
 \code{df} with BDL and missing cells in the metals/organics groups

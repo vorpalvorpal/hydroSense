@@ -4,7 +4,15 @@
 \alias{.predict_and_merge}
 \title{Predict and merge imputed values for one analyte group}
 \usage{
-.predict_and_merge(df, group, pca_scores, eligible_ids, return)
+.predict_and_merge(
+  df,
+  group,
+  pca_scores,
+  eligible_ids,
+  return,
+  ndraws = NULL,
+  batch_size = NULL
+)
 }
 \description{
 Predict and merge imputed values for one analyte group
