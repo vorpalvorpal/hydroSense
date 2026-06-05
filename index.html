@@ -67,9 +67,9 @@
 <p>The package has three pillars:</p>
 <ul>
 <li>
-<strong>Leachate detection (LMF).</strong> End-member mixing analysis (<code><a href="reference/add_lmf.html">add_lmf()</a></code>) estimates the <em>leachate-mixing fraction</em> of each sample from its major-ion signature, distinguishing leachate influence from natural variation.</li>
-<li>
 <strong>Chemistry imputation.</strong> A Bayesian multivariate model (<code><a href="reference/fit_imputation_model.html">fit_imputation_model()</a></code> / <code><a href="reference/impute_chemistry.html">impute_chemistry()</a></code>) imputes below-detection and missing analyte concentrations while preserving cross-analyte correlation structure, and can return full posterior draws.</li>
+<li>
+<strong>Leachate detection (LMF).</strong> End-member mixing analysis (<code><a href="reference/add_lmf.html">add_lmf()</a></code>) estimates the <em>leachate-mixing fraction</em> of each sample from its major-ion signature, distinguishing leachate influence from natural variation.</li>
 <li>
 <strong>Multi-substance toxicity (AmsPAF).</strong> Species sensitivity distributions (<code><a href="reference/ssd_paf.html">ssd_paf()</a></code>) feed a multi-substance potentially-affected-fraction (<code><a href="reference/add_amspaf.html">add_amspaf()</a></code>) that combines toxicants by concentration- and response-addition and subtracts the <em>local</em> background via the Added Risk Approach.</li>
 </ul>
@@ -111,9 +111,21 @@
 </h2>
 <ul>
 <li>
+<a href="https://vorpalvorpal.github.io/leachatetools/articles/leachate-mixing-fraction.html">Leachate Mixing Fraction</a>
+<ul>
+<li>What fraction of this sample’s chemistry can be explained as a mixture of local reference water and landfill leachate?</li>
+</ul>
+</li>
+<li>
+<a href="https://vorpalvorpal.github.io/leachatetools/articles/imputation.html">Imputation</a>
+<ul>
+<li>How missing and below detection values are imputed.</li>
+</ul>
+</li>
+<li>
 <a href="https://vorpalvorpal.github.io/leachatetools/articles/normalisation.html">Analyte normalisation</a> — how bioavailability and physicochemical corrections bring concentrations to the SSD index condition.</li>
 <li>
-<a href="https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.html">Interpreting chronic AmsPAF outputs</a> — what the returned PAF values mean for an environmental assessment.</li>
+<a href="https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.html">AmsPAF</a> — what the returned PAF values mean for an environmental assessment.</li>
 <li>
 <a href="https://vorpalvorpal.github.io/leachatetools/reference/index.html">Function reference</a> — all exported functions, grouped by pillar.</li>
 </ul>

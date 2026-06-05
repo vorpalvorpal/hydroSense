@@ -8,11 +8,6 @@ conditions.
 
 The package has three pillars:
 
-- **Leachate detection (LMF).** End-member mixing analysis
-  ([`add_lmf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md))
-  estimates the *leachate-mixing fraction* of each sample from its
-  major-ion signature, distinguishing leachate influence from natural
-  variation.
 - **Chemistry imputation.** A Bayesian multivariate model
   ([`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
   /
@@ -20,6 +15,11 @@ The package has three pillars:
   imputes below-detection and missing analyte concentrations while
   preserving cross-analyte correlation structure, and can return full
   posterior draws.
+- **Leachate detection (LMF).** End-member mixing analysis
+  ([`add_lmf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md))
+  estimates the *leachate-mixing fraction* of each sample from its
+  major-ion signature, distinguishing leachate influence from natural
+  variation.
 - **Multi-substance toxicity (AmsPAF).** Species sensitivity
   distributions
   ([`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md))
@@ -81,12 +81,17 @@ ssd_hc50("Cu")
 
 ## Learn more
 
+- [Leachate Mixing
+  Fraction](https://vorpalvorpal.github.io/leachatetools/articles/leachate-mixing-fraction.html)
+  - What fraction of this sample’s chemistry can be explained as a
+    mixture of local reference water and landfill leachate?
+- [Imputation](https://vorpalvorpal.github.io/leachatetools/articles/imputation.html)
+  - How missing and below detection values are imputed.
 - [Analyte
   normalisation](https://vorpalvorpal.github.io/leachatetools/articles/normalisation.html)
   — how bioavailability and physicochemical corrections bring
   concentrations to the SSD index condition.
-- [Interpreting chronic AmsPAF
-  outputs](https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.html)
+- [AmsPAF](https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.html)
   — what the returned PAF values mean for an environmental assessment.
 - [Function
   reference](https://vorpalvorpal.github.io/leachatetools/reference/index.html)
