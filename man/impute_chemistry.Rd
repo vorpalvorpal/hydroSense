@@ -47,6 +47,10 @@ replaced by posterior mean estimates, plus columns:
 \item \code{imputed} (logical) — \code{TRUE} for filled cells
 \item \code{imputed_kind} — \code{"observed"}, \code{"censored_left"}, or \code{"missing"}
 }
+
+When \code{bdl_cap = TRUE} and any imputed BDL cell exceeded its detection
+limit, a per-cell audit of the cap activations is attached as the
+\code{"bdl_cap_summary"} attribute; retrieve it with \code{\link[=bdl_cap_summary]{bdl_cap_summary()}}.
 }
 \description{
 Applies the models fitted by \code{\link[=fit_imputation_model]{fit_imputation_model()}} to \code{df}, returning
@@ -76,5 +80,5 @@ imputed <- impute_chemistry(monitoring_long, model, return = "point")
 }
 }
 \seealso{
-\code{\link[=fit_imputation_model]{fit_imputation_model()}}
+\code{\link[=fit_imputation_model]{fit_imputation_model()}}, \code{\link[=bdl_cap_summary]{bdl_cap_summary()}}
 }

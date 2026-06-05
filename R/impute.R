@@ -582,7 +582,11 @@ print.imputation_model <- function(x, ...) {
 #'   - `imputed` (logical) — `TRUE` for filled cells
 #'   - `imputed_kind` — `"observed"`, `"censored_left"`, or `"missing"`
 #'
-#' @seealso [fit_imputation_model()]
+#'   When `bdl_cap = TRUE` and any imputed BDL cell exceeded its detection
+#'   limit, a per-cell audit of the cap activations is attached as the
+#'   `"bdl_cap_summary"` attribute; retrieve it with [bdl_cap_summary()].
+#'
+#' @seealso [fit_imputation_model()], [bdl_cap_summary()]
 #' @examples
 #' \dontrun{
 #' model <- fit_imputation_model(monitoring_long)
@@ -1420,45 +1424,99 @@ impute_coanalytes <- function(
 }
 
 
-# ── BDL cap check (unchanged) ─────────────────────────────────────────────────
+# ── BDL cap check + audit summary ─────────────────────────────────────────────
+
+#' Inspect detection-limit cap activations from `impute_chemistry()`
+#'
+#' An imputed below-detection (BDL) cell must not exceed its detection limit
+#' (DL).  The posterior prediction is not itself constrained below the DL, so
+#' [impute_chemistry()] caps any imputed BDL cell whose estimate came out above
+#' the limit (`bdl_cap = TRUE`).  Frequent capping signals tension between the
+#' modelled chemistry and the reported limits, so the cells that triggered the
+#' cap are worth auditing rather than trusting blindly.
+#'
+#' `impute_chemistry()` attaches a per-cell audit summary to its result as the
+#' `"bdl_cap_summary"` attribute; this accessor returns it.  Because plain
+#' attributes are dropped by most \pkg{dplyr} verbs, call this on the frame
+#' **as returned by `impute_chemistry()`**, before further wrangling.
+#'
+#' @param x A data frame returned by [impute_chemistry()].
+#' @return A tibble with one row per (`sample_id`, `analyte`) cell that exceeded
+#'   its detection limit, with columns `detection_limit`, `n_rows` (rows over
+#'   the DL — one per draw when `return = "draws"`), `max_imputed`, `max_ratio`
+#'   (`max_imputed / detection_limit`) and `capped` (whether the cap was
+#'   applied).  Returns `NULL` invisibly when no cell exceeded its DL.
+#' @seealso [impute_chemistry()]
+#' @export
+bdl_cap_summary <- function(x) {
+  s <- attr(x, "bdl_cap_summary", exact = TRUE)
+  if (is.null(s)) {
+    cli::cli_inform(c("v" = "No detection-limit cap activations recorded."))
+    return(invisible(NULL))
+  }
+  s
+}
 
 #' @keywords internal
 .check_bdl_imputed <- function(result, dl_tbl, cap = TRUE) {
   if (nrow(dl_tbl) == 0L) return(result)
 
-  bdl_rows <- dplyr::filter(result, .data$imputed_kind == "censored_left") |>
-    dplyr::left_join(dl_tbl, by = c("sample_id", "analyte"))
+  # dl_tbl is one row per (sample_id, analyte); join on the unique key so a
+  # multi-draw `result` (return = "draws") is never duplicated by the join.
+  dl_join <- dplyr::distinct(dl_tbl, .data$sample_id, .data$analyte,
+                             .keep_all = TRUE)
+  joined <- dplyr::left_join(result, dl_join, by = c("sample_id", "analyte"))
+  if (!"detection_limit" %in% names(joined)) return(result)
 
-  if (nrow(bdl_rows) == 0L || !"detection_limit" %in% names(bdl_rows))
-    return(result)
+  exceed <- joined$imputed_kind == "censored_left" &
+            !is.na(joined$detection_limit) &
+            joined$value > joined$detection_limit
 
-  exceedances <- dplyr::filter(
-    bdl_rows,
-    !is.na(.data$detection_limit),
-    .data$value > .data$detection_limit
+  if (!any(exceed)) return(result)
+
+  # Per-(sample, analyte) audit summary, computed on the *pre-cap* values so it
+  # records the magnitude of each exceedance even when capping is applied.
+  summary_tbl <- joined[exceed, , drop = FALSE] |>
+    dplyr::group_by(.data$sample_id, .data$analyte) |>
+    dplyr::summarise(
+      detection_limit = dplyr::first(.data$detection_limit),
+      n_rows          = dplyr::n(),
+      max_imputed     = max(.data$value),
+      max_ratio       = max(.data$value / .data$detection_limit),
+      .groups = "drop"
+    ) |>
+    dplyr::mutate(capped = cap) |>
+    dplyr::arrange(dplyr::desc(.data$max_ratio))
+
+  # Per-analyte rollup for an auditable (not just aggregate) warning.
+  by_analyte <- summary_tbl |>
+    dplyr::group_by(.data$analyte) |>
+    dplyr::summarise(cells     = dplyr::n(),
+                     max_ratio = max(.data$max_ratio),
+                     .groups   = "drop") |>
+    dplyr::arrange(dplyr::desc(.data$max_ratio))
+
+  analyte_lines <- stats::setNames(
+    sprintf("%s: %d cell%s, up to %.1f× DL",
+            by_analyte$analyte, by_analyte$cells,
+            ifelse(by_analyte$cells == 1L, "", "s"), by_analyte$max_ratio),
+    rep("*", nrow(by_analyte))
   )
 
-  if (nrow(exceedances) == 0L) return(result)
-
-  n_ex        <- nrow(exceedances)
-  analytes_ex <- unique(exceedances$analyte)
-
+  n_cells <- nrow(summary_tbl)
   cli::cli_warn(c(
-    "!" = "{n_ex} imputed BDL value{?s} exceed the original detection limit.",
-    "i" = "Affected analyte{?s}: {.val {analytes_ex}}.",
-    "i" = "The posterior prediction is not constrained below the detection \\
-           limit, so some imputed below-detection cells came out above it.",
-    if (cap) "i" = "Values capped at DL ({.arg bdl_cap = TRUE})."
-    else     "i" = "Values NOT capped ({.arg bdl_cap = FALSE})."
+    "!" = "{n_cells} imputed below-detection cell{?s} exceeded the detection limit.",
+    analyte_lines,
+    "i" = "The posterior is not constrained below the DL, so some BDL cells \\
+           came out above it.",
+    if (cap) c("i" = "Capped at DL ({.code bdl_cap = TRUE}).")
+    else     c("i" = "NOT capped ({.code bdl_cap = FALSE})."),
+    "i" = "Per-cell detail: {.run bdl_cap_summary(x)} on the returned frame."
   ))
 
-  if (!cap) return(result)
+  if (cap) joined$value[exceed] <- joined$detection_limit[exceed]
 
-  exceedance_keys <- dplyr::select(exceedances, "sample_id", "analyte",
-                                    cap_value = "detection_limit")
-  dplyr::left_join(result, exceedance_keys, by = c("sample_id", "analyte")) |>
-    dplyr::mutate(
-      value = dplyr::if_else(!is.na(.data$cap_value), .data$cap_value, .data$value)
-    ) |>
-    dplyr::select(-"cap_value")
+  out <- dplyr::select(joined, -"detection_limit")
+  attr(out, "bdl_cap_summary") <- summary_tbl
+  out
 }

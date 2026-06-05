@@ -23,15 +23,7 @@ path is currently only exercised on a developer machine. Needs a reliable
 Stan-in-CI setup — most likely `cmdstanr` (precompiled), or a dedicated job —
 so regressions in `impute.R` are caught automatically.
 
-### 2. BDL-cap activation summary
-
-The detection-limit cap (`.check_bdl_imputed`, `R/impute.R`) clips imputed BDL
-cells to their detection limit. For sites whose chemistry legitimately implies
-high concentrations the cap can fire often. Surface a summary of cap activations
-(per analyte / per sample) so the capping regime is auditable rather than just
-warned about in aggregate.
-
-### 3. Imputation-method follow-ups
+### 2. Imputation-method follow-ups
 
 From the §10b BDL/imputation-method benchmark (`impute_method` =
 `rescor_mi`/`cens`/`cens_factor`; `rescor_mi` confirmed as default):

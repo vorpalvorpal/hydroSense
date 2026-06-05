@@ -193,10 +193,21 @@ the samples in batches, both of which bound peak memory.
 An imputed below-detection value must never exceed its detection limit. The
 posterior prediction is not itself constrained below the DL, so
 `impute_chemistry()` **caps** any imputed BDL cell at its original detection
-limit (`bdl_cap = TRUE`, the default) and warns, naming the affected analytes,
-when the cap fires — those samples can then be inspected rather than trusted
-blindly. Frequent cap firing signals tension between the modelled chemistry and
-the reported detection limits.
+limit (`bdl_cap = TRUE`, the default) and warns when the cap fires, with a
+per-analyte breakdown (how many cells, and the worst exceedance ratio) so the
+activations are auditable rather than just an aggregate count. Frequent cap
+firing signals tension between the modelled chemistry and the reported limits.
+
+For a full per-cell audit, the result carries a `"bdl_cap_summary"` attribute —
+one row per capped (`sample_id`, `analyte`) cell with its detection limit, the
+uncapped estimate, and the exceedance ratio. Retrieve it with
+`bdl_cap_summary()` on the frame as returned (plain attributes are dropped by
+most dplyr verbs, so read it before further wrangling):
+
+```{r capsummary, eval = FALSE}
+filled <- impute_chemistry(monitoring_long, model)
+bdl_cap_summary(filled)   # NULL (with a message) if nothing was capped
+```
 
 ## Imputing normalisation co-analytes
 

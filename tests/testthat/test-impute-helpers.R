@@ -101,6 +101,45 @@ test_that(".check_bdl_imputed caps imputed BDL values above the detection limit"
   expect_equal(capped$value[capped$sample_id == "s3"], 2)   # observed, untouched
 })
 
+test_that(".check_bdl_imputed attaches an auditable per-cell cap summary", {
+  result <- tibble::tibble(
+    sample_id    = c("s1", "s2", "s3"),
+    analyte      = c("Cu", "Zn", "Cu"),
+    value        = c(5, 4, 0.5),
+    imputed_kind = "censored_left"
+  )
+  dl <- tibble::tibble(sample_id = c("s1", "s2", "s3"), analyte = c("Cu", "Zn", "Cu"),
+                       detection_limit = c(1, 1, 1))
+  suppressWarnings(capped <- leachatetools:::.check_bdl_imputed(result, dl, cap = TRUE))
+
+  s <- bdl_cap_summary(capped)
+  expect_s3_class(s, "tbl_df")
+  expect_setequal(s$analyte, c("Cu", "Zn"))           # s1/Cu and s2/Zn exceeded; s3 did not
+  expect_true(all(s$capped))
+  expect_equal(s$max_ratio[s$analyte == "Cu"], 5)     # 5 / DL 1
+  # accessor on a frame with no activations returns NULL invisibly + a message
+  expect_message(out <- bdl_cap_summary(result), "No detection-limit cap")
+  expect_null(out)
+})
+
+test_that(".check_bdl_imputed caps per-row without duplicating posterior draws", {
+  # return = "draws" gives several rows per cell; the cap must clip each row
+  # against the single DL without many-to-many row duplication.
+  result <- tibble::tibble(
+    sample_id    = "s1",
+    analyte      = "Cu",
+    .draw        = 1:3,
+    value        = c(5, 0.5, 8),        # draws 1 and 3 exceed DL = 1
+    imputed_kind = "censored_left"
+  )
+  dl <- tibble::tibble(sample_id = "s1", analyte = "Cu", detection_limit = 1)
+  suppressWarnings(out <- leachatetools:::.check_bdl_imputed(result, dl, cap = TRUE))
+
+  expect_equal(nrow(out), 3L)                # no duplication
+  expect_equal(out$value, c(1, 0.5, 1))      # only exceeding draws capped
+  expect_equal(bdl_cap_summary(out)$n_rows, 2L)
+})
+
 test_that(".check_bdl_imputed warns but does not cap when cap = FALSE", {
   result <- tibble::tibble(sample_id = "s1", analyte = "Cu", value = 5,
                            imputed_kind = "censored_left")
