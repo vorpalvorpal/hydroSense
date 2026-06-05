@@ -145,6 +145,14 @@ sampling where storm events are sampled more frequently than base-flow
 periods, which would otherwise over-weight episodic concentrations.</p>
 <p><strong>Exponential-decay temporal weighting</strong> assigns higher weight to recent
 samples, with a half-life of approximately <code>tau_days * log(2)</code> days.</p>
+<p>These two components are the only weighting scheme offered, by design:
+forward-step duration weighting is the minimal correction for irregular /
+pulse-biased sampling, and exponential decay is the standard memory kernel
+for a community integrating a fluctuating exposure (one interpretable
+parameter, <code>tau_days</code>, tied to the target biology's response time).  Richer
+kernels would add parameters without a defensible way to fit them from
+routine monitoring data, so they are left out — tune <code>tau_days</code> rather than
+swapping the kernel.</p>
 <p><strong>Combined weight</strong> for sample <em>i</em> is
 <code>w_i = Δt_i × exp(-(focal_date - midpoint_i) / tau_days)</code>, where
 <code>midpoint_i</code> is the midpoint of sample <em>i</em>'s representative interval.</p>
