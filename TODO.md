@@ -306,9 +306,10 @@ parametric slope. Two consequences worth recording:
   exact for log-normal/log-logistic SSDs and an approximation of the
   model-averaged curve otherwise. Done in the `mspaf.R` roxygen + a "How the
   mixture is combined" section of the chronic-AmsPAF vignette.
-- **v2.0:** add numerical (Monte-Carlo) CA under full rank-concordance as a
-  selectable `mspaf_method`, validate it against the closed form, and make it the
-  default; keep `"lognormal"` as the fast option. Scope ≈ 1 focused day: a
+- **v2.0 (tracked: GitHub issue #1):** add numerical (Monte-Carlo) CA under full
+  rank-concordance as a selectable `mspaf_method`, validate it against the closed
+  form, and make it the default; keep `"lognormal"` as the fast option. Scope ≈ 1
+  focused day: a
   ~40-line internal that, per CA group, samples N virtual species via shared
   inverse-CDF draws (one Uniform per species, reused across chemicals = full
   concordance), `c_{chem,s} = Q_chem(u_s)`, `TU_s = Σ C/c`, `msPAF = mean(TU_s ≥
