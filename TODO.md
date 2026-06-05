@@ -359,15 +359,15 @@ represents each component as a log-normal (HC50 + mean slope) and that
 this is the standard De Zwart & Posthuma method, exact for
 log-normal/log-logistic SSDs and an approximation of the model-averaged
 curve otherwise. Done in the `mspaf.R` roxygen + a “How the mixture is
-combined” section of the chronic-AmsPAF vignette. - **v2.0:** add
-numerical (Monte-Carlo) CA under full rank-concordance as a selectable
-`mspaf_method`, validate it against the closed form, and make it the
-default; keep `"lognormal"` as the fast option. Scope ≈ 1 focused day: a
-~40-line internal that, per CA group, samples N virtual species via
-shared inverse-CDF draws (one Uniform per species, reused across
-chemicals = full concordance), `c_{chem,s} = Q_chem(u_s)`,
-`TU_s = Σ C/c`, `msPAF = mean(TU_s ≥ 1)`; thread an `mspaf_method` arg
-through
+combined” section of the chronic-AmsPAF vignette. - **v2.0 (tracked:
+GitHub issue \#1):** add numerical (Monte-Carlo) CA under full
+rank-concordance as a selectable `mspaf_method`, validate it against the
+closed form, and make it the default; keep `"lognormal"` as the fast
+option. Scope ≈ 1 focused day: a ~40-line internal that, per CA group,
+samples N virtual species via shared inverse-CDF draws (one Uniform per
+species, reused across chemicals = full concordance),
+`c_{chem,s} = Q_chem(u_s)`, `TU_s = Σ C/c`, `msPAF = mean(TU_s ≥ 1)`;
+thread an `mspaf_method` arg through
 [`compute_ca_group_mspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/compute_ca_group_mspaf.md)
 /
 [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md);
