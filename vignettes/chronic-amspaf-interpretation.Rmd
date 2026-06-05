@@ -57,6 +57,35 @@ What you *can* do:
   macroinvertebrate community state) to derive site-relevant interpretive
   thresholds.
 
+## How the mixture is combined (and the log-normal assumption)
+
+AmsPAF combines substances in two stages, following De Zwart & Posthuma
+(2005). Substances thought to act by the same mechanism are combined within
+a group by **concentration addition (CA)**; the groups are then combined
+across by **independent action (IA)**. The two stages make different
+assumptions about the underlying species sensitivity distributions, and it is
+worth knowing which is which.
+
+- **Independent action across groups is shape-agnostic.** IA combines groups
+  as `msPAF = 1 − ∏(1 − PAF_i)`. It only needs each component's PAF, which the
+  package reads off the full model-averaged SSD (all six BCANZ distributions,
+  weighted) — so this step holds whatever shape the SSDs take.
+
+- **Concentration addition within a group assumes a log-normal.** CA sums the
+  toxic units (`TU_i = C_i / HC50_i`) and reads the combined fraction off a
+  *single* log-normal curve whose slope is the average of the component slopes.
+  This is the standard msPAF-CA method, and it is **exact when the component
+  SSDs are log-normal** (or log-logistic). When the best-fitting SSD for a
+  substance is some other shape, the CA step approximates it with a log-normal
+  matched at its HC50 and HC05. For the metals that dominate leachate
+  assessments this approximation is small — their SSDs sit close to log-normal
+  — but it is a modelling choice, not an identity.
+
+A future release will add a shape-faithful numerical CA (which makes no
+log-normal assumption) as an option; until then, if a substance's SSD is
+strongly non-log-normal, treat its contribution to the within-group CA as
+approximate.
+
 ## Chronic vs per-sample AmsPAF
 
 `add_amspaf()` operates on a chemistry data frame regardless of whether

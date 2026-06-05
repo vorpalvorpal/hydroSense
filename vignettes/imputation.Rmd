@@ -248,6 +248,15 @@ that the data never contained. A few situations call for restraint:
   context with the training data, its PC scores are poorly determined and the
   posterior is wide. The hurdles guard the worst cases, but a sample that
   barely clears a hurdle still deserves a look.
+- **Near-all-below-detection organics.** In landfill/WMF leachate most organic
+  analytes are below detection in almost every sample, so there is no signal to
+  borrow from and no reliable covariate to anchor them — DOC fixes the bulk
+  carbon, not a congener-specific ratio. The package deliberately does **not**
+  impute these: the DOC-like hurdle skips the organics model without a carbon
+  covariate, and `min_target_detect_freq` (default 5%) drops any analyte
+  detected too rarely to model. Such organics are left as reported
+  non-detections rather than given manufactured values; treat them as a
+  censored "≤ detection limit" reading in any downstream summary.
 - **Frequent BDL-cap warnings for an analyte.** This signals tension between
   the modelled chemistry and the reported detection limits; treat those cells
   as flagged rather than final.

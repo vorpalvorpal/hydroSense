@@ -61,8 +61,35 @@
 ## SSD parameters are obtained from the fitted models in paf.R via
 ## ssd_hc50() (for the CA HC50 denominator) and ssd_paf() (for individual
 ## PAF evaluation). This uses the same BCANZ-validated SSD infrastructure
-## as the single-substance PAF calculations, and is correct for any SSD
-## distribution shape (not only log-normal).
+## as the single-substance PAF calculations.
+##
+## ## The log-normal assumption in the CA step
+##
+## The package uses an SSD in two ways that make different distributional
+## commitments — worth being explicit about:
+##
+##   * **Per-analyte PAF and the IA combination are shape-faithful.** ssd_paf()
+##     reads each substance's PAF off the model-averaged "multi" curve (all 6
+##     BCANZ distributions, weighted), so single-substance PAFs and the
+##     across-group IA step (msPAF = 1 - prod(1 - PAF_i)) hold for any SSD
+##     shape — IA needs only each component PAF, not a parametric form.
+##   * **The within-group CA step is intrinsically parametric.** Concentration
+##     Addition sums toxic units and reads the combined PAF off a SINGLE
+##     log-normal CDF, msPAF_CA = Phi(log10(sum TU_i) / sigma_bar), with
+##     sigma_bar the mean of the component SSD slopes (De Zwart & Posthuma
+##     2005, eq. 6). CA treats co-acting substances as dilutions of one
+##     "super-chemical", so it must express each as HC50 + a slope. This is the
+##     standard msPAF-CA method and is EXACT when the component SSDs are
+##     log-normal (or log-logistic, which has the same closed form); for a
+##     model-averaged curve that is not itself log-normal it is an
+##     APPROXIMATION, matched at HC50/HC05. compute_ca_group_mspaf() derives
+##     each slope analytically from the fitted SSD's HC50 and HC05.
+##
+## In practice the approximation is small for the metals here (their SSDs are
+## close to log-normal), but it is a real modelling choice, not an identity. A
+## fully shape-faithful numerical CA (Monte-Carlo over species sensitivities
+## under full rank-concordance, valid for any SSD shape) is planned for v2.0 as
+## a selectable mspaf_method; see TODO sec. 7.
 ##
 ## ## Mode of action groupings
 ##

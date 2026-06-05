@@ -22,6 +22,15 @@
 #' **Exponential-decay temporal weighting** assigns higher weight to recent
 #' samples, with a half-life of approximately `tau_days * log(2)` days.
 #'
+#' These two components are the only weighting scheme offered, by design:
+#' forward-step duration weighting is the minimal correction for irregular /
+#' pulse-biased sampling, and exponential decay is the standard memory kernel
+#' for a community integrating a fluctuating exposure (one interpretable
+#' parameter, `tau_days`, tied to the target biology's response time).  Richer
+#' kernels would add parameters without a defensible way to fit them from
+#' routine monitoring data, so they are left out — tune `tau_days` rather than
+#' swapping the kernel.
+#'
 #' **Combined weight** for sample *i* is
 #' `w_i = Δt_i × exp(-(focal_date - midpoint_i) / tau_days)`, where
 #' `midpoint_i` is the midpoint of sample *i*'s representative interval.

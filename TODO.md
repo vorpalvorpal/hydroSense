@@ -227,31 +227,45 @@ Analytes with no DGV (a few no-SSD organics) still rely on manual `protect`.
 
 ---
 
-## 5. Organics imputation under near-total BDL (open problem)
+## 5. Organics imputation under near-total BDL — RESOLVED (skip + document) 2026-06-05
 
-In WMF leachate, organics are almost entirely below detection, and there is no
-defensible way to impute them without at least DOC as a covariate. Current
-hurdle: organics imputed only if a DOC-like variable is present. Options to
-explore:
-- Treat organics as essentially "DOC-scaled" — model detected organics as a
-  ratio to DOC and propagate that ratio (with uncertainty) to BDL samples.
-- Report organics as a censored upper bound rather than a point estimate when
-  detection frequency is below some floor (honest about non-identifiability).
-- Skip organics imputation entirely and document the limitation.
-Decision needed — currently flagged, not resolved.
+**Decision: do not impute near-all-BDL organics; document the limitation
+(option c).** In WMF leachate organics are almost entirely below detection,
+with too few detected points to fit a defensible model and no reliable covariate
+(DOC fixes bulk carbon, not a congener-specific ratio). Rather than manufacture
+values we let the existing machinery exclude them and say so plainly:
+- The **DOC-like hurdle** already skips the organics model unless ≥1 of
+  {DOC,TOC,BOD,COD,cBOD} is present.
+- `min_target_detect_freq` (default 0.05, §10) drops any organic detected in
+  fewer than 5% of samples as an imputation target — which on real leachate
+  panels removes essentially all of them.
+Net effect = option (c): organics carrying no recoverable signal are left as
+reported (non-)detections, not imputed. Documented in the imputation vignette
+("When not to impute"). The DOC-scaled-ratio and censored-upper-bound ideas are
+kept here as possible future enhancements if a dataset ever has enough detected
+organics to justify them, but they are out of scope now.
 
 ---
 
-## 6. Added Risk Approach (ARA) — measure of local adaptation
+## 6. Added Risk Approach (ARA) — reference statistic — RESOLVED (geom_mean) 2026-06-05
 
-ARA computes `C_adj = max(C_norm − ref_norm, 0)` to ask "what change are we
-imposing on the *local* species pool?" The reference `ref_norm` is currently a
-geometric mean of reference-site chemistry. But local species are
-selected/adapted to the chemistry they actually experience — the right
-"reference" is whatever statistic best represents the conditions the local pool
-is adapted to. Think through: geomean vs median vs a high percentile (chronic
-exposure may track typical, but adaptation may track extremes) vs a
-time-integrated exposure. Decide the appropriate measure and justify it.
+**Decision: keep the geometric mean as the default `ref_norm`; expose
+median/arith_mean/p80/p90/p95 for frameworks that mandate otherwise.**
+ARA computes `C_adj = max(C_norm − ref_norm, 0)` — the increment above the
+background the local pool is already adapted to. Crommentuijn et al. (1997, RIVM
+601501001) frame the background `Cb` as the *representative natural background*
+(MPC = MPA + Cb): a single typical/central value, NOT an upper percentile, and
+they do not prescribe a specific summary statistic — so there is no external
+"standard" to defer to, only the framework's intent. Geometric mean is the right
+default because (1) it matches that intent — a central tendency, so we don't
+over-subtract and erode protection; (2) for log-normal aquatic chemistry it is
+the maximum-likelihood central tendency and uses every reference observation
+(robust on small reference sets); (3) it is consistent with the PICT reading —
+the community integrates against *typical* exposure, not the upper tail. A high
+percentile would assume adaptation to extremes, subtract more, and classify less
+as impact — the less-protective, harder-to-defend choice. Already documented
+with this rationale in the `chronic-amspaf-interpretation` vignette ("Reference
+summary statistic"); `prepare_reference(summary=)` exposes the alternatives.
 Lives in `R/reference.R` / `R/mspaf.R` (`.amspaf_adjust`).
 
 ---
@@ -264,24 +278,78 @@ clear narrative:
   `compute_ca_group_mspaf()`.
 - **Model-averaged "multi" curve** (6 distributions via `ssdtools::ssd_hp`) for
   per-analyte diagnostic PAF in `ssd_paf()`.
-These can disagree (the log-normal is an approximation of the model-averaged
-curve). Document why each is used where, quantify the disagreement on real
-analytes, and decide whether the CA step should draw sigma from the
-model-averaged fit for consistency. Lives in `R/mspaf.R` + `R/paf.R`.
+**Why this is intrinsic, not accidental (clarified 2026-06-05):** summing toxic
+units and reading the combined PAF off a single log-normal CDF
+(`msPAF_CA = Φ(log10(ΣTU)/σ̄)`) *is* the standard msPAF-CA method (De Zwart &
+Posthuma 2005, §2). CA treats similarly-acting chemicals as dilutions of one
+"super-chemical", so it is intrinsically parametric — it needs each component as
+HC50 + a slope. That is exactly why two representations exist: the diagnostic PAF
+can use the rich model-averaged curve, but analytic CA *must* commit to a
+parametric slope. Two consequences worth recording:
+- **IA is shape-agnostic; CA is not.** Independent action across MoA groups is
+  `msPAF_IA = 1 − ∏(1 − PAF_i)` and consumes any per-component PAF — so the
+  across-group step could read off the model-averaged curve even though the
+  within-group CA step cannot. Check we are consistent about which PAF feeds IA.
+- **Non-log-normal SSDs.** The log-logistic has the same closed form (the
+  framework converts via `β = √3·σ/π`), so other common-slope shapes are fine.
+  For an arbitrary/model-averaged shape there is no closed form; the general
+  alternative is **numerical CA** — Monte-Carlo the mixture by sampling species
+  sensitivities from each component SSD (under a cross-chemical concordance
+  assumption), sum TUs per virtual species, take the empirical affected fraction.
+  Handles any shape but is heavier and needs the concordance assumption — a
+  natural fit for the §1 uncertainty refactor (CA over draws).
+
+**Decision (2026-06-05):**
+- **Now (v1.x):** keep the analytic log-normal CA and **document the assumption
+  plainly** — that the CA step represents each component as a log-normal
+  (HC50 + mean slope) and that this is the standard De Zwart & Posthuma method,
+  exact for log-normal/log-logistic SSDs and an approximation of the
+  model-averaged curve otherwise. Done in the `mspaf.R` roxygen + a "How the
+  mixture is combined" section of the chronic-AmsPAF vignette.
+- **v2.0:** add numerical (Monte-Carlo) CA under full rank-concordance as a
+  selectable `mspaf_method`, validate it against the closed form, and make it the
+  default; keep `"lognormal"` as the fast option. Scope ≈ 1 focused day: a
+  ~40-line internal that, per CA group, samples N virtual species via shared
+  inverse-CDF draws (one Uniform per species, reused across chemicals = full
+  concordance), `c_{chem,s} = Q_chem(u_s)`, `TU_s = Σ C/c`, `msPAF = mean(TU_s ≥
+  1)`; thread an `mspaf_method` arg through `compute_ca_group_mspaf()` /
+  `add_amspaf()`; pull each analyte's quantile function from the fitted SSD.
+  **Performance:** precompute each analyte's quantile function on a fixed
+  `u`-grid *once* (the SSD doesn't change per sample), so each sample's CA is
+  vectorised arithmetic over the grid — penalty is a small constant per sample
+  (the one-time grid build, root-finding on the model-averaged mixture CDF, is
+  the only real cost and is amortised). Validate with a test asserting MC ≈
+  closed form on a log-normal analyte before flipping the default. Natural CA
+  operator for the §1 uncertainty work (CA over posterior draws). Also then:
+  quantify the log-normal-vs-model-averaged disagreement on real analytes.
+  Lives in `R/mspaf.R` + `R/paf.R`.
 
 ---
 
-## 8. Chronic chemistry aggregation — clarify role in the pipeline
+## 8. Chronic chemistry aggregation — RESOLVED (Path B + standalone + single kernel) 2026-06-05
 
 `time_weighted_aggregate()` (`R/chronic.R`) is value-agnostic (geomean for
-chemistry, arithmetic mean for AmsPAF). Clarify and document:
-- Where it sits relative to imputation and AmsPAF (Path B: per-sample AmsPAF
-  then time-average).
-- Whether users would call it standalone (e.g. to get a chronic-averaged
-  chemistry profile) outside the AmsPAF pipeline — if so, make that a
-  first-class, documented entry point.
-- Options for the temporal weighting (exponential decay + forward-step duration)
-  vs alternatives.
+chemistry, arithmetic mean for AmsPAF). Decisions:
+
+- **Pipeline position = Path B (per-sample AmsPAF, then time-average the PAFs).**
+  Argument: the community integrates the *effect* over time, not the
+  concentration, and the SSD is non-linear — so averaging concentration first
+  (Path A) then mapping through the concave SSD upper tail systematically
+  *under-states* the time-averaged risk for pulsed exposures (Jensen's
+  inequality; the storm-pulse worked example in the chronic vignette shows ~10×).
+  Path A's only merits are fewer SSD evaluations and yielding a chronic
+  *chemistry* profile as a by-product — neither outweighs the bias. Documented
+  in `chronic-amspaf-interpretation` vignette (Path A vs B + Jensen table).
+- **Standalone chemistry use = first-class.** The function is value-agnostic and
+  independently useful for producing a chronic-averaged chemistry profile
+  (`summary = "geom_mean"`) outside the AmsPAF path; the roxygen already frames
+  this as a primary use, not a side effect.
+- **Single weighting scheme, justified, kept.** Forward-step duration weighting
+  (minimal correction for pulse-biased sampling) + exponential decay (standard
+  memory kernel, one interpretable `tau_days`). Richer kernels would add
+  parameters with no defensible way to fit them from routine data, so they are
+  deliberately omitted — tune `tau_days`, don't swap the kernel. Rationale now
+  stated in the roxygen.
 
 ---
 
@@ -329,29 +397,38 @@ fallback. Also pinned by `test-impute-pca.R`.
   `test-paf-values.R`. `ssd_hc50()` / the CA mixture step still use a single
   representative class (`.no3_class()`); revisit if CA needs the blend too.
 
-- **Benchmark the three BDL/imputation configs — IMPLEMENTED + first benchmark
-  2026-06-04.** The three configs are now a `fit_imputation_model(impute_method=)`
-  option (`"rescor_mi"` default, `"cens"`, `"cens_factor"`); see §10b below.
+- **Benchmark the three BDL/imputation configs — RESOLVED 2026-06-05.** The
+  three configs are a `fit_imputation_model(impute_method=)` option
+  (`"rescor_mi"` default, `"cens"`, `"cens_factor"`):
   1. `rescor = TRUE` + `mi()` + post-hoc DL cap (current = `"rescor_mi"`).
   2. `rescor = FALSE` + `cens("left")` (clean BDL; no coupling = `"cens"`).
   3. `rescor = FALSE` + `cens("left")` + shared `(1 | sample_id)` factor
      (= `"cens_factor"`).
-  First hold-out benchmark on B.S01 routine metals (As/Cr/Cu/Ni/Pb/Zn, 89
-  samples, 19 masked detected cells censored at 2x truth, log10 scale):
-  | method | RMSE | MAE | 90% coverage |
-  |--------|------|-----|--------------|
-  | rescor_mi | **0.18** | **0.15** | n/a (draws OOM) |
-  | cens | 0.54 | 0.38 | 0.89 |
-  | cens_factor | 0.49 | 0.36 | 0.89 |
-  Ordering is as expected — recovery improves with cross-analyte coupling
-  strength (full rescor > shared factor > none) — so the benchmark **supports
-  keeping `rescor_mi` as the default**. Caveats: n = 19 (single random mask,
-  one seed -> noisy); the DL cap can give rescor_mi a small edge (it never
-  raises error); rescor_mi's posterior draws hit the 16 GB memory limit (so no
-  coverage, and draws are costly for the §1 uncertainty work), whereas the cens
-  methods give well-calibrated intervals cheaply. Next: repeated CV / multiple
-  seeds, and disable the cap for a fully fair point comparison. (Benchmark
-  scripts live in the gitignored `test data/`.)
+  Definitive hold-out benchmark on B.S01 routine metals (As/Cr/Cu/Ni/Pb/Zn, 89
+  samples, 19 masked detected cells censored at 2x truth, log10 scale; 2000
+  iter / 1000 warmup, 3 chains **serial**, ndraws=1000, batch=15):
+  | method | t_fit | t_impute | max R̂ | divergences | RMSE | MAE | bias | cov90 | cov50 | width90 |
+  |--------|-------|----------|-------|-------------|------|-----|------|-------|-------|---------|
+  | rescor_mi | 653 s | 6 s | 1.044 | 215 | **0.247** | **0.201** | **−0.063** | 1.00 | 0.53 | 1.31 |
+  | cens | 186 s | 22 s | **1.007** | **14** | 0.533 | 0.379 | −0.366 | 0.89 | 0.53 | 1.60 |
+  | cens_factor | 433 s | 30 s | 1.147 | 554 | 0.476 | 0.344 | −0.343 | 0.95 | 0.58 | 1.34 |
+  **Verdict — keep `rescor_mi` as default.** Best accuracy by far and near-zero
+  bias (−0.06 vs ≈−0.35): masking sets DL = 2×truth, so a model with no
+  cross-metal signal lands at bias ≈ −0.30 (≈ DL/2); rescor_mi's near-zero bias
+  shows the residual-correlation coupling genuinely recovers the level from the
+  observed correlated metals. **Memory now holds** — `ndraws`/`batch_size` kept
+  the draws-based imputation under 16 GB at this size (the earlier OOM is fixed).
+  rescor_mi over-covers (cov90 1.00; cov50 well-calibrated at 0.53) — the safe
+  direction. `cens` is the robust cheap fallback: cleanest convergence (R̂ 1.007,
+  14 divergences), best-calibrated cov90 0.89, but biased low (no borrowing →
+  returns ≈ DL/2). **`cens_factor` is experimental — NOT converged here (R̂ 1.147,
+  554 divergences):** the shared latent factor adds posterior geometry the sampler
+  can't handle at 2000 iter. Needs a **non-centred reparameterisation** (or many
+  more iterations) before it is trustworthy; until then it does not deliver its
+  "censoring + coupling for cheap" promise. Docs already describe the trade-off
+  (imputation vignette). Caveats: single random mask / one seed (n=19, noisy);
+  repeated CV across seeds still outstanding (folded into §1 / §10 follow-ups).
+  (Scripts in gitignored `test data/`.)
 
 - **Target detection-frequency filter — RESOLVED 2026-06-04.** On a dataset
   with ~100 mostly all-BDL organics (and several near-undetected metals),
