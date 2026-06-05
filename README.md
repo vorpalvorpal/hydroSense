@@ -86,18 +86,11 @@ ssd_hc50("Cu")
 
 ## Learn more
 
-- [Leachate Mixing Fraction](https://vorpalvorpal.github.io/leachatetools/articles/leachate-mixing-fraction.html)
-  - What fraction of this sample’s chemistry can be explained as a
-  mixture of local reference water and landfill leachate?
-- [Imputation](https://vorpalvorpal.github.io/leachatetools/articles/imputation.html)
-  - How missing and below detection values are imputed.
-- [Analyte normalisation](https://vorpalvorpal.github.io/leachatetools/articles/normalisation.html)
-  — how bioavailability and physicochemical corrections bring
-  concentrations to the SSD index condition.
-- [AmsPAF](https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.html)
-  — what the returned PAF values mean for an environmental assessment.
-- [Function reference](https://vorpalvorpal.github.io/leachatetools/reference/index.html)
-  — all exported functions, grouped by pillar.
+- [Leachate Mixing Fraction](https://vorpalvorpal.github.io/leachatetools/articles/leachate-mixing-fraction.html) - What fraction of this sample’s chemistry can be explained as a mixture of local reference water and landfill leachate?
+- [Imputation](https://vorpalvorpal.github.io/leachatetools/articles/imputation.html) - How missing and below detection values are imputed.
+- [Analyte normalisation](https://vorpalvorpal.github.io/leachatetools/articles/normalisation.html) — how bioavailability and physicochemical corrections bring concentrations to the SSD index condition.
+- [AmsPAF](https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.html) — what the returned PAF values mean for an environmental assessment.
+- [Function reference](https://vorpalvorpal.github.io/leachatetools/reference/index.html) — all exported functions, grouped by pillar.
 
 ## License
 
