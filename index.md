@@ -82,11 +82,11 @@ ssd_hc50("Cu")
 ## Learn more
 
 - [Leachate Mixing
-  Fraction](https://vorpalvorpal.github.io/leachatetools/articles/leachate-mixing-fraction.html)
-  - What fraction of this sample’s chemistry can be explained as a
-    mixture of local reference water and landfill leachate?
-- [Imputation](https://vorpalvorpal.github.io/leachatetools/articles/imputation.html)
-  - How missing and below detection values are imputed.
+  Fraction](https://vorpalvorpal.github.io/leachatetools/articles/leachate-mixing-fraction.html) -
+  What fraction of this sample’s chemistry can be explained as a mixture
+  of local reference water and landfill leachate?
+- [Imputation](https://vorpalvorpal.github.io/leachatetools/articles/imputation.html) -
+  How missing and below detection values are imputed.
 - [Analyte
   normalisation](https://vorpalvorpal.github.io/leachatetools/articles/normalisation.html)
   — how bioavailability and physicochemical corrections bring
