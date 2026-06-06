@@ -1,0 +1,66 @@
+# Exercises the brms/Stan imputation path that the main R-CMD-check skips
+# (those tests are gated on BRMS_SMOKE_TEST=1).  Uses rstan (binary from the
+# public RSPM); brms compiles the small smoke-test models at runtime with the
+# runner's C++ toolchain.  If rstan model compilation proves unreliable here,
+# switch the backend to cmdstanr (install_cmdstan + backend = "cmdstanr").
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+name: brms-smoke.yaml
+
+permissions: read-all
+
+jobs:
+  brms-smoke:
+    runs-on: ubuntu-latest
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      BRMS_SMOKE_TEST: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: |
+            any::rstan
+            any::brms
+            any::testthat
+            any::devtools
+          needs: check
+
+      - name: Show Stan/toolchain config
+        run: |
+          Rscript -e 'cat("rstan:", as.character(packageVersion("rstan")), "\n");
+                      cat("brms:", as.character(packageVersion("brms")), "\n");
+                      cat(pkgbuild::has_build_tools(debug = TRUE), "\n")'
+
+      - name: Run brms smoke tests (BRMS_SMOKE_TEST=1)
+        # Scope to test-impute-smoke.R: it exercises the full brms/Stan path
+        # (fit_imputation_model + impute_chemistry for rescor_mi / cens /
+        # cens_factor) without needing the gitignored SSD guideline data that
+        # the add_amspaf-based pipeline smoke test requires.
+        run: |
+          Rscript -e '
+            options(mc.cores = 2)
+            res <- devtools::test(filter = "impute-smoke")
+            df  <- as.data.frame(res)
+            cat(sprintf("\nPASS %d | FAIL %d | WARN %d | SKIP %d\n",
+                        sum(df$passed), sum(df$failed),
+                        sum(df$warning), sum(df$skipped)))
+            if (sum(df$failed) > 0 || any(df$error)) quit(status = 1L)
+            if (sum(df$skipped) > 0)
+              stop("brms smoke tests skipped — brms/Stan not available in CI.")
+          '
