@@ -430,10 +430,14 @@ get_silo_air_temp <- function(
     api_key    = api_key
   )
 
-  if (!all(c("max_temp", "min_temp", "date") %in% names(dt))) {
+  # weatherOz returns the daily temperature columns as `air_tmax`/`air_tmin`
+  # (older releases used `max_temp`/`min_temp`); accept either.
+  tmax_col <- intersect(c("air_tmax", "max_temp"), names(dt))[1]
+  tmin_col <- intersect(c("air_tmin", "min_temp"), names(dt))[1]
+  if (is.na(tmax_col) || is.na(tmin_col) || !"date" %in% names(dt)) {
     cli::cli_abort(
       "SILO response is missing expected columns ({.field date}, \\
-       {.field max_temp}, {.field min_temp})."
+       {.field air_tmax}/{.field max_temp}, {.field air_tmin}/{.field min_temp})."
     )
   }
 
@@ -446,7 +450,7 @@ get_silo_air_temp <- function(
 
   out <- tibble::tibble(
     datetime        = dts,
-    air_temp_mean_C = (as.numeric(dt[["max_temp"]]) + as.numeric(dt[["min_temp"]])) / 2
+    air_temp_mean_C = (as.numeric(dt[[tmax_col]]) + as.numeric(dt[[tmin_col]])) / 2
   )
 
   if (cache && !is.null(cache_path)) qs2::qs_save(out, cache_path)
