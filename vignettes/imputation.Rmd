@@ -161,7 +161,10 @@ in coupling: `"cens"` treats the metals independently, while `"cens_factor"`
 adds a single per-sample latent factor shared across all analytes — fitted in
 long format, so the factor is well-identified (each sample contributes several
 analyte observations) and genuinely lets an observed metal inform the
-unobserved/BDL ones at that sample. Prefer a cens method when you need
+unobserved/BDL ones at that sample. In the B.S01 hold-out this coupling places
+`"cens_factor"` between `"cens"` and `"rescor_mi"` on accuracy (RMSE 0.43 vs
+0.53 and 0.25) while converging best of the three (R̂ 1.006). Prefer a cens
+method when you need
 uncertainty (`return = "draws"`) or hit memory limits — `"cens_factor"` when you
 also want cross-analyte borrowing, `"cens"` when you want the simplest, fastest
 fit; prefer the default `"rescor_mi"` for the most accurate point estimates.
