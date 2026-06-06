@@ -242,9 +242,13 @@
 #'     \item{`"cens"`}{Proper left-censoring of BDL at the detection limit
 #'       (`cens("left")`), no residual correlation -- clean BDL handling but no
 #'       cross-analyte coupling.}
-#'     \item{`"cens_factor"`}{As `"cens"` plus a shared per-sample latent factor
-#'       (`(1 | sample_id)` correlated across analytes), which re-introduces
-#'       cross-analyte coupling while keeping proper censoring.}
+#'     \item{`"cens_factor"`}{Proper left-censoring **with** cross-analyte
+#'       coupling. Fitted as a single long-format model with a shared per-sample
+#'       latent factor `(1 | sample_id)` common to all analytes, so an observed
+#'       metal informs the unobserved/BDL ones at that sample. The factor is
+#'       well-identified (each sample contributes several analyte observations);
+#'       `adapt_delta = 0.95` is set by default to clear the factor's mild
+#'       funnel (override via `control` in `...`).}
 #'   }
 #'   See `vignette("imputation")` and the package benchmark for guidance on
 #'   which to prefer.
@@ -1114,16 +1118,15 @@ impute_coanalytes <- function(
       dplyr::mutate(log_value = dplyr::if_else(.data$detected, .data$lv, NA_real_)) |>
       dplyr::select("sample_id", "safe", "log_value") |>
       tidyr::pivot_wider(names_from = "safe", values_from = "log_value")
-    wide_df <- dplyr::left_join(pc_wide, target_wide, by = "sample_id")
+    model_df <- dplyr::left_join(pc_wide, target_wide, by = "sample_id")
     bf_list <- purrr::map(safe_vec, function(s)
       brms::bf(stats::as.formula(paste0(s, " | mi() ~ ", rhs))))
     brms_formula <- do.call(brms::mvbf, c(bf_list, list(rescor = TRUE)))
 
-  } else {
-    # cens / cens_factor: left-censor BDL at its detection limit (the BDL value),
-    # rescor = FALSE. subset() lets each analyte use only the samples that
-    # measured it; cens_factor adds a shared per-sample latent factor that
-    # induces cross-analyte coupling.
+  } else if (impute_method == "cens") {
+    # Wide + subset(): left-censor BDL at its detection limit, rescor = FALSE,
+    # responses independent (no cross-analyte coupling). subset() lets each
+    # analyte use only the samples that measured it.
     resp_wide <- base |>
       dplyr::select("sample_id", "safe", "lv") |>
       tidyr::pivot_wider(names_from = "safe", values_from = "lv")
@@ -1132,37 +1135,73 @@ impute_coanalytes <- function(
       dplyr::select("sample_id", "safe", "cf") |>
       tidyr::pivot_wider(names_from = "safe", values_from = "cf",
                          names_glue = "cens_{safe}")
-    wide_df <- pc_wide |>
+    model_df <- pc_wide |>
       dplyr::left_join(resp_wide, by = "sample_id") |>
       dplyr::left_join(cens_wide, by = "sample_id")
     for (s in safe_vec) {
-      wide_df[[paste0("sub_", s)]]  <- !is.na(wide_df[[s]])
-      wide_df[[s]]                  <- dplyr::coalesce(wide_df[[s]], 0)
-      wide_df[[paste0("cens_", s)]] <- dplyr::coalesce(wide_df[[paste0("cens_", s)]], "none")
+      model_df[[paste0("sub_", s)]]  <- !is.na(model_df[[s]])
+      model_df[[s]]                  <- dplyr::coalesce(model_df[[s]], 0)
+      model_df[[paste0("cens_", s)]] <- dplyr::coalesce(model_df[[paste0("cens_", s)]], "none")
     }
-    grp <- if (impute_method == "cens_factor") " + (1 |q| sample_id)" else ""
     bf_list <- purrr::map(safe_vec, function(s)
       brms::bf(stats::as.formula(sprintf(
-        "%s | cens(cens_%s) + subset(sub_%s) ~ %s%s", s, s, s, rhs, grp))))
+        "%s | cens(cens_%s) + subset(sub_%s) ~ %s", s, s, s, rhs))))
     brms_formula <- do.call(brms::mvbf, c(bf_list, list(rescor = FALSE)))
+
+  } else {
+    # cens_factor: LONG-format shared-latent-factor model. One univariate
+    # censored model with `(1 | sample_id)` shared across analytes provides
+    # genuine cross-analyte coupling that is well-identified — each sample
+    # contributes several analyte observations to pin down its single latent
+    # value, so an observed metal informs the unobserved/BDL ones at that sample.
+    # (The previous wide + `(1 |q| sample_id)` form silently dropped the
+    # cross-response correlation under subset(), giving the cost of extra
+    # parameters with none of the coupling.) `analyte` enters as a factor: a
+    # per-analyte mean (`0 + safe`), per-analyte PC smooths (`by = safe`), and a
+    # per-analyte residual SD (`sigma ~ 0 + safe`).
+    long <- base |>
+      dplyr::transmute(
+        sample_id = .data$sample_id,
+        safe      = factor(.data$safe, levels = safe_vec),
+        lv        = .data$lv,
+        cf        = dplyr::if_else(.data$detected, "none", "left")
+      ) |>
+      dplyr::left_join(pc_wide, by = "sample_id")
+    long <- long[stats::complete.cases(long[, pc_cols, drop = FALSE]), , drop = FALSE]
+    rhs_by <- paste(sprintf("s(%s, by = safe)", pc_cols), collapse = " + ")
+    brms_formula <- brms::bf(
+      stats::as.formula(paste0("lv | cens(cf) ~ 0 + safe + ", rhs_by,
+                               " + (1 | sample_id)")),
+      stats::as.formula("sigma ~ 0 + safe")
+    )
+    model_df <- long
   }
 
+  n_units <- dplyr::n_distinct(model_df$sample_id)
   cli::cli_inform(c(
     "i" = "brms ({impute_method}): {length(target_analytes)} analyte{?s} \u00d7 \\
-           {nrow(wide_df)} sample{?s}. This may take several minutes."
+           {n_units} sample{?s}. This may take several minutes."
   ))
 
+  brm_args <- list(
+    formula = brms_formula,
+    data    = model_df,
+    family  = family,
+    iter    = iter,
+    warmup  = warmup,
+    chains  = chains,
+    cores   = cores,
+    ...
+  )
+  # The cens_factor hierarchical model benefits from a higher adapt_delta to
+  # clear the residual divergences from the per-sample factor's mild funnel.
+  # Default it here; a user-supplied `control` (via ...) takes precedence.
+  if (impute_method == "cens_factor" && is.null(brm_args$control)) {
+    brm_args$control <- list(adapt_delta = 0.95)
+  }
+
   fit <- tryCatch(
-    brms::brm(
-      formula = brms_formula,
-      data    = wide_df,
-      family  = family,
-      iter    = iter,
-      warmup  = warmup,
-      chains  = chains,
-      cores   = cores,
-      ...
-    ),
+    do.call(brms::brm, brm_args),
     error = function(e) {
       cli::cli_abort(c(
         "brms model fitting failed.",
@@ -1178,8 +1217,59 @@ impute_coanalytes <- function(
     analytes        = target_analytes,   # original names
     safe_names      = safe_analytes,     # names=safe, values=original
     pc_cols         = pc_cols,
-    wide_sample_ids = wide_df$sample_id,
+    wide_sample_ids = unique(model_df$sample_id),
     impute_method   = impute_method
+  )
+}
+
+#' Long-format prediction for the cens_factor shared-latent-factor model
+#'
+#' Builds one row per (eligible sample × analyte), predicts the latent log
+#' concentration from the univariate model (the per-sample `(1 | sample_id)`
+#' factor couples analytes), and returns the same `pm_long` shape the wide path
+#' produces so the merge step is identical.
+#' @keywords internal
+.predict_factor_long <- function(group, pc_wide, return, ndraws, batch_size) {
+  safe_analytes <- group$safe_names               # names = safe, values = orig
+  safe_levels   <- unname(safe_analytes)
+  orig_of       <- stats::setNames(names(safe_analytes), unname(safe_analytes))
+
+  nd <- tidyr::expand_grid(sample_id = pc_wide$sample_id, safe = safe_levels) |>
+    dplyr::left_join(pc_wide, by = "sample_id")
+  nd$safe <- factor(nd$safe, levels = safe_levels)
+  nd$cf   <- "none"   # placeholder; ignored by epred/predict
+  nd$lv   <- 0        # response placeholder
+
+  predict_rows <- function(ndi) {
+    analyte <- unname(orig_of[as.character(ndi$safe)])
+    if (return == "point") {
+      ep <- brms::posterior_epred(group$fit, newdata = ndi, allow_new_levels = TRUE,
+                                  sample_new_levels = "gaussian", ndraws = ndraws)
+      tibble::tibble(sample_id = ndi$sample_id, analyte = analyte,
+                     .post_mean = exp(colMeans(ep)))
+    } else {
+      pp  <- brms::posterior_predict(group$fit, newdata = ndi, allow_new_levels = TRUE,
+                                     sample_new_levels = "gaussian", ndraws = ndraws)
+      ndr <- nrow(pp)
+      tibble::tibble(
+        sample_id   = rep(ndi$sample_id, each = ndr),
+        analyte     = rep(analyte, each = ndr),
+        draw_id     = rep(seq_len(ndr), times = nrow(ndi)),
+        .post_value = exp(as.vector(pp)))
+    }
+  }
+
+  n_new <- nrow(nd)
+  # batch_size is in samples; each sample spans length(safe_levels) rows.
+  bs <- if (is.null(batch_size)) n_new
+        else max(length(safe_levels), as.integer(batch_size) * length(safe_levels))
+  batches <- split(seq_len(n_new), ceiling(seq_len(n_new) / bs))
+  tryCatch(
+    purrr::map_dfr(batches, function(idx) predict_rows(nd[idx, , drop = FALSE])),
+    error = function(e) cli::cli_abort(c(
+      "brms prediction failed during imputation (cens_factor).",
+      "x" = "{conditionMessage(e)}"
+    ))
   )
 }
 
@@ -1197,100 +1287,109 @@ impute_coanalytes <- function(
   df_eligible <- dplyr::filter(df, .data$sample_id %in% .env$eligible_ids)
   if (nrow(df_eligible) == 0L) return(df)
 
-  # Targets wide (log for detected, NA for BDL/missing → to be imputed)
-  target_wide <- df_eligible |>
-    dplyr::filter(.data$analyte %in% .env$target_analytes) |>
-    dplyr::select("sample_id", "analyte", "value", "detected") |>
-    dplyr::mutate(
-      log_value = dplyr::if_else(
-        .data$detected,
-        log(pmax(.data$value, eps_log)),
-        NA_real_
-      )
-    ) |>
-    dplyr::summarise(
-      log_value = mean(.data$log_value, na.rm = TRUE),
-      .by        = c("sample_id", "analyte")
-    ) |>
-    tidyr::pivot_wider(names_from = "analyte", values_from = "log_value") |>
-    dplyr::rename(dplyr::any_of(
-      stats::setNames(names(safe_analytes), unname(safe_analytes))
-    ))
-
-  # PC scores for eligible samples
+  # PC scores for eligible samples (needed by every method).
   pc_wide <- dplyr::filter(pca_scores, .data$sample_id %in% .env$eligible_ids) |>
     dplyr::select("sample_id", dplyr::all_of(pc_cols))
 
-  # Ensure all training analyte columns are present (add NA if absent)
-  for (s in names(safe_analytes)) {
-    if (!s %in% names(target_wide)) target_wide[[s]] <- NA_real_
-  }
+  if (!is.null(group$impute_method) && group$impute_method == "cens_factor") {
+    # ── Long-format shared-latent-factor prediction ──────────────────────────
+    # Predict every (eligible sample × analyte) cell from the univariate model;
+    # the merge below overlays only the BDL/missing cells.
+    pm_long <- .predict_factor_long(group, pc_wide, return, ndraws, batch_size)
 
-  wide_new <- pc_wide |>
-    dplyr::left_join(target_wide, by = "sample_id")
+  } else {
+    # ── Wide newdata + per-method prediction (rescor_mi / cens) ──────────────
+    # Targets wide (log for detected, NA for BDL/missing → to be imputed)
+    target_wide <- df_eligible |>
+      dplyr::filter(.data$analyte %in% .env$target_analytes) |>
+      dplyr::select("sample_id", "analyte", "value", "detected") |>
+      dplyr::mutate(
+        log_value = dplyr::if_else(
+          .data$detected,
+          log(pmax(.data$value, eps_log)),
+          NA_real_
+        )
+      ) |>
+      dplyr::summarise(
+        log_value = mean(.data$log_value, na.rm = TRUE),
+        .by        = c("sample_id", "analyte")
+      ) |>
+      tidyr::pivot_wider(names_from = "analyte", values_from = "log_value") |>
+      dplyr::rename(dplyr::any_of(
+        stats::setNames(names(safe_analytes), unname(safe_analytes))
+      ))
 
-  # cens / cens_factor models reference <safe>__cens and <safe>__sub columns in
-  # the formula. For prediction we set them so every target cell is predicted
-  # (cens "none", subset TRUE); the response placeholder is ignored.
-  if (!is.null(group$impute_method) && group$impute_method != "rescor_mi") {
-    for (s in unname(safe_analytes)) {
-      if (!s %in% names(wide_new)) wide_new[[s]] <- 0
-      wide_new[[s]]                 <- dplyr::coalesce(wide_new[[s]], 0)
-      wide_new[[paste0("cens_", s)]] <- "none"
-      wide_new[[paste0("sub_", s)]]  <- TRUE
+    # Ensure all training analyte columns are present (add NA if absent)
+    for (s in names(safe_analytes)) {
+      if (!s %in% names(target_wide)) target_wide[[s]] <- NA_real_
     }
-  }
 
-  # ── Posterior predictions (batched + optional draw subsampling) ───────────
-  # Predicting all eligible samples at once can exhaust memory for rescor_mi
-  # (mi() materialises every imputed cell as a latent parameter). Predict in
-  # row-batches, and optionally use only `ndraws` posterior draws, to bound peak
-  # memory.
-  cens_method <- !is.null(group$impute_method) &&
-    group$impute_method != "rescor_mi"
+    wide_new <- pc_wide |>
+      dplyr::left_join(target_wide, by = "sample_id")
 
-  predict_chunk <- function(wn) {
-    if (cens_method) {
-      # subset() models must be predicted one response at a time.
-      purrr::map_dfr(unname(safe_analytes), function(s) {
-        orig <- names(safe_analytes)[safe_analytes == s]
-        if (return == "point") {
-          ep <- brms::posterior_epred(group$fit, newdata = wn, resp = s,
-                                      allow_new_levels = TRUE, ndraws = ndraws)
-          tibble::tibble(sample_id = wn$sample_id, analyte = orig,
-                         .post_mean = exp(colMeans(ep)))
-        } else {
-          pp <- brms::posterior_predict(group$fit, newdata = wn, resp = s,
+    # cens models reference cens_<safe> / sub_<safe> columns in the formula. For
+    # prediction set them so every target cell is predicted (cens "none", subset
+    # TRUE); the response placeholder is ignored.
+    if (!is.null(group$impute_method) && group$impute_method != "rescor_mi") {
+      for (s in unname(safe_analytes)) {
+        if (!s %in% names(wide_new)) wide_new[[s]] <- 0
+        wide_new[[s]]                 <- dplyr::coalesce(wide_new[[s]], 0)
+        wide_new[[paste0("cens_", s)]] <- "none"
+        wide_new[[paste0("sub_", s)]]  <- TRUE
+      }
+    }
+
+    # ── Posterior predictions (batched + optional draw subsampling) ─────────
+    # Predicting all eligible samples at once can exhaust memory for rescor_mi
+    # (mi() materialises every imputed cell as a latent parameter). Predict in
+    # row-batches, and optionally use only `ndraws` posterior draws, to bound
+    # peak memory.
+    cens_method <- !is.null(group$impute_method) &&
+      group$impute_method != "rescor_mi"
+
+    predict_chunk <- function(wn) {
+      if (cens_method) {
+        # subset() models must be predicted one response at a time.
+        purrr::map_dfr(unname(safe_analytes), function(s) {
+          orig <- names(safe_analytes)[safe_analytes == s]
+          if (return == "point") {
+            ep <- brms::posterior_epred(group$fit, newdata = wn, resp = s,
                                         allow_new_levels = TRUE, ndraws = ndraws)
-          nd <- nrow(pp)
-          tibble::tibble(
-            sample_id   = rep(wn$sample_id, each = nd),
-            analyte     = orig,
-            draw_id     = rep(seq_len(nd), times = ncol(pp)),
-            .post_value = exp(as.vector(pp)))
-        }
-      })
-    } else if (return == "point") {
-      ep <- brms::posterior_epred(group$fit, newdata = wn,
-                                  allow_new_levels = TRUE, ndraws = ndraws)
-      .reshape_posterior_means(ep, wn$sample_id, safe_analytes)
-    } else {
-      pp <- brms::posterior_predict(group$fit, newdata = wn,
+            tibble::tibble(sample_id = wn$sample_id, analyte = orig,
+                           .post_mean = exp(colMeans(ep)))
+          } else {
+            pp <- brms::posterior_predict(group$fit, newdata = wn, resp = s,
+                                          allow_new_levels = TRUE, ndraws = ndraws)
+            nd <- nrow(pp)
+            tibble::tibble(
+              sample_id   = rep(wn$sample_id, each = nd),
+              analyte     = orig,
+              draw_id     = rep(seq_len(nd), times = ncol(pp)),
+              .post_value = exp(as.vector(pp)))
+          }
+        })
+      } else if (return == "point") {
+        ep <- brms::posterior_epred(group$fit, newdata = wn,
                                     allow_new_levels = TRUE, ndraws = ndraws)
-      .reshape_posterior_draws(pp, wn$sample_id, safe_analytes)
+        .reshape_posterior_means(ep, wn$sample_id, safe_analytes)
+      } else {
+        pp <- brms::posterior_predict(group$fit, newdata = wn,
+                                      allow_new_levels = TRUE, ndraws = ndraws)
+        .reshape_posterior_draws(pp, wn$sample_id, safe_analytes)
+      }
     }
-  }
 
-  n_new <- nrow(wide_new)
-  bs    <- if (is.null(batch_size)) n_new else max(1L, as.integer(batch_size))
-  batches <- split(seq_len(n_new), ceiling(seq_len(n_new) / bs))
-  pm_long <- tryCatch(
-    purrr::map_dfr(batches, function(idx) predict_chunk(wide_new[idx, , drop = FALSE])),
-    error = function(e) cli::cli_abort(c(
-      "brms prediction failed during imputation.",
-      "x" = "{conditionMessage(e)}"
-    ))
-  )
+    n_new <- nrow(wide_new)
+    bs    <- if (is.null(batch_size)) n_new else max(1L, as.integer(batch_size))
+    batches <- split(seq_len(n_new), ceiling(seq_len(n_new) / bs))
+    pm_long <- tryCatch(
+      purrr::map_dfr(batches, function(idx) predict_chunk(wide_new[idx, , drop = FALSE])),
+      error = function(e) cli::cli_abort(c(
+        "brms prediction failed during imputation.",
+        "x" = "{conditionMessage(e)}"
+      ))
+    )
+  }
 
   # ── Tag imputation kind for each (sample, analyte) ─────────────────────────
   impute_kind <- df_eligible |>

@@ -142,6 +142,15 @@ test_that("cens / cens_factor impute methods fit and impute (brms smoke test)", 
     expect_true(all(is.finite(imp$value)))
     expect_true(any(imp$imputed))
     expect_true(all(imp$imputed_kind %in% c("observed","censored_left","missing")))
+
+    # cens_factor must carry a genuine shared per-sample latent factor: the
+    # long-format model has a `sample_id` group-level effect. (The old wide
+    # `(1 |q| sample_id)` form silently produced no such coupling.)
+    if (meth == "cens_factor") {
+      vc <- brms::VarCorr(m$metals$fit)
+      expect_true("sample_id" %in% names(vc))
+      expect_gt(vc$sample_id$sd[1, "Estimate"], 0)
+    }
   }
 })
 

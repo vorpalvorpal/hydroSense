@@ -17,23 +17,20 @@ they have been removed from this file now that they are done.
 
 ### 1. Imputation-method follow-ups
 
-- **`cens_factor` is structurally broken (diagnosed 2026-06-06).** The intended
-  shared per-sample latent factor (`(1 |q| sample_id)` correlated across the
-  metals) is **never created**: because each response uses `subset()` (a
-  different subset of rows), brms cannot estimate cross-response random-effect
-  correlations, so `prior_summary()` shows **no `cor` parameter**. The method
-  therefore adds an independent per-(sample, analyte) random intercept with one
-  observation per cell — weakly identified vs the residual (→ the 554 divergences
-  / R̂ up to 2.1 in the sweep) — while delivering **none** of the advertised
-  coupling. A prior/adapt_delta sweep confirmed tuning cannot fix it (divergences
-  fall but R̂ worsens to 2.1). The correct fix is a **long-format restructure**:
-  one univariate model `value | cens(cf) ~ 0 + analyte + s(PC, by = analyte) +
-  (1 | sample_id)` where `(1 | sample_id)` is a single per-sample latent shared
-  across analytes (the genuine coupling), well-identified because each sample
-  contributes several analyte observations. Reworks the cens_factor branch of
-  `.fit_group_model()` **and** `.predict_and_merge()`. Decision pending: rebuild
-  (this restructure) vs remove cens_factor vs keep-but-hard-gate.
-- **Repeated cross-validation.** The §10b benchmark used a single random mask /
+- **`cens_factor` rebuilt as a long-format shared-factor model — RESOLVED
+  2026-06-06.** The old wide `(1 |q| sample_id)` form silently produced no
+  coupling (no `cor` parameter under `subset()`) and would not converge (R̂ up to
+  2.1, 554 divergences). Replaced with a single long-format univariate model
+  `lv | cens(cf) ~ 0 + safe + s(PC, by = safe) + (1 | sample_id)` (per-analyte
+  residual SD), where `(1 | sample_id)` is a genuine shared per-sample latent
+  factor. Validated on B.S01 6-metal masked data: R̂ 1.013, 75 divergences (now
+  with `adapt_delta = 0.95` default), **shared factor SD 0.54 [0.33, 0.76]** (the
+  coupling is real), RMSE 0.445; draws path works. Reworked the `cens_factor`
+  branches of `.fit_group_model()` + `.predict_and_merge()` (+ new
+  `.predict_factor_long()`); the reshape is fully contained in the brms
+  internals, `cens`/`rescor_mi` untouched. Pinned by a `VarCorr` assertion in
+  `test-impute-smoke.R`.
+- **Repeated cross-validation.** The §10b benchmark uses a single random mask /
   one seed (n = 19 held-out cells, noisy). Repeat across multiple seeds / folds
-  for a stable accuracy + calibration comparison once the method question above
-  is settled. (Benchmark scripts live in the gitignored `test data/`.)
+  for a stable accuracy + calibration comparison. (Benchmark scripts live in the
+  gitignored `test data/`.)

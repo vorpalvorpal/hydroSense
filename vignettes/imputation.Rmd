@@ -138,25 +138,33 @@ keeps the fit tractable.
 ## Choosing the imputation method
 
 `fit_imputation_model(impute_method =)` controls how below-detection cells and
-cross-analyte coupling are handled. All three options share the same PCA
-predictors and mean structure; they differ only in the likelihood:
+cross-analyte coupling are handled. All three share the same PCA predictors;
+`"rescor_mi"` and `"cens"` fit a wide multivariate model, while `"cens_factor"`
+fits a single long-format model with a shared per-sample factor:
 
 | `impute_method` | BDL handling | Coupling | Notes |
 |-----------------|--------------|----------|-------|
-| `"rescor_mi"` *(default)* | `mi()` (imputed) + DL cap | full residual correlation | most accurate recovery; posterior **draws are memory-heavy** |
-| `"cens"` | `cens("left")` (proper censoring) | none | fastest; clean BDL; no borrowing across metals |
-| `"cens_factor"` | `cens("left")` | shared per-sample latent factor | censoring **and** coupling; calibrated, cheap uncertainty |
+| `"rescor_mi"` *(default)* | `mi()` (imputed) + DL cap | full residual-correlation matrix | most accurate recovery; posterior **draws are memory-heavy** |
+| `"cens"` | `cens("left")` (proper censoring) | none | fastest; cleanest convergence; no borrowing across metals |
+| `"cens_factor"` | `cens("left")` | shared per-sample latent factor | proper censoring **and** coupling; calibrated, cheap uncertainty |
 
 The trade-off is accuracy versus the cost of uncertainty. `brms` cannot combine
 a full residual correlation (`rescor = TRUE`) with proper left-censoring, so the
 default pairs residual correlation with `mi()` imputation and a post-hoc cap.
-A preliminary hold-out benchmark on real data found `"rescor_mi"` recovered
-masked metals most accurately (coupling helps most when it is strongest), which
-is why it is the default. But its posterior **draws** are expensive — and can
-exhaust memory — whereas `"cens"`/`"cens_factor"` give well-calibrated
-intervals cheaply and `"cens_factor"` recovers much of the coupling. Prefer a
-cens method when you need uncertainty (`return = "draws"`) or hit memory limits;
-prefer the default for point estimates.
+A hold-out benchmark on real data found `"rescor_mi"` recovers masked metals most
+accurately (the full residual-correlation matrix is the strongest coupling),
+which is why it is the default — but its posterior **draws** are expensive and
+can exhaust memory.
+
+`"cens"` and `"cens_factor"` give well-calibrated intervals cheaply. They differ
+in coupling: `"cens"` treats the metals independently, while `"cens_factor"`
+adds a single per-sample latent factor shared across all analytes — fitted in
+long format, so the factor is well-identified (each sample contributes several
+analyte observations) and genuinely lets an observed metal inform the
+unobserved/BDL ones at that sample. Prefer a cens method when you need
+uncertainty (`return = "draws"`) or hit memory limits — `"cens_factor"` when you
+also want cross-analyte borrowing, `"cens"` when you want the simplest, fastest
+fit; prefer the default `"rescor_mi"` for the most accurate point estimates.
 
 ```{r method, eval = FALSE}
 # Proper censoring + cross-analyte coupling, with cheap calibrated uncertainty:

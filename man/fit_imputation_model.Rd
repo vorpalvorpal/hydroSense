@@ -73,9 +73,13 @@ imputed BDL cells are capped at the detection limit post-hoc by
 \item{\code{"cens"}}{Proper left-censoring of BDL at the detection limit
 (\code{cens("left")}), no residual correlation -- clean BDL handling but no
 cross-analyte coupling.}
-\item{\code{"cens_factor"}}{As \code{"cens"} plus a shared per-sample latent factor
-(\code{(1 | sample_id)} correlated across analytes), which re-introduces
-cross-analyte coupling while keeping proper censoring.}
+\item{\code{"cens_factor"}}{Proper left-censoring \strong{with} cross-analyte
+coupling. Fitted as a single long-format model with a shared per-sample
+latent factor \code{(1 | sample_id)} common to all analytes, so an observed
+metal informs the unobserved/BDL ones at that sample. The factor is
+well-identified (each sample contributes several analyte observations);
+\code{adapt_delta = 0.95} is set by default to clear the factor's mild
+funnel (override via \code{control} in \code{...}).}
 }
 See \code{vignette("imputation")} and the package benchmark for guidance on
 which to prefer.}
