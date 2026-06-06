@@ -69,7 +69,11 @@ coupling are handled. One of:
 \item{\code{"rescor_mi"}}{(default) Residual correlation across analytes
 (\code{rescor = TRUE}) with BDL/missing treated as imputable (\code{mi()}); the
 imputed BDL cells are capped at the detection limit post-hoc by
-\code{\link[=impute_chemistry]{impute_chemistry()}} (brms cannot combine \code{rescor} with \code{cens()}).}
+\code{\link[=impute_chemistry]{impute_chemistry()}} (brms cannot combine \code{rescor} with \code{cens()}). Most
+accurate recovery, but the \code{mi()} + correlation geometry is funnel-prone,
+so \code{adapt_delta = 0.95} and an \code{lkj(2)} prior on the residual
+correlation are set by default to control divergences (override via
+\code{control} / \code{prior} in \code{...}).}
 \item{\code{"cens"}}{Proper left-censoring of BDL at the detection limit
 (\code{cens("left")}), no residual correlation -- clean BDL handling but no
 cross-analyte coupling.}

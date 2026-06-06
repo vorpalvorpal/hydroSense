@@ -238,7 +238,11 @@
 #'     \item{`"rescor_mi"`}{(default) Residual correlation across analytes
 #'       (`rescor = TRUE`) with BDL/missing treated as imputable (`mi()`); the
 #'       imputed BDL cells are capped at the detection limit post-hoc by
-#'       [impute_chemistry()] (brms cannot combine `rescor` with `cens()`).}
+#'       [impute_chemistry()] (brms cannot combine `rescor` with `cens()`). Most
+#'       accurate recovery, but the `mi()` + correlation geometry is funnel-prone,
+#'       so `adapt_delta = 0.95` and an `lkj(2)` prior on the residual
+#'       correlation are set by default to control divergences (override via
+#'       `control` / `prior` in `...`).}
 #'     \item{`"cens"`}{Proper left-censoring of BDL at the detection limit
 #'       (`cens("left")`), no residual correlation -- clean BDL handling but no
 #'       cross-analyte coupling.}
@@ -1198,6 +1202,15 @@ impute_coanalytes <- function(
   # Default it here; a user-supplied `control` (via ...) takes precedence.
   if (impute_method == "cens_factor" && is.null(brm_args$control)) {
     brm_args$control <- list(adapt_delta = 0.95)
+  }
+  # rescor_mi: the mi() + full residual-correlation geometry is funnel-prone. In
+  # the B.S01 benchmark, adapt_delta = 0.95 cut divergences ~20x (677 -> ~30-80)
+  # and an lkj(2) prior on the residual correlation gave the best R-hat (1.05)
+  # and RMSE, for ~10% more runtime. Both are user-overridable via `...`.
+  if (impute_method == "rescor_mi") {
+    if (is.null(brm_args$control)) brm_args$control <- list(adapt_delta = 0.95)
+    if (is.null(brm_args$prior))
+      brm_args$prior <- brms::set_prior("lkj(2)", class = "rescor")
   }
 
   fit <- tryCatch(
