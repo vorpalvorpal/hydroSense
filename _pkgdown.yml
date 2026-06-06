@@ -47,10 +47,12 @@ reference:
 
   - title: Chemistry imputation
     desc: >
-      Bayesian multivariate imputation of below-detection and missing analyte
-      concentrations, plus deterministic co-analyte imputation.
+      Domain-agnostic Bayesian multivariate imputation of below-detection and
+      missing analyte concentrations, plus deterministic co-analyte imputation.
     contents:
       - fit_imputation_model
+      - impute_group
+      - leachate_impute_groups
       - impute_chemistry
       - impute_coanalytes
 

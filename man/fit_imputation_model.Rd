@@ -8,8 +8,9 @@ fit_imputation_model(
   df,
   pca_vars = NULL,
   required_vars = c("pH", "EC"),
-  metal_analytes = NULL,
-  doc_like_analytes = NULL,
+  groups = NULL,
+  exclude = NULL,
+  no_log_vars = NULL,
   min_detect_freq = 0.05,
   min_target_detect_freq = 0.05,
   min_samples = 10L,
@@ -37,11 +38,18 @@ as predictors for the brms model via PC scores).  Default: \code{c("pH", "EC", "
 to be retained in training and prediction.  Default \code{c("pH", "EC")}.
 Samples missing any of these are dropped entirely.}
 
-\item{metal_analytes}{Analyte names classified as metals.  Default
-\code{.METAL_ANALYTES}.}
+\item{groups}{A list of \code{\link[=impute_group]{impute_group()}} objects describing which analytes
+to impute and how each group is hurdled.  Default \code{NULL} uses
+\code{\link[=leachate_impute_groups]{leachate_impute_groups()}} (a \code{metals} group plus a catch-all \code{organics}
+group).  Supply your own list to impute a different chemistry.}
 
-\item{doc_like_analytes}{Analyte names used for the organics hurdle check
-(the "organic carbon present" requirement).  Default \code{.DOC_LIKE_ANALYTES}.}
+\item{exclude}{Analyte names that must never be modelled as response
+variables in any group (e.g. counts, qualitative descriptors).  Default
+\code{NULL} uses \link{.IMPUTE_EXCLUDED}.}
+
+\item{no_log_vars}{Analyte names that must \strong{not} be log-transformed before
+the chemistry PCA (interval-scale or already-logarithmic variables such as
+pH and temperature).  Default \code{NULL} uses \link{.PCA_NO_LOG_VARS}.}
 
 \item{min_detect_freq}{Minimum detection frequency for a PCA variable to be
 retained.  Default \code{0.05}.  Required vars are always retained regardless.}
@@ -98,34 +106,42 @@ in this directory using \code{qs2::qs_save()}.}
 \value{
 A named list of class \code{"imputation_model"}:
 \itemize{
-\item \verb{$pca}: PCA fit + metadata (loadings, training medians, n_pcs, …)
-\item \verb{$metals}: list with \verb{$fit} (brmsfit), \verb{$analytes}, \verb{$safe_names}
-\item \verb{$organics}: same structure, or \code{NULL} if no organics pass prescreen
-\item \verb{$required_vars}, \verb{$pca_vars}, \verb{$hurdle_metals}, \verb{$hurdle_organics}
+\item \verb{$pca}: PCA fit + metadata (loadings, training medians, n_pcs,
+\code{no_log_vars}, …)
+\item \verb{$groups}: a named list (one entry per fitted group, named by the group's
+\code{name}); each entry has \verb{$fit} (brmsfit), \verb{$analytes}, \verb{$safe_names},
+\verb{$name}, \verb{$hurdle}.  Empty if no group had any modellable analytes.
+\item \verb{$group_specs}: the input list of \code{\link[=impute_group]{impute_group()}} objects
+\item \verb{$required_vars}, \verb{$pca_vars}, \verb{$exclude}, \verb{$impute_method}
 \item \verb{$fit_date}, \verb{$n_samples}: metadata
 If \code{save_dir} is supplied, the path to the saved file is returned as
 \code{attr(result, "save_path")}.
 }
 }
 \description{
-Fits one or two \code{brms} multivariate GAMs — one for metals and one for
-organics — using a PCA-compressed water-quality (WQ) block as additional
-environmental predictors.  The returned model object is passed to
+Fits a \code{brms} multivariate GAM for each \strong{imputation group} (see
+\code{\link[=impute_group]{impute_group()}}), using a PCA-compressed water-quality (WQ) block as
+additional environmental predictors.  The engine itself is domain-agnostic:
+the leachate-specific groups (a \code{metals} group and a catch-all \code{organics}
+group) are supplied by the default \code{groups = leachate_impute_groups()} and
+can be swapped for any other chemistry by passing your own list of
+\code{\link[=impute_group]{impute_group()}} objects.  The returned model object is passed to
 \code{impute_chemistry()} for prediction on new data.
 }
 \details{
 \strong{Model structure}
 
-For each analyte group (metals / organics), the mean structure is:
+For each group, the mean structure is:
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{s(PC1) + s(PC2) + ... + s(PCk)
 }\if{html}{\out{</div>}}
 
 where \verb{PC*} are the leading principal components of the unified chemistry
-PCA (see \emph{Chemistry PCA} below).  All target analytes (metals or organics)
-are modelled jointly with \code{rescor = TRUE}, so observed co-analytes at a
-given sample condition the posterior of the missing ones through the residual
-correlation matrix.
+PCA (see \emph{Chemistry PCA} below).  A group's target analytes are modelled
+jointly with \code{rescor = TRUE}, so observed analytes at a given sample
+condition the posterior of the missing ones through the residual correlation
+matrix.  Separate groups are fitted as separate models and do not share
+residual correlation.
 
 \strong{Why \code{rescor = TRUE}} — the PCA captures the \emph{instantaneous} chemical
 covariance structure (what is measured together at a single moment), but
@@ -170,12 +186,11 @@ explained reaches \code{min_var_explained} or \code{max_pcs} is reached.  A mini
 of two PCs is always used.
 
 \strong{Hurdles (applied at prediction time by \code{impute_chemistry()})}
-\itemize{
-\item \emph{Metals}: a sample is only imputed if at least one metal analyte is
-present (detected or BDL) in \code{df} for that sample.
-\item \emph{Organics}: a sample is only imputed if at least one of
-DOC, TOC, BOD, COD or cBOD is present.
-}
+
+Each group may carry a \emph{presence hurdle} (see \code{\link[=impute_group]{impute_group()}}): a sample is
+only imputed for that group if it carries at least one of the hurdle
+analytes (detected or BDL).  Under the leachate preset the metals group is
+hurdled on metal presence and the organics group on DOC-like presence.
 
 \strong{BDL required variables}
 
@@ -188,8 +203,18 @@ bound).  A message is issued but the sample is retained.
 # Requires a Stan toolchain (brms). Fit once, then reuse for imputation.
 model <- fit_imputation_model(monitoring_long)
 draws <- impute_chemistry(monitoring_long, model, return = "draws")
+
+# A different domain: two custom groups instead of the leachate preset.
+model2 <- fit_imputation_model(
+  monitoring_long,
+  groups = list(
+    impute_group("trace_metals", targets = c("As", "Cd", "Pb"),
+                 hurdle = c("As", "Cd", "Pb")),
+    impute_group("nutrients", targets = NULL, hurdle = c("NO3-N", "P-total"))
+  )
+)
 }
 }
 \seealso{
-\code{\link[=impute_chemistry]{impute_chemistry()}}
+\code{\link[=impute_chemistry]{impute_chemistry()}}, \code{\link[=impute_group]{impute_group()}}, \code{\link[=leachate_impute_groups]{leachate_impute_groups()}}
 }

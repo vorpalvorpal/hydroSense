@@ -39,9 +39,11 @@
 
 #' Analytes that must never enter the imputation model as response variables
 #'
-#' These are excluded from both the metals and organics groups.  They are
+#' The default `exclude` set for [fit_imputation_model()] (a leachate-preset
+#' default; override via the `exclude` argument for other domains).  These are
 #' typically non-concentration measurements (counts, qualitative, physical)
-#' for which a log-normal concentration model is inappropriate.
+#' for which a log-normal concentration model is inappropriate, so they are
+#' excluded from every imputation group.
 #' @keywords internal
 .IMPUTE_EXCLUDED <- c(
   # Microbiological counts (colony-forming units — not concentrations)
@@ -58,14 +60,21 @@
   "Stage"
 )
 
-#' All metal-type analytes (used to define the metals imputation group)
+#' All metal-type analytes (the metals group in [leachate_impute_groups()])
+#'
+#' A leachate-preset default: these define the `metals` [impute_group()]'s
+#' targets and presence hurdle. For other domains, build your own groups with
+#' [impute_group()] instead.
 #' @keywords internal
 .METAL_ANALYTES <- c(
   "Al", "As", "B", "Ba", "Be", "Cd", "Co", "Cr", "Cr-6", "Cu",
   "Fe", "Hg", "Mn", "Mo", "Ni", "Pb", "Sb", "Se", "Sn", "Sr", "V", "Zn"
 )
 
-#' Analytes that satisfy the organic-carbon hurdle for the organics model
+#' Analytes that satisfy the organic-carbon hurdle for the organics group
+#'
+#' A leachate-preset default: the presence hurdle for the `organics`
+#' [impute_group()] in [leachate_impute_groups()].
 #' @keywords internal
 .DOC_LIKE_ANALYTES <- c("DOC", "TOC", "BOD", "COD", "cBOD")
 
@@ -131,26 +140,196 @@
 }
 
 
+# ── Imputation group specification ────────────────────────────────────────────
+
+#' Declare an imputation group
+#'
+#' The imputation engine ([fit_imputation_model()]) is domain-agnostic: it
+#' imputes one or more **groups** of target analytes from a shared
+#' PCA-compressed chemistry context, with cross-target residual correlation
+#' within each group.  `impute_group()` describes a single group — which
+#' analytes it models and which (if any) presence hurdle gates it.  Pass a list
+#' of these as the `groups` argument of [fit_imputation_model()].
+#'
+#' Each group is fitted as its own joint `brms` model, so analytes in different
+#' groups do not borrow residual correlation from one another.  Group together
+#' analytes you expect to co-vary (e.g. metals that move together in a plume).
+#'
+#' @param name Group label (a non-empty string).  Used as the name of the
+#'   group's slot in the fitted model's `$groups` list and in console messages.
+#' @param targets Character vector of analyte names to model jointly in this
+#'   group, or `NULL` to mark this as the **catch-all** group, which claims
+#'   every remaining modellable analyte (those not excluded, not used as PCA
+#'   predictors, and not already claimed by an earlier group).  At most one
+#'   catch-all group is allowed in a `groups` list.
+#' @param hurdle Character vector of analyte names defining a *presence hurdle*,
+#'   or `NULL` for no hurdle.  When a hurdle is set, a sample is only imputed
+#'   for this group if it carries at least one of these analytes (detected or
+#'   below-detection).  This stops silence being mistaken for absence — e.g. a
+#'   sample with no metals recorded is left alone rather than given invented
+#'   metal values.
+#'
+#' @return An object of class `"impute_group"`: a list with elements `name`,
+#'   `targets`, and `hurdle`.
+#'
+#' @seealso [fit_imputation_model()], [leachate_impute_groups()]
+#' @examples
+#' # A metals group hurdled on metal presence, plus an everything-else group
+#' # hurdled on dissolved-organic-carbon presence:
+#' groups <- list(
+#'   impute_group("metals", targets = c("Cu", "Zn", "Ni", "Pb"),
+#'                hurdle = c("Cu", "Zn", "Ni", "Pb")),
+#'   impute_group("organics", targets = NULL, hurdle = c("DOC", "TOC"))
+#' )
+#' @export
+impute_group <- function(name, targets = NULL, hurdle = NULL) {
+  if (!checkmate::test_string(name, min.chars = 1L)) {
+    cli::cli_abort(c(
+      "{.arg name} must be a single non-empty string.",
+      "x" = "You supplied {.obj_type_friendly {name}}."
+    ))
+  }
+  if (!is.null(targets)) {
+    checkmate::assert_character(targets, min.len = 1L, any.missing = FALSE,
+                               min.chars = 1L, .var.name = "targets")
+    targets <- unique(targets)
+  }
+  if (!is.null(hurdle)) {
+    checkmate::assert_character(hurdle, min.len = 1L, any.missing = FALSE,
+                               min.chars = 1L, .var.name = "hurdle")
+    hurdle <- unique(hurdle)
+  }
+  structure(
+    list(name = name, targets = targets, hurdle = hurdle),
+    class = "impute_group"
+  )
+}
+
+#' @export
+print.impute_group <- function(x, ...) {
+  cat(sprintf("<impute_group: %s>\n", x$name))
+  cat(sprintf("  targets: %s\n",
+              if (is.null(x$targets)) "<catch-all>"
+              else paste(x$targets, collapse = ", ")))
+  cat(sprintf("  hurdle:  %s\n",
+              if (is.null(x$hurdle)) "<none>"
+              else paste(x$hurdle, collapse = ", ")))
+  invisible(x)
+}
+
+#' Leachate imputation-group preset
+#'
+#' Returns the default [impute_group()] specification used by
+#' [fit_imputation_model()] for landfill-leachate monitoring chemistry: a
+#' **metals** group (hurdled on metal presence) and a catch-all **organics**
+#' group (hurdled on dissolved-organic-carbon presence).  This is the leachate
+#' domain layer on top of the otherwise domain-agnostic engine — pass your own
+#' list of [impute_group()] objects to model a different chemistry.
+#'
+#' The metals set is [.METAL_ANALYTES] and the organic-carbon hurdle set is
+#' [.DOC_LIKE_ANALYTES].
+#'
+#' @return A list of two `"impute_group"` objects (`metals`, `organics`).
+#' @seealso [impute_group()], [fit_imputation_model()]
+#' @examples
+#' leachate_impute_groups()
+#' @export
+leachate_impute_groups <- function() {
+  list(
+    impute_group("metals",   targets = .METAL_ANALYTES,
+                 hurdle = .METAL_ANALYTES),
+    impute_group("organics", targets = NULL,
+                 hurdle = .DOC_LIKE_ANALYTES)
+  )
+}
+
+#' Validate and normalise a list of imputation groups
+#'
+#' Checks that `groups` is a non-empty list of [impute_group()] objects with
+#' unique names and at most one catch-all (`targets = NULL`) entry.
+#' @param groups A list of `impute_group` objects.
+#' @return The validated `groups` list (invisibly the same object).
+#' @keywords internal
+.validate_impute_groups <- function(groups) {
+  if (!is.list(groups) || length(groups) == 0L) {
+    cli::cli_abort("{.arg groups} must be a non-empty list of {.fn impute_group} objects.")
+  }
+  ok <- vapply(groups, inherits, logical(1L), what = "impute_group")
+  if (!all(ok)) {
+    cli::cli_abort(c(
+      "Every element of {.arg groups} must be an {.fn impute_group} object.",
+      "x" = "Element{?s} {.val {which(!ok)}} {?is/are} not."
+    ))
+  }
+  nms <- vapply(groups, function(g) g$name, character(1L))
+  if (anyDuplicated(nms)) {
+    cli::cli_abort(c(
+      "Group names in {.arg groups} must be unique.",
+      "x" = "Duplicated: {.val {unique(nms[duplicated(nms)])}}."
+    ))
+  }
+  n_catchall <- sum(vapply(groups, function(g) is.null(g$targets), logical(1L)))
+  if (n_catchall > 1L) {
+    cli::cli_abort(c(
+      "At most one catch-all group ({.code targets = NULL}) is allowed.",
+      "x" = "You supplied {n_catchall} catch-all groups."
+    ))
+  }
+  invisible(groups)
+}
+
+#' Route a candidate analyte pool into imputation groups
+#'
+#' Explicit-target groups claim their analytes first, in declaration order
+#' (so an analyte listed in two groups goes to the earlier one); the single
+#' catch-all group (`targets = NULL`) then takes whatever remains.
+#' @param candidate_pool Character vector of modellable analyte names.
+#' @param groups A validated list of [impute_group()] objects.
+#' @return A named list (one entry per group, named by `name`) of the analyte
+#'   names assigned to each group.
+#' @keywords internal
+.route_groups <- function(candidate_pool, groups) {
+  group_targets <- vector("list", length(groups))
+  names(group_targets) <- vapply(groups, function(g) g$name, character(1L))
+  pool         <- candidate_pool
+  catchall_idx <- NA_integer_
+  for (i in seq_along(groups)) {
+    g <- groups[[i]]
+    if (is.null(g$targets)) { catchall_idx <- i; next }
+    claimed            <- intersect(pool, g$targets)
+    group_targets[[i]] <- claimed
+    pool               <- setdiff(pool, claimed)
+  }
+  if (!is.na(catchall_idx)) group_targets[[catchall_idx]] <- pool
+  group_targets
+}
+
+
 # ── fit_imputation_model() ────────────────────────────────────────────────────
 
 #' Fit the Bayesian multivariate imputation model(s)
 #'
-#' Fits one or two `brms` multivariate GAMs — one for metals and one for
-#' organics — using a PCA-compressed water-quality (WQ) block as additional
-#' environmental predictors.  The returned model object is passed to
+#' Fits a `brms` multivariate GAM for each **imputation group** (see
+#' [impute_group()]), using a PCA-compressed water-quality (WQ) block as
+#' additional environmental predictors.  The engine itself is domain-agnostic:
+#' the leachate-specific groups (a `metals` group and a catch-all `organics`
+#' group) are supplied by the default `groups = leachate_impute_groups()` and
+#' can be swapped for any other chemistry by passing your own list of
+#' [impute_group()] objects.  The returned model object is passed to
 #' `impute_chemistry()` for prediction on new data.
 #'
 #' **Model structure**
 #'
-#' For each analyte group (metals / organics), the mean structure is:
+#' For each group, the mean structure is:
 #' ```
 #' s(PC1) + s(PC2) + ... + s(PCk)
 #' ```
 #' where `PC*` are the leading principal components of the unified chemistry
-#' PCA (see *Chemistry PCA* below).  All target analytes (metals or organics)
-#' are modelled jointly with `rescor = TRUE`, so observed co-analytes at a
-#' given sample condition the posterior of the missing ones through the residual
-#' correlation matrix.
+#' PCA (see *Chemistry PCA* below).  A group's target analytes are modelled
+#' jointly with `rescor = TRUE`, so observed analytes at a given sample
+#' condition the posterior of the missing ones through the residual correlation
+#' matrix.  Separate groups are fitted as separate models and do not share
+#' residual correlation.
 #'
 #' **Why `rescor = TRUE`** — the PCA captures the *instantaneous* chemical
 #' covariance structure (what is measured together at a single moment), but
@@ -194,10 +373,10 @@
 #'
 #' **Hurdles (applied at prediction time by `impute_chemistry()`)**
 #'
-#' - *Metals*: a sample is only imputed if at least one metal analyte is
-#'   present (detected or BDL) in `df` for that sample.
-#' - *Organics*: a sample is only imputed if at least one of
-#'   DOC, TOC, BOD, COD or cBOD is present.
+#' Each group may carry a *presence hurdle* (see [impute_group()]): a sample is
+#' only imputed for that group if it carries at least one of the hurdle
+#' analytes (detected or BDL).  Under the leachate preset the metals group is
+#' hurdled on metal presence and the organics group on DOC-like presence.
 #'
 #' **BDL required variables**
 #'
@@ -214,10 +393,16 @@
 #' @param required_vars Analyte names that must be present in a sample for it
 #'   to be retained in training and prediction.  Default `c("pH", "EC")`.
 #'   Samples missing any of these are dropped entirely.
-#' @param metal_analytes Analyte names classified as metals.  Default
-#'   `.METAL_ANALYTES`.
-#' @param doc_like_analytes Analyte names used for the organics hurdle check
-#'   (the "organic carbon present" requirement).  Default `.DOC_LIKE_ANALYTES`.
+#' @param groups A list of [impute_group()] objects describing which analytes
+#'   to impute and how each group is hurdled.  Default `NULL` uses
+#'   [leachate_impute_groups()] (a `metals` group plus a catch-all `organics`
+#'   group).  Supply your own list to impute a different chemistry.
+#' @param exclude Analyte names that must never be modelled as response
+#'   variables in any group (e.g. counts, qualitative descriptors).  Default
+#'   `NULL` uses [.IMPUTE_EXCLUDED].
+#' @param no_log_vars Analyte names that must **not** be log-transformed before
+#'   the chemistry PCA (interval-scale or already-logarithmic variables such as
+#'   pH and temperature).  Default `NULL` uses [.PCA_NO_LOG_VARS].
 #' @param min_target_detect_freq Minimum detection frequency (fraction of
 #'   samples in which the analyte is *detected*) for a metal/organic to be
 #'   included as an imputation target. Targets below this are dropped (they have
@@ -262,28 +447,42 @@
 #' @param ... Additional arguments passed to `brms::brm()`.
 #'
 #' @return A named list of class `"imputation_model"`:
-#'   - `$pca`: PCA fit + metadata (loadings, training medians, n_pcs, …)
-#'   - `$metals`: list with `$fit` (brmsfit), `$analytes`, `$safe_names`
-#'   - `$organics`: same structure, or `NULL` if no organics pass prescreen
-#'   - `$required_vars`, `$pca_vars`, `$hurdle_metals`, `$hurdle_organics`
+#'   - `$pca`: PCA fit + metadata (loadings, training medians, n_pcs,
+#'     `no_log_vars`, …)
+#'   - `$groups`: a named list (one entry per fitted group, named by the group's
+#'     `name`); each entry has `$fit` (brmsfit), `$analytes`, `$safe_names`,
+#'     `$name`, `$hurdle`.  Empty if no group had any modellable analytes.
+#'   - `$group_specs`: the input list of [impute_group()] objects
+#'   - `$required_vars`, `$pca_vars`, `$exclude`, `$impute_method`
 #'   - `$fit_date`, `$n_samples`: metadata
 #'   If `save_dir` is supplied, the path to the saved file is returned as
 #'   `attr(result, "save_path")`.
 #'
-#' @seealso [impute_chemistry()]
+#' @seealso [impute_chemistry()], [impute_group()], [leachate_impute_groups()]
 #' @examples
 #' \dontrun{
 #' # Requires a Stan toolchain (brms). Fit once, then reuse for imputation.
 #' model <- fit_imputation_model(monitoring_long)
 #' draws <- impute_chemistry(monitoring_long, model, return = "draws")
+#'
+#' # A different domain: two custom groups instead of the leachate preset.
+#' model2 <- fit_imputation_model(
+#'   monitoring_long,
+#'   groups = list(
+#'     impute_group("trace_metals", targets = c("As", "Cd", "Pb"),
+#'                  hurdle = c("As", "Cd", "Pb")),
+#'     impute_group("nutrients", targets = NULL, hurdle = c("NO3-N", "P-total"))
+#'   )
+#' )
 #' }
 #' @export
 fit_imputation_model <- function(
     df,
     pca_vars          = NULL,           # default built in body
     required_vars     = c("pH", "EC"),
-    metal_analytes    = NULL,
-    doc_like_analytes = NULL,
+    groups            = NULL,
+    exclude           = NULL,
+    no_log_vars       = NULL,
     min_detect_freq   = 0.05,
     min_target_detect_freq = 0.05,
     min_samples       = 10L,
@@ -301,16 +500,20 @@ fit_imputation_model <- function(
   .require_brms()
   impute_method <- match.arg(impute_method)
 
-  if (is.null(pca_vars))          pca_vars          <- c("pH", "EC", "NH3-N",
-                                                          .WQ_BLOCK_CANDIDATES)
-  if (is.null(metal_analytes))    metal_analytes    <- .METAL_ANALYTES
-  if (is.null(doc_like_analytes)) doc_like_analytes <- .DOC_LIKE_ANALYTES
+  if (is.null(pca_vars))    pca_vars    <- c("pH", "EC", "NH3-N",
+                                             .WQ_BLOCK_CANDIDATES)
+  if (is.null(groups))      groups      <- leachate_impute_groups()
+  if (is.null(exclude))     exclude     <- .IMPUTE_EXCLUDED
+  if (is.null(no_log_vars)) no_log_vars <- .PCA_NO_LOG_VARS
+  .validate_impute_groups(groups)
 
   checkmate::assert_data_frame(df)
   checkmate::assert_names(names(df),
     must.include = c("sample_id", "site_id", "datetime",
                      "analyte", "value", "detected"))
   checkmate::assert_character(required_vars, min.len = 1L, any.missing = FALSE)
+  checkmate::assert_character(exclude, any.missing = FALSE, null.ok = FALSE)
+  checkmate::assert_character(no_log_vars, any.missing = FALSE, null.ok = FALSE)
   checkmate::assert_count(min_samples)
 
   # ── 1. BDL required-variable handling ────────────────────────────────────
@@ -381,16 +584,14 @@ fit_imputation_model <- function(
            {.val {sort(pca_vars_present)}}."
   ))
 
-  # ── 4. Identify analyte groups ─────────────────────────────────────────────
+  # ── 4. Assign analytes to groups ───────────────────────────────────────────
+  # Candidate pool = everything not used as a PCA predictor and not excluded
+  # (microbiological counts, qualitative/physical descriptors — not amenable to
+  # a log-normal model).
   all_analytes <- unique(df$analyte)
-  # Exclude all pca_vars and explicitly excluded analytes (microbiological
-  # counts, qualitative/physical descriptors — not amenable to log-normal model)
-  non_pca_non_excl <- setdiff(
-    all_analytes,
-    union(pca_vars, .IMPUTE_EXCLUDED)
-  )
+  candidate_pool <- setdiff(all_analytes, union(pca_vars, exclude))
 
-  excl_present <- intersect(all_analytes, .IMPUTE_EXCLUDED)
+  excl_present <- intersect(all_analytes, exclude)
   if (length(excl_present) > 0L) {
     cli::cli_inform(c(
       "i" = "{length(excl_present)} analyte{?s} excluded from imputation \\
@@ -398,23 +599,25 @@ fit_imputation_model <- function(
     ))
   }
 
-  metals_in_df   <- intersect(non_pca_non_excl, metal_analytes)
-  organics_in_df <- setdiff(non_pca_non_excl, metal_analytes)
+  # Route candidates into groups: explicit-target groups claim first (in the
+  # order declared), then the single catch-all group (targets = NULL) takes
+  # whatever remains in the pool.
+  group_targets <- .route_groups(candidate_pool, groups)
 
   # Drop target analytes detected too rarely to model. A brms regression needs
   # enough *detected* observations; near-/all-BDL analytes (e.g. ~100 organics
   # in a leachate panel) carry no signal and otherwise explode the model size.
+  all_targets <- unlist(group_targets, use.names = FALSE)
   det_freq <- df |>
-    dplyr::filter(.data$analyte %in% c(.env$metals_in_df, .env$organics_in_df)) |>
+    dplyr::filter(.data$analyte %in% .env$all_targets) |>
     dplyr::group_by(.data$analyte) |>
     dplyr::summarise(
       det_freq = dplyr::n_distinct(.data$sample_id[.data$detected]) / n_samples_total,
       .groups  = "drop"
     )
-  keep_targets <- det_freq$analyte[det_freq$det_freq >= min_target_detect_freq]
-  dropped <- setdiff(c(metals_in_df, organics_in_df), keep_targets)
-  metals_in_df   <- intersect(metals_in_df,   keep_targets)
-  organics_in_df <- intersect(organics_in_df, keep_targets)
+  keep_targets  <- det_freq$analyte[det_freq$det_freq >= min_target_detect_freq]
+  dropped       <- setdiff(all_targets, keep_targets)
+  group_targets <- lapply(group_targets, intersect, keep_targets)
   if (length(dropped) > 0L)
     cli::cli_inform(c(
       "i" = "Dropping {length(dropped)} target{?s} below \\
@@ -422,29 +625,29 @@ fit_imputation_model <- function(
              {.val {sort(dropped)}}."
     ))
 
-  cli::cli_inform(c(
-    "i" = "Metals group: {length(metals_in_df)} analyte{?s}: \\
-           {.val {sort(metals_in_df)}}.",
-    "i" = "Organics group: {length(organics_in_df)} analyte{?s}: \\
-           {.val {sort(organics_in_df)}}."
-  ))
+  for (nm in names(group_targets)) {
+    cli::cli_inform(c(
+      "i" = "{nm} group: {length(group_targets[[nm]])} analyte{?s}: \\
+             {.val {sort(group_targets[[nm]])}}."
+    ))
+  }
 
-  if (length(metals_in_df) == 0L && length(organics_in_df) == 0L) {
+  if (sum(lengths(group_targets)) == 0L) {
     cli::cli_warn(
       "No target analytes found outside the PCA and excluded sets. \\
        Returning model with no fitted groups (imputation will be a no-op)."
     )
     return(structure(
       list(
-        pca             = NULL,
-        metals          = NULL,
-        organics        = NULL,
-        required_vars   = required_vars,
-        pca_vars        = pca_vars,
-        hurdle_metals   = metal_analytes,
-        hurdle_organics = doc_like_analytes,
-        fit_date        = Sys.Date(),
-        n_samples       = length(samples_with_required)
+        pca           = NULL,
+        groups        = list(),
+        group_specs   = groups,
+        required_vars = required_vars,
+        pca_vars      = pca_vars,
+        exclude       = exclude,
+        impute_method = impute_method,
+        fit_date      = Sys.Date(),
+        n_samples     = length(samples_with_required)
       ),
       class = "imputation_model"
     ))
@@ -454,7 +657,8 @@ fit_imputation_model <- function(
   pca_obj <- .prepare_chem_pca(
     df, wq_vars        = pca_vars_present,
     min_var_explained  = min_var_explained,
-    max_pcs            = max_pcs
+    max_pcs            = max_pcs,
+    no_log_vars        = no_log_vars
   )
 
   cli::cli_inform(c(
@@ -462,13 +666,15 @@ fit_imputation_model <- function(
            {round(100 * pca_obj$var_explained, 1)}% of variance."
   ))
 
-  # ── 6. Fit metals model ────────────────────────────────────────────────────
-  metals_fit <- NULL
-  if (length(metals_in_df) >= 1L) {
-    cli::cli_inform(c("i" = "Fitting metals model \u2026"))
-    metals_fit <- .fit_group_model(
+  # ── 6. Fit one model per non-empty group ───────────────────────────────────
+  fitted_groups <- list()
+  for (g in groups) {
+    tgts <- group_targets[[g$name]]
+    if (length(tgts) == 0L) next
+    cli::cli_inform(c("i" = "Fitting {g$name} model \u2026"))
+    fit <- .fit_group_model(
       df              = df,
-      target_analytes = metals_in_df,
+      target_analytes = tgts,
       pca_obj         = pca_obj,
       family          = family,
       iter            = iter,
@@ -476,41 +682,26 @@ fit_imputation_model <- function(
       chains          = chains,
       cores           = cores,
       impute_method   = impute_method,
+      group_name      = g$name,
       ...
     )
+    fit$name   <- g$name
+    fit$hurdle <- g$hurdle
+    fitted_groups[[g$name]] <- fit
   }
 
-  # ── 7. Fit organics model ──────────────────────────────────────────────────
-  organics_fit <- NULL
-  if (length(organics_in_df) >= 1L) {
-    cli::cli_inform(c("i" = "Fitting organics model \u2026"))
-    organics_fit <- .fit_group_model(
-      df              = df,
-      target_analytes = organics_in_df,
-      pca_obj         = pca_obj,
-      family          = family,
-      iter            = iter,
-      warmup          = warmup,
-      chains          = chains,
-      cores           = cores,
-      impute_method   = impute_method,
-      ...
-    )
-  }
-
-  # ── 8. Assemble result ────────────────────────────────────────────────────
+  # ── 7. Assemble result ──────────────────────────────────────────────────────
   result <- structure(
     list(
-      pca             = pca_obj,
-      metals          = metals_fit,
-      organics        = organics_fit,
-      required_vars   = required_vars,
-      pca_vars        = pca_vars,
-      hurdle_metals   = metal_analytes,
-      hurdle_organics = doc_like_analytes,
-      impute_method   = impute_method,
-      fit_date        = Sys.Date(),
-      n_samples       = length(samples_with_required)
+      pca           = pca_obj,
+      groups        = fitted_groups,
+      group_specs   = groups,
+      required_vars = required_vars,
+      pca_vars      = pca_vars,
+      exclude       = exclude,
+      impute_method = impute_method,
+      fit_date      = Sys.Date(),
+      n_samples     = length(samples_with_required)
     ),
     class = "imputation_model"
   )
@@ -533,6 +724,13 @@ fit_imputation_model <- function(
 
 #' @export
 print.imputation_model <- function(x, ...) {
+  if (is.null(x$pca)) {
+    cat(sprintf(
+      "<imputation_model>  fitted %s | %d samples | %d PCA vars | no fitted groups\n",
+      x$fit_date, x$n_samples, length(x$pca_vars)
+    ))
+    return(invisible(x))
+  }
   cat(sprintf(
     "<imputation_model>  fitted %s | %d samples | %d PCA vars | %d PCs (%.0f%% var)\n",
     x$fit_date, x$n_samples, length(x$pca_vars),
@@ -540,10 +738,14 @@ print.imputation_model <- function(x, ...) {
   ))
   if (!is.null(x$impute_method))
     cat(sprintf("  method:   %s\n", x$impute_method))
-  if (!is.null(x$metals))
-    cat(sprintf("  metals:   %d analytes\n", length(x$metals$analytes)))
-  if (!is.null(x$organics))
-    cat(sprintf("  organics: %d analytes\n", length(x$organics$analytes)))
+  groups <- x$groups %||% list()
+  if (length(groups)) {
+    width <- max(nchar(names(groups)))
+    for (nm in names(groups)) {
+      cat(sprintf("  %-*s %d analytes\n",
+                  width + 1L, paste0(nm, ":"), length(groups[[nm]]$analytes)))
+    }
+  }
   invisible(x)
 }
 
@@ -554,25 +756,22 @@ print.imputation_model <- function(x, ...) {
 #'
 #' Applies the models fitted by [fit_imputation_model()] to `df`, returning
 #' posterior mean estimates for missing and below-detection-limit (BDL)
-#' observations in the metals and organics groups.
+#' observations in every fitted group.
 #'
 #' **Hurdles**
 #'
-#' Imputed values are only returned for samples that meet the relevant hurdle:
-#' - *Metals*: at least one metal analyte present (detected or BDL) at the
-#'   sample.  Samples with no metals recorded are not imputed — a leachate
-#'   metal pulse may simply not have arrived at this location yet.
-#' - *Organics*: at least one of DOC, TOC, BOD, COD or cBOD present at the
-#'   sample.
-#'
-#' Samples failing a hurdle pass through unchanged (non-imputed values are
-#' preserved; BDL values remain flagged as BDL).
+#' Each fitted group may carry a presence hurdle (see [impute_group()]).  When
+#' `apply_hurdles = TRUE`, imputed values for a group are only returned for
+#' samples carrying at least one of that group's hurdle analytes (detected or
+#' BDL) — e.g. under the leachate preset, a sample with no metals recorded is
+#' not given imputed metals, because a leachate metal pulse may simply not have
+#' arrived at that location yet.  Samples failing a hurdle pass through
+#' unchanged (non-imputed values preserved; BDL values remain flagged as BDL).
 #'
 #' @param df Long-format chemistry data frame (same schema as used for fitting).
 #' @param model Fitted model from [fit_imputation_model()].
-#' @param metal_hurdle Logical.  Apply metal-presence hurdle?  Default `TRUE`.
-#' @param organic_hurdle Logical.  Apply DOC-like-presence hurdle?  Default
-#'   `TRUE`.
+#' @param apply_hurdles Logical.  Apply each group's presence hurdle?  Default
+#'   `TRUE`.  When `FALSE`, every sample is eligible for every group.
 #' @param bdl_cap Logical.  Cap imputed BDL values at the original detection
 #'   limit?  Default `TRUE`.  Applied to all methods: an imputed below-detection
 #'   value should never exceed its detection limit.
@@ -585,7 +784,7 @@ print.imputation_model <- function(x, ...) {
 #'   this many rows to bound peak memory (important for `"rescor_mi"`, whose
 #'   `mi()` prediction is memory-heavy).  `NULL` (default) predicts all at once.
 #'
-#' @return `df` with BDL and missing cells in the metals/organics groups
+#' @return `df` with BDL and missing cells in every fitted group
 #'   replaced by posterior mean estimates, plus columns:
 #'   - `imputed` (logical) — `TRUE` for filled cells
 #'   - `imputed_kind` — `"observed"`, `"censored_left"`, or `"missing"`
@@ -605,8 +804,7 @@ print.imputation_model <- function(x, ...) {
 impute_chemistry <- function(
     df,
     model,
-    metal_hurdle   = TRUE,
-    organic_hurdle = TRUE,
+    apply_hurdles  = TRUE,
     bdl_cap        = TRUE,
     return         = c("point", "draws"),
     ndraws         = NULL,
@@ -621,14 +819,20 @@ impute_chemistry <- function(
   if (!inherits(model, "imputation_model"))
     cli::cli_abort("{.arg model} must be an object returned by {.fn fit_imputation_model}.")
 
+  groups <- model$groups %||% list()
+  if (length(groups) == 0L) {
+    cli::cli_warn("Model has no fitted groups; returning {.arg df} unchanged.")
+    result <- df
+    if (!"imputed" %in% names(result))
+      result <- dplyr::mutate(result, imputed = FALSE, imputed_kind = "observed")
+    return(result)
+  }
+
   # ── Compute WQ PC scores for new data ─────────────────────────────────────
   pca_scores <- .compute_pca_scores(df, model$pca)
 
-  # ── Collect BDL detection limits ──────────────────────────────────────────
-  all_targets <- c(
-    if (!is.null(model$metals))   model$metals$analytes   else character(0),
-    if (!is.null(model$organics)) model$organics$analytes else character(0)
-  )
+  # ── Collect BDL detection limits across every group's targets ─────────────
+  all_targets <- unlist(lapply(groups, function(g) g$analytes), use.names = FALSE)
   dl_tbl <- df |>
     dplyr::filter(.data$analyte %in% .env$all_targets, !.data$detected) |>
     dplyr::select("sample_id", "analyte", detection_limit = "value")
@@ -636,10 +840,10 @@ impute_chemistry <- function(
   # ── Impute each group ──────────────────────────────────────────────────────
   result <- df  # start with original; overlay imputed values below
 
-  if (!is.null(model$metals)) {
-    eligible <- if (metal_hurdle) {
+  for (g in groups) {
+    eligible <- if (apply_hurdles && !is.null(g$hurdle)) {
       df |>
-        dplyr::filter(.data$analyte %in% model$hurdle_metals) |>
+        dplyr::filter(.data$analyte %in% .env$g$hurdle) |>
         dplyr::pull(.data$sample_id) |>
         unique()
     } else {
@@ -647,39 +851,16 @@ impute_chemistry <- function(
     }
     n_skip <- dplyr::n_distinct(df$sample_id) - length(eligible)
     if (n_skip > 0L)
-      cli::cli_inform(c("i" = "Metals hurdle: skipping {n_skip} sample{?s} \\
-                                (no metals present)."))
+      cli::cli_inform(c(
+        "i" = "{g$name} hurdle: skipping {n_skip} sample{?s} (no \\
+               {g$name}-group analyte present)."
+      ))
 
     result <- .predict_and_merge(
       df           = result,
-      group        = model$metals,
+      group        = g,
       pca_scores   = pca_scores,
       eligible_ids = eligible,
-      return       = return,
-      ndraws       = ndraws,
-      batch_size   = batch_size
-    )
-  }
-
-  if (!is.null(model$organics)) {
-    eligible_org <- if (organic_hurdle) {
-      df |>
-        dplyr::filter(.data$analyte %in% model$hurdle_organics) |>
-        dplyr::pull(.data$sample_id) |>
-        unique()
-    } else {
-      unique(df$sample_id)
-    }
-    n_skip_org <- dplyr::n_distinct(df$sample_id) - length(eligible_org)
-    if (n_skip_org > 0L)
-      cli::cli_inform(c("i" = "Organics hurdle: skipping {n_skip_org} sample{?s} \\
-                                (no DOC-like variable present)."))
-
-    result <- .predict_and_merge(
-      df           = result,
-      group        = model$organics,
-      pca_scores   = pca_scores,
-      eligible_ids = eligible_org,
       return       = return,
       ndraws       = ndraws,
       batch_size   = batch_size
@@ -896,10 +1077,12 @@ impute_coanalytes <- function(
 #' (`.prepare_chem_pca()`) and the scoring projection (`.compute_pca_scores()`)
 #' call this so the transform is identical on both paths.
 #' @param mat Numeric matrix with named columns (samples × variables).
+#' @param no_log_vars Column names to leave on their native scale.  Default
+#'   [.PCA_NO_LOG_VARS].
 #' @param eps Positive floor applied before the log (default `1e-9`).
 #' @keywords internal
-.log_transform_pca <- function(mat, eps = 1e-9) {
-  log_cols <- setdiff(colnames(mat), .PCA_NO_LOG_VARS)
+.log_transform_pca <- function(mat, no_log_vars = .PCA_NO_LOG_VARS, eps = 1e-9) {
+  log_cols <- setdiff(colnames(mat), no_log_vars)
   if (length(log_cols) > 0L) {
     mat[, log_cols] <- log10(pmax(mat[, log_cols, drop = FALSE], eps))
   }
@@ -914,7 +1097,8 @@ impute_coanalytes <- function(
 #' [.log_transform_pca()]) before centring/scaling.  PC score columns are named
 #' `PC1`, `PC2`, ….
 #' @keywords internal
-.prepare_chem_pca <- function(df, wq_vars, min_var_explained = 0.75, max_pcs = 4L) {
+.prepare_chem_pca <- function(df, wq_vars, min_var_explained = 0.75, max_pcs = 4L,
+                              no_log_vars = .PCA_NO_LOG_VARS) {
   # Pivot chemistry vars to wide (one row per sample); missing cells → NA
   wq_wide <- df |>
     dplyr::filter(.data$analyte %in% .env$wq_vars) |>
@@ -941,7 +1125,7 @@ impute_coanalytes <- function(
   # pH / temperature / ORP / DO).  Done before centring/scaling so the PCA
   # reflects multiplicative chemical variation rather than being dominated by
   # the highest-magnitude major ions.  NAs are preserved for NIPALS.
-  wq_matrix <- .log_transform_pca(wq_matrix)
+  wq_matrix <- .log_transform_pca(wq_matrix, no_log_vars = no_log_vars)
 
   # Remove zero-variance or all-NA columns
   col_sds   <- apply(wq_matrix, 2, stats::sd, na.rm = TRUE)
@@ -987,6 +1171,7 @@ impute_coanalytes <- function(
     fit           = pca_fit,
     medians       = train_medians,         # all WQ vars (before zero-var removal)
     active_vars   = colnames(wq_matrix),   # after zero-var removal
+    no_log_vars   = no_log_vars,           # linear-scale vars (train/predict parity)
     n_pcs         = n_pcs,
     var_explained = cum_var[n_pcs]
   )
@@ -1044,7 +1229,11 @@ impute_coanalytes <- function(
   # Apply the same log10 transform used at training time.  Done AFTER the
   # raw-scale median fills above so filled values are transformed identically
   # to how the training medians were, keeping centre/scale parameters valid.
-  wq_mat <- .log_transform_pca(wq_mat)
+  # Use the training-time no_log_vars for parity (older pca_obj without the
+  # field falls back to the package default).
+  wq_mat <- .log_transform_pca(
+    wq_mat, no_log_vars = pca_obj$no_log_vars %||% .PCA_NO_LOG_VARS
+  )
 
   # Centre and scale using training parameters stored in the nipals object
   wq_scaled <- sweep(wq_mat,    2, pca_obj$fit$center, "-")
@@ -1094,7 +1283,8 @@ impute_coanalytes <- function(
 #' @keywords internal
 .fit_group_model <- function(df, target_analytes, pca_obj,
                               family, iter, warmup, chains, cores,
-                              impute_method = "rescor_mi", ...) {
+                              impute_method = "rescor_mi",
+                              group_name = "group", ...) {
   eps_log <- 1e-9
 
   safe_analytes <- stats::setNames(make.names(target_analytes), target_analytes)
@@ -1183,8 +1373,8 @@ impute_coanalytes <- function(
 
   n_units <- dplyr::n_distinct(model_df$sample_id)
   cli::cli_inform(c(
-    "i" = "brms ({impute_method}): {length(target_analytes)} analyte{?s} \u00d7 \\
-           {n_units} sample{?s}. This may take several minutes."
+    "i" = "brms {group_name} ({impute_method}): {length(target_analytes)} \\
+           analyte{?s} \u00d7 {n_units} sample{?s}. This may take several minutes."
   ))
 
   brm_args <- list(

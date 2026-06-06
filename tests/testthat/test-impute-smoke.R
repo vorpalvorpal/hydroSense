@@ -74,8 +74,8 @@ test_that("fit_imputation_model handles a fully-empty target set gracefully", {
                               iter = 100, warmup = 50, chains = 1),
     regexp = "No target analytes"
   )
-  expect_null(m$metals)
-  expect_null(m$organics)
+  expect_length(m$groups, 0L)
+  expect_null(m$pca)
   expect_s3_class(m, "imputation_model")
 })
 
@@ -97,7 +97,7 @@ test_that("fit_imputation_model full run (brms smoke test)", {
   )
 
   expect_s3_class(m, "imputation_model")
-  expect_true(!is.null(m$metals))
+  expect_true(!is.null(m$groups$metals))
   expect_true(!is.null(m$pca))
 
   imp <- impute_chemistry(df, m)
@@ -137,7 +137,7 @@ test_that("cens / cens_factor impute methods fit and impute (brms smoke test)", 
                               impute_method = meth,
                               iter = 400, warmup = 200, chains = 1, cores = 1)
     expect_equal(m$impute_method, meth)
-    expect_equal(m$metals$impute_method, meth)
+    expect_equal(m$groups$metals$impute_method, meth)
     imp <- impute_chemistry(df, m)
     expect_true(all(is.finite(imp$value)))
     expect_true(any(imp$imputed))
@@ -147,11 +147,45 @@ test_that("cens / cens_factor impute methods fit and impute (brms smoke test)", 
     # long-format model has a `sample_id` group-level effect. (The old wide
     # `(1 |q| sample_id)` form silently produced no such coupling.)
     if (meth == "cens_factor") {
-      vc <- brms::VarCorr(m$metals$fit)
+      vc <- brms::VarCorr(m$groups$metals$fit)
       expect_true("sample_id" %in% names(vc))
       expect_gt(vc$sample_id$sd[1, "Estimate"], 0)
     }
   }
+})
+
+test_that("apply_hurdles = FALSE imputes samples that carry no hurdle analytes (brms smoke test)", {
+  skip_if_not(
+    requireNamespace("brms", quietly = TRUE) &&
+      identical(Sys.getenv("BRMS_SMOKE_TEST"), "1"),
+    "Skipping brms smoke test: brms not installed or BRMS_SMOKE_TEST != '1'"
+  )
+
+  # Build a data set where one sample is metals-only (has Cu: passes hurdle)
+  # and a second sample has NO metals at all (no hurdle analytes).
+  df_full <- make_impute_chem(n = 30, n_bdl = 0, n_missing = 0)
+
+  # Remove all metals from sample "s1" so it has no hurdle analytes.
+  df_no_metal <- dplyr::filter(df_full, !(sample_id == "s1" & analyte %in% c("Cu", "Zn", "Ni")))
+
+  m <- fit_imputation_model(
+    df_full,
+    required_vars = c("pH", "EC"),
+    iter = 500, warmup = 250, chains = 1, cores = 1
+  )
+
+  # apply_hurdles = TRUE (default): s1 has no metals → not eligible → no metal rows added
+  imp_with <- impute_chemistry(df_no_metal, m, apply_hurdles = TRUE)
+  s1_metal_with <- dplyr::filter(imp_with, sample_id == "s1",
+                                  analyte %in% c("Cu", "Zn", "Ni"))
+  expect_equal(nrow(s1_metal_with), 0L)
+
+  # apply_hurdles = FALSE: s1 gets imputed regardless of missing hurdle analytes
+  imp_without <- impute_chemistry(df_no_metal, m, apply_hurdles = FALSE)
+  s1_metal_without <- dplyr::filter(imp_without, sample_id == "s1",
+                                     analyte %in% c("Cu", "Zn", "Ni"))
+  expect_gt(nrow(s1_metal_without), 0L)
+  expect_true(all(s1_metal_without$imputed))
 })
 
 test_that("impute_coanalytes skips targets not in pca_vars", {

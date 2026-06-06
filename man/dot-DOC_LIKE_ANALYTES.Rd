@@ -3,7 +3,7 @@
 \docType{data}
 \name{.DOC_LIKE_ANALYTES}
 \alias{.DOC_LIKE_ANALYTES}
-\title{Analytes that satisfy the organic-carbon hurdle for the organics model}
+\title{Analytes that satisfy the organic-carbon hurdle for the organics group}
 \format{
 An object of class \code{character} of length 5.
 }
@@ -11,6 +11,7 @@ An object of class \code{character} of length 5.
 .DOC_LIKE_ANALYTES
 }
 \description{
-Analytes that satisfy the organic-carbon hurdle for the organics model
+A leachate-preset default: the presence hurdle for the \code{organics}
+\code{\link[=impute_group]{impute_group()}} in \code{\link[=leachate_impute_groups]{leachate_impute_groups()}}.
 }
 \keyword{internal}

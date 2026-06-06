@@ -30,10 +30,12 @@ handling of below-detection data and local background conditions.
 
 The package has three pillars:
 
-- **Chemistry imputation.** A Bayesian multivariate model
+- **Chemistry imputation.** A domain-agnostic Bayesian multivariate model
   (`fit_imputation_model()` / `impute_chemistry()`) imputes below-detection and
   missing analyte concentrations while preserving cross-analyte correlation
-  structure, and can return full posterior draws.
+  structure, and can return full posterior draws. Analyte groups are configured
+  with `impute_group()`; `leachate_impute_groups()` is the bundled leachate
+  preset.
 - **Leachate detection (LMF).** End-member mixing analysis (`add_lmf()`)
   estimates the *leachate-mixing fraction* of each sample from its major-ion
   signature, distinguishing leachate influence from natural variation.

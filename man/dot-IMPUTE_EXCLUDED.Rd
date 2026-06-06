@@ -11,8 +11,10 @@ An object of class \code{character} of length 10.
 .IMPUTE_EXCLUDED
 }
 \description{
-These are excluded from both the metals and organics groups.  They are
+The default \code{exclude} set for \code{\link[=fit_imputation_model]{fit_imputation_model()}} (a leachate-preset
+default; override via the \code{exclude} argument for other domains).  These are
 typically non-concentration measurements (counts, qualitative, physical)
-for which a log-normal concentration model is inappropriate.
+for which a log-normal concentration model is inappropriate, so they are
+excluded from every imputation group.
 }
 \keyword{internal}

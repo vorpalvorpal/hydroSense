@@ -7,8 +7,7 @@
 impute_chemistry(
   df,
   model,
-  metal_hurdle = TRUE,
-  organic_hurdle = TRUE,
+  apply_hurdles = TRUE,
   bdl_cap = TRUE,
   return = c("point", "draws"),
   ndraws = NULL,
@@ -20,10 +19,8 @@ impute_chemistry(
 
 \item{model}{Fitted model from \code{\link[=fit_imputation_model]{fit_imputation_model()}}.}
 
-\item{metal_hurdle}{Logical.  Apply metal-presence hurdle?  Default \code{TRUE}.}
-
-\item{organic_hurdle}{Logical.  Apply DOC-like-presence hurdle?  Default
-\code{TRUE}.}
+\item{apply_hurdles}{Logical.  Apply each group's presence hurdle?  Default
+\code{TRUE}.  When \code{FALSE}, every sample is eligible for every group.}
 
 \item{bdl_cap}{Logical.  Cap imputed BDL values at the original detection
 limit?  Default \code{TRUE}.  Applied to all methods: an imputed below-detection
@@ -41,7 +38,7 @@ this many rows to bound peak memory (important for \code{"rescor_mi"}, whose
 \code{mi()} prediction is memory-heavy).  \code{NULL} (default) predicts all at once.}
 }
 \value{
-\code{df} with BDL and missing cells in the metals/organics groups
+\code{df} with BDL and missing cells in every fitted group
 replaced by posterior mean estimates, plus columns:
 \itemize{
 \item \code{imputed} (logical) — \code{TRUE} for filled cells
@@ -55,22 +52,18 @@ limit, a per-cell audit of the cap activations is attached as the
 \description{
 Applies the models fitted by \code{\link[=fit_imputation_model]{fit_imputation_model()}} to \code{df}, returning
 posterior mean estimates for missing and below-detection-limit (BDL)
-observations in the metals and organics groups.
+observations in every fitted group.
 }
 \details{
 \strong{Hurdles}
 
-Imputed values are only returned for samples that meet the relevant hurdle:
-\itemize{
-\item \emph{Metals}: at least one metal analyte present (detected or BDL) at the
-sample.  Samples with no metals recorded are not imputed — a leachate
-metal pulse may simply not have arrived at this location yet.
-\item \emph{Organics}: at least one of DOC, TOC, BOD, COD or cBOD present at the
-sample.
-}
-
-Samples failing a hurdle pass through unchanged (non-imputed values are
-preserved; BDL values remain flagged as BDL).
+Each fitted group may carry a presence hurdle (see \code{\link[=impute_group]{impute_group()}}).  When
+\code{apply_hurdles = TRUE}, imputed values for a group are only returned for
+samples carrying at least one of that group's hurdle analytes (detected or
+BDL) — e.g. under the leachate preset, a sample with no metals recorded is
+not given imputed metals, because a leachate metal pulse may simply not have
+arrived at that location yet.  Samples failing a hurdle pass through
+unchanged (non-imputed values preserved; BDL values remain flagged as BDL).
 }
 \examples{
 \dontrun{

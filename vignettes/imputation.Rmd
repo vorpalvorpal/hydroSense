@@ -59,19 +59,27 @@ has three ideas at its core:
    *Choosing the imputation method* for the alternatives.
 
 3. **Hurdles, so silence is not mistaken for absence.** A sample is only
-   imputed for a group if it carries at least one analyte from that group —
-   one metal for the metals model, one of {DOC, TOC, BOD, COD, cBOD} for the
-   organics model. A sample with no metals recorded is left alone, because a
-   leachate metal pulse may simply not have reached that location yet, and
-   inventing values there would manufacture an impact that the data do not
+   imputed for a group if it carries at least one of that group's *hurdle*
+   analytes — one metal for the metals model, one of {DOC, TOC, BOD, COD, cBOD}
+   for the organics model. A sample with no metals recorded is left alone,
+   because a leachate metal pulse may simply not have reached that location yet,
+   and inventing values there would manufacture an impact that the data do not
    support.
+
+The engine itself is **domain-agnostic**: it imputes an arbitrary set of
+analyte *groups* (each a joint model with its own optional presence hurdle),
+described with `impute_group()`. The metals/organics structure above is just
+the leachate preset, `leachate_impute_groups()`, supplied as the default —
+swap in your own groups to impute a different chemistry (see *Imputing in
+another domain*).
 
 The work is split across three functions:
 
 | Function | Role | Engine |
 |----------|------|--------|
-| `fit_imputation_model()` | Fit the metals/organics model(s) once on training data | `brms` (Stan) |
-| `impute_chemistry()` | Fill BDL and missing metals/organics on new data | `brms` posterior |
+| `fit_imputation_model()` | Fit one model per group once on training data | `brms` (Stan) |
+| `impute_group()` / `leachate_impute_groups()` | Describe the groups to impute (or use the leachate preset) | — |
+| `impute_chemistry()` | Fill BDL and missing group analytes on new data | `brms` posterior |
 | `impute_coanalytes()` | Fill missing normalisation co-analytes (DOC, Ca, Mg, hardness) | `mgcv::gam` |
 
 ## The data contract
@@ -102,12 +110,12 @@ stand-in and the sample is kept.
 
 ## Fitting the model
 
-`fit_imputation_model()` discovers the analyte groups automatically: anything
-matching the built-in metals list becomes the metals model, the remaining
-non-excluded concentration analytes become the organics model, and
-microbiological counts and qualitative descriptors are excluded outright.
-Fitting runs MCMC through Stan, so it takes minutes, not seconds — do it once
-and reuse the result.
+`fit_imputation_model()` assigns analytes to the groups it was given (the
+leachate preset by default): the `metals` group claims anything in the built-in
+metals list, the catch-all `organics` group takes the remaining non-excluded
+concentration analytes, and microbiological counts and qualitative descriptors
+are excluded outright (`exclude =`). Fitting runs MCMC through Stan, so it takes
+minutes, not seconds — do it once and reuse the result.
 
 ```{r fit, eval = FALSE}
 model <- fit_imputation_model(
@@ -129,11 +137,36 @@ of two axes. The console reports which variables entered the PCA, how many
 axes were retained, and the analytes in each group, so you can confirm the
 model saw what you expected.
 
-A metal or organic is only modelled if it is *detected* in at least
+A target analyte is only modelled if it is *detected* in at least
 `min_target_detect_freq` of samples (default 5%). Near- or all-below-detection
 analytes carry no signal to impute from and would otherwise inflate the model
 — on a panel with a hundred mostly-undetected organics this filter is what
 keeps the fit tractable.
+
+## Imputing in another domain
+
+The metals/organics split is a *preset*, not a hard-coded assumption. To impute
+a different chemistry, pass your own list of `impute_group()` objects. Each group
+is fitted as its own joint model (analytes in the same group borrow residual
+correlation from one another; separate groups do not), and each may carry a
+presence hurdle. A group with `targets = NULL` is the catch-all — it claims
+every remaining modellable analyte not already taken by an earlier group.
+
+```{r groups, eval = FALSE}
+model <- fit_imputation_model(
+  monitoring_long,
+  groups = list(
+    impute_group("trace_metals", targets = c("As", "Cd", "Pb"),
+                 hurdle = c("As", "Cd", "Pb")),
+    impute_group("nutrients",    targets = NULL,            # catch-all
+                 hurdle = c("NO3-N", "P-total"))
+  ),
+  exclude = c("Coliforms", "Turbidity")   # never modelled
+)
+```
+
+`leachate_impute_groups()` returns the default preset, so you can inspect or
+extend it rather than starting from scratch.
 
 ## Choosing the imputation method
 

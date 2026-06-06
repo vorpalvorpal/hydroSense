@@ -1,0 +1,151 @@
+## Stan-free coverage for the domain-agnostic imputation-group machinery:
+## the impute_group() constructor, the leachate_impute_groups() preset, group
+## validation, and the analyte-routing logic (.route_groups). These need no
+## brms/Stan and run in the default suite.
+
+library(testthat)
+library(leachatetools)
+
+# ── impute_group() constructor ───────────────────────────────────────────────
+
+test_that("impute_group() builds a valid object and dedups", {
+  g <- impute_group("metals", targets = c("Cu", "Zn", "Cu"), hurdle = c("Cu"))
+  expect_s3_class(g, "impute_group")
+  expect_equal(g$name, "metals")
+  expect_equal(g$targets, c("Cu", "Zn"))   # de-duplicated, order preserved
+  expect_equal(g$hurdle, "Cu")
+})
+
+test_that("impute_group() treats targets = NULL as a catch-all", {
+  g <- impute_group("organics", targets = NULL, hurdle = c("DOC", "TOC"))
+  expect_null(g$targets)
+  expect_equal(g$hurdle, c("DOC", "TOC"))
+})
+
+test_that("impute_group() validates its inputs", {
+  expect_error(impute_group(123),            "non-empty string")
+  expect_error(impute_group(c("a", "b")),    "non-empty string")
+  expect_error(impute_group(""),             "non-empty string")
+  expect_error(impute_group("g", targets = c("Cu", NA)), "targets")
+  expect_error(impute_group("g", hurdle = 1:3),          "hurdle")
+})
+
+test_that("print.impute_group() is informative", {
+  expect_output(print(impute_group("metals", targets = c("Cu", "Zn"))),
+                "metals")
+  expect_output(print(impute_group("catch", targets = NULL)), "catch-all")
+  expect_output(print(impute_group("g", targets = "Cu")),     "<none>")
+})
+
+
+# ── leachate_impute_groups() preset ──────────────────────────────────────────
+
+test_that("leachate_impute_groups() returns the metals + organics preset", {
+  gs <- leachate_impute_groups()
+  expect_length(gs, 2L)
+  expect_true(all(vapply(gs, inherits, logical(1L), "impute_group")))
+  expect_equal(vapply(gs, function(g) g$name, character(1L)),
+               c("metals", "organics"))
+
+  metals   <- gs[[1]]
+  organics <- gs[[2]]
+  expect_true(all(c("Cu", "Zn", "Pb", "Ni") %in% metals$targets))
+  expect_identical(metals$targets, metals$hurdle)  # hurdled on its own targets
+  expect_null(organics$targets)                    # catch-all
+  expect_true(all(c("DOC", "TOC", "BOD") %in% organics$hurdle))
+})
+
+
+# ── .validate_impute_groups() ────────────────────────────────────────────────
+
+test_that(".validate_impute_groups() rejects malformed group lists", {
+  expect_error(leachatetools:::.validate_impute_groups(list()), "non-empty list")
+  expect_error(
+    leachatetools:::.validate_impute_groups(list(impute_group("a"), "nope")),
+    "impute_group"
+  )
+  expect_error(
+    leachatetools:::.validate_impute_groups(
+      list(impute_group("dup", targets = "Cu"), impute_group("dup", targets = "Zn"))
+    ),
+    "unique"
+  )
+  expect_error(
+    leachatetools:::.validate_impute_groups(
+      list(impute_group("a", targets = NULL), impute_group("b", targets = NULL))
+    ),
+    "catch-all"
+  )
+})
+
+test_that(".validate_impute_groups() accepts the leachate preset", {
+  expect_silent(leachatetools:::.validate_impute_groups(leachate_impute_groups()))
+})
+
+
+# ── .route_groups() analyte assignment ───────────────────────────────────────
+
+test_that(".route_groups() assigns explicit targets and routes remainder to catch-all", {
+  pool <- c("Cu", "Zn", "As", "Phenol", "Toluene", "NO3-N")
+  groups <- list(
+    impute_group("metals",    targets = c("Cu", "Zn", "As")),
+    impute_group("nutrients", targets = c("NO3-N")),
+    impute_group("organics",  targets = NULL)   # catch-all
+  )
+  routed <- leachatetools:::.route_groups(pool, groups)
+
+  expect_named(routed, c("metals", "nutrients", "organics"))
+  expect_setequal(routed$metals,    c("Cu", "Zn", "As"))
+  expect_setequal(routed$nutrients, "NO3-N")
+  expect_setequal(routed$organics,  c("Phenol", "Toluene"))  # the remainder
+})
+
+test_that(".route_groups() gives an overlapping analyte to the first group", {
+  pool <- c("Cu", "Zn")
+  groups <- list(
+    impute_group("a", targets = c("Cu", "Zn")),
+    impute_group("b", targets = c("Zn"))        # Zn already claimed by 'a'
+  )
+  routed <- leachatetools:::.route_groups(pool, groups)
+  expect_setequal(routed$a, c("Cu", "Zn"))
+  expect_length(routed$b, 0L)
+})
+
+test_that(".route_groups() leaves unmatched analytes unassigned without a catch-all", {
+  pool <- c("Cu", "Zn", "Mystery")
+  groups <- list(impute_group("metals", targets = c("Cu", "Zn")))
+  routed <- leachatetools:::.route_groups(pool, groups)
+  expect_setequal(routed$metals, c("Cu", "Zn"))
+  expect_false("Mystery" %in% unlist(routed))   # dropped, no catch-all
+})
+
+
+# ── all-empty target set yields a no-op model ────────────────────────────────
+
+test_that("fit_imputation_model returns a no-op model when no targets are found", {
+  skip_if_not_installed("brms")
+  set.seed(1)
+  ids <- paste0("s", seq_len(20))
+  mk  <- function(an, vals) tibble::tibble(
+    sample_id = ids, site_id = "A",
+    datetime = as.Date("2023-01-01") + seq_along(ids),
+    analyte = an, value = vals, detected = TRUE
+  )
+  # Only PCA/required vars present — nothing routes into any group.
+  df <- dplyr::bind_rows(
+    mk("pH", runif(20, 6, 8)),
+    mk("EC", runif(20, 100, 500)),
+    mk("DOC", rlnorm(20, 1, 1))
+  )
+  expect_warning(
+    m <- fit_imputation_model(df, required_vars = c("pH", "EC"),
+                              iter = 100, warmup = 50, chains = 1),
+    "No target analytes"
+  )
+  expect_length(m$groups, 0L)
+  expect_null(m$pca)
+  # impute_chemistry on a no-op model returns df unchanged with tag columns.
+  expect_warning(out <- impute_chemistry(df, m), "no fitted groups")
+  expect_true(all(c("imputed", "imputed_kind") %in% names(out)))
+  expect_false(any(out$imputed))
+})

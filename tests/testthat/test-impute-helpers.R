@@ -39,8 +39,7 @@ make_pca_model <- function(df) {
   )
   structure(
     list(pca = pca, pca_vars = pca_vars_used, fit_date = "2023-01-01",
-         n_samples = dplyr::n_distinct(df$sample_id), metals = NULL,
-         organics = NULL),
+         n_samples = dplyr::n_distinct(df$sample_id), groups = list()),
     class = "imputation_model"
   )
 }
@@ -167,7 +166,8 @@ test_that("print.imputation_model summarises the fit", {
     list(fit_date = "2023-01-01", n_samples = 30L,
          pca_vars = c("pH", "Cl", "DOC"),
          pca = list(n_pcs = 2L, var_explained = 0.8),
-         metals = list(analytes = c("Cu", "Zn")), organics = NULL),
+         impute_method = "rescor_mi",
+         groups = list(metals = list(analytes = c("Cu", "Zn")))),
     class = "imputation_model"
   )
   expect_output(print(m), "imputation_model")

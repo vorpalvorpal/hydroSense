@@ -22,11 +22,12 @@ conditions.
 
 The package has three pillars:
 
-- **Chemistry imputation.** A Bayesian multivariate model
-  (`fit_imputation_model()` / `impute_chemistry()`) imputes
+- **Chemistry imputation.** A domain-agnostic Bayesian multivariate
+  model (`fit_imputation_model()` / `impute_chemistry()`) imputes
   below-detection and missing analyte concentrations while preserving
   cross-analyte correlation structure, and can return full posterior
-  draws.
+  draws. Analyte groups are configured with `impute_group()`;
+  `leachate_impute_groups()` is the bundled leachate preset.
 - **Leachate detection (LMF).** End-member mixing analysis (`add_lmf()`)
   estimates the *leachate-mixing fraction* of each sample from its
   major-ion signature, distinguishing leachate influence from natural
@@ -70,8 +71,6 @@ options(leachatetools.guideline_dir = "path/to/guideline data")
 
 amspaf <- add_amspaf(
   df        = monitoring_long,   # sample_id, site_id, analyte, value, ...
-                                 # with a units.analyte column (e.g. "mg/L")
-                                 # — or pass conc_units = "mg/L" for uniform units
   reference = reference_long     # local upstream / background chemistry
 )
 ```
@@ -81,7 +80,7 @@ Single-substance PAF and SSD quantities are available directly:
 ``` r
 # Fraction of species potentially affected by 9.3 mg/L total ammonia-N
 # (at the pH 7.0 / 20 degC index condition):
-ssd_paf("NH3-N", conc = 9321, conc_units = "ug/L")
+ssd_paf("NH3-N", conc_ug_L = 9321)
 
 # Concentration affecting 50% of species (used as the Toxic-Unit denominator):
 ssd_hc50("Cu")

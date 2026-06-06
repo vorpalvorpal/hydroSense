@@ -4,7 +4,13 @@
 \alias{.prepare_chem_pca}
 \title{Fit the unified chemistry PCA on training data}
 \usage{
-.prepare_chem_pca(df, wq_vars, min_var_explained = 0.75, max_pcs = 4L)
+.prepare_chem_pca(
+  df,
+  wq_vars,
+  min_var_explained = 0.75,
+  max_pcs = 4L,
+  no_log_vars = .PCA_NO_LOG_VARS
+)
 }
 \description{
 This PCA spans the full unified chemistry predictor set (\code{pca_vars} in

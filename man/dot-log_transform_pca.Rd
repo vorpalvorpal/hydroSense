@@ -4,10 +4,13 @@
 \alias{.log_transform_pca}
 \title{Log10-transform the concentration-like columns of a PCA matrix}
 \usage{
-.log_transform_pca(mat, eps = 1e-09)
+.log_transform_pca(mat, no_log_vars = .PCA_NO_LOG_VARS, eps = 1e-09)
 }
 \arguments{
 \item{mat}{Numeric matrix with named columns (samples × variables).}
+
+\item{no_log_vars}{Column names to leave on their native scale.  Default
+\link{.PCA_NO_LOG_VARS}.}
 
 \item{eps}{Positive floor applied before the log (default \code{1e-9}).}
 }

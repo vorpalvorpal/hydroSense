@@ -3,7 +3,7 @@
 \docType{data}
 \name{.METAL_ANALYTES}
 \alias{.METAL_ANALYTES}
-\title{All metal-type analytes (used to define the metals imputation group)}
+\title{All metal-type analytes (the metals group in \code{\link[=leachate_impute_groups]{leachate_impute_groups()}})}
 \format{
 An object of class \code{character} of length 22.
 }
@@ -11,6 +11,8 @@ An object of class \code{character} of length 22.
 .METAL_ANALYTES
 }
 \description{
-All metal-type analytes (used to define the metals imputation group)
+A leachate-preset default: these define the \code{metals} \code{\link[=impute_group]{impute_group()}}'s
+targets and presence hurdle. For other domains, build your own groups with
+\code{\link[=impute_group]{impute_group()}} instead.
 }
 \keyword{internal}
