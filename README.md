@@ -9,6 +9,7 @@
 experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 [![R-CMD-check](https://github.com/vorpalvorpal/leachatetools/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/vorpalvorpal/leachatetools/actions/workflows/R-CMD-check.yaml)
 [![pkgdown](https://github.com/vorpalvorpal/leachatetools/actions/workflows/pkgdown.yaml/badge.svg)](https://github.com/vorpalvorpal/leachatetools/actions/workflows/pkgdown.yaml)
+[![brms-smoke](https://github.com/vorpalvorpal/leachatetools/actions/workflows/brms-smoke.yaml/badge.svg)](https://github.com/vorpalvorpal/leachatetools/actions/workflows/brms-smoke.yaml)
 [![License:
 MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 <!-- badges: end -->

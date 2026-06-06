@@ -15,24 +15,25 @@ they have been removed from this file now that they are done.
 
 ## Open items
 
-### 1. Run the brms path in CI (Stan-in-CI)
+### 1. Imputation-method follow-ups
 
-`BRMS_SMOKE_TEST=1` still does not run in CI: rstan cannot compile a model on the
-Ubuntu runner (toolchain). The brms smoke tests pass locally, so the imputation
-path is currently only exercised on a developer machine. Needs a reliable
-Stan-in-CI setup — most likely `cmdstanr` (precompiled), or a dedicated job —
-so regressions in `impute.R` are caught automatically.
-
-### 2. Imputation-method follow-ups
-
-From the §10b BDL/imputation-method benchmark (`impute_method` =
-`rescor_mi`/`cens`/`cens_factor`; `rescor_mi` confirmed as default):
-
-- **`cens_factor` reparameterisation.** At 2000 iterations the shared-latent-factor
-  model did not converge (R̂ 1.147, 554 divergences). Try a **non-centred**
-  parameterisation of the factor (and/or tighter priors) before trusting it; it
-  is currently experimental.
-- **Repeated cross-validation.** The benchmark used a single random mask / one
-  seed (n = 19 held-out cells, noisy). Repeat across multiple seeds / folds for a
-  stable accuracy + calibration comparison. (Benchmark scripts live in the
-  gitignored `test data/`.)
+- **`cens_factor` is structurally broken (diagnosed 2026-06-06).** The intended
+  shared per-sample latent factor (`(1 |q| sample_id)` correlated across the
+  metals) is **never created**: because each response uses `subset()` (a
+  different subset of rows), brms cannot estimate cross-response random-effect
+  correlations, so `prior_summary()` shows **no `cor` parameter**. The method
+  therefore adds an independent per-(sample, analyte) random intercept with one
+  observation per cell — weakly identified vs the residual (→ the 554 divergences
+  / R̂ up to 2.1 in the sweep) — while delivering **none** of the advertised
+  coupling. A prior/adapt_delta sweep confirmed tuning cannot fix it (divergences
+  fall but R̂ worsens to 2.1). The correct fix is a **long-format restructure**:
+  one univariate model `value | cens(cf) ~ 0 + analyte + s(PC, by = analyte) +
+  (1 | sample_id)` where `(1 | sample_id)` is a single per-sample latent shared
+  across analytes (the genuine coupling), well-identified because each sample
+  contributes several analyte observations. Reworks the cens_factor branch of
+  `.fit_group_model()` **and** `.predict_and_merge()`. Decision pending: rebuild
+  (this restructure) vs remove cens_factor vs keep-but-hard-gate.
+- **Repeated cross-validation.** The §10b benchmark used a single random mask /
+  one seed (n = 19 held-out cells, noisy). Repeat across multiple seeds / folds
+  for a stable accuracy + calibration comparison once the method question above
+  is settled. (Benchmark scripts live in the gitignored `test data/`.)
