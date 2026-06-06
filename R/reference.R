@@ -31,7 +31,9 @@
 #'
 #' @param reference_data Long-format chemistry data frame for the reference
 #'   (background) site(s). Same schema as the input to `add_amspaf()`:
-#'   `analyte`, `value`, `detected`. BDL (`detected == FALSE`) observations
+#'   `analyte`, `value`, `detected`. Toxicant concentrations must be in µg/L
+#'   before normalisation; supply them either via a `units.analyte` column or
+#'   via the `conc_units` argument. BDL (`detected == FALSE`) observations
 #'   contribute `0` to the summary statistic.
 #' @param analyte_metadata Data frame of analyte metadata, or `NULL` to load
 #'   the bundled `inst/extdata/anzecc_analyte_metadata.csv`. Accepts either a
@@ -46,6 +48,11 @@
 #'   `$ref_table`.  Default `FALSE`.
 #' @param n_boot Number of bootstrap replicates if `bootstrap_ci = TRUE`.
 #'   Default `1000L`.
+#' @param conc_units Character. Unit string (e.g. `"mg/L"`, `"ug/L"`) applied
+#'   uniformly to all SSD-eligible rows in `reference_data` when it has no
+#'   `units.analyte` column. Ignored when `reference_data` carries
+#'   `units.analyte`. Required when the data lacks `units.analyte` and toxicant
+#'   concentrations are not already in µg/L.
 #' @param eps Small positive guard added inside the log for geometric-mean
 #'   computation, to handle BDL contributions of `0`.  Default `1e-9`.
 #'
@@ -80,6 +87,7 @@ prepare_reference <- function(
                           "p80", "p90", "p95"),
     bootstrap_ci     = FALSE,
     n_boot           = 1000L,
+    conc_units       = NULL,
     eps              = 1e-9
 ) {
   checkmate::assert_data_frame(reference_data)
@@ -91,6 +99,17 @@ prepare_reference <- function(
   summary <- match.arg(summary)
 
   meta <- .load_analyte_metadata(analyte_metadata)
+
+  ## Convert toxicant concentrations to µg/L before normalisation.
+  ## Identify SSD-eligible analytes the same way derive_ssd_params() does so
+  ## that co-analyte rows (pH, DOC, hardness, etc.) are left untouched.
+  ssd_analytes <- meta$analyte[
+    !is.na(meta$ssd_available) & meta$ssd_available == TRUE &
+    !meta$analyte %in% .AMSPAF_EXCLUDED_ANALYTES
+  ]
+  reference_data <- .convert_df_tox_to_ugL(
+    reference_data, ssd_analytes, conc_units, "reference_data"
+  )
 
   # BDL reference observations are treated as 0 (not excluded).
   # Rationale: the summary represents what the local biota is adapted to.

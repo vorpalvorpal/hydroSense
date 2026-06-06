@@ -5,7 +5,8 @@
 \title{Correct total ammonia-N to the ANZG reference pH and temperature}
 \usage{
 correct_ammonia_ph_temp(
-  conc_ug_L,
+  conc,
+  conc_units = NULL,
   pH,
   temperature_C,
   ref_pH = 7,
@@ -13,11 +14,15 @@ correct_ammonia_ph_temp(
 )
 }
 \arguments{
-\item{conc_ug_L}{Measured total ammonia-N (µg/L). Numeric vector.}
+\item{conc}{Measured total ammonia-N. Numeric vector or \code{units} object.
+Bare numeric requires \code{conc_units}.}
 
-\item{pH}{Sample pH. Recycled against \code{conc_ug_L}.}
+\item{conc_units}{Character. Unit of \code{conc} when it is bare numeric,
+e.g. \code{"ug/L"} or \code{"mg/L"}. Ignored when \code{conc} is a \code{units} object.}
 
-\item{temperature_C}{Sample temperature (°C). Recycled against \code{conc_ug_L}.}
+\item{pH}{Sample pH. Recycled against \code{conc}.}
+
+\item{temperature_C}{Sample temperature (°C). Recycled against \code{conc}.}
 
 \item{ref_pH, ref_temperature_C}{Reference index condition. Defaults to the
 ANZG ammonia DGV basis (pH 7.0, 20 °C); change only if your SSD/DGV uses a
@@ -25,7 +30,8 @@ different reference.}
 }
 \value{
 Total ammonia-N normalised to the reference condition (µg/L), the
-length of the recycled inputs. Pass this to \code{ssd_paf("NH3-N", ...)}.
+length of the recycled inputs. Pass this to
+\code{ssd_paf("NH3-N", conc = ., conc_units = "ug/L")}.
 }
 \description{
 The freshwater ammonia default guideline values (DGVs) and the bundled
@@ -56,7 +62,7 @@ path. Do \strong{not} pre-correct with this helper and then pass the result to
 \examples{
 # 900 µg/L total ammonia-N measured at pH 8.5, 20 °C is far more toxic than
 # the same number at the pH 7.0 reference, so it normalises sharply upward:
-correct_ammonia_ph_temp(900, pH = 8.5, temperature_C = 20)
+correct_ammonia_ph_temp(900, conc_units = "ug/L", pH = 8.5, temperature_C = 20)
 }
 \references{
 Emerson K, Russo RC, Lund RE, Thurston RV (1975). Aqueous ammonia

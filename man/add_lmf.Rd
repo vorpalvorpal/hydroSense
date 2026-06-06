@@ -10,7 +10,8 @@ add_lmf(
   reference_data = NULL,
   lmf_analyte_uuid = NA_character_,
   calibration_window_years = 5,
-  min_leachate_total_n_mgl = 20,
+  min_leachate_total_n = NULL,
+  min_leachate_total_n_units = NULL,
   rsd_default = 0.05,
   min_ref_samples = 10,
   min_leachate_samples = 10,
@@ -58,11 +59,16 @@ system that tracks analytes by UUID. Default \code{NA_character_}.}
 Window is centred on the input data's date range and shifted backwards if
 future data are unavailable. Default \code{5}.}
 
-\item{min_leachate_total_n_mgl}{Minimum total N (mg/L, sum of NH4 + NO3 +
-NO2) for a leachate sample to qualify for end-member calibration. Excludes
+\item{min_leachate_total_n}{Minimum total N (sum of NH4-N + NO3-N + NO2-N)
+for a leachate sample to qualify for end-member calibration. Excludes
 non-representative samples (dilution events, treatment upsets). Total N is
 used rather than NH4-N alone because aerated leachate features may have
-nitrified NH4 to NO3. Default \code{20}.}
+nitrified NH4 to NO3. Numeric or \code{units} object; bare numeric requires
+\code{min_leachate_total_n_units}. Default \code{NULL} → 20 mg/L.}
+
+\item{min_leachate_total_n_units}{Character unit string for
+\code{min_leachate_total_n} when it is bare numeric, e.g. \code{"mg/L"}. Ignored
+when \code{min_leachate_total_n} is a \code{units} object or \code{NULL}.}
 
 \item{rsd_default}{Default relative analytical uncertainty, applied as
 \code{sigma_meas = rsd_default * |x|} with a floor at

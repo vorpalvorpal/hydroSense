@@ -9,6 +9,106 @@
 #   codetools::checkUsagePackage("leachatetools", all = FALSE)
 # (the same analysis R CMD check runs). Regenerate it if that check ever flags
 # a new name.
+## ── Unit-resolution helpers ──────────────────────────────────────────────────
+##
+## Every unit-bearing parameter in the public API accepts either a `units`
+## object (auto-converted to the target unit) or a bare numeric plus a
+## companion `*_units` character argument that declares what the numeric is.
+## Bare numeric without a companion → hard error (no silent unit assumptions).
+##
+## .resolve_to()             — scalar or vector, any target unit
+## .convert_df_tox_to_ugL() — convert SSD-eligible rows in a long-format
+##                            data frame to µg/L before SSD lookup
+
+#' Resolve a bare numeric or units object to a target unit
+#' @param x Numeric or units object.
+#' @param target_unit Character udunits2 unit string (desired output).
+#' @param units_str Companion unit string; required when `x` is bare numeric.
+#' @param arg_name Name of the calling argument, used in error messages.
+#' @return Bare numeric in `target_unit`.
+#' @keywords internal
+.resolve_to <- function(x, target_unit, units_str = NULL, arg_name = "x") {
+  if (inherits(x, "units")) {
+    return(as.numeric(units::set_units(x, target_unit, mode = "standard")))
+  }
+  if (is.null(units_str)) {
+    cli::cli_abort(
+      c("{.arg {arg_name}} is bare numeric — units are unknown.",
+        "i" = "Pass a companion {.arg {arg_name}_units} string, e.g. \\
+               {.code {arg_name}_units = \"mg/L\"}.",
+        "i" = "Or wrap directly: \\
+               {.code units::set_units({x[1L]}, \"{target_unit}\")}."),
+      call = rlang::caller_env()
+    )
+  }
+  as.numeric(
+    units::set_units(
+      units::set_units(x, units_str, mode = "standard"),
+      target_unit, mode = "standard"
+    )
+  )
+}
+
+#' Convert SSD-eligible analyte rows in a long-format data frame to µg/L
+#'
+#' Uses `units.analyte` per-row when the column is present; otherwise applies
+#' `conc_units` uniformly to all SSD-eligible rows.  Both paths error loudly
+#' rather than silently assuming a unit.
+#'
+#' @param df Long-format data frame with `analyte` and `value` columns.
+#' @param ssd_analytes Character vector of SSD-eligible analyte names.
+#' @param conc_units Character unit string; required when `units.analyte` is
+#'   absent from `df`.
+#' @param call_arg Name of the data-frame argument in the caller, for errors.
+#' @return `df` with SSD-eligible `value` rows converted to µg/L.
+#' @keywords internal
+.convert_df_tox_to_ugL <- function(df, ssd_analytes, conc_units = NULL,
+                                    call_arg = "df") {
+  if (nrow(df) == 0L) return(df)
+  tox_mask <- df$analyte %in% ssd_analytes
+  if (!any(tox_mask)) return(df)
+
+  if ("units.analyte" %in% names(df)) {
+    tox_df <- df[tox_mask, , drop = FALSE]
+    df$value[tox_mask] <- purrr::pmap_dbl(
+      list(tox_df$value, tox_df$units.analyte),
+      function(v, u) {
+        if (is.na(u) || !nzchar(trimws(u))) {
+          cli::cli_abort(
+            c("Missing {.field units.analyte} for an SSD-eligible analyte row.",
+              "i" = "Every toxicant row must carry a non-empty \\
+                     {.field units.analyte} value.")
+          )
+        }
+        as.numeric(units::set_units(
+          units::set_units(v, u, mode = "standard"),
+          "ug/L", mode = "standard"
+        ))
+      }
+    )
+    return(df)
+  }
+
+  if (is.null(conc_units)) {
+    cli::cli_abort(
+      c("{.arg {call_arg}} has no {.field units.analyte} column and \\
+         {.arg conc_units} was not supplied.",
+        "i" = "Add a {.field units.analyte} column (one unit string per row),",
+        "i" = "or supply {.arg conc_units} to apply a uniform unit to all \\
+               SSD-eligible rows, e.g. {.code conc_units = \"mg/L\"}."),
+      call = rlang::caller_env()
+    )
+  }
+
+  df$value[tox_mask] <- as.numeric(
+    units::set_units(
+      units::set_units(df$value[tox_mask], conc_units, mode = "standard"),
+      "ug/L", mode = "standard"
+    )
+  )
+  df
+}
+
 utils::globalVariables(c(
   # NSE column names (dplyr/tidyr)
   "analyte", "atomic_mass.analyte", "Cl_", "Conc", "datetime", "detected",

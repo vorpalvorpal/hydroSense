@@ -1,7 +1,7 @@
 #' Time-weighted chronic aggregation for any long-format value column
 #'
 #' For each (focal date × monitoring feature × analyte) combination, aggregates
-#' values from the preceding `window_days` using exponential-decay temporal
+#' values from the preceding `window` (in days) using exponential-decay temporal
 #' weighting and forward-step duration weighting.  This is the chronic
 #' exposure / response predictor used for downstream calibration against
 #' biological community state.
@@ -20,19 +20,20 @@
 #' periods, which would otherwise over-weight episodic concentrations.
 #'
 #' **Exponential-decay temporal weighting** assigns higher weight to recent
-#' samples, with a half-life of approximately `tau_days * log(2)` days.
+#' samples, with a half-life of approximately `tau * log(2)` days (at the
+#' default of 90 d).
 #'
 #' These two components are the only weighting scheme offered, by design:
 #' forward-step duration weighting is the minimal correction for irregular /
 #' pulse-biased sampling, and exponential decay is the standard memory kernel
 #' for a community integrating a fluctuating exposure (one interpretable
-#' parameter, `tau_days`, tied to the target biology's response time).  Richer
+#' parameter, `tau`, tied to the target biology's response time).  Richer
 #' kernels would add parameters without a defensible way to fit them from
-#' routine monitoring data, so they are left out — tune `tau_days` rather than
+#' routine monitoring data, so they are left out — tune `tau` rather than
 #' swapping the kernel.
 #'
 #' **Combined weight** for sample *i* is
-#' `w_i = Δt_i × exp(-(focal_date - midpoint_i) / tau_days)`, where
+#' `w_i = Δt_i × exp(-(focal_date - midpoint_i) / tau_d)`, where
 #' `midpoint_i` is the midpoint of sample *i*'s representative interval.
 #'
 #' **Choosing `summary`:**
@@ -68,11 +69,18 @@
 #' @param focal_dates Either a `Date` vector (applied to all features in `df`)
 #'   or a data frame with columns `focal_date` (Date) and `site_id`
 #'   (character) specifying per-feature focal dates.
-#' @param tau_days Exponential-decay rate parameter in days.  Default 90.
-#'   The effective half-life is `tau_days * log(2)` ≈ 62 days at the default.
-#'   Choose to match the response timescale of the downstream biology
-#'   (algae: days–weeks; macroinvertebrates: weeks–months; fish: months–years).
-#' @param window_days Look-back window in days.  Default 365.
+#' @param tau Exponential-decay rate parameter.  Numeric or `units` object;
+#'   bare numeric requires `tau_units`.  Default `NULL` → 90 days.  The
+#'   effective half-life is `tau * log(2)` ≈ 62 days at the default.  Choose
+#'   to match the response timescale of the downstream biology (algae:
+#'   days–weeks; macroinvertebrates: weeks–months; fish: months–years).
+#' @param tau_units Character unit string for `tau` when it is bare numeric,
+#'   e.g. `"d"`.  Ignored when `tau` is a `units` object or `NULL`.
+#' @param window Look-back window.  Numeric or `units` object; bare numeric
+#'   requires `window_units`.  Default `NULL` → 365 days.
+#' @param window_units Character unit string for `window` when it is bare
+#'   numeric, e.g. `"d"`.  Ignored when `window` is a `units` object or
+#'   `NULL`.
 #' @param summary Aggregation method: `"geom_mean"` (default), `"arith_mean"`,
 #'   `"p90"`.  See *Choosing `summary`* above.
 #' @param anchor_outside_window Logical (default `TRUE`).  If `TRUE`, the most
@@ -101,15 +109,18 @@
 #' time_weighted_aggregate(
 #'   cu,
 #'   focal_dates = as.Date(c("2024-06-01", "2024-12-01")),
-#'   tau_days = 90, window_days = 365, summary = "geom_mean"
+#'   tau = 90, tau_units = "d", window = 365, window_units = "d",
+#'   summary = "geom_mean"
 #' )
 #'
 #' @export
 time_weighted_aggregate <- function(
     df,
     focal_dates,
-    tau_days    = 90,
-    window_days = 365,
+    tau         = NULL,
+    tau_units   = NULL,
+    window      = NULL,
+    window_units = NULL,
     summary     = c("geom_mean", "arith_mean", "p90"),
     anchor_outside_window = TRUE,
     eps         = 1e-9
@@ -123,7 +134,9 @@ time_weighted_aggregate <- function(
     must.include = c("sample_id", "site_id", "datetime",
                      "analyte", "value", "detected")
   )
-  checkmate::assert_number(tau_days, lower = 0.001)
+  tau_days    <- if (is.null(tau))    90  else .resolve_to(tau,    "d", tau_units,    "tau")
+  window_days <- if (is.null(window)) 365 else .resolve_to(window, "d", window_units, "window")
+  checkmate::assert_number(tau_days,    lower = 0.001)
   checkmate::assert_number(window_days, lower = 1)
   checkmate::assert_flag(anchor_outside_window)
   checkmate::assert_number(eps, lower = 0)
@@ -270,7 +283,7 @@ time_weighted_aggregate <- function(
     cli::cli_abort(c(
       "No values could be aggregated for any (focal_date, site_id).",
       "i" = "Check that {.arg focal_dates} and {.arg df$datetime} overlap \\
-             within {.arg window_days} = {window_days} days, and that \\
+             within window = {window_days} days, and that \\
              {.arg df$site_id} matches the sites in {.arg focal_dates}."
     ))
   }

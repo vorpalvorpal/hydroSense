@@ -70,6 +70,8 @@ options(leachatetools.guideline_dir = "path/to/guideline data")
 
 amspaf <- add_amspaf(
   df        = monitoring_long,   # sample_id, site_id, analyte, value, ...
+                                 # with a units.analyte column (e.g. "mg/L")
+                                 # — or pass conc_units = "mg/L" for uniform units
   reference = reference_long     # local upstream / background chemistry
 )
 ```
@@ -79,7 +81,7 @@ Single-substance PAF and SSD quantities are available directly:
 ``` r
 # Fraction of species potentially affected by 9.3 mg/L total ammonia-N
 # (at the pH 7.0 / 20 degC index condition):
-ssd_paf("NH3-N", conc_ug_L = 9321)
+ssd_paf("NH3-N", conc = 9321, conc_units = "ug/L")
 
 # Concentration affecting 50% of species (used as the Toxic-Unit denominator):
 ssd_hc50("Cu")

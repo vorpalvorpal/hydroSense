@@ -114,14 +114,18 @@
 #' normalised **upward** (more of its ammonia is in the toxic NH3 form than at
 #' the reference), and a sample at low pH/temperature **downward**.
 #'
-#' @param conc_ug_L Measured total ammonia-N (µg/L). Numeric vector.
-#' @param pH Sample pH. Recycled against `conc_ug_L`.
-#' @param temperature_C Sample temperature (°C). Recycled against `conc_ug_L`.
+#' @param conc Measured total ammonia-N. Numeric vector or `units` object.
+#'   Bare numeric requires `conc_units`.
+#' @param conc_units Character. Unit of `conc` when it is bare numeric,
+#'   e.g. `"ug/L"` or `"mg/L"`. Ignored when `conc` is a `units` object.
+#' @param pH Sample pH. Recycled against `conc`.
+#' @param temperature_C Sample temperature (°C). Recycled against `conc`.
 #' @param ref_pH,ref_temperature_C Reference index condition. Defaults to the
 #'   ANZG ammonia DGV basis (pH 7.0, 20 °C); change only if your SSD/DGV uses a
 #'   different reference.
 #' @return Total ammonia-N normalised to the reference condition (µg/L), the
-#'   length of the recycled inputs. Pass this to `ssd_paf("NH3-N", ...)`.
+#'   length of the recycled inputs. Pass this to
+#'   `ssd_paf("NH3-N", conc = ., conc_units = "ug/L")`.
 #'
 #' @section Do not double-correct:
 #' [add_amspaf()] applies this same correction **automatically** from the
@@ -133,16 +137,17 @@
 #' @examples
 #' # 900 µg/L total ammonia-N measured at pH 8.5, 20 °C is far more toxic than
 #' # the same number at the pH 7.0 reference, so it normalises sharply upward:
-#' correct_ammonia_ph_temp(900, pH = 8.5, temperature_C = 20)
+#' correct_ammonia_ph_temp(900, conc_units = "ug/L", pH = 8.5, temperature_C = 20)
 #' @references
 #' Emerson K, Russo RC, Lund RE, Thurston RV (1975). Aqueous ammonia
 #' equilibrium calculations: effect of pH and temperature. Journal of the
 #' Fisheries Research Board of Canada 32(12):2379–2383.
 #' @export
-correct_ammonia_ph_temp <- function(conc_ug_L, pH, temperature_C,
+correct_ammonia_ph_temp <- function(conc, conc_units = NULL, pH, temperature_C,
                                     ref_pH = 7.0, ref_temperature_C = 20) {
-  if (!is.numeric(conc_ug_L) || !is.numeric(pH) || !is.numeric(temperature_C)) {
-    cli::cli_abort("{.arg conc_ug_L}, {.arg pH} and {.arg temperature_C} must be numeric.")
+  conc_ug_L <- .resolve_to(conc, "ug/L", conc_units, "conc")
+  if (!is.numeric(pH) || !is.numeric(temperature_C)) {
+    cli::cli_abort("{.arg pH} and {.arg temperature_C} must be numeric.")
   }
   f_sample <- .nh3_unionised_fraction(pH, temperature_C)
   f_ref    <- .nh3_unionised_fraction(ref_pH, ref_temperature_C)

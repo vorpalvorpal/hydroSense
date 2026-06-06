@@ -52,20 +52,21 @@ test_that("parsed formulas are cached (same object on second parse)", {
 ## tests fail loudly if that regression is ever reintroduced.
 
 test_that("correct_ammonia_ph_temp is identity at the reference condition", {
-  expect_equal(correct_ammonia_ph_temp(900, pH = 7.0, temperature_C = 20), 900)
+  expect_equal(correct_ammonia_ph_temp(900, conc_units = "ug/L",
+                                       pH = 7.0, temperature_C = 20), 900)
 })
 
 test_that("high pH normalises ammonia upward, low pH downward", {
-  hi <- correct_ammonia_ph_temp(900, pH = 8.5, temperature_C = 20)
-  lo <- correct_ammonia_ph_temp(900, pH = 6.5, temperature_C = 20)
+  hi <- correct_ammonia_ph_temp(900, conc_units = "ug/L", pH = 8.5, temperature_C = 20)
+  lo <- correct_ammonia_ph_temp(900, conc_units = "ug/L", pH = 6.5, temperature_C = 20)
   expect_gt(hi, 900)   # more un-ionised NH3 than reference → more toxic
   expect_lt(lo, 900)   # less un-ionised NH3 than reference → less toxic
   expect_gt(hi, lo)
 })
 
 test_that("higher temperature normalises ammonia upward", {
-  warm <- correct_ammonia_ph_temp(900, pH = 7.0, temperature_C = 30)
-  cool <- correct_ammonia_ph_temp(900, pH = 7.0, temperature_C = 10)
+  warm <- correct_ammonia_ph_temp(900, conc_units = "ug/L", pH = 7.0, temperature_C = 30)
+  cool <- correct_ammonia_ph_temp(900, conc_units = "ug/L", pH = 7.0, temperature_C = 10)
   expect_gt(warm, 900)
   expect_lt(cool, 900)
 })
@@ -80,7 +81,8 @@ test_that("the metadata NH3-N normalisation_formula matches the exported helper"
     via_meta <- leachatetools:::.apply_normalisation(
       parsed, 900, c(pH = cond[["pH"]], temperature = cond[["t"]])
     )
-    via_help <- correct_ammonia_ph_temp(900, pH = cond[["pH"]], temperature_C = cond[["t"]])
+    via_help <- correct_ammonia_ph_temp(900, conc_units = "ug/L",
+                                        pH = cond[["pH"]], temperature_C = cond[["t"]])
     expect_equal(via_meta, via_help, tolerance = 1e-9)
   }
 })

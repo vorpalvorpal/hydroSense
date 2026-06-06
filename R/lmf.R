@@ -184,11 +184,15 @@
 #' @param calibration_window_years Number of years of calibration data to use.
 #'   Window is centred on the input data's date range and shifted backwards if
 #'   future data are unavailable. Default \code{5}.
-#' @param min_leachate_total_n_mgl Minimum total N (mg/L, sum of NH4 + NO3 +
-#'   NO2) for a leachate sample to qualify for end-member calibration. Excludes
+#' @param min_leachate_total_n Minimum total N (sum of NH4-N + NO3-N + NO2-N)
+#'   for a leachate sample to qualify for end-member calibration. Excludes
 #'   non-representative samples (dilution events, treatment upsets). Total N is
 #'   used rather than NH4-N alone because aerated leachate features may have
-#'   nitrified NH4 to NO3. Default \code{20}.
+#'   nitrified NH4 to NO3. Numeric or `units` object; bare numeric requires
+#'   `min_leachate_total_n_units`. Default \code{NULL} → 20 mg/L.
+#' @param min_leachate_total_n_units Character unit string for
+#'   `min_leachate_total_n` when it is bare numeric, e.g. `"mg/L"`. Ignored
+#'   when `min_leachate_total_n` is a `units` object or `NULL`.
 #' @param rsd_default Default relative analytical uncertainty, applied as
 #'   \code{sigma_meas = rsd_default * |x|} with a floor at
 #'   \code{rsd_default * |R|}. Default \code{0.05} (5% RSD).
@@ -294,7 +298,8 @@ add_lmf <- function(
   reference_data = NULL,
   lmf_analyte_uuid = NA_character_,
   calibration_window_years = 5,
-  min_leachate_total_n_mgl = 20,
+  min_leachate_total_n       = NULL,
+  min_leachate_total_n_units = NULL,
   rsd_default = 0.05,
   min_ref_samples = 10,
   min_leachate_samples = 10,
@@ -313,7 +318,12 @@ add_lmf <- function(
   checkmate::assert_data_frame(reference_data, null.ok = TRUE)
   checkmate::assert_character(lmf_analyte_uuid, len = 1L)
   checkmate::assert_number(calibration_window_years, lower = 1)
-  checkmate::assert_number(min_leachate_total_n_mgl, lower = 0)
+  min_n_mgl <- if (is.null(min_leachate_total_n)) {
+    20
+  } else {
+    .resolve_to(min_leachate_total_n, "mg/L", min_leachate_total_n_units,
+                "min_leachate_total_n")
+  }
   checkmate::assert_number(rsd_default, lower = 0, upper = 1)
   checkmate::assert_int(min_ref_samples, lower = 1)
   checkmate::assert_int(min_leachate_samples, lower = 1)
@@ -425,7 +435,7 @@ add_lmf <- function(
     leachate_em <- build_leachate_endmember(
       calibration_start = calibration_start,
       calibration_end = calibration_end,
-      min_leachate_total_n_mgl = min_leachate_total_n_mgl,
+      min_leachate_total_n_mgl = min_n_mgl,
       min_leachate_samples = min_leachate_samples
     )
   }

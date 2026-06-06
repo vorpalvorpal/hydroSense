@@ -210,12 +210,14 @@
 #' object.
 #'
 #' @param df Long-format monitoring dataframe. Required columns:
-#'   `sample_id`, `site_id`, `analyte`, `value` (concentrations in
-#'   µg/L). Optional but recommended: `datetime` (propagated to AmsPAF
-#'   rows if present), `detected` (assumed `TRUE` if absent), `imputed`
-#'   (logical; if present, `n_analytes_imputed` is populated in output).
-#'   Driver analytes needed for chemistry normalisation (e.g. pH, DOC) should
-#'   be present as rows in `df`.
+#'   `sample_id`, `site_id`, `analyte`, `value`. Toxicant concentrations must
+#'   ultimately be in µg/L for SSD lookup; supply them either via a
+#'   `units.analyte` column (one unit string per row, e.g. `"mg/L"`) or via the
+#'   `conc_units` argument (applied uniformly to all SSD-eligible rows). Optional
+#'   but recommended: `datetime` (propagated to AmsPAF rows if present),
+#'   `detected` (assumed `TRUE` if absent), `imputed` (logical; if present,
+#'   `n_analytes_imputed` is populated in output). Driver analytes needed for
+#'   chemistry normalisation (e.g. pH, DOC) should be present as rows in `df`.
 #' @param reference Background reference chemistry for the ARA adjustment.
 #'   Accepts three forms:
 #'   \itemize{
@@ -244,6 +246,11 @@
 #'   estimate of the "typical" exposure the resident community has adapted
 #'   to.  Other options: `"median"`, `"arith_mean"`, `"p80"`, `"p90"`,
 #'   `"p95"`.
+#' @param conc_units Character. Unit string (e.g. `"mg/L"`, `"ug/L"`) applied
+#'   uniformly to all SSD-eligible rows in `df` when `df` has no
+#'   `units.analyte` column. Ignored when `df` already carries `units.analyte`.
+#'   Required when `df` lacks `units.analyte` and toxicant concentrations are
+#'   not already in µg/L.
 #' @param require_temperature Logical (default `TRUE`). When `TRUE`, any sample
 #'   that reports an `NH3-N` measurement **must** also carry a water
 #'   `temperature` row (the ammonia un-ionised-fraction normalisation is
@@ -295,6 +302,7 @@ add_amspaf <- function(
     min_analytes     = 3,
     ref_summary      = c("geom_mean", "median", "arith_mean",
                           "p80", "p90", "p95"),
+    conc_units       = NULL,
     require_temperature = TRUE
 ) {
   checkmate::assert_data_frame(df)
@@ -329,6 +337,11 @@ add_amspaf <- function(
     )
     return(df)
   }
+
+  ## Convert toxicant concentrations to µg/L (SSD expectation).  Co-analyte
+  ## rows (pH, DOC, hardness, temperature) are left untouched because their
+  ## normalisation formulas reference them in their natural units.
+  df <- .convert_df_tox_to_ugL(df, ssd_params$analyte, conc_units, "df")
 
   ## ================================================================
   ## Step 2: Resolve the reference into a prepared_reference object.
@@ -900,7 +913,7 @@ compute_amspaf_one_sample <- function(
     ## Fallback: scalar ssd_paf() per positive concentration.
     out[pos] <- vapply(conc[pos], function(c) {
       paf_result <- tryCatch(
-        ssd_paf(analyte, c, method = method,
+        ssd_paf(analyte, c, conc_units = "ug/L", method = method,
                 guideline_dir = guideline_dir, nboot = 0L),
         error = function(e) list(pct = NA_real_)
       )

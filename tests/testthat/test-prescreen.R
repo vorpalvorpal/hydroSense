@@ -26,7 +26,7 @@ make_chem <- function() {
 
 test_that("prescreen_analytes returns vector of passing analytes", {
   df  <- make_chem()
-  inc <- prescreen_analytes(df, k = 0.10)   # Rarely fails at 5 %
+  inc <- prescreen_analytes(df, k = 0.10, conc_units = "ug/L")   # Rarely fails at 5 %
   expect_type(inc, "character")
   expect_true("Cu"  %in% inc)
   expect_true("Zn"  %in% inc)
@@ -35,13 +35,13 @@ test_that("prescreen_analytes returns vector of passing analytes", {
 
 test_that("excluded attribute captures dropped analytes", {
   df  <- make_chem()
-  inc <- prescreen_analytes(df, k = 0.10)
+  inc <- prescreen_analytes(df, k = 0.10, conc_units = "ug/L")
   expect_equal(attr(inc, "excluded"), "Rarely")
 })
 
 test_that("return = 'table' gives a tibble with all expected columns", {
   df  <- make_chem()
-  tbl <- prescreen_analytes(df, k = 0.10, return = "table")
+  tbl <- prescreen_analytes(df, k = 0.10, conc_units = "ug/L", return = "table")
   expect_s3_class(tbl, "tbl_df")
   expect_true(all(c("analyte","n_samples","n_detected","detect_freq","included") %in% names(tbl)))
   expect_equal(tbl$included[tbl$analyte == "Rarely"], FALSE)
@@ -49,7 +49,7 @@ test_that("return = 'table' gives a tibble with all expected columns", {
 
 test_that("k = 0 includes all analytes", {
   df  <- make_chem()
-  inc <- prescreen_analytes(df, k = 0)
+  inc <- prescreen_analytes(df, k = 0, conc_units = "ug/L")
   expect_setequal(inc, c("Cu", "Zn", "Rarely"))
 })
 
@@ -67,7 +67,7 @@ test_that("potency hatch keeps a rare analyte that reaches its guideline", {
   df <- tidyr::expand_grid(sample_id = paste0("s", 1:20),
                            analyte = c("Cu", "Inert")) |>
     dplyr::mutate(site_id = "f1", value = 5, detected = sample_id == "s1")
-  tbl <- prescreen_analytes(df, k = 0.10, return = "table")
+  tbl <- prescreen_analytes(df, k = 0.10, conc_units = "ug/L", return = "table")
   expect_true(tbl$potency_kept[tbl$analyte == "Cu"])
   expect_true(tbl$included[tbl$analyte == "Cu"])
   # "Inert" has no guideline value in the metadata -> cannot be rescued.
@@ -79,14 +79,14 @@ test_that("potency_keep = FALSE disables the hatch", {
   df <- tidyr::expand_grid(sample_id = paste0("s", 1:20), analyte = "Cu") |>
     dplyr::mutate(site_id = "f1", value = 5, detected = sample_id == "s1")
   expect_false("Cu" %in% prescreen_analytes(df, k = 0.10, potency_keep = FALSE))
-  expect_true("Cu"  %in% prescreen_analytes(df, k = 0.10))
+  expect_true("Cu"  %in% prescreen_analytes(df, k = 0.10, conc_units = "ug/L"))
 })
 
 test_that("a rare analyte below the guideline fraction is not rescued", {
   # Cu well below its DGV (0.01 ug/L vs ~0.47) -> not significant -> dropped.
   df <- tidyr::expand_grid(sample_id = paste0("s", 1:20), analyte = "Cu") |>
     dplyr::mutate(site_id = "f1", value = 0.01, detected = sample_id == "s1")
-  expect_false("Cu" %in% prescreen_analytes(df, k = 0.10))
+  expect_false("Cu" %in% prescreen_analytes(df, k = 0.10, conc_units = "ug/L"))
 })
 
 test_that("potency hatch warns and is skipped when value column is absent", {
@@ -111,7 +111,7 @@ test_that("group_by_feature requires site_id column", {
 
 test_that("return = 'table' includes protected column", {
   df  <- make_chem()
-  tbl <- prescreen_analytes(df, k = 0.10, return = "table")
+  tbl <- prescreen_analytes(df, k = 0.10, conc_units = "ug/L", return = "table")
   expect_true("protected" %in% names(tbl))
 })
 
@@ -127,7 +127,7 @@ test_that("co-analyte drivers are protected from exclusion at k = 1", {
       value    = 1,
       detected = analyte == "Cu"  # pH and DOC never detected
     )
-  inc <- prescreen_analytes(df, k = 1)   # k=1 → only 100 % detected pass
+  inc <- prescreen_analytes(df, k = 1, conc_units = "ug/L")   # k=1 → only 100 % detected pass
   # Cu has 100 % detection → passes on merit
   # pH and DOC have 0 % detection → would fail but are protected
   expect_true("pH"  %in% inc)

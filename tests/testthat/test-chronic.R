@@ -37,9 +37,11 @@ test_that("constant concentration → chronic mean equals that constant", {
   df <- make_synth_chem(value_const = 3.0)
   result <- time_weighted_aggregate(
     df,
-    focal_dates = as.Date("2024-01-01"),
-    tau_days    = 90,
-    window_days = 365
+    focal_dates  = as.Date("2024-01-01"),
+    tau          = 90,
+    tau_units    = "d",
+    window       = 365,
+    window_units = "d"
   )
   # Allow eps tolerance
   expect_true(all(abs(result$value - 3.0) < 1e-4))
@@ -63,8 +65,8 @@ test_that("exponential decay weight ratio is correct for two samples 90d apart",
     imputed  = FALSE
   )
   result <- time_weighted_aggregate(
-    df, focal_dates = focal, tau_days = 90, window_days = 365,
-    anchor_outside_window = FALSE
+    df, focal_dates = focal, tau = 90, tau_units = "d",
+    window = 365, window_units = "d", anchor_outside_window = FALSE
   )
   # The recent sample (value=10) is more recent, so the geometric mean should
   # be > 1.0 (closer to 10 than 1 due to temporal weighting + duration weighting)
@@ -77,7 +79,8 @@ test_that("exponential decay weight ratio is correct for two samples 90d apart",
 test_that("output detected column is always TRUE", {
   df <- make_synth_chem()
   result <- time_weighted_aggregate(
-    df, focal_dates = as.Date("2024-01-01"), tau_days = 90, window_days = 365
+    df, focal_dates = as.Date("2024-01-01"),
+    tau = 90, tau_units = "d", window = 365, window_units = "d"
   )
   expect_true(all(result$detected))
 })
@@ -88,8 +91,8 @@ test_that("n_samples_in_window equals samples within window", {
   df <- make_synth_chem(n_samples = 10, n_analytes = 1)
   focal <- as.Date("2024-01-01")
   result <- time_weighted_aggregate(
-    df, focal_dates = focal, tau_days = 90, window_days = 365,
-    anchor_outside_window = FALSE
+    df, focal_dates = focal, tau = 90, tau_units = "d",
+    window = 365, window_units = "d", anchor_outside_window = FALSE
   )
   # All 10 samples should fall within focal - 365 to focal
   expect_equal(unique(result$n_samples_in_window), 10L)
@@ -102,8 +105,8 @@ test_that("n_imputed_in_window counts imputed rows", {
   df$imputed[1:3] <- TRUE
   focal <- as.Date("2024-01-01")
   result <- time_weighted_aggregate(
-    df, focal_dates = focal, tau_days = 90, window_days = 365,
-    anchor_outside_window = FALSE
+    df, focal_dates = focal, tau = 90, tau_units = "d",
+    window = 365, window_units = "d", anchor_outside_window = FALSE
   )
   expect_gte(result$n_imputed_in_window, 0L)
   expect_lte(result$n_imputed_in_window, 3L)
@@ -135,7 +138,7 @@ test_that("errors when no samples fall within window", {
   expect_error(
     time_weighted_aggregate(
       df, focal_dates = as.Date("2024-01-01"),
-      window_days = 30, anchor_outside_window = FALSE
+      window = 30, window_units = "d", anchor_outside_window = FALSE
     ),
     regexp = "No values could be aggregated"
   )
@@ -197,7 +200,7 @@ test_that("works on a non-chemistry value column (AmsPAF-style)", {
   )
   out <- time_weighted_aggregate(
     df, focal_dates = focal, summary = "arith_mean",
-    tau_days = 90, window_days = 365,
+    tau = 90, tau_units = "d", window = 365, window_units = "d",
     anchor_outside_window = FALSE
   )
   expect_equal(nrow(out), 1L)
@@ -217,14 +220,14 @@ test_that("anchor sample is included but not counted in n_samples_in_window", {
     detected  = TRUE
   )
   with_anchor <- time_weighted_aggregate(
-    df, focal_dates = focal, tau_days = 90, window_days = 365,
-    anchor_outside_window = TRUE
+    df, focal_dates = focal, tau = 90, tau_units = "d",
+    window = 365, window_units = "d", anchor_outside_window = TRUE
   )
   expect_equal(with_anchor$n_samples_in_window, 1L)
 
   no_anchor <- time_weighted_aggregate(
-    df, focal_dates = focal, tau_days = 90, window_days = 365,
-    anchor_outside_window = FALSE
+    df, focal_dates = focal, tau = 90, tau_units = "d",
+    window = 365, window_units = "d", anchor_outside_window = FALSE
   )
   # Anchor still influences the time-weighted value
   expect_false(isTRUE(all.equal(with_anchor$value, no_anchor$value)))

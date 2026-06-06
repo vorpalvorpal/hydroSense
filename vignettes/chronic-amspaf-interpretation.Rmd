@@ -150,15 +150,15 @@ space weight suggests.
 For chronic assessment of pulsed exposures, Path B (mean of per-sample
 AmsPAF values) is the correct aggregation.
 
-## Choosing `tau_days`
+## Choosing `tau`
 
 `time_weighted_aggregate()` uses exponential-decay temporal weighting with
-parameter `tau_days` (default 90). The effective half-life is
-`tau_days * log(2)` ≈ 62 days at the default.
+parameter `tau` (default `NULL` → 90 days; pass e.g. `tau = 90, tau_units = "d"`).
+The effective half-life is `tau * log(2)` ≈ 62 days at the default.
 
-Choose `tau_days` to match the response time of the target biology:
+Choose `tau` to match the response time of the target biology:
 
-| Target | Typical response timescale | Suggested `tau_days` |
+| Target | Typical response timescale | Suggested `tau` (days) |
 |---|---|---|
 | Periphyton / algae | days to weeks | 14–30 |
 | Macroinvertebrates (general) | weeks to months | 60–120 |
@@ -166,7 +166,7 @@ Choose `tau_days` to match the response time of the target biology:
 | Long-lived benthic communities | seasonal to multi-year | 365+ |
 
 These are starting points, not prescriptions. For a calibration exercise
-the right move is to test a range of `tau_days` values and pick the one
+the right move is to test a range of `tau` values and pick the one
 that maximises explanatory power against your biological response data —
 within a range that is mechanistically defensible.
 

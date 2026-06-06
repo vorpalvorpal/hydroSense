@@ -7,8 +7,10 @@
 time_weighted_aggregate(
   df,
   focal_dates,
-  tau_days = 90,
-  window_days = 365,
+  tau = NULL,
+  tau_units = NULL,
+  window = NULL,
+  window_units = NULL,
   summary = c("geom_mean", "arith_mean", "p90"),
   anchor_outside_window = TRUE,
   eps = 1e-09
@@ -30,12 +32,21 @@ Optional: \code{imputed} (logical) — propagated to \code{n_imputed_in_window}.
 or a data frame with columns \code{focal_date} (Date) and \code{site_id}
 (character) specifying per-feature focal dates.}
 
-\item{tau_days}{Exponential-decay rate parameter in days.  Default 90.
-The effective half-life is \code{tau_days * log(2)} ≈ 62 days at the default.
-Choose to match the response timescale of the downstream biology
-(algae: days–weeks; macroinvertebrates: weeks–months; fish: months–years).}
+\item{tau}{Exponential-decay rate parameter.  Numeric or \code{units} object;
+bare numeric requires \code{tau_units}.  Default \code{NULL} → 90 days.  The
+effective half-life is \code{tau * log(2)} ≈ 62 days at the default.  Choose
+to match the response timescale of the downstream biology (algae:
+days–weeks; macroinvertebrates: weeks–months; fish: months–years).}
 
-\item{window_days}{Look-back window in days.  Default 365.}
+\item{tau_units}{Character unit string for \code{tau} when it is bare numeric,
+e.g. \code{"d"}.  Ignored when \code{tau} is a \code{units} object or \code{NULL}.}
+
+\item{window}{Look-back window.  Numeric or \code{units} object; bare numeric
+requires \code{window_units}.  Default \code{NULL} → 365 days.}
+
+\item{window_units}{Character unit string for \code{window} when it is bare
+numeric, e.g. \code{"d"}.  Ignored when \code{window} is a \code{units} object or
+\code{NULL}.}
 
 \item{summary}{Aggregation method: \code{"geom_mean"} (default), \code{"arith_mean"},
 \code{"p90"}.  See \emph{Choosing \code{summary}} above.}
@@ -65,7 +76,7 @@ contributing; 0 if \code{imputed} column absent from \code{df}
 }
 \description{
 For each (focal date × monitoring feature × analyte) combination, aggregates
-values from the preceding \code{window_days} using exponential-decay temporal
+values from the preceding \code{window} (in days) using exponential-decay temporal
 weighting and forward-step duration weighting.  This is the chronic
 exposure / response predictor used for downstream calibration against
 biological community state.
@@ -85,19 +96,20 @@ sampling where storm events are sampled more frequently than base-flow
 periods, which would otherwise over-weight episodic concentrations.
 
 \strong{Exponential-decay temporal weighting} assigns higher weight to recent
-samples, with a half-life of approximately \code{tau_days * log(2)} days.
+samples, with a half-life of approximately \code{tau * log(2)} days (at the
+default of 90 d).
 
 These two components are the only weighting scheme offered, by design:
 forward-step duration weighting is the minimal correction for irregular /
 pulse-biased sampling, and exponential decay is the standard memory kernel
 for a community integrating a fluctuating exposure (one interpretable
-parameter, \code{tau_days}, tied to the target biology's response time).  Richer
+parameter, \code{tau}, tied to the target biology's response time).  Richer
 kernels would add parameters without a defensible way to fit them from
-routine monitoring data, so they are left out — tune \code{tau_days} rather than
+routine monitoring data, so they are left out — tune \code{tau} rather than
 swapping the kernel.
 
 \strong{Combined weight} for sample \emph{i} is
-\verb{w_i = Δt_i × exp(-(focal_date - midpoint_i) / tau_days)}, where
+\verb{w_i = Δt_i × exp(-(focal_date - midpoint_i) / tau_d)}, where
 \code{midpoint_i} is the midpoint of sample \emph{i}'s representative interval.
 
 \strong{Choosing \code{summary}:}
@@ -130,7 +142,8 @@ cu <- subset(leachate_demo(), site_id == "downstream" & analyte == "Cu")
 time_weighted_aggregate(
   cu,
   focal_dates = as.Date(c("2024-06-01", "2024-12-01")),
-  tau_days = 90, window_days = 365, summary = "geom_mean"
+  tau = 90, tau_units = "d", window = 365, window_units = "d",
+  summary = "geom_mean"
 )
 
 }

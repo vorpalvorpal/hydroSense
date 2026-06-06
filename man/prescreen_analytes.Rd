@@ -11,6 +11,7 @@ prescreen_analytes(
   potency_keep = TRUE,
   potency_frac = 1,
   group_by_feature = FALSE,
+  conc_units = NULL,
   analyte_metadata = NULL,
   return = c("vector", "table")
 )
@@ -42,6 +43,12 @@ be more precautionary.}
 per \code{site_id} and an analyte is included only if it passes in \emph{all}
 features (worst-case feature, pooled counts). If \code{FALSE} (default),
 frequency is pooled across all samples.}
+
+\item{conc_units}{Character. Unit string (e.g. \code{"mg/L"}, \code{"ug/L"}) applied
+to toxicant concentrations in \code{df} when it has no \code{units.analyte} column.
+Only matters when \code{potency_keep = TRUE}, because the potency threshold
+comparison needs values in µg/L (matching \code{dgv_95pct_ug_L}). Ignored when
+\code{potency_keep = FALSE} or \code{df} already carries a \code{units.analyte} column.}
 
 \item{analyte_metadata}{Data frame of analyte metadata, or \code{NULL} to load
 the bundled \code{inst/extdata/anzecc_analyte_metadata.csv}. Used to identify

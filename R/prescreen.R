@@ -49,6 +49,11 @@
 #' @param analyte_metadata Data frame of analyte metadata, or `NULL` to load
 #'   the bundled `inst/extdata/anzecc_analyte_metadata.csv`. Used to identify
 #'   co-analytes that must be protected from exclusion.
+#' @param conc_units Character. Unit string (e.g. `"mg/L"`, `"ug/L"`) applied
+#'   to toxicant concentrations in `df` when it has no `units.analyte` column.
+#'   Only matters when `potency_keep = TRUE`, because the potency threshold
+#'   comparison needs values in µg/L (matching `dgv_95pct_ug_L`). Ignored when
+#'   `potency_keep = FALSE` or `df` already carries a `units.analyte` column.
 #' @param return Either `"vector"` (default) to return a character vector of
 #'   included analyte names, or `"table"` to return a tibble with one row per
 #'   analyte showing detection statistics and inclusion flag.
@@ -81,6 +86,7 @@ prescreen_analytes <- function(
     potency_keep     = TRUE,
     potency_frac     = 1,
     group_by_feature = FALSE,
+    conc_units       = NULL,
     analyte_metadata = NULL,
     return = c("vector", "table")
 ) {
@@ -192,7 +198,12 @@ prescreen_analytes <- function(
   }
 
   if (do_potency) {
-    max_conc <- df |>
+    ## Convert toxicant rows to µg/L for comparison with dgv_95pct_ug_L.
+    ## Only analytes that carry a DGV value can be rescued by potency; the
+    ## conversion is scoped to those analytes so co-analytes are untouched.
+    dgv_analytes <- meta$analyte[!is.na(meta$dgv_95pct_ug_L)]
+    df_potency <- .convert_df_tox_to_ugL(df, dgv_analytes, conc_units, "df")
+    max_conc <- df_potency |>
       dplyr::filter(.data$detected, !is.na(.data$value)) |>
       dplyr::group_by(.data$analyte) |>
       dplyr::summarise(max_conc = max(.data$value), .groups = "drop")

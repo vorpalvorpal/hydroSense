@@ -33,9 +33,9 @@ test_that("As(V) PAF >= As(III) PAF across the realistic concentration range", {
   grid <- c(0.1, 0.5, 1, 3, 5, 7, 10, 13, 24, 50, 100, 200, 360, 1000, 2000, 5000)
 
   paf_v <- vapply(grid, function(c)
-    ssd_paf("As(V)",   c, guideline_dir = gd())$pct, numeric(1))
+    ssd_paf("As(V)",   c, conc_units = "ug/L", guideline_dir = gd())$pct, numeric(1))
   paf_i <- vapply(grid, function(c)
-    ssd_paf("As(III)", c, guideline_dir = gd())$pct, numeric(1))
+    ssd_paf("As(III)", c, conc_units = "ug/L", guideline_dir = gd())$pct, numeric(1))
 
   ok <- !is.na(paf_v) & !is.na(paf_i)
   skip_if(sum(ok) < length(grid) / 2, "SSD fits unavailable in this environment")
@@ -57,9 +57,9 @@ test_that("the unspeciated-As default equals the max-PAF envelope of both SSDs",
   # ssd_paf('As') uses the As_V stem; confirm that equals max(As_V, As_III) at a
   # representative leachate concentration, i.e. the As_V default IS the envelope.
   conc <- 50
-  paf_as   <- ssd_paf("As",      conc, guideline_dir = gd())$pct
-  paf_v    <- ssd_paf("As(V)",   conc, guideline_dir = gd())$pct
-  paf_i    <- ssd_paf("As(III)", conc, guideline_dir = gd())$pct
+  paf_as   <- ssd_paf("As",      conc, conc_units = "ug/L", guideline_dir = gd())$pct
+  paf_v    <- ssd_paf("As(V)",   conc, conc_units = "ug/L", guideline_dir = gd())$pct
+  paf_i    <- ssd_paf("As(III)", conc, conc_units = "ug/L", guideline_dir = gd())$pct
   skip_if(anyNA(c(paf_as, paf_v, paf_i)), "SSD fits unavailable")
 
   expect_equal(paf_as, max(paf_v, paf_i), tolerance = 1e-8)

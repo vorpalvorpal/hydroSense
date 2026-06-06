@@ -69,6 +69,7 @@ test_that("add_amspaf(require_temperature = FALSE) bypasses the check", {
   # reasons (too few analytes), but must get past the temperature gate.
   expect_no_error(
     suppressWarnings(add_amspaf(df, require_temperature = FALSE,
+                                conc_units    = "ug/L",
                                 guideline_dir = getOption("leachatetools.guideline_dir")))
   )
 })

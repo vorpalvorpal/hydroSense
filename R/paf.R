@@ -32,10 +32,10 @@
 #   with estimate_water_temp() — optionally fed by get_silo_air_temp(), which
 #   pulls daily mean air temperature from SILO for an Australian lat/lon.
 #   Cr    : no external correction needed (freshwater subset already applied)
-#   NO3-N : supply hardness_mg_L; ssd_paf() blends the soft/moderate/hard SSDs
-#            by hardness-class probability (see below), smoothing the abrupt
-#            class boundaries. ssd_hc50()/the CA mixture step still use a single
-#            representative class (.no3_class()).
+#   NO3-N : supply hardness + hardness_units; ssd_paf() blends the
+#            soft/moderate/hard SSDs by hardness-class probability (see below),
+#            smoothing the abrupt class boundaries. ssd_hc50()/the CA mixture
+#            step still use a single representative class (.no3_class()).
 #
 # Probabilistic NO3-N hardness weighting (IMPLEMENTED; see .no3_weights()):
 #   True hardness is assumed log-normally distributed around the measured
@@ -51,8 +51,8 @@
 
 # Canonical dashboard name → safe file stem used in the .qs cache.
 # NO3-N is intentionally absent: callers supply the hardness-specific variant
-# (NO3-N_soft / NO3-N_mod / NO3-N_hard) or use the ssd_paf() hardness_mg_L
-# argument which resolves the class automatically.
+# (NO3-N_soft / NO3-N_mod / NO3-N_hard) or use the ssd_paf() hardness +
+# hardness_units arguments which resolve the class automatically.
 .SSD_NAME_MAP <- c(
   "NH3-N"                  = "NH3_N",
   "NO3-N_soft"             = "NO3_N_soft",
@@ -256,15 +256,21 @@
 #' Estimate the fraction of species potentially affected at a concentration.
 #'
 #' @param analyte      Character. Analyte name (key in .SSD_NAME_MAP).
-#'   Supply "NO3-N" together with `hardness_mg_L` for automatic class
+#'   Supply "NO3-N" together with `hardness` for automatic class
 #'   selection, or supply the explicit class name ("NO3-N_soft" etc.).
-#' @param conc_ug_L    Numeric. Concentration in µg/L (after any external
-#'   physicochemical corrections).
+#' @param conc         Numeric or `units` object. Concentration to evaluate.
+#'   Bare numeric requires `conc_units`.
+#' @param conc_units   Character. Unit of `conc` when it is bare numeric,
+#'   e.g. `"ug/L"` or `"mg/L"`. Ignored when `conc` is a `units` object.
 #' @param method       Character. "multi" (default) fits all 6 BCANZ
 #'   distributions and model-averages; "anzecc" uses the per-analyte
 #'   distribution that best matches the original ANZG derivation.
-#' @param hardness_mg_L Numeric or NULL. Required for NO3-N analyte.
-#'   Hardness in mg/L CaCO3 at the time of measurement.
+#' @param hardness     Numeric or `units` object, or `NULL`. Required for
+#'   the NO3-N analyte.  Hardness at the time of measurement.  Bare numeric
+#'   requires `hardness_units`.
+#' @param hardness_units Character. Unit of `hardness` when it is bare
+#'   numeric, e.g. `"mg/L"`.  Ignored when `hardness` is a `units` object
+#'   or `NULL`.
 #' @param hardness_cv  Numeric. CV of the hardness measurement, used to weight
 #'   the three NO3-N hardness-class SSDs probabilistically (a log-normal blend
 #'   that smooths the soft/moderate/hard boundaries). Default 0.05 (5%). Set
@@ -277,7 +283,7 @@
 #'
 #' @return Named list:
 #'   $analyte        character
-#'   $conc_ug_L      numeric
+#'   $conc_ug_L      numeric — resolved concentration in µg/L
 #'   $method         character
 #'   $pct            numeric — % species affected, NA if no model
 #'   $lower          numeric — lower CI %
@@ -287,21 +293,27 @@
 #' # Fraction of species affected by 9.3 mg/L total ammonia-N at the pH 7.0 /
 #' # 20 degC index condition. Uses the package's bundled SSD data; set
 #' # options(leachatetools.guideline_dir=) to fit from the ANZG XLSX files.
-#' ssd_paf("NH3-N", conc_ug_L = 9321)
+#' ssd_paf("NH3-N", conc = 9321, conc_units = "ug/L")
 #'
 #' # NO3-N needs hardness for automatic soft/moderate/hard SSD selection:
-#' ssd_paf("NO3-N", conc_ug_L = 50000, hardness_mg_L = 90)
+#' ssd_paf("NO3-N", conc = 50000, conc_units = "ug/L",
+#'         hardness = 90, hardness_units = "mg/L")
 #' @export
 ssd_paf <- function(analyte,
-                    conc_ug_L,
+                    conc,
+                    conc_units     = NULL,
                     method         = c("multi", "anzecc"),
-                    hardness_mg_L  = NULL,
+                    hardness       = NULL,
+                    hardness_units = NULL,
                     hardness_cv    = 0.05,
                     guideline_dir  = getOption("leachatetools.guideline_dir"),
                     nboot          = 0L,
                     level          = 0.95) {
   method <- match.arg(method)
   stopifnot(is.character(analyte), length(analyte) == 1L)
+  conc_ug_L    <- .resolve_to(conc, "ug/L", conc_units, "conc")
+  hardness_mg_L <- if (!is.null(hardness))
+    .resolve_to(hardness, "mg/L", hardness_units, "hardness") else NULL
   stopifnot(is.numeric(conc_ug_L), length(conc_ug_L) == 1L, conc_ug_L > 0)
 
   result <- list(analyte = analyte, conc_ug_L = conc_ug_L, method = method,
@@ -319,8 +331,9 @@ ssd_paf <- function(analyte,
       keep <- w_full > 1e-6
       w    <- w_full[keep] / sum(w_full[keep])
       sub  <- lapply(classes[keep], function(cl)
-        ssd_paf(cl, conc_ug_L, method = method, hardness_mg_L = NULL,
-                guideline_dir = guideline_dir, nboot = nboot, level = level))
+        ssd_paf(cl, conc_ug_L, conc_units = "ug/L", method = method,
+                hardness = NULL, guideline_dir = guideline_dir,
+                nboot = nboot, level = level))
       result$pct <- sum(w * vapply(sub, function(x) x$pct, numeric(1)))
       if (nboot > 0L) {
         result$lower <- sum(w * vapply(sub, function(x) x$lower, numeric(1)))
@@ -397,10 +410,13 @@ ssd_paf <- function(analyte,
 #' ssd_hc50("Cu")
 #' @export
 ssd_hc50 <- function(analyte,
-                     method        = c("multi", "anzecc"),
-                     hardness_mg_L = NULL,
-                     guideline_dir = getOption("leachatetools.guideline_dir")) {
+                     method         = c("multi", "anzecc"),
+                     hardness       = NULL,
+                     hardness_units = NULL,
+                     guideline_dir  = getOption("leachatetools.guideline_dir")) {
   method <- match.arg(method)
+  hardness_mg_L <- if (!is.null(hardness))
+    .resolve_to(hardness, "mg/L", hardness_units, "hardness") else NULL
   if (analyte == "NO3-N") analyte <- .no3_class(hardness_mg_L)
   if (analyte %in% .SSD_NO_MODEL) return(NA_real_)
 
@@ -424,13 +440,13 @@ ssd_hc50 <- function(analyte,
 #' @inheritParams ssd_paf
 #' @return Numeric — % species affected, or NA.
 #' @examples
-#' ssd_pct("Zn", conc_ug_L = 30)
+#' ssd_pct("Zn", conc = 30, conc_units = "ug/L")
 #' @export
-ssd_pct <- function(analyte, conc_ug_L, method = "multi",
-                    hardness_mg_L = NULL,
+ssd_pct <- function(analyte, conc, conc_units = NULL, method = "multi",
+                    hardness = NULL, hardness_units = NULL,
                     guideline_dir = getOption("leachatetools.guideline_dir")) {
-  ssd_paf(analyte, conc_ug_L, method = method,
-          hardness_mg_L = hardness_mg_L,
+  ssd_paf(analyte, conc, conc_units = conc_units, method = method,
+          hardness = hardness, hardness_units = hardness_units,
           guideline_dir = guideline_dir, nboot = 0L)$pct
 }
 

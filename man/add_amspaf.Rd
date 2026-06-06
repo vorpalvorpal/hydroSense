@@ -12,17 +12,20 @@ add_amspaf(
   guideline_dir = getOption("leachatetools.guideline_dir"),
   min_analytes = 3,
   ref_summary = c("geom_mean", "median", "arith_mean", "p80", "p90", "p95"),
+  conc_units = NULL,
   require_temperature = TRUE
 )
 }
 \arguments{
 \item{df}{Long-format monitoring dataframe. Required columns:
-\code{sample_id}, \code{site_id}, \code{analyte}, \code{value} (concentrations in
-µg/L). Optional but recommended: \code{datetime} (propagated to AmsPAF
-rows if present), \code{detected} (assumed \code{TRUE} if absent), \code{imputed}
-(logical; if present, \code{n_analytes_imputed} is populated in output).
-Driver analytes needed for chemistry normalisation (e.g. pH, DOC) should
-be present as rows in \code{df}.}
+\code{sample_id}, \code{site_id}, \code{analyte}, \code{value}. Toxicant concentrations must
+ultimately be in µg/L for SSD lookup; supply them either via a
+\code{units.analyte} column (one unit string per row, e.g. \code{"mg/L"}) or via the
+\code{conc_units} argument (applied uniformly to all SSD-eligible rows). Optional
+but recommended: \code{datetime} (propagated to AmsPAF rows if present),
+\code{detected} (assumed \code{TRUE} if absent), \code{imputed} (logical; if present,
+\code{n_analytes_imputed} is populated in output). Driver analytes needed for
+chemistry normalisation (e.g. pH, DOC) should be present as rows in \code{df}.}
 
 \item{reference}{Background reference chemistry for the ARA adjustment.
 Accepts three forms:
@@ -57,6 +60,12 @@ central tendency for log-normal concentrations, and a PICT-consistent
 estimate of the "typical" exposure the resident community has adapted
 to.  Other options: \code{"median"}, \code{"arith_mean"}, \code{"p80"}, \code{"p90"},
 \code{"p95"}.}
+
+\item{conc_units}{Character. Unit string (e.g. \code{"mg/L"}, \code{"ug/L"}) applied
+uniformly to all SSD-eligible rows in \code{df} when \code{df} has no
+\code{units.analyte} column. Ignored when \code{df} already carries \code{units.analyte}.
+Required when \code{df} lacks \code{units.analyte} and toxicant concentrations are
+not already in µg/L.}
 
 \item{require_temperature}{Logical (default \code{TRUE}). When \code{TRUE}, any sample
 that reports an \code{NH3-N} measurement \strong{must} also carry a water

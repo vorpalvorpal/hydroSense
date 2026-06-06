@@ -73,7 +73,7 @@ make_pipeline_chem <- function(seed = 42) {
 
 test_that("§1a prescreen_analytes returns expected analytes and protects drivers", {
   chem     <- make_pipeline_chem()
-  included <- prescreen_analytes(chem, k = 0.05)
+  included <- prescreen_analytes(chem, k = 0.05, conc_units = "ug/L")
   expect_type(included, "character")
   # All analytes should pass (high detection frequency in synthetic data)
   expect_true("Cu"  %in% included)
@@ -88,7 +88,8 @@ test_that("§1b time_weighted_aggregate produces one row per (date × site × an
   chem       <- make_pipeline_chem()
   focal      <- as.Date(c("2025-04-01", "2025-10-01"))
   chr_chem   <- time_weighted_aggregate(chem, focal_dates = focal,
-                                          tau_days = 90, window_days = 365)
+                                          tau = 90, tau_units = "d",
+                                          window = 365, window_units = "d")
 
   # Each focal date × each site × each analyte should have exactly one row
   expected_rows <- length(focal) * length(unique(chem$site_id)) *
@@ -111,8 +112,9 @@ test_that("§1c prepare_reference produces a valid prepared_reference object", {
   ref_raw <- dplyr::filter(chem, site_id == "ref")
   focal   <- as.Date("2025-04-01")
   chr_ref <- time_weighted_aggregate(ref_raw, focal_dates = focal,
-                                       tau_days = 90, window_days = 365)
-  prep    <- prepare_reference(chr_ref)
+                                       tau = 90, tau_units = "d",
+                                       window = 365, window_units = "d")
+  prep    <- prepare_reference(chr_ref, conc_units = "ug/L")
 
   expect_s3_class(prep, "prepared_reference")
   expect_true(is.data.frame(prep$ref_table))
@@ -127,7 +129,8 @@ test_that("§1d expand_focal_dates integrates with time_weighted_aggregate", {
   expect_gte(length(focal), 13L)  # roughly 13 weekly intervals
 
   chr_chem <- time_weighted_aggregate(chem, focal_dates = focal,
-                                        tau_days = 90, window_days = 365)
+                                        tau = 90, tau_units = "d",
+                                        window = 365, window_units = "d")
   # One row per (date × site × analyte)
   n_sites    <- length(unique(chem$site_id))
   n_analytes <- length(unique(chem$analyte))
@@ -149,7 +152,8 @@ test_that("§1e chronic reference baseline is lower for reference than downstrea
 
   focal    <- as.Date("2025-06-01")
   chr_chem <- time_weighted_aggregate(chem, focal_dates = focal,
-                                        tau_days = 90, window_days = 365)
+                                        tau = 90, tau_units = "d",
+                                        window = 365, window_units = "d")
 
   ref_cu <- chr_chem$value[chr_chem$site_id == "ref" & chr_chem$analyte == "Cu"]
   ds_cu  <- chr_chem$value[chr_chem$site_id == "ds"  & chr_chem$analyte == "Cu"]
@@ -167,7 +171,7 @@ test_that("§2 full chronic AmsPAF pipeline runs end-to-end", {
   chem <- make_pipeline_chem()
 
   # Step 1: prescreen
-  included <- prescreen_analytes(chem, k = 0.05)
+  included <- prescreen_analytes(chem, k = 0.05, conc_units = "ug/L")
   chem_f   <- dplyr::filter(chem, analyte %in% included)
 
   # Step 2: chronic integration for downstream and reference
@@ -180,10 +184,10 @@ test_that("§2 full chronic AmsPAF pipeline runs end-to-end", {
   chr_ref <- time_weighted_aggregate(ref_chem, focal_dates = focal)
 
   # Step 3: prepare reference
-  prep_ref <- prepare_reference(chr_ref)
+  prep_ref <- prepare_reference(chr_ref, conc_units = "ug/L")
 
   # Step 4: AmsPAF
-  out <- add_amspaf(chr_ds, reference = prep_ref)
+  out <- add_amspaf(chr_ds, reference = prep_ref, conc_units = "ug/L")
 
   # Should have AmsPAF rows appended
   amspaf_rows <- dplyr::filter(out, analyte == "AmsPAF")
@@ -219,7 +223,7 @@ test_that("§3 full pipeline with imputation runs end-to-end (Path B)", {
 
   # Step 1: prescreen
   included <- prescreen_analytes(chem, k = 0.05,
-                                  protect = c("pH", "EC"))
+                                  protect = c("pH", "EC"), conc_units = "ug/L")
   chem_f   <- dplyr::filter(chem, analyte %in% included)
 
   # Step 2: fit + impute (fast settings)
@@ -237,9 +241,10 @@ test_that("§3 full pipeline with imputation runs end-to-end (Path B)", {
   expect_true("imputed" %in% names(imp))
 
   # Step 3: per-sample AmsPAF
-  prep_ref <- prepare_reference(dplyr::filter(imp, site_id == "ref"))
+  prep_ref <- prepare_reference(dplyr::filter(imp, site_id == "ref"),
+                                conc_units = "ug/L")
   ps       <- add_amspaf(dplyr::filter(imp, site_id == "ds"),
-                         reference = prep_ref)
+                         reference = prep_ref, conc_units = "ug/L")
   ps_amspaf <- dplyr::filter(ps, analyte == "AmsPAF")
   expect_gte(nrow(ps_amspaf), 1L)
 

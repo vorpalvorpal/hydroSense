@@ -10,13 +10,16 @@ prepare_reference(
   summary = c("geom_mean", "median", "arith_mean", "p80", "p90", "p95"),
   bootstrap_ci = FALSE,
   n_boot = 1000L,
+  conc_units = NULL,
   eps = 1e-09
 )
 }
 \arguments{
 \item{reference_data}{Long-format chemistry data frame for the reference
 (background) site(s). Same schema as the input to \code{add_amspaf()}:
-\code{analyte}, \code{value}, \code{detected}. BDL (\code{detected == FALSE}) observations
+\code{analyte}, \code{value}, \code{detected}. Toxicant concentrations must be in µg/L
+before normalisation; supply them either via a \code{units.analyte} column or
+via the \code{conc_units} argument. BDL (\code{detected == FALSE}) observations
 contribute \code{0} to the summary statistic.}
 
 \item{analyte_metadata}{Data frame of analyte metadata, or \code{NULL} to load
@@ -35,6 +38,12 @@ default).  Adds \code{ref_lower}, \code{ref_upper}, and \code{n_boot_valid} colu
 
 \item{n_boot}{Number of bootstrap replicates if \code{bootstrap_ci = TRUE}.
 Default \code{1000L}.}
+
+\item{conc_units}{Character. Unit string (e.g. \code{"mg/L"}, \code{"ug/L"}) applied
+uniformly to all SSD-eligible rows in \code{reference_data} when it has no
+\code{units.analyte} column. Ignored when \code{reference_data} carries
+\code{units.analyte}. Required when the data lacks \code{units.analyte} and toxicant
+concentrations are not already in µg/L.}
 
 \item{eps}{Small positive guard added inside the log for geometric-mean
 computation, to handle BDL contributions of \code{0}.  Default \code{1e-9}.}

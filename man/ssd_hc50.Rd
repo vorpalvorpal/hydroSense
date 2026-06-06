@@ -7,21 +7,27 @@
 ssd_hc50(
   analyte,
   method = c("multi", "anzecc"),
-  hardness_mg_L = NULL,
+  hardness = NULL,
+  hardness_units = NULL,
   guideline_dir = getOption("leachatetools.guideline_dir")
 )
 }
 \arguments{
 \item{analyte}{Character. Analyte name (key in .SSD_NAME_MAP).
-Supply "NO3-N" together with \code{hardness_mg_L} for automatic class
+Supply "NO3-N" together with \code{hardness} for automatic class
 selection, or supply the explicit class name ("NO3-N_soft" etc.).}
 
 \item{method}{Character. "multi" (default) fits all 6 BCANZ
 distributions and model-averages; "anzecc" uses the per-analyte
 distribution that best matches the original ANZG derivation.}
 
-\item{hardness_mg_L}{Numeric or NULL. Required for NO3-N analyte.
-Hardness in mg/L CaCO3 at the time of measurement.}
+\item{hardness}{Numeric or \code{units} object, or \code{NULL}. Required for
+the NO3-N analyte.  Hardness at the time of measurement.  Bare numeric
+requires \code{hardness_units}.}
+
+\item{hardness_units}{Character. Unit of \code{hardness} when it is bare
+numeric, e.g. \code{"mg/L"}.  Ignored when \code{hardness} is a \code{units} object
+or \code{NULL}.}
 
 \item{guideline_dir}{Character. Path to the "guideline data" folder
 containing ANZG XLSX files. Falls back to

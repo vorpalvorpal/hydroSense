@@ -21,24 +21,24 @@ test_that("ssd_hc50() returns NA for analytes with no SSD", {
 
 test_that("PAF at the HC50 is 50%", {
   hc50 <- ssd_hc50("Cu")
-  expect_equal(ssd_pct("Cu", hc50), 50, tolerance = 1e-2)
+  expect_equal(ssd_pct("Cu", hc50, conc_units = "ug/L"), 50, tolerance = 1e-2)
 })
 
 test_that("ssd_pct() is monotonic increasing in concentration", {
-  lo <- ssd_pct("Zn", 5)
-  hi <- ssd_pct("Zn", 30)
+  lo <- ssd_pct("Zn", 5,  conc_units = "ug/L")
+  hi <- ssd_pct("Zn", 30, conc_units = "ug/L")
   expect_gt(hi, lo)
   expect_gte(lo, 0)
   expect_lte(hi, 100)
 })
 
 test_that("ssd_paf() rejects non-positive concentrations", {
-  expect_error(ssd_paf("Cu", 0))
-  expect_error(ssd_paf("Cu", -1))
+  expect_error(ssd_paf("Cu", 0,  conc_units = "ug/L"))
+  expect_error(ssd_paf("Cu", -1, conc_units = "ug/L"))
 })
 
 test_that("ssd_paf() returns the documented list shape", {
-  res <- ssd_paf("Cu", 4)
+  res <- ssd_paf("Cu", 4, conc_units = "ug/L")
   expect_type(res, "list")
   expect_named(res, c("analyte", "conc_ug_L", "method", "pct",
                       "lower", "upper", "note"))
@@ -62,23 +62,26 @@ test_that(".no3_weights are a valid distribution and track hardness", {
 
 test_that("ssd_paf NO3-N blend equals the weighted mean of class PAFs", {
   conc <- 50000
-  blend <- ssd_paf("NO3-N", conc, hardness_mg_L = 150)
-  mod   <- ssd_paf("NO3-N_mod",  conc)$pct
-  hard  <- ssd_paf("NO3-N_hard", conc)$pct
+  blend <- ssd_paf("NO3-N", conc, conc_units = "ug/L",
+                   hardness = 150, hardness_units = "mg/L")
+  mod   <- ssd_paf("NO3-N_mod",  conc, conc_units = "ug/L")$pct
+  hard  <- ssd_paf("NO3-N_hard", conc, conc_units = "ug/L")$pct
   expect_equal(blend$pct, 0.5 * mod + 0.5 * hard, tolerance = 1e-6)
   expect_match(blend$note, "hardness blend")
 })
 
 test_that("ssd_paf NO3-N is continuous across the hardness class boundary", {
   conc <- 50000
-  lo <- ssd_paf("NO3-N", conc, hardness_mg_L = 149)$pct
-  hi <- ssd_paf("NO3-N", conc, hardness_mg_L = 151)$pct
+  lo <- ssd_paf("NO3-N", conc, conc_units = "ug/L",
+                hardness = 149, hardness_units = "mg/L")$pct
+  hi <- ssd_paf("NO3-N", conc, conc_units = "ug/L",
+                hardness = 151, hardness_units = "mg/L")$pct
   # The smooth blend changes only slightly across 150 (the hard cutoff would
   # jump by tens of percent between the moderate and hard SSDs).
   expect_lt(abs(lo - hi), 10)
 })
 
 test_that("ssd_paf NO3-N without hardness falls back to the soft class", {
-  expect_warning(res <- ssd_paf("NO3-N", 50000), "hardness")
+  expect_warning(res <- ssd_paf("NO3-N", 50000, conc_units = "ug/L"), "hardness")
   expect_equal(res$analyte, "NO3-N_soft")
 })
