@@ -205,6 +205,69 @@ test_that("amspaf_daily(interpolation='model') requires a reference_model", {
   )
 })
 
+## ── impact_tier surfaced in ara_summary() (issue #14, item A) ─────────────────
+
+test_that("amspaf_daily(interpolation='model') surfaces impact_tier in ara_summary()", {
+  dates <- seq(as.Date("2021-01-01"), by = "2 weeks", length.out = 40)
+  rm    <- fit_rm(make_chem("reference", dates), make_hydro())
+  d     <- amspaf_daily(make_chem("target", dates, mult = 10, seed = 2),
+                        reference = rm, reference_model = rm,
+                        interpolation = "model", conc_units = "ug/L",
+                        require_temperature = FALSE, min_analytes = 1)
+  s <- ara_summary(d)
+  expect_true("impact_tier" %in% names(s))
+  expect_true(all(stats::na.omit(s$impact_tier) %in% c("model", "bridge")))
+})
+
+
+## ── impute-first front-end (brms smoke test, Stan-gated) ──────────────────────
+
+test_that("impute-first enriches reference & target anchors (brms smoke test)", {
+  skip_if_not(
+    requireNamespace("brms", quietly = TRUE) &&
+      identical(Sys.getenv("BRMS_SMOKE_TEST"), "1"),
+    "Skipping brms smoke test: brms not installed or BRMS_SMOKE_TEST != '1'"
+  )
+
+  # Build chemistry where some samples are missing a metal so imputation has
+  # something to fill. pH/EC present everywhere (required_vars).
+  set.seed(11)
+  dates <- seq(as.Date("2021-01-01"), by = "week", length.out = 60)
+  base  <- make_chem("reference", dates, mult = 1, seed = 11)
+  # add pH/EC duplicates as required_vars (EC not in make_chem) and drop ~30% Cu
+  ec <- base |>
+    dplyr::distinct(sample_id, site_id, datetime) |>
+    dplyr::mutate(analyte = "EC", value = runif(dplyr::n(), 100, 400), detected = TRUE)
+  ref <- dplyr::bind_rows(base, ec)
+  drop_cu <- sample(unique(ref$sample_id), 18)
+  ref <- dplyr::filter(ref, !(sample_id %in% drop_cu & analyte == "Cu"))
+
+  im <- fit_imputation_model(ref, required_vars = c("pH", "EC"),
+                             iter = 400, warmup = 200, chains = 1, cores = 1)
+  hydro <- make_hydro()
+
+  # Reference model with vs without impute-first: impute-first must not have
+  # fewer Cu anchors.
+  rm_plain <- fit_reference_model(ref, hydro = hydro, conc_units = "ug/L",
+                                  min_obs_model = 10L,
+                                  api_windows_short = c(7L), api_windows_long = c(30L))
+  rm_imp   <- fit_reference_model(ref, hydro = hydro, conc_units = "ug/L",
+                                  imputation_model = im, min_obs_model = 10L,
+                                  api_windows_short = c(7L), api_windows_long = c(30L))
+  n_plain <- if (!is.null(rm_plain$models[["Cu"]])) rm_plain$models[["Cu"]]$n_obs else 0L
+  n_imp   <- if (!is.null(rm_imp$models[["Cu"]]))   rm_imp$models[["Cu"]]$n_obs   else 0L
+  expect_gte(n_imp, n_plain)
+
+  # Target model accepts the imputation model and still fits.
+  tm <- fit_target_model(dplyr::mutate(ref, site_id = "target"), rm_imp,
+                         imputation_model = im, conc_units = "ug/L",
+                         min_obs_model = 8L,
+                         api_windows_short = c(7L), api_windows_long = c(30L))
+  expect_s3_class(tm, "target_model")
+  expect_true(length(tm$models) > 0L)
+})
+
+
 test_that("amspaf_daily(interpolation='model'): ARA <= no-ARA, daily series", {
   dates <- seq(as.Date("2021-01-01"), by = "2 weeks", length.out = 40)
   ref   <- make_chem("reference", dates)

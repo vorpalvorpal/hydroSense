@@ -247,8 +247,9 @@ amspaf_daily <- function(
     }
 
     ## Step 1b: model interpolation of toxicants (season-blind impact model).
+    impact_tiers <- NULL
     if (interpolation == "model") {
-      daily_long <- .daily_tox_from_model(
+      daily_long   <- .daily_tox_from_model(
         daily_long       = daily_long,
         site_rows        = site_rows,
         reference_model  = reference_model,
@@ -257,6 +258,7 @@ amspaf_daily <- function(
         meta             = meta,
         tox_analytes     = tox_analytes
       )
+      impact_tiers <- attr(daily_long, "impact_tiers")
     }
 
     ## Step 3: Compute per-day diagnostics from SSD-eligible rows.
@@ -265,7 +267,7 @@ amspaf_daily <- function(
     ## Step 4: Build synthetic long-format samples (no focal_date!).
     synth <- .build_synthetic_samples(daily_long, site)
 
-    list(synth = synth, diag = diag)
+    list(synth = synth, diag = diag, tiers = impact_tiers, site = site)
   })
 
   site_results <- Filter(Negate(is.null), site_results)
@@ -299,6 +301,22 @@ amspaf_daily <- function(
   )
 
   ara_summ <- attr(amspaf_out, "ara_summary")
+
+  ## Attach the target model's per-analyte impact tier ("model" / "bridge") to
+  ## the ARA diagnostics. ara_summary() is keyed by (sample_id, analyte); the
+  ## synthetic sample_id maps to (site_id, date) via id_date_map, and the impact
+  ## tier is per (site_id, analyte). NA for non-modelled (forward-filled)
+  ## analytes; absent entirely for non-"model" interpolation.
+  all_tiers <- dplyr::bind_rows(lapply(site_results, function(z) {
+    if (is.null(z$tiers) || nrow(z$tiers) == 0L) return(NULL)
+    dplyr::mutate(z$tiers, site_id = z$site)
+  }))
+  if (!is.null(ara_summ) && nrow(all_tiers) > 0L) {
+    site_lookup <- dplyr::distinct(id_date_map[, c("sample_id", "site_id")])
+    ara_summ <- ara_summ |>
+      dplyr::left_join(site_lookup, by = "sample_id") |>
+      dplyr::left_join(all_tiers, by = c("site_id", "analyte"))
+  }
 
   ## --- Extract and annotate AmsPAF rows -------------------------------------
   amspaf_rows <- dplyr::filter(amspaf_out, .data$analyte == "AmsPAF")
@@ -717,7 +735,10 @@ amspaf_daily <- function(
   ## Replace modelled-toxicant rows; keep co-analytes + non-modelled toxicants.
   keep <- dplyr::filter(daily_long, !.data$analyte %in% .env$modelled)
   if (!"units.analyte" %in% names(keep)) keep$units.analyte <- NA_character_
-  dplyr::bind_rows(keep, model_rows)
+  out <- dplyr::bind_rows(keep, model_rows)
+  ## Per-analyte impact tier ("model" / "bridge"), surfaced for ara_summary().
+  attr(out, "impact_tiers") <- dplyr::distinct(pred[, c("analyte", "impact_tier")])
+  out
 }
 
 

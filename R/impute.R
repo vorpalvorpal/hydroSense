@@ -34,7 +34,17 @@
   # Sulfur
   "S",
   # Phosphorus
-  "P-total", "P-reactive"
+  "P-total", "P-reactive",
+  # Redox-active metals as redox *predictors*. Dissolved Fe and Mn are the most
+  # widely-measured redox indicators in leachate WQ (high dissolved Fe/Mn ==
+  # reducing conditions, which mobilise some metals and precipitate others as
+  # sulfides). Listing them here puts them in the WQ predictor block; the
+  # `setdiff(all_analytes, union(pca_vars, exclude))` guard in
+  # fit_imputation_model() consequently removes them from the imputation
+  # *targets* (they predict the other metals instead of being imputed) — the
+  # same dual role NH3-N already plays. They remain assessed by add_amspaf()
+  # whenever measured.
+  "Fe", "Mn"
 )
 
 #' Analytes that must never enter the imputation model as response variables

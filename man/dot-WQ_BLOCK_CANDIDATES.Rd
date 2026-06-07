@@ -5,7 +5,7 @@
 \alias{.WQ_BLOCK_CANDIDATES}
 \title{WQ analytes used in the PCA pre-processing step}
 \format{
-An object of class \code{character} of length 32.
+An object of class \code{character} of length 34.
 }
 \usage{
 .WQ_BLOCK_CANDIDATES
