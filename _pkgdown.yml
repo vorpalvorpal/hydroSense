@@ -76,6 +76,7 @@ reference:
       - amspaf_daily
       - prepare_reference
       - fit_reference_model
+      - fit_target_model
       - ara_summary
 
   - title: Water chemistry & normalisation

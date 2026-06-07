@@ -43,7 +43,11 @@ The package has three pillars:
   (`ssd_paf()`) feed a multi-substance potentially-affected-fraction
   (`add_amspaf()`) that combines toxicants by concentration- and
   response-addition and subtracts the *local* background via the Added Risk
-  Approach.
+  Approach. The background can be a static reference or a *contemporaneous*
+  one (`fit_reference_model()`) that predicts what the reference site would
+  have shown at each sample's moment from hydrology and season; a season-blind
+  companion (`fit_target_model()`) predicts the impacted site between grabs, so
+  `amspaf_daily()` can return a continuous daily risk series.
 
 Toxicity is grounded in the ANZECC/ANZG freshwater guideline datasets, with
 bioavailability and physicochemical normalisations (hardness, pH, DOC,

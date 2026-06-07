@@ -368,6 +368,10 @@ fit_target_model <- function(
   if (nrow(anchors) == 0L) return(0)
   if (nrow(anchors) == 1L) return(anchors$S[1L])
 
+  ## Pinch exactly to an observation on its own date (residual bridge anchors).
+  exact <- which(anchors$date == qdate)
+  if (length(exact)) return(anchors$S[exact[1L]])
+
   anchors <- anchors[order(anchors$date), ]
   ## Standardise hydro features by anchor spread for a scale-free distance
   s_sd <- stats::sd(anchors$hydro_short, na.rm = TRUE); if (!is.finite(s_sd) || s_sd == 0) s_sd <- 1
