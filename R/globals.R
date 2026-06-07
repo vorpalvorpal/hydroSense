@@ -33,7 +33,7 @@
   }
   if (is.null(units_str)) {
     cli::cli_abort(
-      c("{.arg {arg_name}} is bare numeric — units are unknown.",
+      c("{.arg {arg_name}} is bare numeric \u2014 units are unknown.",
         "i" = "Pass a companion {.arg {arg_name}_units} string, e.g. \\
                {.code {arg_name}_units = \"mg/L\"}.",
         "i" = "Or wrap directly: \\

@@ -544,8 +544,9 @@ estimate_water_temp <- function(
 }
 
 # Log-spaced candidate antecedence windows (days) for multi-timescale selection.
-.WINDOW_CANDIDATES <- c(1, 2, 3, 4, 5, 7, 10, 15, 20, 25, 30, 40, 50, 60,
-                         80, 90, 100, 120, 140, 160, 180, 220, 260, 300)
+.WINDOW_CANDIDATES <- c(1L, 2L, 3L, 4L, 5L, 7L, 10L, 15L, 20L, 25L, 30L, 40L,
+                         50L, 60L, 80L, 90L, 100L, 120L, 140L, 160L, 180L,
+                         220L, 260L, 300L)
 
 # Per-water-body-type default antecedence windows, used as fallback when
 # select = "auto" but n_pairs < auto_min_n. Reflects known thermal-mass scales.

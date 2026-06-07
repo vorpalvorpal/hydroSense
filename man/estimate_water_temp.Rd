@@ -6,13 +6,17 @@
 \usage{
 estimate_water_temp(
   air_temp_df,
-  water_temp_obs,
+  water_temp_obs = NULL,
   target_dates = NULL,
   lag_days = 0L,
   site_id = NA_character_,
   seasonal = c("auto", "off", "on"),
   seasonal_min_n = 8L,
-  seasonal_min_quarters = 3L
+  seasonal_min_quarters = 3L,
+  fallback = NULL,
+  select = "auto",
+  auto_min_n = 20L,
+  water_body_type = NULL
 )
 }
 \arguments{
@@ -28,10 +32,9 @@ calibrate the air-water regression. Required columns:
 \itemize{
 \item \code{datetime} (Date or POSIXct)
 \item \code{water_temp_C} (numeric) — observed water temperature in Celsius
-At least 10 paired observations are recommended. Cannot be \code{NULL} —
-a regression requires training data. If you have no water temperature
-observations at all, collect a season of spot measurements alongside
-air temperatures before proceeding.
+At least 10 paired observations are recommended; fewer than 5 triggers an
+error unless \code{fallback} is also supplied. \code{NULL} is accepted when \code{fallback}
+is provided.
 }}
 
 \item{target_dates}{Date vector of dates for which to predict water
@@ -61,6 +64,40 @@ two parameters, so a small buffer above that is needed for AICc to behave.}
 calendar quarters the training observations must span before the seasonal
 model is considered (default 3). Calibration data confined to one or two
 seasons cannot anchor an annual cycle and would extrapolate badly.}
+
+\item{fallback}{Air-to-water relationship used when there are too few paired
+observations to fit a regression (fewer than 5 rows in \code{water_temp_obs},
+or \code{water_temp_obs = NULL}). Accepted forms:
+\itemize{
+\item \code{"identity"} — \code{water = air} (simplest default for small streams).
+\item \code{c(intercept, slope)} — \code{water = intercept + slope * air}.
+\item A function \code{function(air) ...} — arbitrary transformation.
+}
+\code{NULL} (default) preserves the existing behaviour: fewer than 5 pairs is
+a hard error.}
+
+\item{select}{Antecedence window for the air-temperature regressor, in days.
+The regressor is the trailing \code{select}-day mean of air temperature.
+\itemize{
+\item \code{"auto"} (default) — select the window by leave-one-out cross-validation
+(PRESS statistic, exact for OLS) with the \strong{1-SE rule}: the shortest
+window whose CV RMSE is within one SE of the best is chosen, to avoid
+over-fitting to noise. Requires at least \code{auto_min_n} pairs; falls back
+to 1 (or to the \code{water_body_type} default) when pairs are insufficient.
+\item A positive integer — use that fixed window (1 = daily air temp,
+equivalent to the original behaviour).
+}}
+
+\item{auto_min_n}{Integer. Minimum number of paired observations required
+before the \code{select = "auto"} window search is attempted (default 20).
+Below this threshold the window falls back to 1 (or \code{water_body_type}).}
+
+\item{water_body_type}{Character. Physical type of the water body, used as
+the fallback window when \code{select = "auto"} but \code{n_pairs < auto_min_n}.
+One of \code{"stream_small"} (1 d), \code{"stream_large"} (5 d), \code{"estuary"} (7 d),
+\code{"pond"} (10 d), \code{"lake"} (30 d), \code{"reservoir"} (60 d), \code{"groundwater"}
+(300 d). \code{NULL} (default) falls back to window = 1. Ignored when the CV
+search runs.}
 }
 \value{
 A tibble suitable for binding onto a chemistry data frame, with
@@ -73,11 +110,16 @@ columns:
 \item \code{site_id} — from \code{site_id} argument
 \item \code{sample_id} — \code{NA_character_} (set by caller if needed)
 Attributes attached for inspection:
-\item \code{attr(result, "lm_fit")} — the selected fitted \code{lm} object.
-\item \code{attr(result, "model")} — label of the selected model.
+\item \code{attr(result, "lm_fit")} — the selected fitted \code{lm} object (\code{NULL} for fallback).
+\item \code{attr(result, "model")} — label of the selected model (\code{"fallback"} when
+no pairs were available).
 \item \code{attr(result, "seasonal_used")} — \code{TRUE} if the seasonal model won.
 \item \code{attr(result, "model_comparison")} — data frame of AICc / R² per
 candidate model and which was selected.
+\item \code{attr(result, "window_selected")} — chosen antecedence window in days
+(\code{NA} for fallback path).
+\item \code{attr(result, "window_comparison")} — data frame of LOO-CV RMSE per
+candidate window (\code{NULL} when window was fixed or search was skipped).
 }
 }
 \description{
@@ -109,20 +151,25 @@ provided: you must supply site-appropriate temperature estimates.
 
 \section{Model selection}{
 
-Water temperature lags air temperature seasonally (thermal hysteresis): at
-the same air temperature, water tends to be cooler in spring and warmer in
-autumn. A same-day air-only regression averages through that loop. Adding a
-\strong{first-harmonic day-of-year term} — \code{sin(2*pi*doy/365.25)} and
-\code{cos(2*pi*doy/365.25)} — lets the regression represent it. Day-of-year is
-cyclic, so it must enter as these harmonics, not as a raw linear term.
+\strong{Window selection} (antecedence timescale): water bodies with more thermal
+mass integrate air temperature over longer periods. The function searches
+log-spaced trailing windows from 1 to 300 days, fitting a simple OLS for
+each, and selects by leave-one-out CV RMSE (PRESS statistic — closed form,
+no refitting loop). The \strong{1-SE rule} then chooses the shortest window within
+one standard error of the best, avoiding spurious preference for a long window
+that barely beats shorter alternatives. All window candidates have the same
+number of parameters, so AICc cannot distinguish them; CV is required.
 
-Under \code{seasonal = "auto"} both candidate models are fitted and compared by
-\strong{AICc} (Akaike Information Criterion with the small-sample correction);
-the lower-AICc model is used. AICc — not in-sample R² or RMSE — is the
-selection rule, because a larger model's in-sample fit can only improve and
-would always be chosen even when it overfits. The seasonal model is only
-eligible when there are at least \code{seasonal_min_n} observations spanning at
-least \code{seasonal_min_quarters} quarters; otherwise the air-only model is used.
+\strong{Seasonal term} (thermal hysteresis): water temperature lags air
+temperature seasonally — at the same air temperature, water tends to be
+cooler in spring and warmer in autumn. Adding a \strong{first-harmonic day-of-year
+term} — \code{sin(2*pi*doy/365.25)} and \code{cos(2*pi*doy/365.25)} — lets the
+regression represent it. Under \code{seasonal = "auto"} both the window-regressor-
+only and window-regressor + harmonics models are compared by \strong{AICc}; the
+lower-AICc model is used. AICc is appropriate here because the two candidates
+differ in complexity (2 vs 4 parameters). The seasonal model is only eligible
+when there are at least \code{seasonal_min_n} observations spanning at least
+\code{seasonal_min_quarters} quarters.
 }
 
 \examples{

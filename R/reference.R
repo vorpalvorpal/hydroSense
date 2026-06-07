@@ -232,7 +232,7 @@ prepare_reference <- function(
 #'   `value`, `detected`, and `sample_id`.
 #' @param original_data The original reference chemistry frame used to look up
 #'   co-analyte values (pH, DOC, hardness, Ca, Mg) per sample.
-#' @param meta Analyte metadata tibble from [.load_analyte_metadata()].
+#' @param meta Analyte metadata tibble from `.load_analyte_metadata()`.
 #' @return `ref_df` with a `value_norm` numeric column appended (NA where
 #'   normalisation fails due to a missing required co-analyte).
 #' @keywords internal

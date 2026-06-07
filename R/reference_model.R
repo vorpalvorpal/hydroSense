@@ -188,7 +188,7 @@
   if (is.null(df_m)) return(Inf)
   fit <- .fit_ref_gam(df_m, eps)
   if (is.null(fit)) return(Inf)
-  AIC(fit)
+  stats::AIC(fit)
 }
 
 #' Select API memory windows per analyte using AIC
@@ -233,7 +233,7 @@
   null_aic <- if (!is.null(df0)) {
     fit0 <- tryCatch(mgcv::gam(y ~ 1, data = df0, method = "REML"),
                      error = function(e) NULL)
-    if (!is.null(fit0)) AIC(fit0) else Inf
+    if (!is.null(fit0)) stats::AIC(fit0) else Inf
   } else Inf
 
   best_aic <- min(aics, na.rm = TRUE)
@@ -429,7 +429,7 @@ fit_reference_model <- function(
       max(ref_dates, na.rm = TRUE)
 
     cli::cli_inform("Fetching SILO rainfall for ({latitude}, {longitude}) \\
-                    {s_start}–{s_end}…")
+                    {s_start}\u2013{s_end}\u2026")
     rain_df <- get_silo_rainfall(
       latitude   = latitude,
       longitude  = longitude,
@@ -553,8 +553,8 @@ fit_reference_model <- function(
       sel <- list(
         window_short = api_windows_short[1L],
         window_long  = api_windows_long[1L],
-        best_aic     = if (!is.null(fit0)) AIC(fit0) else Inf,
-        null_aic     = if (!is.null(fit0)) AIC(fit0) else Inf
+        best_aic     = if (!is.null(fit0)) stats::AIC(fit0) else Inf,
+        null_aic     = if (!is.null(fit0)) stats::AIC(fit0) else Inf
       )
     }
 
@@ -617,7 +617,7 @@ print.reference_model <- function(x, ...) {
   n_static   <- n_analytes - n_model
 
   hydro_range <- if (!is.null(x$hydro) && nrow(x$hydro) > 0L) {
-    sprintf("%s – %s", min(x$hydro$date), max(x$hydro$date))
+    sprintf("%s \u2013 %s", min(x$hydro$date), max(x$hydro$date))
   } else "unknown"
 
   cat(sprintf(
@@ -626,7 +626,7 @@ print.reference_model <- function(x, ...) {
     if (n_analytes == 1L) "" else "s",
     x$hydro_type, hydro_range
   ))
-  cat(sprintf("  tier-1:  ±%d d + API ±%.2g\n",
+  cat(sprintf("  tier-1:  \u00b1%d d + API \u00b1%.2g\n",
               x$match_window_days, x$match_hydro_tol))
 
   if (n_model > 0L) {
@@ -672,7 +672,7 @@ print.reference_model <- function(x, ...) {
     hydro_long  = feats$hydro_long
   )
   log_pred <- tryCatch(
-    as.numeric(predict(m$gamm_fit, newdata = newdata)),
+    as.numeric(stats::predict(m$gamm_fit, newdata = newdata)),
     error = function(e) NA_real_
   )
   if (is.na(log_pred)) {
@@ -787,7 +787,7 @@ print.reference_model <- function(x, ...) {
         hydro_long  = feats$hydro_long
       )
       log_preds <- tryCatch(
-        as.numeric(predict(m$gamm_fit, newdata = newdata)),
+        as.numeric(stats::predict(m$gamm_fit, newdata = newdata)),
         error = function(e) rep(NA_real_, length(dates_in_window))
       )
 

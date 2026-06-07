@@ -13,7 +13,7 @@
 \item{original_data}{The original reference chemistry frame used to look up
 co-analyte values (pH, DOC, hardness, Ca, Mg) per sample.}
 
-\item{meta}{Analyte metadata tibble from \code{\link[=.load_analyte_metadata]{.load_analyte_metadata()}}.}
+\item{meta}{Analyte metadata tibble from \code{.load_analyte_metadata()}.}
 }
 \value{
 \code{ref_df} with a \code{value_norm} numeric column appended (NA where
