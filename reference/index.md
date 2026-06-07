@@ -66,6 +66,9 @@ background adjustment. Includes the static and temporal
   : Compute the Adjusted multi-substance PAF (AmsPAF) for water quality
   samples
 
+- [`amspaf_daily()`](https://vorpalvorpal.github.io/leachatetools/reference/amspaf_daily.md)
+  : Continuous daily AmsPAF time series from interpolated grab chemistry
+
 - [`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md)
   : Prepare reference chemistry for AmsPAF background subtraction
 
