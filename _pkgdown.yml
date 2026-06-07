@@ -73,6 +73,7 @@ reference:
       ARA reference paths.
     contents:
       - add_amspaf
+      - amspaf_daily
       - prepare_reference
       - fit_reference_model
       - ara_summary
