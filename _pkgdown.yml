@@ -68,10 +68,13 @@ reference:
   - title: Multi-substance PAF (AmsPAF)
     desc: >
       Concentration- and response-addition mixture PAF with Added-Risk local
-      background adjustment.
+      background adjustment.  Includes the static and temporal (contemporaneous)
+      ARA reference paths.
     contents:
       - add_amspaf
       - prepare_reference
+      - fit_reference_model
+      - ara_summary
 
   - title: Water chemistry & normalisation
     desc: >
@@ -82,6 +85,7 @@ reference:
       - derive_hardness
       - estimate_water_temp
       - get_silo_air_temp
+      - get_silo_rainfall
 
   - title: Screening & temporal aggregation
     desc: >

@@ -144,33 +144,7 @@ prepare_reference <- function(
   }
 
   # Apply normalisation per analyte row (detected rows only; BDL rows stay 0)
-  nq <- ref_q |>
-    dplyr::left_join(
-      meta |>
-        dplyr::select("analyte", "coanalytes_required", "normalisation_formula"),
-      by = "analyte"
-    ) |>
-    dplyr::mutate(
-      value_norm = purrr::pmap_dbl(
-        list(
-          det           = .data$detected,
-          formula_str   = .data$normalisation_formula,
-          C             = .data$value,
-          sample_id_val = if ("sample_id" %in% names(ref_q)) .data$sample_id else NA_character_,
-          analyte_nm    = .data$analyte,
-          co_req        = .data$coanalytes_required
-        ),
-        function(det, formula_str, C, sample_id_val, analyte_nm, co_req) {
-          if (!det) return(0)  # BDL → background contribution is 0
-          parsed <- .parse_normalisation_formula(formula_str %||% "")
-          if (is.null(parsed)) return(C)  # identity (empty formula stub)
-          coanalytes <- .extract_coanalytes_for_sample(
-            reference_data, sample_id_val, co_req %||% ""
-          )
-          .apply_normalisation(parsed, C, coanalytes)
-        }
-      )
-    )
+  nq <- .normalise_ref_observations(ref_q, reference_data, meta)
 
   # Per-analyte summary statistic
   qnt <- nq |>
@@ -242,6 +216,57 @@ prepare_reference <- function(
     class = "prepared_reference"
   )
 }
+
+# ── Shared normalisation helper ───────────────────────────────────────────────
+
+#' Normalise reference observations to the SSD index condition
+#'
+#' Applies per-analyte bioavailability / physicochemical normalisation formulas
+#' (hardness, pH, DOC) to a long-format chemistry data frame, returning the
+#' frame with a `value_norm` column added.  BDL rows (`detected == FALSE`) are
+#' normalised at their detection-limit value but callers are responsible for
+#' setting `value = 0` for BDL rows *before* calling this if they want BDL to
+#' contribute zero to downstream summaries (as `prepare_reference()` does).
+#'
+#' @param ref_df Long-format chemistry data frame with at minimum `analyte`,
+#'   `value`, `detected`, and `sample_id`.
+#' @param original_data The original reference chemistry frame used to look up
+#'   co-analyte values (pH, DOC, hardness, Ca, Mg) per sample.
+#' @param meta Analyte metadata tibble from [.load_analyte_metadata()].
+#' @return `ref_df` with a `value_norm` numeric column appended (NA where
+#'   normalisation fails due to a missing required co-analyte).
+#' @keywords internal
+.normalise_ref_observations <- function(ref_df, original_data, meta) {
+  has_sample_id <- "sample_id" %in% names(ref_df)
+
+  ref_df |>
+    dplyr::left_join(
+      meta |>
+        dplyr::select("analyte", "coanalytes_required", "normalisation_formula"),
+      by = "analyte"
+    ) |>
+    dplyr::mutate(
+      value_norm = purrr::pmap_dbl(
+        list(
+          det           = .data$detected,
+          formula_str   = .data$normalisation_formula,
+          C             = .data$value,
+          sample_id_val = if (has_sample_id) .data$sample_id else NA_character_,
+          co_req        = .data$coanalytes_required
+        ),
+        function(det, formula_str, C, sample_id_val, co_req) {
+          if (!det) return(C)   # BDL: normalise at DL (caller sets value=0 for BDL→0 summary)
+          parsed <- .parse_normalisation_formula(formula_str %||% "")
+          if (is.null(parsed)) return(C)  # identity (no formula)
+          coanalytes <- .extract_coanalytes_for_sample(
+            original_data, sample_id_val, co_req %||% ""
+          )
+          .apply_normalisation(parsed, C, coanalytes)
+        }
+      )
+    )
+}
+
 
 # ── Summary-statistic helpers ─────────────────────────────────────────────────
 

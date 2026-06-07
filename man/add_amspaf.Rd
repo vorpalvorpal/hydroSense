@@ -13,7 +13,11 @@ add_amspaf(
   min_analytes = 3,
   ref_summary = c("geom_mean", "median", "arith_mean", "p80", "p90", "p95"),
   conc_units = NULL,
-  require_temperature = TRUE
+  require_temperature = TRUE,
+  tau = 90,
+  tau_units = "day",
+  window = 365,
+  window_units = "day"
 )
 }
 \arguments{
@@ -28,12 +32,15 @@ but recommended: \code{datetime} (propagated to AmsPAF rows if present),
 chemistry normalisation (e.g. pH, DOC) should be present as rows in \code{df}.}
 
 \item{reference}{Background reference chemistry for the ARA adjustment.
-Accepts three forms:
+Accepts four forms:
 \itemize{
+\item A \code{reference_model} from \code{\link[=fit_reference_model]{fit_reference_model()}} — contemporaneous
+(temporal) ARA; the model predicts what the reference site would show
+at each target sample's exact moment using hydrology and seasonality.
 \item A \code{prepared_reference} object from \code{\link[=prepare_reference]{prepare_reference()}} —
-normalisation has already been applied; used directly.
+normalisation has already been applied; used directly (static ARA).
 \item A raw long-format data frame (same schema as \code{df}) — will be
-passed to \code{\link[=prepare_reference]{prepare_reference()}} internally.
+passed to \code{\link[=prepare_reference]{prepare_reference()}} internally (static ARA).
 \item \code{NULL} (default) — no ARA adjustment; raw concentrations assessed
 directly against SSDs.
 }}
@@ -75,6 +82,12 @@ silent drop of ammonia. Supply temperature via direct measurement, or
 derive it with \code{\link[=estimate_water_temp]{estimate_water_temp()}} (optionally fed by
 \code{\link[=get_silo_air_temp]{get_silo_air_temp()}}). Set \code{FALSE} only for datasets that do not assess
 ammonia.}
+
+\item{tau, tau_units}{Exponential-decay half-life for chronic window
+integration when \code{reference} is a \code{reference_model}.  Default \code{90} days.}
+
+\item{window, window_units}{Look-back window length for chronic integration.
+Default \code{365} days.}
 }
 \value{
 The input \code{df} with AmsPAF rows appended. Each AmsPAF row carries:
@@ -86,6 +99,9 @@ The input \code{df} with AmsPAF rows appended. Each AmsPAF row carries:
 \code{analyte}, \code{C_adj}, \code{PAF}, \code{moa_group}, and \code{ref_source} — one of
 \code{"disabled"}, \code{"matched"}, \code{"unmatched"} recording how the ARA reference
 was resolved for that analyte).
+
+The result also carries an \code{"ara_summary"} attribute (a tibble) with
+per-(sample × analyte) ARA diagnostics.  Retrieve it with \code{\link[=ara_summary]{ara_summary()}}.
 
 Tier breaks are not provided by this package — AmsPAF is a continuous
 risk metric and the threshold at which a community is "impacted"
@@ -123,5 +139,6 @@ De Zwart D, Posthuma L (2005) Environmental Toxicology and Chemistry
 }
 \seealso{
 \code{\link[=ssd_paf]{ssd_paf()}}, \code{\link[=ssd_hc50]{ssd_hc50()}}, \code{\link[=prepare_reference]{prepare_reference()}},
+\code{\link[=fit_reference_model]{fit_reference_model()}}, \code{\link[=ara_summary]{ara_summary()}},
 \code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}, \code{\link[=prescreen_analytes]{prescreen_analytes()}}, \code{\link[=impute_chemistry]{impute_chemistry()}}
 }

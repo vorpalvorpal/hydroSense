@@ -456,3 +456,125 @@ get_silo_air_temp <- function(
   if (cache && !is.null(cache_path)) qs2::qs_save(out, cache_path)
   out
 }
+
+
+# ── SILO rainfall lookup ──────────────────────────────────────────────────────
+
+#' Fetch daily rainfall from SILO for an Australian location
+#'
+#' Retrieves daily rainfall from the SILO Data Drill (a ~5 km gridded,
+#' spatially interpolated climate surface covering Australia, 1889–present) for
+#' a single latitude/longitude.  The result is the input hydrology series
+#' accepted by [fit_reference_model()] when no gauge record is available.
+#'
+#' This function is the rainfall sibling of [get_silo_air_temp()] and uses the
+#' same API, cache, and key mechanism.
+#'
+#' @section Attribution:
+#' SILO data are © State of Queensland (Department of Environment, Science and
+#' Innovation) and released under CC-BY 4.0. Cite SILO when you publish results
+#' derived from this function.
+#'
+#' @section API key:
+#' SILO requires an API key, which is simply your email address. By default it
+#' is auto-detected via [weatherOz::get_key()] (from `.Renviron`/`.Rprofile`).
+#'
+#' @param latitude,longitude Numeric decimal-degree coordinates of the point of
+#'   interest. Must fall within the SILO grid (approximately latitude -44 to
+#'   -10, longitude 112 to 154). Snapped to the 0.05° grid by SILO.
+#' @param start_date,end_date Start and end of the (inclusive) date range, as
+#'   `Date` objects or `"YYYY-MM-DD"` strings.
+#' @param api_key Character SILO API key (your email address). Default `NULL`
+#'   defers to [weatherOz::get_key()].
+#' @param cache Logical; cache the result on disk under
+#'   `tools::R_user_dir("leachatetools", "cache")/silo`. Default `TRUE`.
+#' @param refresh Logical; if `TRUE`, ignore and overwrite any cached result.
+#'   Default `FALSE`.
+#'
+#' @return A tibble with one row per day:
+#'   - `date` (`Date`)
+#'   - `rainfall_mm` (numeric, mm/day)
+#'   Ready to pass as `hydro` to [fit_reference_model()] with
+#'   `hydro_type = "rainfall"`.
+#'
+#' @seealso [fit_reference_model()], [get_silo_air_temp()]
+#'
+#' @examples
+#' \dontrun{
+#' rain <- get_silo_rainfall(
+#'   latitude   = -33.87, longitude  = 151.21,
+#'   start_date = "2020-01-01", end_date = "2023-12-31"
+#' )
+#' }
+#' @export
+get_silo_rainfall <- function(
+    latitude,
+    longitude,
+    start_date,
+    end_date,
+    api_key = NULL,
+    cache   = TRUE,
+    refresh = FALSE
+) {
+  if (!requireNamespace("weatherOz", quietly = TRUE)) {
+    cli::cli_abort(c(
+      "The {.pkg weatherOz} package is required to fetch SILO climate data.",
+      "i" = "Install it with {.run install.packages(\"weatherOz\")}."
+    ))
+  }
+  checkmate::assert_number(latitude,  lower = -44, upper = -10)
+  checkmate::assert_number(longitude, lower = 112, upper = 154)
+  checkmate::assert_flag(cache)
+  checkmate::assert_flag(refresh)
+  start_date <- as.Date(start_date)
+  end_date   <- as.Date(end_date)
+  if (is.na(start_date) || is.na(end_date)) {
+    cli::cli_abort("{.arg start_date} and {.arg end_date} must be valid dates.")
+  }
+  if (end_date < start_date) {
+    cli::cli_abort("{.arg end_date} ({end_date}) is before {.arg start_date} ({start_date}).")
+  }
+
+  cache_path <- NULL
+  if (cache) {
+    cache_dir <- file.path(tools::R_user_dir("leachatetools", "cache"), "silo")
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    key <- sprintf(
+      "silo_rain_%+07.2f_%+07.2f_%s_%s.qs",
+      latitude, longitude, format(start_date, "%Y%m%d"), format(end_date, "%Y%m%d")
+    )
+    cache_path <- file.path(cache_dir, key)
+    if (!refresh && file.exists(cache_path)) {
+      return(qs2::qs_read(cache_path))
+    }
+  }
+
+  if (is.null(api_key)) api_key <- weatherOz::get_key(service = "SILO")
+
+  dt <- weatherOz::get_data_drill(
+    longitude  = longitude,
+    latitude   = latitude,
+    start_date = start_date,
+    end_date   = end_date,
+    values     = "rain",
+    api_key    = api_key
+  )
+
+  if (!"rainfall" %in% names(dt) || !"date" %in% names(dt)) {
+    cli::cli_abort(
+      "SILO response is missing expected columns ({.field date}, {.field rainfall})."
+    )
+  }
+
+  raw_date <- dt[["date"]]
+  dts <- suppressWarnings(as.Date(raw_date))
+  if (anyNA(dts)) dts <- as.Date(as.character(raw_date), format = "%Y%m%d")
+
+  out <- tibble::tibble(
+    date         = dts,
+    rainfall_mm  = as.numeric(dt[["rainfall"]])
+  )
+
+  if (cache && !is.null(cache_path)) qs2::qs_save(out, cache_path)
+  out
+}

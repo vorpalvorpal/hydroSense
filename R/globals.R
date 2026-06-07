@@ -118,6 +118,12 @@ utils::globalVariables(c(
   "site_id", "species_id", "Species", "ssd_available", "total_alk_",
   "total_N_", "total_N_mgl", "uuid", "valence.analyte", "value", "value_ug_L",
   "var_f", "weight", "wt_orig_pct", "wt_rob_pct", "x",
+  # reference_model / temporal ARA (reference_model.R, mspaf.R)
+  ".date", "ara_diag", "best_aic", "C_adj", "C_excess", "C_norm",
+  "coanalytes_required", "date", "doy", "fit_date", "floor_fired",
+  "focal_date", "hydro_long", "hydro_short", "log_pred", "n_obs",
+  "normalisation_formula", "null_aic", "rainfall_mm", "ref_norm",
+  "ref_source", "ref_tier", "value_norm", "window_long", "window_short",
   # host-environment (dashboard) functions used only on add_lmf()'s non-override
   # path; supplied at run time, not defined in this package
   "data_df", "feature_df", "feature_sfc", "get_reference_site"

@@ -219,15 +219,22 @@
 #'   `n_analytes_imputed` is populated in output). Driver analytes needed for
 #'   chemistry normalisation (e.g. pH, DOC) should be present as rows in `df`.
 #' @param reference Background reference chemistry for the ARA adjustment.
-#'   Accepts three forms:
+#'   Accepts four forms:
 #'   \itemize{
+#'     \item A `reference_model` from [fit_reference_model()] — contemporaneous
+#'       (temporal) ARA; the model predicts what the reference site would show
+#'       at each target sample's exact moment using hydrology and seasonality.
 #'     \item A `prepared_reference` object from [prepare_reference()] —
-#'       normalisation has already been applied; used directly.
+#'       normalisation has already been applied; used directly (static ARA).
 #'     \item A raw long-format data frame (same schema as `df`) — will be
-#'       passed to [prepare_reference()] internally.
+#'       passed to [prepare_reference()] internally (static ARA).
 #'     \item `NULL` (default) — no ARA adjustment; raw concentrations assessed
 #'       directly against SSDs.
 #'   }
+#' @param tau,tau_units Exponential-decay half-life for chronic window
+#'   integration when `reference` is a `reference_model`.  Default `90` days.
+#' @param window,window_units Look-back window length for chronic integration.
+#'   Default `365` days.
 #' @param analyte_metadata Data frame of analyte metadata, or `NULL` to load
 #'   the bundled `inst/extdata/anzecc_analyte_metadata.csv`. Passed to
 #'   [prepare_reference()] and [derive_ssd_params()].
@@ -270,12 +277,16 @@
 #'   `"disabled"`, `"matched"`, `"unmatched"` recording how the ARA reference
 #'   was resolved for that analyte).
 #'
+#'   The result also carries an `"ara_summary"` attribute (a tibble) with
+#'   per-(sample × analyte) ARA diagnostics.  Retrieve it with [ara_summary()].
+#'
 #'   Tier breaks are not provided by this package — AmsPAF is a continuous
 #'   risk metric and the threshold at which a community is "impacted"
 #'   depends on the assessment context.  See
 #'   `vignette("chronic-amspaf-interpretation")` for guidance.
 #'
 #' @seealso [ssd_paf()], [ssd_hc50()], [prepare_reference()],
+#'   [fit_reference_model()], [ara_summary()],
 #'   [time_weighted_aggregate()], [prescreen_analytes()], [impute_chemistry()]
 #'
 #' @references
@@ -303,7 +314,11 @@ add_amspaf <- function(
     ref_summary      = c("geom_mean", "median", "arith_mean",
                           "p80", "p90", "p95"),
     conc_units       = NULL,
-    require_temperature = TRUE
+    require_temperature = TRUE,
+    tau              = 90,
+    tau_units        = "day",
+    window           = 365,
+    window_units     = "day"
 ) {
   checkmate::assert_data_frame(df)
   checkmate::assert_names(
@@ -354,37 +369,39 @@ add_amspaf <- function(
   ## match" — both otherwise collapse to ref_norm = 0 (see ref_source).
   ara_enabled <- !is.null(reference)
 
-  if (inherits(reference, "prepared_reference")) {
-    prep_ref <- reference
+  if (inherits(reference, "reference_model")) {
+    ## Temporal ARA path: resolve contemporaneous reference norms per sample
+    tau_days    <- .resolve_to(tau,    "day", tau_units,    "tau")
+    window_days <- .resolve_to(window, "day", window_units, "window")
+    ref_table   <- .resolve_ref_norm(reference, df, tau_days, window_days)
+    ## ref_table has columns: sample_id, analyte, ref_norm, ref_tier
+  } else if (inherits(reference, "prepared_reference")) {
+    prep_ref  <- reference
+    ## Use only analyte+ref_norm columns for the join (avoid polluting tox_rows
+    ## with n_obs / ref_lower / ref_upper if bootstrap_ci was used)
+    ref_table <- if (nrow(prep_ref$ref_table) > 0L) {
+      dplyr::select(prep_ref$ref_table, "analyte", "ref_norm")
+    } else {
+      prep_ref$ref_table
+    }
   } else if (is.null(reference)) {
     ## No ARA: empty ref_table → ref_norm joined as NA → coerced to 0
-    prep_ref <- structure(
-      list(
-        ref_table = tibble::tibble(
-          analyte  = character(0),
-          ref_norm = numeric(0),
-          n_obs    = integer(0)
-        ),
-        dropped = character(0),
-        summary = ref_summary
-      ),
-      class = "prepared_reference"
+    ref_table <- tibble::tibble(
+      analyte  = character(0),
+      ref_norm = numeric(0)
     )
   } else {
     checkmate::assert_data_frame(reference)
-    prep_ref <- prepare_reference(
+    prep_ref  <- prepare_reference(
       reference,
       analyte_metadata = meta,
       summary          = ref_summary
     )
-  }
-
-  ## Use only analyte+ref_norm columns for the join (avoid polluting tox_rows
-  ## with n_obs / ref_lower / ref_upper if bootstrap_ci was used)
-  ref_table <- if (nrow(prep_ref$ref_table) > 0L) {
-    dplyr::select(prep_ref$ref_table, "analyte", "ref_norm")
-  } else {
-    prep_ref$ref_table
+    ref_table <- if (nrow(prep_ref$ref_table) > 0L) {
+      dplyr::select(prep_ref$ref_table, "analyte", "ref_norm")
+    } else {
+      prep_ref$ref_table
+    }
   }
 
   ## ================================================================
@@ -414,6 +431,21 @@ add_amspaf <- function(
   ## End-of-call summary of analytes assessed without a reference match
   ## (ARA enabled but no background available — assessed against raw conc).
   .summarise_ara_coverage(amspaf_df, ara_enabled)
+
+  ## ara_diag is a diagnostic list-column; flatten it for the ara_summary
+  ## attribute, then remove from the output data frame.
+  if ("ara_diag" %in% names(amspaf_df)) {
+    ara_summary_out <- purrr::map2_dfr(
+      amspaf_df$sample_id, amspaf_df$ara_diag,
+      function(sid, d) {
+        if (!is.null(d) && nrow(d) > 0L) dplyr::mutate(d, sample_id = sid)
+        else NULL
+      }
+    )
+    amspaf_df <- dplyr::select(amspaf_df, -"ara_diag")
+  } else {
+    ara_summary_out <- NULL
+  }
 
   ## dropped_analytes is a diagnostic list-column; remove from the final
   ## output rows (still emitted in summary above)
@@ -450,6 +482,10 @@ add_amspaf <- function(
   } else if ("datetime" %in% names(result)) {
     result <- dplyr::arrange(result, .data$datetime)
   }
+
+  ## Store ARA cell-level diagnostics as an attribute for ara_summary()
+  attr(result, "ara_summary") <- ara_summary_out
+
   result
 }
 
@@ -648,10 +684,20 @@ compute_amspaf_per_sample <- function(
   sample_ids <- unique(sample_data$sample_id)
 
   ## ── Phase 1: per-sample normalisation + ARA ──────────────────────────────
+  ## When ref_table carries a sample_id column (temporal/reference_model path),
+  ## slice it to the current sample before passing to .amspaf_adjust().
+  has_temporal_ref <- "sample_id" %in% names(ref_table)
+
   adj_list <- lapply(sample_ids, function(sid) {
     rows <- dplyr::filter(sample_data, .data$sample_id == .env$sid)
+    rt <- if (has_temporal_ref) {
+      dplyr::filter(ref_table, .data$sample_id == .env$sid) |>
+        dplyr::select(-"sample_id")
+    } else {
+      ref_table
+    }
     c(list(sample_id = sid),
-      .amspaf_adjust(rows, ref_table, ssd_params, ara_enabled))
+      .amspaf_adjust(rows, rt, ssd_params, ara_enabled))
   })
 
   ## Samples that pass min_analytes (after dropping missing-co-analyte rows)
@@ -665,9 +711,13 @@ compute_amspaf_per_sample <- function(
   ## ── Phase 2: batched PAF (one ssd_hp() call per analyte) ─────────────────
   tox_keep <- .amspaf_add_paf(tox_keep, ssd_params, method, guideline_dir)
 
-  ## Per-sample dropped-analyte tibbles (diagnostic list-column)
+  ## Per-sample diagnostic list-columns
   dropped_lookup <- stats::setNames(
     lapply(keep, `[[`, "dropped"),
+    vapply(keep, `[[`, character(1), "sample_id")
+  )
+  ara_diag_lookup <- stats::setNames(
+    lapply(keep, `[[`, "ara_diag"),
     vapply(keep, `[[`, character(1), "sample_id")
   )
 
@@ -677,6 +727,7 @@ compute_amspaf_per_sample <- function(
     dplyr::group_modify(\(.x, .y) {
       res <- .amspaf_combine(.x, has_imputed)
       res$dropped_analytes <- list(dropped_lookup[[.y$sample_id]])
+      res$ara_diag         <- list(ara_diag_lookup[[.y$sample_id]])
       res
     }) |>
     dplyr::ungroup()
@@ -806,7 +857,12 @@ compute_amspaf_one_sample <- function(
         C_norm = numeric(0), ref_norm = numeric(0),
         ref_source = character(0), C_adj = numeric(0)
       ),
-      dropped = empty_dropped
+      dropped = empty_dropped,
+      ara_diag = tibble::tibble(
+        analyte = character(0), ref_norm = numeric(0), C_norm = numeric(0),
+        C_adj = numeric(0), C_excess = numeric(0), floor_fired = logical(0),
+        ref_source = character(0), ref_tier = character(0)
+      )
     ))
   }
 
@@ -853,7 +909,21 @@ compute_amspaf_one_sample <- function(
     dplyr::filter(!is.na(.data$C_norm)) |>
     dplyr::mutate(C_adj = pmax(.data$C_norm - .data$ref_norm, 0))
 
-  list(tox = tox, dropped = dropped)
+  ## ── ARA per-cell diagnostics ─────────────────────────────────────────────
+  if (!"ref_tier" %in% names(tox)) tox$ref_tier <- NA_character_
+  ara_diag <- dplyr::transmute(
+    tox,
+    analyte     = .data$analyte,
+    ref_norm    = .data$ref_norm,
+    C_norm      = .data$C_norm,
+    C_adj       = .data$C_adj,
+    C_excess    = .data$C_norm - .data$ref_norm,
+    floor_fired = .data$C_norm < .data$ref_norm,
+    ref_source  = .data$ref_source,
+    ref_tier    = .data$ref_tier
+  )
+
+  list(tox = tox, dropped = dropped, ara_diag = ara_diag)
 }
 
 #' Add per-analyte PAF to adjusted tox rows, batched per analyte
