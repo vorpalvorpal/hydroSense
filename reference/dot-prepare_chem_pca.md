@@ -10,5 +10,11 @@ before centring/scaling. PC score columns are named `PC1`, `PC2`, ….
 ## Usage
 
 ``` r
-.prepare_chem_pca(df, wq_vars, min_var_explained = 0.75, max_pcs = 4L)
+.prepare_chem_pca(
+  df,
+  wq_vars,
+  min_var_explained = 0.75,
+  max_pcs = 4L,
+  no_log_vars = .PCA_NO_LOG_VARS
+)
 ```

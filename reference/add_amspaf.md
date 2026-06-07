@@ -17,7 +17,12 @@ add_amspaf(
   guideline_dir = getOption("leachatetools.guideline_dir"),
   min_analytes = 3,
   ref_summary = c("geom_mean", "median", "arith_mean", "p80", "p90", "p95"),
-  require_temperature = TRUE
+  conc_units = NULL,
+  require_temperature = TRUE,
+  tau = 90,
+  tau_units = "day",
+  window = 365,
+  window_units = "day"
 )
 ```
 
@@ -26,26 +31,36 @@ add_amspaf(
 - df:
 
   Long-format monitoring dataframe. Required columns: `sample_id`,
-  `site_id`, `analyte`, `value` (concentrations in µg/L). Optional but
-  recommended: `datetime` (propagated to AmsPAF rows if present),
-  `detected` (assumed `TRUE` if absent), `imputed` (logical; if present,
-  `n_analytes_imputed` is populated in output). Driver analytes needed
-  for chemistry normalisation (e.g. pH, DOC) should be present as rows
-  in `df`.
+  `site_id`, `analyte`, `value`. Toxicant concentrations must ultimately
+  be in µg/L for SSD lookup; supply them either via a `units.analyte`
+  column (one unit string per row, e.g. `"mg/L"`) or via the
+  `conc_units` argument (applied uniformly to all SSD-eligible rows).
+  Optional but recommended: `datetime` (propagated to AmsPAF rows if
+  present), `detected` (assumed `TRUE` if absent), `imputed` (logical;
+  if present, `n_analytes_imputed` is populated in output). Driver
+  analytes needed for chemistry normalisation (e.g. pH, DOC) should be
+  present as rows in `df`.
 
 - reference:
 
-  Background reference chemistry for the ARA adjustment. Accepts three
+  Background reference chemistry for the ARA adjustment. Accepts four
   forms:
+
+  - A `reference_model` from
+    [`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md)
+    — contemporaneous (temporal) ARA; the model predicts what the
+    reference site would show at each target sample's exact moment using
+    hydrology and seasonality.
 
   - A `prepared_reference` object from
     [`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md)
-    — normalisation has already been applied; used directly.
+    — normalisation has already been applied; used directly (static
+    ARA).
 
   - A raw long-format data frame (same schema as `df`) — will be passed
     to
     [`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md)
-    internally.
+    internally (static ARA).
 
   - `NULL` (default) — no ARA adjustment; raw concentrations assessed
     directly against SSDs.
@@ -88,6 +103,14 @@ add_amspaf(
   "typical" exposure the resident community has adapted to. Other
   options: `"median"`, `"arith_mean"`, `"p80"`, `"p90"`, `"p95"`.
 
+- conc_units:
+
+  Character. Unit string (e.g. `"mg/L"`, `"ug/L"`) applied uniformly to
+  all SSD-eligible rows in `df` when `df` has no `units.analyte` column.
+  Ignored when `df` already carries `units.analyte`. Required when `df`
+  lacks `units.analyte` and toxicant concentrations are not already in
+  µg/L.
+
 - require_temperature:
 
   Logical (default `TRUE`). When `TRUE`, any sample that reports an
@@ -100,6 +123,15 @@ add_amspaf(
   [`get_silo_air_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/get_silo_air_temp.md)).
   Set `FALSE` only for datasets that do not assess ammonia.
 
+- tau, tau_units:
+
+  Exponential-decay half-life for chronic window integration when
+  `reference` is a `reference_model`. Default `90` days.
+
+- window, window_units:
+
+  Look-back window length for chronic integration. Default `365` days.
+
 ## Value
 
 The input `df` with AmsPAF rows appended. Each AmsPAF row carries:
@@ -110,6 +142,10 @@ The input `df` with AmsPAF rows appended. Each AmsPAF row carries:
 diagnostic tibbles, each with `analyte`, `C_adj`, `PAF`, `moa_group`,
 and `ref_source` — one of `"disabled"`, `"matched"`, `"unmatched"`
 recording how the ARA reference was resolved for that analyte).
+
+The result also carries an `"ara_summary"` attribute (a tibble) with
+per-(sample × analyte) ARA diagnostics. Retrieve it with
+[`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md).
 
 Tier breaks are not provided by this package — AmsPAF is a continuous
 risk metric and the threshold at which a community is "impacted" depends
@@ -138,6 +174,8 @@ De Zwart D, Posthuma L (2005) Environmental Toxicology and Chemistry
 [`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md),
 [`ssd_hc50()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_hc50.md),
 [`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md),
+[`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md),
+[`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md),
 [`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md),
 [`prescreen_analytes()`](https://vorpalvorpal.github.io/leachatetools/reference/prescreen_analytes.md),
 [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)

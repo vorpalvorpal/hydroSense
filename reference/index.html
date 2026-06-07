@@ -79,7 +79,7 @@
       </dl></div><div class="section level2">
       <h2 id="chemistry-imputation">Chemistry imputation<a class="anchor" aria-label="anchor" href="#chemistry-imputation"></a></h2>
 
-      <div class="section-desc"><p>Bayesian multivariate imputation of below-detection and missing analyte concentrations, plus deterministic co-analyte imputation.</p></div>
+      <div class="section-desc"><p>Domain-agnostic Bayesian multivariate imputation of below-detection and missing analyte concentrations, plus deterministic co-analyte imputation.</p></div>
 
       <dl></dl></div><div class="section level2">
 
@@ -95,6 +95,20 @@
 
         <dt>
 
+          <code><a href="impute_group.html">impute_group()</a></code>
+
+        </dt>
+        <dd>Declare an imputation group</dd>
+
+        <dt>
+
+          <code><a href="leachate_impute_groups.html">leachate_impute_groups()</a></code>
+
+        </dt>
+        <dd>Leachate imputation-group preset</dd>
+
+        <dt>
+
           <code><a href="impute_chemistry.html">impute_chemistry()</a></code>
 
         </dt>
@@ -106,6 +120,13 @@
 
         </dt>
         <dd>Impute missing normalisation co-analytes from the fitted chemistry PCA</dd>
+
+        <dt>
+
+          <code><a href="bdl_cap_summary.html">bdl_cap_summary()</a></code>
+
+        </dt>
+        <dd>Inspect detection-limit cap activations from <code><a href="../reference/impute_chemistry.html">impute_chemistry()</a></code></dd>
       </dl></div><div class="section level2">
       <h2 id="toxicity-single-substance-paf">Toxicity &amp; single-substance PAF<a class="anchor" aria-label="anchor" href="#toxicity-single-substance-paf"></a></h2>
 
@@ -139,7 +160,7 @@
       </dl></div><div class="section level2">
       <h2 id="multi-substance-paf-amspaf-">Multi-substance PAF (AmsPAF)<a class="anchor" aria-label="anchor" href="#multi-substance-paf-amspaf-"></a></h2>
 
-      <div class="section-desc"><p>Concentration- and response-addition mixture PAF with Added-Risk local background adjustment.</p></div>
+      <div class="section-desc"><p>Concentration- and response-addition mixture PAF with Added-Risk local background adjustment. Includes the static and temporal (contemporaneous) ARA reference paths.</p></div>
 
       <dl></dl></div><div class="section level2">
 
@@ -159,6 +180,20 @@
 
         </dt>
         <dd>Prepare reference chemistry for AmsPAF background subtraction</dd>
+
+        <dt>
+
+          <code><a href="fit_reference_model.html">fit_reference_model()</a></code>
+
+        </dt>
+        <dd>Fit a temporal reference model for contemporaneous ARA background subtraction</dd>
+
+        <dt>
+
+          <code><a href="ara_summary.html">ara_summary()</a></code>
+
+        </dt>
+        <dd>Retrieve per-cell ARA diagnostics from an <code><a href="../reference/add_amspaf.html">add_amspaf()</a></code> result</dd>
       </dl></div><div class="section level2">
       <h2 id="water-chemistry-normalisation">Water chemistry &amp; normalisation<a class="anchor" aria-label="anchor" href="#water-chemistry-normalisation"></a></h2>
 
@@ -196,6 +231,13 @@
 
         </dt>
         <dd>Fetch daily mean air temperature from SILO for an Australian location</dd>
+
+        <dt>
+
+          <code><a href="get_silo_rainfall.html">get_silo_rainfall()</a></code>
+
+        </dt>
+        <dd>Fetch daily rainfall from SILO for an Australian location</dd>
       </dl></div><div class="section level2">
       <h2 id="screening-temporal-aggregation">Screening &amp; temporal aggregation<a class="anchor" aria-label="anchor" href="#screening-temporal-aggregation"></a></h2>
 

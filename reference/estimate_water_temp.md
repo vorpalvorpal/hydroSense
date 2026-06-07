@@ -12,13 +12,17 @@ normalisation in
 ``` r
 estimate_water_temp(
   air_temp_df,
-  water_temp_obs,
+  water_temp_obs = NULL,
   target_dates = NULL,
   lag_days = 0L,
   site_id = NA_character_,
   seasonal = c("auto", "off", "on"),
   seasonal_min_n = 8L,
-  seasonal_min_quarters = 3L
+  seasonal_min_quarters = 3L,
+  fallback = NULL,
+  select = "auto",
+  auto_min_n = 20L,
+  water_body_type = NULL
 )
 ```
 
@@ -40,10 +44,9 @@ estimate_water_temp(
   - `datetime` (Date or POSIXct)
 
   - `water_temp_C` (numeric) — observed water temperature in Celsius At
-    least 10 paired observations are recommended. Cannot be `NULL` — a
-    regression requires training data. If you have no water temperature
-    observations at all, collect a season of spot measurements alongside
-    air temperatures before proceeding.
+    least 10 paired observations are recommended; fewer than 5 triggers
+    an error unless `fallback` is also supplied. `NULL` is accepted when
+    `fallback` is provided.
 
 - target_dates:
 
@@ -85,6 +88,51 @@ estimate_water_temp(
   (default 3). Calibration data confined to one or two seasons cannot
   anchor an annual cycle and would extrapolate badly.
 
+- fallback:
+
+  Air-to-water relationship used when there are too few paired
+  observations to fit a regression (fewer than 5 rows in
+  `water_temp_obs`, or `water_temp_obs = NULL`). Accepted forms:
+
+  - `"identity"` — `water = air` (simplest default for small streams).
+
+  - `c(intercept, slope)` — `water = intercept + slope * air`.
+
+  - A function `function(air) ...` — arbitrary transformation.
+
+  `NULL` (default) preserves the existing behaviour: fewer than 5 pairs
+  is a hard error.
+
+- select:
+
+  Antecedence window for the air-temperature regressor, in days. The
+  regressor is the trailing `select`-day mean of air temperature.
+
+  - `"auto"` (default) — select the window by leave-one-out
+    cross-validation (PRESS statistic, exact for OLS) with the **1-SE
+    rule**: the shortest window whose CV RMSE is within one SE of the
+    best is chosen, to avoid over-fitting to noise. Requires at least
+    `auto_min_n` pairs; falls back to 1 (or to the `water_body_type`
+    default) when pairs are insufficient.
+
+  - A positive integer — use that fixed window (1 = daily air temp,
+    equivalent to the original behaviour).
+
+- auto_min_n:
+
+  Integer. Minimum number of paired observations required before the
+  `select = "auto"` window search is attempted (default 20). Below this
+  threshold the window falls back to 1 (or `water_body_type`).
+
+- water_body_type:
+
+  Character. Physical type of the water body, used as the fallback
+  window when `select = "auto"` but `n_pairs < auto_min_n`. One of
+  `"stream_small"` (1 d), `"stream_large"` (5 d), `"estuary"` (7 d),
+  `"pond"` (10 d), `"lake"` (30 d), `"reservoir"` (60 d),
+  `"groundwater"` (300 d). `NULL` (default) falls back to window = 1.
+  Ignored when the CV search runs.
+
 ## Value
 
 A tibble suitable for binding onto a chemistry data frame, with columns:
@@ -102,14 +150,22 @@ A tibble suitable for binding onto a chemistry data frame, with columns:
 - `sample_id` — `NA_character_` (set by caller if needed) Attributes
   attached for inspection:
 
-- `attr(result, "lm_fit")` — the selected fitted `lm` object.
+- `attr(result, "lm_fit")` — the selected fitted `lm` object (`NULL` for
+  fallback).
 
-- `attr(result, "model")` — label of the selected model.
+- `attr(result, "model")` — label of the selected model (`"fallback"`
+  when no pairs were available).
 
 - `attr(result, "seasonal_used")` — `TRUE` if the seasonal model won.
 
 - `attr(result, "model_comparison")` — data frame of AICc / R² per
   candidate model and which was selected.
+
+- `attr(result, "window_selected")` — chosen antecedence window in days
+  (`NA` for fallback path).
+
+- `attr(result, "window_comparison")` — data frame of LOO-CV RMSE per
+  candidate window (`NULL` when window was fixed or search was skipped).
 
 ## Air temperature variable
 
@@ -131,22 +187,27 @@ not provided: you must supply site-appropriate temperature estimates.
 
 ## Model selection
 
-Water temperature lags air temperature seasonally (thermal hysteresis):
-at the same air temperature, water tends to be cooler in spring and
-warmer in autumn. A same-day air-only regression averages through that
-loop. Adding a **first-harmonic day-of-year term** —
-`sin(2*pi*doy/365.25)` and `cos(2*pi*doy/365.25)` — lets the regression
-represent it. Day-of-year is cyclic, so it must enter as these
-harmonics, not as a raw linear term.
+**Window selection** (antecedence timescale): water bodies with more
+thermal mass integrate air temperature over longer periods. The function
+searches log-spaced trailing windows from 1 to 300 days, fitting a
+simple OLS for each, and selects by leave-one-out CV RMSE (PRESS
+statistic — closed form, no refitting loop). The **1-SE rule** then
+chooses the shortest window within one standard error of the best,
+avoiding spurious preference for a long window that barely beats shorter
+alternatives. All window candidates have the same number of parameters,
+so AICc cannot distinguish them; CV is required.
 
-Under `seasonal = "auto"` both candidate models are fitted and compared
-by **AICc** (Akaike Information Criterion with the small-sample
-correction); the lower-AICc model is used. AICc — not in-sample R² or
-RMSE — is the selection rule, because a larger model's in-sample fit can
-only improve and would always be chosen even when it overfits. The
-seasonal model is only eligible when there are at least `seasonal_min_n`
-observations spanning at least `seasonal_min_quarters` quarters;
-otherwise the air-only model is used.
+**Seasonal term** (thermal hysteresis): water temperature lags air
+temperature seasonally — at the same air temperature, water tends to be
+cooler in spring and warmer in autumn. Adding a **first-harmonic
+day-of-year term** — `sin(2*pi*doy/365.25)` and `cos(2*pi*doy/365.25)` —
+lets the regression represent it. Under `seasonal = "auto"` both the
+window-regressor- only and window-regressor + harmonics models are
+compared by **AICc**; the lower-AICc model is used. AICc is appropriate
+here because the two candidates differ in complexity (2 vs 4
+parameters). The seasonal model is only eligible when there are at least
+`seasonal_min_n` observations spanning at least `seasonal_min_quarters`
+quarters.
 
 ## See also
 
@@ -171,6 +232,7 @@ wt_obs$water_temp_C <-
   air$air_temp_mean_C[match(wt_obs$datetime, air$datetime)] * 0.85 + 2 +
   rnorm(80, 0, 1)
 wt <- estimate_water_temp(air, wt_obs)
+#> ℹ Selected antecedence window: 1 d (LOO-CV RMSE = 1.09 °C, n = 80).
 #> ℹ Selected air-water model: air + season (day-of-year harmonic). R² = 0.976,
 #>   RMSE = 1.01 °C, AICc = 239.4 (n = 80).
 #>   AICc comparison (lower preferred): air only = 243.7, air + season = 239.4.

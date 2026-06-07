@@ -1,8 +1,14 @@
 # Fit the Bayesian multivariate imputation model(s)
 
-Fits one or two `brms` multivariate GAMs — one for metals and one for
-organics — using a PCA-compressed water-quality (WQ) block as additional
-environmental predictors. The returned model object is passed to
+Fits a `brms` multivariate GAM for each **imputation group** (see
+[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)),
+using a PCA-compressed water-quality (WQ) block as additional
+environmental predictors. The engine itself is domain-agnostic: the
+leachate-specific groups (a `metals` group and a catch-all `organics`
+group) are supplied by the default `groups = leachate_impute_groups()`
+and can be swapped for any other chemistry by passing your own list of
+[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)
+objects. The returned model object is passed to
 [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
 for prediction on new data.
 
@@ -13,8 +19,9 @@ fit_imputation_model(
   df,
   pca_vars = NULL,
   required_vars = c("pH", "EC"),
-  metal_analytes = NULL,
-  doc_like_analytes = NULL,
+  groups = NULL,
+  exclude = NULL,
+  no_log_vars = NULL,
   min_detect_freq = 0.05,
   min_target_detect_freq = 0.05,
   min_samples = 10L,
@@ -52,14 +59,28 @@ fit_imputation_model(
   in training and prediction. Default `c("pH", "EC")`. Samples missing
   any of these are dropped entirely.
 
-- metal_analytes:
+- groups:
 
-  Analyte names classified as metals. Default `.METAL_ANALYTES`.
+  A list of
+  [`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)
+  objects describing which analytes to impute and how each group is
+  hurdled. Default `NULL` uses
+  [`leachate_impute_groups()`](https://vorpalvorpal.github.io/leachatetools/reference/leachate_impute_groups.md)
+  (a `metals` group plus a catch-all `organics` group). Supply your own
+  list to impute a different chemistry.
 
-- doc_like_analytes:
+- exclude:
 
-  Analyte names used for the organics hurdle check (the "organic carbon
-  present" requirement). Default `.DOC_LIKE_ANALYTES`.
+  Analyte names that must never be modelled as response variables in any
+  group (e.g. counts, qualitative descriptors). Default `NULL` uses
+  [.IMPUTE_EXCLUDED](https://vorpalvorpal.github.io/leachatetools/reference/dot-IMPUTE_EXCLUDED.md).
+
+- no_log_vars:
+
+  Analyte names that must **not** be log-transformed before the
+  chemistry PCA (interval-scale or already-logarithmic variables such as
+  pH and temperature). Default `NULL` uses
+  [.PCA_NO_LOG_VARS](https://vorpalvorpal.github.io/leachatetools/reference/dot-PCA_NO_LOG_VARS.md).
 
 - min_detect_freq:
 
@@ -103,7 +124,11 @@ fit_imputation_model(
       with BDL/missing treated as imputable (`mi()`); the imputed BDL
       cells are capped at the detection limit post-hoc by
       [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
-      (brms cannot combine `rescor` with `cens()`).
+      (brms cannot combine `rescor` with `cens()`). Most accurate
+      recovery, but the `mi()` + correlation geometry is funnel-prone,
+      so `adapt_delta = 0.95` and an `lkj(2)` prior on the residual
+      correlation are set by default to control divergences (override
+      via `control` / `prior` in `...`).
 
   `"cens"`
 
@@ -113,10 +138,13 @@ fit_imputation_model(
 
   `"cens_factor"`
 
-  :   As `"cens"` plus a shared per-sample latent factor
-      (`(1 | sample_id)` correlated across analytes), which
-      re-introduces cross-analyte coupling while keeping proper
-      censoring.
+  :   Proper left-censoring **with** cross-analyte coupling. Fitted as a
+      single long-format model with a shared per-sample latent factor
+      `(1 | sample_id)` common to all analytes, so an observed metal
+      informs the unobserved/BDL ones at that sample. The factor is
+      well-identified (each sample contributes several analyte
+      observations); `adapt_delta = 0.95` is set by default to clear the
+      factor's mild funnel (override via `control` in `...`).
 
   See
   [`vignette("imputation")`](https://vorpalvorpal.github.io/leachatetools/articles/imputation.md)
@@ -141,13 +169,19 @@ fit_imputation_model(
 
 A named list of class `"imputation_model"`:
 
-- `$pca`: PCA fit + metadata (loadings, training medians, n_pcs, …)
+- `$pca`: PCA fit + metadata (loadings, training medians, n_pcs,
+  `no_log_vars`, …)
 
-- `$metals`: list with `$fit` (brmsfit), `$analytes`, `$safe_names`
+- `$groups`: a named list (one entry per fitted group, named by the
+  group's `name`); each entry has `$fit` (brmsfit), `$analytes`,
+  `$safe_names`, `$name`, `$hurdle`. Empty if no group had any
+  modellable analytes.
 
-- `$organics`: same structure, or `NULL` if no organics pass prescreen
+- `$group_specs`: the input list of
+  [`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)
+  objects
 
-- `$required_vars`, `$pca_vars`, `$hurdle_metals`, `$hurdle_organics`
+- `$required_vars`, `$pca_vars`, `$exclude`, `$impute_method`
 
 - `$fit_date`, `$n_samples`: metadata If `save_dir` is supplied, the
   path to the saved file is returned as `attr(result, "save_path")`.
@@ -156,15 +190,16 @@ A named list of class `"imputation_model"`:
 
 **Model structure**
 
-For each analyte group (metals / organics), the mean structure is:
+For each group, the mean structure is:
 
     s(PC1) + s(PC2) + ... + s(PCk)
 
 where `PC*` are the leading principal components of the unified
-chemistry PCA (see *Chemistry PCA* below). All target analytes (metals
-or organics) are modelled jointly with `rescor = TRUE`, so observed
-co-analytes at a given sample condition the posterior of the missing
-ones through the residual correlation matrix.
+chemistry PCA (see *Chemistry PCA* below). A group's target analytes are
+modelled jointly with `rescor = TRUE`, so observed analytes at a given
+sample condition the posterior of the missing ones through the residual
+correlation matrix. Separate groups are fitted as separate models and do
+not share residual correlation.
 
 **Why `rescor = TRUE`** — the PCA captures the *instantaneous* chemical
 covariance structure (what is measured together at a single moment), but
@@ -216,11 +251,12 @@ of two PCs is always used.
 **Hurdles (applied at prediction time by
 [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md))**
 
-- *Metals*: a sample is only imputed if at least one metal analyte is
-  present (detected or BDL) in `df` for that sample.
-
-- *Organics*: a sample is only imputed if at least one of DOC, TOC, BOD,
-  COD or cBOD is present.
+Each group may carry a *presence hurdle* (see
+[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)):
+a sample is only imputed for that group if it carries at least one of
+the hurdle analytes (detected or BDL). Under the leachate preset the
+metals group is hurdled on metal presence and the organics group on
+DOC-like presence.
 
 **BDL required variables**
 
@@ -231,7 +267,9 @@ retained.
 
 ## See also
 
-[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
+[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md),
+[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md),
+[`leachate_impute_groups()`](https://vorpalvorpal.github.io/leachatetools/reference/leachate_impute_groups.md)
 
 ## Examples
 
@@ -240,5 +278,15 @@ if (FALSE) { # \dontrun{
 # Requires a Stan toolchain (brms). Fit once, then reuse for imputation.
 model <- fit_imputation_model(monitoring_long)
 draws <- impute_chemistry(monitoring_long, model, return = "draws")
+
+# A different domain: two custom groups instead of the leachate preset.
+model2 <- fit_imputation_model(
+  monitoring_long,
+  groups = list(
+    impute_group("trace_metals", targets = c("As", "Cd", "Pb"),
+                 hurdle = c("As", "Cd", "Pb")),
+    impute_group("nutrients", targets = NULL, hurdle = c("NO3-N", "P-total"))
+  )
+)
 } # }
 ```

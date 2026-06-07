@@ -67,7 +67,7 @@
 <p>The package has three pillars:</p>
 <ul>
 <li>
-<strong>Chemistry imputation.</strong> A Bayesian multivariate model (<code><a href="reference/fit_imputation_model.html">fit_imputation_model()</a></code> / <code><a href="reference/impute_chemistry.html">impute_chemistry()</a></code>) imputes below-detection and missing analyte concentrations while preserving cross-analyte correlation structure, and can return full posterior draws.</li>
+<strong>Chemistry imputation.</strong> A domain-agnostic Bayesian multivariate model (<code><a href="reference/fit_imputation_model.html">fit_imputation_model()</a></code> / <code><a href="reference/impute_chemistry.html">impute_chemistry()</a></code>) imputes below-detection and missing analyte concentrations while preserving cross-analyte correlation structure, and can return full posterior draws. Analyte groups are configured with <code><a href="reference/impute_group.html">impute_group()</a></code>; <code><a href="reference/leachate_impute_groups.html">leachate_impute_groups()</a></code> is the bundled leachate preset.</li>
 <li>
 <strong>Leachate detection (LMF).</strong> End-member mixing analysis (<code><a href="reference/add_lmf.html">add_lmf()</a></code>) estimates the <em>leachate-mixing fraction</em> of each sample from its major-ion signature, distinguishing leachate influence from natural variation.</li>
 <li>
@@ -111,9 +111,9 @@
 </h2>
 <ul>
 <li>
-<a href="https://vorpalvorpal.github.io/leachatetools/articles/leachate-mixing-fraction.html">Leachate Mixing Fraction</a> - What fraction of this sample’s chemistry can be explained as a mixture of local reference water and landfill leachate?</li>
+<a href="https://vorpalvorpal.github.io/leachatetools/articles/leachate-mixing-fraction.html">Leachate Mixing Fraction</a> — what fraction of a sample’s chemistry can be explained as a mixture of local reference water and landfill leachate.</li>
 <li>
-<a href="https://vorpalvorpal.github.io/leachatetools/articles/imputation.html">Imputation</a> - How missing and below detection values are imputed.</li>
+<a href="https://vorpalvorpal.github.io/leachatetools/articles/imputation.html">Imputation</a> — how missing and below-detection values are imputed.</li>
 <li>
 <a href="https://vorpalvorpal.github.io/leachatetools/articles/normalisation.html">Analyte normalisation</a> — how bioavailability and physicochemical corrections bring concentrations to the SSD index condition.</li>
 <li>
@@ -165,6 +165,7 @@
 <li><a href="https://lifecycle.r-lib.org/articles/stages.html#experimental" class="external-link"><img src="https://img.shields.io/badge/lifecycle-experimental-orange.svg" alt="Lifecycle: experimental"></a></li>
 <li><a href="https://github.com/vorpalvorpal/leachatetools/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/vorpalvorpal/leachatetools/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
 <li><a href="https://github.com/vorpalvorpal/leachatetools/actions/workflows/pkgdown.yaml" class="external-link"><img src="https://github.com/vorpalvorpal/leachatetools/actions/workflows/pkgdown.yaml/badge.svg" alt="pkgdown"></a></li>
+<li><a href="https://github.com/vorpalvorpal/leachatetools/actions/workflows/brms-smoke.yaml" class="external-link"><img src="https://github.com/vorpalvorpal/leachatetools/actions/workflows/brms-smoke.yaml/badge.svg" alt="brms-smoke"></a></li>
 <li><a href="https://opensource.org/licenses/MIT" class="external-link"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a></li>
 </ul>
 </div>

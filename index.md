@@ -8,13 +8,17 @@ conditions.
 
 The package has three pillars:
 
-- **Chemistry imputation.** A Bayesian multivariate model
+- **Chemistry imputation.** A domain-agnostic Bayesian multivariate
+  model
   ([`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
   /
   [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md))
   imputes below-detection and missing analyte concentrations while
   preserving cross-analyte correlation structure, and can return full
-  posterior draws.
+  posterior draws. Analyte groups are configured with
+  [`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md);
+  [`leachate_impute_groups()`](https://vorpalvorpal.github.io/leachatetools/reference/leachate_impute_groups.md)
+  is the bundled leachate preset.
 - **Leachate detection (LMF).** End-member mixing analysis
   ([`add_lmf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md))
   estimates the *leachate-mixing fraction* of each sample from its
@@ -82,11 +86,11 @@ ssd_hc50("Cu")
 ## Learn more
 
 - [Leachate Mixing
-  Fraction](https://vorpalvorpal.github.io/leachatetools/articles/leachate-mixing-fraction.html) -
-  What fraction of this sample’s chemistry can be explained as a mixture
-  of local reference water and landfill leachate?
-- [Imputation](https://vorpalvorpal.github.io/leachatetools/articles/imputation.html) -
-  How missing and below detection values are imputed.
+  Fraction](https://vorpalvorpal.github.io/leachatetools/articles/leachate-mixing-fraction.html)
+  — what fraction of a sample’s chemistry can be explained as a mixture
+  of local reference water and landfill leachate.
+- [Imputation](https://vorpalvorpal.github.io/leachatetools/articles/imputation.html)
+  — how missing and below-detection values are imputed.
 - [Analyte
   normalisation](https://vorpalvorpal.github.io/leachatetools/articles/normalisation.html)
   — how bioavailability and physicochemical corrections bring

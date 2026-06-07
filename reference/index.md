@@ -17,16 +17,31 @@ sample.
 
 ## Chemistry imputation
 
-Bayesian multivariate imputation of below-detection and missing analyte
-concentrations, plus deterministic co-analyte imputation.
+Domain-agnostic Bayesian multivariate imputation of below-detection and
+missing analyte concentrations, plus deterministic co-analyte
+imputation.
 
 - [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
   : Fit the Bayesian multivariate imputation model(s)
+
+- [`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)
+  : Declare an imputation group
+
+- [`leachate_impute_groups()`](https://vorpalvorpal.github.io/leachatetools/reference/leachate_impute_groups.md)
+  : Leachate imputation-group preset
+
 - [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
   : Impute missing and BDL chemistry using a fitted imputation model
+
 - [`impute_coanalytes()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_coanalytes.md)
   : Impute missing normalisation co-analytes from the fitted chemistry
   PCA
+
+- [`bdl_cap_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/bdl_cap_summary.md)
+  :
+
+  Inspect detection-limit cap activations from
+  [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
 
 ## Toxicity & single-substance PAF
 
@@ -44,13 +59,26 @@ for an individual analyte.
 ## Multi-substance PAF (AmsPAF)
 
 Concentration- and response-addition mixture PAF with Added-Risk local
-background adjustment.
+background adjustment. Includes the static and temporal
+(contemporaneous) ARA reference paths.
 
 - [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
   : Compute the Adjusted multi-substance PAF (AmsPAF) for water quality
   samples
+
 - [`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md)
   : Prepare reference chemistry for AmsPAF background subtraction
+
+- [`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md)
+  : Fit a temporal reference model for contemporaneous ARA background
+  subtraction
+
+- [`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md)
+  :
+
+  Retrieve per-cell ARA diagnostics from an
+  [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+  result
 
 ## Water chemistry & normalisation
 
@@ -66,6 +94,8 @@ concentrations to the SSD index condition.
 - [`get_silo_air_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/get_silo_air_temp.md)
   : Fetch daily mean air temperature from SILO for an Australian
   location
+- [`get_silo_rainfall()`](https://vorpalvorpal.github.io/leachatetools/reference/get_silo_rainfall.md)
+  : Fetch daily rainfall from SILO for an Australian location
 
 ## Screening & temporal aggregation
 

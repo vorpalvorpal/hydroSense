@@ -65,7 +65,12 @@ detail.</p>
 <span>  guideline_dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"leachatetools.guideline_dir"</span><span class="op">)</span>,</span>
 <span>  min_analytes <span class="op">=</span> <span class="fl">3</span>,</span>
 <span>  ref_summary <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"geom_mean"</span>, <span class="st">"median"</span>, <span class="st">"arith_mean"</span>, <span class="st">"p80"</span>, <span class="st">"p90"</span>, <span class="st">"p95"</span><span class="op">)</span>,</span>
-<span>  require_temperature <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  conc_units <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  require_temperature <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  tau <span class="op">=</span> <span class="fl">90</span>,</span>
+<span>  tau_units <span class="op">=</span> <span class="st">"day"</span>,</span>
+<span>  window <span class="op">=</span> <span class="fl">365</span>,</span>
+<span>  window_units <span class="op">=</span> <span class="st">"day"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -75,20 +80,25 @@ detail.</p>
 
 <dl><dt id="arg-df">df<a class="anchor" aria-label="anchor" href="#arg-df"></a></dt>
 <dd><p>Long-format monitoring dataframe. Required columns:
-<code>sample_id</code>, <code>site_id</code>, <code>analyte</code>, <code>value</code> (concentrations in
-µg/L). Optional but recommended: <code>datetime</code> (propagated to AmsPAF
-rows if present), <code>detected</code> (assumed <code>TRUE</code> if absent), <code>imputed</code>
-(logical; if present, <code>n_analytes_imputed</code> is populated in output).
-Driver analytes needed for chemistry normalisation (e.g. pH, DOC) should
-be present as rows in <code>df</code>.</p></dd>
+<code>sample_id</code>, <code>site_id</code>, <code>analyte</code>, <code>value</code>. Toxicant concentrations must
+ultimately be in µg/L for SSD lookup; supply them either via a
+<code>units.analyte</code> column (one unit string per row, e.g. <code>"mg/L"</code>) or via the
+<code>conc_units</code> argument (applied uniformly to all SSD-eligible rows). Optional
+but recommended: <code>datetime</code> (propagated to AmsPAF rows if present),
+<code>detected</code> (assumed <code>TRUE</code> if absent), <code>imputed</code> (logical; if present,
+<code>n_analytes_imputed</code> is populated in output). Driver analytes needed for
+chemistry normalisation (e.g. pH, DOC) should be present as rows in <code>df</code>.</p></dd>
 
 
 <dt id="arg-reference">reference<a class="anchor" aria-label="anchor" href="#arg-reference"></a></dt>
 <dd><p>Background reference chemistry for the ARA adjustment.
-Accepts three forms:</p><ul><li><p>A <code>prepared_reference</code> object from <code><a href="prepare_reference.html">prepare_reference()</a></code> —
-normalisation has already been applied; used directly.</p></li>
+Accepts four forms:</p><ul><li><p>A <code>reference_model</code> from <code><a href="fit_reference_model.html">fit_reference_model()</a></code> — contemporaneous
+(temporal) ARA; the model predicts what the reference site would show
+at each target sample's exact moment using hydrology and seasonality.</p></li>
+<li><p>A <code>prepared_reference</code> object from <code><a href="prepare_reference.html">prepare_reference()</a></code> —
+normalisation has already been applied; used directly (static ARA).</p></li>
 <li><p>A raw long-format data frame (same schema as <code>df</code>) — will be
-passed to <code><a href="prepare_reference.html">prepare_reference()</a></code> internally.</p></li>
+passed to <code><a href="prepare_reference.html">prepare_reference()</a></code> internally (static ARA).</p></li>
 <li><p><code>NULL</code> (default) — no ARA adjustment; raw concentrations assessed
 directly against SSDs.</p></li>
 </ul></dd>
@@ -127,6 +137,14 @@ to.  Other options: <code>"median"</code>, <code>"arith_mean"</code>, <code>"p80
 <code>"p95"</code>.</p></dd>
 
 
+<dt id="arg-conc-units">conc_units<a class="anchor" aria-label="anchor" href="#arg-conc-units"></a></dt>
+<dd><p>Character. Unit string (e.g. <code>"mg/L"</code>, <code>"ug/L"</code>) applied
+uniformly to all SSD-eligible rows in <code>df</code> when <code>df</code> has no
+<code>units.analyte</code> column. Ignored when <code>df</code> already carries <code>units.analyte</code>.
+Required when <code>df</code> lacks <code>units.analyte</code> and toxicant concentrations are
+not already in µg/L.</p></dd>
+
+
 <dt id="arg-require-temperature">require_temperature<a class="anchor" aria-label="anchor" href="#arg-require-temperature"></a></dt>
 <dd><p>Logical (default <code>TRUE</code>). When <code>TRUE</code>, any sample
 that reports an <code>NH3-N</code> measurement <strong>must</strong> also carry a water
@@ -136,6 +154,16 @@ silent drop of ammonia. Supply temperature via direct measurement, or
 derive it with <code><a href="estimate_water_temp.html">estimate_water_temp()</a></code> (optionally fed by
 <code><a href="get_silo_air_temp.html">get_silo_air_temp()</a></code>). Set <code>FALSE</code> only for datasets that do not assess
 ammonia.</p></dd>
+
+
+<dt id="arg-tau-tau-units">tau, tau_units<a class="anchor" aria-label="anchor" href="#arg-tau-tau-units"></a></dt>
+<dd><p>Exponential-decay half-life for chronic window
+integration when <code>reference</code> is a <code>reference_model</code>.  Default <code>90</code> days.</p></dd>
+
+
+<dt id="arg-window-window-units">window, window_units<a class="anchor" aria-label="anchor" href="#arg-window-window-units"></a></dt>
+<dd><p>Look-back window length for chronic integration.
+Default <code>365</code> days.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -149,6 +177,8 @@ ammonia.</p></dd>
 <code>analyte</code>, <code>C_adj</code>, <code>PAF</code>, <code>moa_group</code>, and <code>ref_source</code> — one of
 <code>"disabled"</code>, <code>"matched"</code>, <code>"unmatched"</code> recording how the ARA reference
 was resolved for that analyte).</p>
+<p>The result also carries an <code>"ara_summary"</code> attribute (a tibble) with
+per-(sample × analyte) ARA diagnostics.  Retrieve it with <code><a href="ara_summary.html">ara_summary()</a></code>.</p>
 <p>Tier breaks are not provided by this package — AmsPAF is a continuous
 risk metric and the threshold at which a community is "impacted"
 depends on the assessment context.  See
@@ -170,6 +200,7 @@ object.</p>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p><code><a href="ssd_paf.html">ssd_paf()</a></code>, <code><a href="ssd_hc50.html">ssd_hc50()</a></code>, <code><a href="prepare_reference.html">prepare_reference()</a></code>,
+<code><a href="fit_reference_model.html">fit_reference_model()</a></code>, <code><a href="ara_summary.html">ara_summary()</a></code>,
 <code><a href="time_weighted_aggregate.html">time_weighted_aggregate()</a></code>, <code><a href="prescreen_analytes.html">prescreen_analytes()</a></code>, <code><a href="impute_chemistry.html">impute_chemistry()</a></code></p></div>
     </div>
 

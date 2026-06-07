@@ -143,16 +143,16 @@ space weight suggests.
 For chronic assessment of pulsed exposures, Path B (mean of per-sample
 AmsPAF values) is the correct aggregation.
 
-## Choosing `tau_days`
+## Choosing `tau`
 
 [`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md)
-uses exponential-decay temporal weighting with parameter `tau_days`
-(default 90). The effective half-life is `tau_days * log(2)` ≈ 62 days
-at the default.
+uses exponential-decay temporal weighting with parameter `tau` (default
+`NULL` → 90 days; pass e.g. `tau = 90, tau_units = "d"`). The effective
+half-life is `tau * log(2)` ≈ 62 days at the default.
 
-Choose `tau_days` to match the response time of the target biology:
+Choose `tau` to match the response time of the target biology:
 
-| Target | Typical response timescale | Suggested `tau_days` |
+| Target | Typical response timescale | Suggested `tau` (days) |
 |----|----|----|
 | Periphyton / algae | days to weeks | 14–30 |
 | Macroinvertebrates (general) | weeks to months | 60–120 |
@@ -160,9 +160,129 @@ Choose `tau_days` to match the response time of the target biology:
 | Long-lived benthic communities | seasonal to multi-year | 365+ |
 
 These are starting points, not prescriptions. For a calibration exercise
-the right move is to test a range of `tau_days` values and pick the one
-that maximises explanatory power against your biological response data —
+the right move is to test a range of `tau` values and pick the one that
+maximises explanatory power against your biological response data —
 within a range that is mechanistically defensible.
+
+## Contemporaneous (temporal) ARA reference
+
+The default ARA path subtracts a *static* background — a geometric mean
+(or another summary statistic) computed once from all available
+reference observations. This is appropriate when the reference dataset
+is large, well distributed across seasons and flow regimes, and the key
+question is long-run chronic risk.
+
+However, in flashy catchments or sites with strong seasonal chemistry,
+subtracting a static mean can mismatch the target sample: if the target
+was collected during a storm flush and the reference background used is
+the dry-weather mean, the ARA will either over-correct (geogenic
+storm-flush metals exceeding the dry-weather mean are erroneously
+attributed to site impact) or under-correct, depending on the season.
+
+[`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md)
+addresses this by fitting **per-analyte seasonal + hydrological models**
+on the reference chemistry. Given a daily hydrology series (rainfall →
+API, or stage/discharge → antecedent mean), the function trains a GAM
+with a cyclic day-of-year term and two Antecedent Precipitation Index
+(API) terms with different memory lengths:
+
+    log(ref_norm) ~ s(doy, bs="cc") + s(API_short) + s(API_long)
+
+When you pass the resulting `reference_model` to
+[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md),
+the *contemporaneous* reference norm is resolved per (sample × analyte)
+via a three-tier ladder:
+
+1.  **Tier 1 — direct match.** A reference grab within
+    `±match_window_days` days of the target sample *and* within an
+    API-tolerance gate (hydrologically similar moment) is used directly.
+    The API gate prevents using a dry-weather reference observation next
+    to a storm-event target.
+
+2.  **Tier 2 — GAM prediction.** If no matched grab exists, the
+    per-analyte GAM predicts the expected reference at the target’s
+    hydrology + season. Only used when the model beats a null
+    (intercept-only) baseline on AIC; the window lengths (short and long
+    API memory) are auto-selected by AIC over a candidate grid.
+
+3.  **Tier 3 — static fallback.** If the GAM is not better than the null
+    (e.g., reference chemistry shows no seasonal or hydrological pattern
+    — common for conservative analytes), the geometric mean of all
+    reference observations is used, matching the static
+    [`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md)
+    path.
+
+**Chronic integration.** For chronic samples produced by
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md),
+the temporal path integrates at daily resolution across the `window`
+look-back period using the same exponential-decay kernel (`tau`). This
+makes the chronic reference consistent with the chronic target.
+
+**Quick start:**
+
+``` r
+
+# Fetch SILO daily rainfall automatically from lat/lon
+ref_model <- fit_reference_model(
+  reference  = reference_chemistry,   # long-format, detected = TRUE
+  latitude   = -33.87,
+  longitude  = 151.21,
+  conc_units = "ug/L"
+)
+
+# Pass to add_amspaf() in place of a static reference
+out <- add_amspaf(target_chem, reference = ref_model, conc_units = "ug/L")
+
+# Inspect per-cell ARA diagnostics (ref tier, floor events, etc.)
+ara_summary(out)
+```
+
+Supply your own gauge record when you have stage or discharge data:
+
+``` r
+
+stage_df  <- data.frame(date = ..., value = ...)   # daily stage in m
+ref_model <- fit_reference_model(
+  reference  = reference_chemistry,
+  hydro      = stage_df,
+  hydro_type = "stage",
+  conc_units = "ug/L"
+)
+```
+
+**[`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md)
+diagnostic.** Every
+[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+call (regardless of reference type) stores a per-(sample × analyte)
+diagnostic tibble as an attribute. `ara_summary(out)` returns it:
+
+| column | meaning |
+|----|----|
+| `C_norm` | Normalised target concentration |
+| `ref_norm` | Normalised reference subtracted |
+| `C_adj` | `max(C_norm − ref_norm, 0)` (the floored ARA increment) |
+| `C_excess` | Signed `C_norm − ref_norm` (negative = reference exceeded target) |
+| `floor_fired` | `TRUE` when `C_excess < 0` — reference higher than target |
+| `ref_tier` | `"matched"`, `"model"`, `"model_integrated"`, or `"static"` |
+
+The `floor_fired` rows are the most ecologically interesting: they
+indicate analytes where the reference site is *more* contaminated than
+the target. This typically happens for pH-mobile metals (Zn, Ni, Cu)
+when a low-pH headwater reference releases metals that precipitate at
+the higher-pH target — a real geogenic effect, not a data error. These
+cells are correctly zeroed in the ARA, but
+[`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md)
+surfaces them so you can document the reason.
+
+**Package invariant (shared catchment).**
+[`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md)
+assumes reference and target share the same catchment hydrology. One
+hydrology series drives the API computation for both. This is
+appropriate for the canonical leachate-assessment design (headwater
+reference, downstream target, same sub-catchment) and should be stated
+explicitly in any report.
+
+------------------------------------------------------------------------
 
 ## Reference summary statistic
 

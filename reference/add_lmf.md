@@ -14,7 +14,8 @@ add_lmf(
   reference_data = NULL,
   lmf_analyte_uuid = NA_character_,
   calibration_window_years = 5,
-  min_leachate_total_n_mgl = 20,
+  min_leachate_total_n = NULL,
+  min_leachate_total_n_units = NULL,
   rsd_default = 0.05,
   min_ref_samples = 10,
   min_leachate_samples = 10,
@@ -70,13 +71,20 @@ add_lmf(
   input data's date range and shifted backwards if future data are
   unavailable. Default `5`.
 
-- min_leachate_total_n_mgl:
+- min_leachate_total_n:
 
-  Minimum total N (mg/L, sum of NH4 + NO3 + NO2) for a leachate sample
+  Minimum total N (sum of NH4-N + NO3-N + NO2-N) for a leachate sample
   to qualify for end-member calibration. Excludes non-representative
   samples (dilution events, treatment upsets). Total N is used rather
   than NH4-N alone because aerated leachate features may have nitrified
-  NH4 to NO3. Default `20`.
+  NH4 to NO3. Numeric or `units` object; bare numeric requires
+  `min_leachate_total_n_units`. Default `NULL` → 20 mg/L.
+
+- min_leachate_total_n_units:
+
+  Character unit string for `min_leachate_total_n` when it is bare
+  numeric, e.g. `"mg/L"`. Ignored when `min_leachate_total_n` is a
+  `units` object or `NULL`.
 
 - rsd_default:
 

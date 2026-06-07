@@ -118,13 +118,20 @@ capturing it lets an <em>observed</em> metal at a sample inform the
 matrix (<code>rescor = TRUE</code>); see <em>Choosing the imputation
 method</em> for the alternatives.</p></li>
 <li><p><strong>Hurdles, so silence is not mistaken for absence.</strong>
-A sample is only imputed for a group if it carries at least one analyte
-from that group — one metal for the metals model, one of {DOC, TOC, BOD,
-COD, cBOD} for the organics model. A sample with no metals recorded is
-left alone, because a leachate metal pulse may simply not have reached
-that location yet, and inventing values there would manufacture an
-impact that the data do not support.</p></li>
+A sample is only imputed for a group if it carries at least one of that
+group’s <em>hurdle</em> analytes — one metal for the metals model, one
+of {DOC, TOC, BOD, COD, cBOD} for the organics model. A sample with no
+metals recorded is left alone, because a leachate metal pulse may simply
+not have reached that location yet, and inventing values there would
+manufacture an impact that the data do not support.</p></li>
 </ol>
+<p>The engine itself is <strong>domain-agnostic</strong>: it imputes an
+arbitrary set of analyte <em>groups</em> (each a joint model with its
+own optional presence hurdle), described with
+<code><a href="../reference/impute_group.html">impute_group()</a></code>. The metals/organics structure above is just
+the leachate preset, <code><a href="../reference/leachate_impute_groups.html">leachate_impute_groups()</a></code>, supplied as
+the default — swap in your own groups to impute a different chemistry
+(see <em>Imputing in another domain</em>).</p>
 <p>The work is split across three functions:</p>
 <table class="table">
 <colgroup>
@@ -140,17 +147,25 @@ impact that the data do not support.</p></li>
 <tbody>
 <tr class="odd">
 <td><code><a href="../reference/fit_imputation_model.html">fit_imputation_model()</a></code></td>
-<td>Fit the metals/organics model(s) once on training data</td>
+<td>Fit one model per group once on training data</td>
 <td>
 <code>brms</code> (Stan)</td>
 </tr>
 <tr class="even">
+<td>
+<code><a href="../reference/impute_group.html">impute_group()</a></code> /
+<code><a href="../reference/leachate_impute_groups.html">leachate_impute_groups()</a></code>
+</td>
+<td>Describe the groups to impute (or use the leachate preset)</td>
+<td>—</td>
+</tr>
+<tr class="odd">
 <td><code><a href="../reference/impute_chemistry.html">impute_chemistry()</a></code></td>
-<td>Fill BDL and missing metals/organics on new data</td>
+<td>Fill BDL and missing group analytes on new data</td>
 <td>
 <code>brms</code> posterior</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code><a href="../reference/impute_coanalytes.html">impute_coanalytes()</a></code></td>
 <td>Fill missing normalisation co-analytes (DOC, Ca, Mg, hardness)</td>
 <td><code><a href="https://rdrr.io/pkg/mgcv/man/gam.html" class="external-link">mgcv::gam</a></code></td>
@@ -196,12 +211,14 @@ and the sample is kept.</p>
 <div class="section level2">
 <h2 id="fitting-the-model">Fitting the model<a class="anchor" aria-label="anchor" href="#fitting-the-model"></a>
 </h2>
-<p><code><a href="../reference/fit_imputation_model.html">fit_imputation_model()</a></code> discovers the analyte groups
-automatically: anything matching the built-in metals list becomes the
-metals model, the remaining non-excluded concentration analytes become
-the organics model, and microbiological counts and qualitative
-descriptors are excluded outright. Fitting runs MCMC through Stan, so it
-takes minutes, not seconds — do it once and reuse the result.</p>
+<p><code><a href="../reference/fit_imputation_model.html">fit_imputation_model()</a></code> assigns analytes to the groups it
+was given (the leachate preset by default): the <code>metals</code>
+group claims anything in the built-in metals list, the catch-all
+<code>organics</code> group takes the remaining non-excluded
+concentration analytes, and microbiological counts and qualitative
+descriptors are excluded outright (<code>exclude =</code>). Fitting runs
+MCMC through Stan, so it takes minutes, not seconds — do it once and
+reuse the result.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">model</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fit_imputation_model.html">fit_imputation_model</a></span><span class="op">(</span></span>
 <span>  <span class="va">monitoring_long</span>,</span>
@@ -219,7 +236,7 @@ takes minutes, not seconds — do it once and reuse the result.</p>
 (default 6), with a floor of two axes. The console reports which
 variables entered the PCA, how many axes were retained, and the analytes
 in each group, so you can confirm the model saw what you expected.</p>
-<p>A metal or organic is only modelled if it is <em>detected</em> in at
+<p>A target analyte is only modelled if it is <em>detected</em> in at
 least <code>min_target_detect_freq</code> of samples (default 5%). Near-
 or all-below-detection analytes carry no signal to impute from and would
 otherwise inflate the model — on a panel with a hundred
@@ -227,12 +244,39 @@ mostly-undetected organics this filter is what keeps the fit
 tractable.</p>
 </div>
 <div class="section level2">
+<h2 id="imputing-in-another-domain">Imputing in another domain<a class="anchor" aria-label="anchor" href="#imputing-in-another-domain"></a>
+</h2>
+<p>The metals/organics split is a <em>preset</em>, not a hard-coded
+assumption. To impute a different chemistry, pass your own list of
+<code><a href="../reference/impute_group.html">impute_group()</a></code> objects. Each group is fitted as its own
+joint model (analytes in the same group borrow residual correlation from
+one another; separate groups do not), and each may carry a presence
+hurdle. A group with <code>targets = NULL</code> is the catch-all — it
+claims every remaining modellable analyte not already taken by an
+earlier group.</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">model</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fit_imputation_model.html">fit_imputation_model</a></span><span class="op">(</span></span>
+<span>  <span class="va">monitoring_long</span>,</span>
+<span>  groups <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="../reference/impute_group.html">impute_group</a></span><span class="op">(</span><span class="st">"trace_metals"</span>, targets <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"As"</span>, <span class="st">"Cd"</span>, <span class="st">"Pb"</span><span class="op">)</span>,</span>
+<span>                 hurdle <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"As"</span>, <span class="st">"Cd"</span>, <span class="st">"Pb"</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>    <span class="fu"><a href="../reference/impute_group.html">impute_group</a></span><span class="op">(</span><span class="st">"nutrients"</span>,    targets <span class="op">=</span> <span class="cn">NULL</span>,            <span class="co"># catch-all</span></span>
+<span>                 hurdle <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"NO3-N"</span>, <span class="st">"P-total"</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  exclude <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Coliforms"</span>, <span class="st">"Turbidity"</span><span class="op">)</span>   <span class="co"># never modelled</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p><code><a href="../reference/leachate_impute_groups.html">leachate_impute_groups()</a></code> returns the default preset, so
+you can inspect or extend it rather than starting from scratch.</p>
+</div>
+<div class="section level2">
 <h2 id="choosing-the-imputation-method">Choosing the imputation method<a class="anchor" aria-label="anchor" href="#choosing-the-imputation-method"></a>
 </h2>
 <p><code>fit_imputation_model(impute_method =)</code> controls how
 below-detection cells and cross-analyte coupling are handled. All three
-options share the same PCA predictors and mean structure; they differ
-only in the likelihood:</p>
+share the same PCA predictors; <code>"rescor_mi"</code> and
+<code>"cens"</code> fit a wide multivariate model, while
+<code>"cens_factor"</code> fits a single long-format model with a shared
+per-sample factor:</p>
 <table class="table">
 <colgroup>
 <col width="35%">
@@ -253,7 +297,7 @@ only in the likelihood:</p>
 </td>
 <td>
 <code>mi()</code> (imputed) + DL cap</td>
-<td>full residual correlation</td>
+<td>full residual-correlation matrix</td>
 <td>most accurate recovery; posterior <strong>draws are
 memory-heavy</strong>
 </td>
@@ -263,13 +307,13 @@ memory-heavy</strong>
 <td>
 <code>cens("left")</code> (proper censoring)</td>
 <td>none</td>
-<td>fastest; clean BDL; no borrowing across metals</td>
+<td>fastest; cleanest convergence; no borrowing across metals</td>
 </tr>
 <tr class="odd">
 <td><code>"cens_factor"</code></td>
 <td><code>cens("left")</code></td>
 <td>shared per-sample latent factor</td>
-<td>censoring <strong>and</strong> coupling; calibrated, cheap
+<td>proper censoring <strong>and</strong> coupling; calibrated, cheap
 uncertainty</td>
 </tr>
 </tbody>
@@ -278,17 +322,28 @@ uncertainty</td>
 <code>brms</code> cannot combine a full residual correlation
 (<code>rescor = TRUE</code>) with proper left-censoring, so the default
 pairs residual correlation with <code>mi()</code> imputation and a
-post-hoc cap. A preliminary hold-out benchmark on real data found
-<code>"rescor_mi"</code> recovered masked metals most accurately
-(coupling helps most when it is strongest), which is why it is the
-default. But its posterior <strong>draws</strong> are expensive — and
-can exhaust memory — whereas
-<code>"cens"</code>/<code>"cens_factor"</code> give well-calibrated
-intervals cheaply and <code>"cens_factor"</code> recovers much of the
-coupling. Prefer a cens method when you need uncertainty
-(<code>return = "draws"</code>) or hit memory limits; prefer the default
-for point estimates.</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+post-hoc cap. A hold-out benchmark on real data found
+<code>"rescor_mi"</code> recovers masked metals most accurately (the
+full residual-correlation matrix is the strongest coupling), which is
+why it is the default — but its posterior <strong>draws</strong> are
+expensive and can exhaust memory.</p>
+<p><code>"cens"</code> and <code>"cens_factor"</code> give
+well-calibrated intervals cheaply. They differ in coupling:
+<code>"cens"</code> treats the metals independently, while
+<code>"cens_factor"</code> adds a single per-sample latent factor shared
+across all analytes — fitted in long format, so the factor is
+well-identified (each sample contributes several analyte observations)
+and genuinely lets an observed metal inform the unobserved/BDL ones at
+that sample. In the B.S01 hold-out this coupling places
+<code>"cens_factor"</code> between <code>"cens"</code> and
+<code>"rescor_mi"</code> on accuracy (RMSE 0.43 vs 0.53 and 0.25) while
+converging best of the three (R̂ 1.006). Prefer a cens method when you
+need uncertainty (<code>return = "draws"</code>) or hit memory limits —
+<code>"cens_factor"</code> when you also want cross-analyte borrowing,
+<code>"cens"</code> when you want the simplest, fastest fit; prefer the
+default <code>"rescor_mi"</code> for the most accurate point
+estimates.</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Proper censoring + cross-analyte coupling, with cheap calibrated uncertainty:</span></span>
 <span><span class="va">model</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fit_imputation_model.html">fit_imputation_model</a></span><span class="op">(</span><span class="va">monitoring_long</span>, impute_method <span class="op">=</span> <span class="st">"cens_factor"</span><span class="op">)</span></span></code></pre></div>
 </div>
@@ -307,7 +362,7 @@ filled.</li>
 <code>"censored_left"</code> (was BDL), or <code>"missing"</code> (had
 no row).</li>
 </ul>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">filled</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/impute_chemistry.html">impute_chemistry</a></span><span class="op">(</span><span class="va">monitoring_long</span>, <span class="va">model</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># Inspect what was filled, and how</span></span>
@@ -328,10 +383,21 @@ both of which bound peak memory.</p>
 limit. The posterior prediction is not itself constrained below the DL,
 so <code><a href="../reference/impute_chemistry.html">impute_chemistry()</a></code> <strong>caps</strong> any imputed BDL
 cell at its original detection limit (<code>bdl_cap = TRUE</code>, the
-default) and warns, naming the affected analytes, when the cap fires —
-those samples can then be inspected rather than trusted blindly.
-Frequent cap firing signals tension between the modelled chemistry and
-the reported detection limits.</p>
+default) and warns when the cap fires, with a per-analyte breakdown (how
+many cells, and the worst exceedance ratio) so the activations are
+auditable rather than just an aggregate count. Frequent cap firing
+signals tension between the modelled chemistry and the reported
+limits.</p>
+<p>For a full per-cell audit, the result carries a
+<code>"bdl_cap_summary"</code> attribute — one row per capped
+(<code>sample_id</code>, <code>analyte</code>) cell with its detection
+limit, the uncapped estimate, and the exceedance ratio. Retrieve it with
+<code><a href="../reference/bdl_cap_summary.html">bdl_cap_summary()</a></code> on the frame as returned (plain
+attributes are dropped by most dplyr verbs, so read it before further
+wrangling):</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">filled</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/impute_chemistry.html">impute_chemistry</a></span><span class="op">(</span><span class="va">monitoring_long</span>, <span class="va">model</span><span class="op">)</span></span>
+<span><span class="fu"><a href="../reference/bdl_cap_summary.html">bdl_cap_summary</a></span><span class="op">(</span><span class="va">filled</span><span class="op">)</span>   <span class="co"># NULL (with a message) if nothing was capped</span></span></code></pre></div>
 </div>
 </div>
 <div class="section level2">
@@ -345,7 +411,7 @@ normalisation</em> article). When one of these is missing,
 log-Gaussian GAM (<code><a href="https://rdrr.io/pkg/mgcv/man/gam.html" class="external-link">mgcv::gam</a></code>) on the <em>same</em> PC scores
 the metals model used, so the co-analyte estimate is conditioned on the
 same chemical context.</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">filled</span> <span class="op">&lt;-</span> <span class="va">filled</span> <span class="op">|&gt;</span></span>
 <span>  <span class="fu"><a href="../reference/impute_coanalytes.html">impute_coanalytes</a></span><span class="op">(</span><span class="va">model</span><span class="op">)</span>        <span class="co"># fills DOC / Ca / Mg / hardness where absent</span></span></code></pre></div>
 <p>Two deliberate boundaries:</p>
@@ -363,7 +429,7 @@ normalisation, not part of the Bayesian fit.</li>
 </h2>
 <p>The imputation steps slot in before mixture toxicity and temporal
 aggregation:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">model</span>  <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fit_imputation_model.html">fit_imputation_model</a></span><span class="op">(</span><span class="va">monitoring_long</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">result</span> <span class="op">&lt;-</span> <span class="va">monitoring_long</span> <span class="op">|&gt;</span></span>
@@ -419,7 +485,7 @@ hard requirement — the LMF and AmsPAF tools install and run without it.
 To use <code><a href="../reference/fit_imputation_model.html">fit_imputation_model()</a></code> and
 <code><a href="../reference/impute_chemistry.html">impute_chemistry()</a></code>, install brms and a working Stan engine
 once:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"brms"</span><span class="op">)</span></span></code></pre></div>
 <p>If the install alone is not enough, follow the short Stan toolchain
 setup at <a href="https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started" class="external-link uri">https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started</a>.

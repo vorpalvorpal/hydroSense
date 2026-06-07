@@ -17,6 +17,7 @@ prescreen_analytes(
   potency_keep = TRUE,
   potency_frac = 1,
   group_by_feature = FALSE,
+  conc_units = NULL,
   analyte_metadata = NULL,
   return = c("vector", "table")
 )
@@ -62,6 +63,15 @@ prescreen_analytes(
   an analyte is included only if it passes in *all* features (worst-case
   feature, pooled counts). If `FALSE` (default), frequency is pooled
   across all samples.
+
+- conc_units:
+
+  Character. Unit string (e.g. `"mg/L"`, `"ug/L"`) applied to toxicant
+  concentrations in `df` when it has no `units.analyte` column. Only
+  matters when `potency_keep = TRUE`, because the potency threshold
+  comparison needs values in µg/L (matching `dgv_95pct_ug_L`). Ignored
+  when `potency_keep = FALSE` or `df` already carries a `units.analyte`
+  column.
 
 - analyte_metadata:
 

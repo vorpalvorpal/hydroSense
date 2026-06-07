@@ -49,19 +49,29 @@ The design has three ideas at its core:
     the alternatives.
 
 3.  **Hurdles, so silence is not mistaken for absence.** A sample is
-    only imputed for a group if it carries at least one analyte from
-    that group — one metal for the metals model, one of {DOC, TOC, BOD,
-    COD, cBOD} for the organics model. A sample with no metals recorded
-    is left alone, because a leachate metal pulse may simply not have
-    reached that location yet, and inventing values there would
+    only imputed for a group if it carries at least one of that group’s
+    *hurdle* analytes — one metal for the metals model, one of {DOC,
+    TOC, BOD, COD, cBOD} for the organics model. A sample with no metals
+    recorded is left alone, because a leachate metal pulse may simply
+    not have reached that location yet, and inventing values there would
     manufacture an impact that the data do not support.
+
+The engine itself is **domain-agnostic**: it imputes an arbitrary set of
+analyte *groups* (each a joint model with its own optional presence
+hurdle), described with
+[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md).
+The metals/organics structure above is just the leachate preset,
+[`leachate_impute_groups()`](https://vorpalvorpal.github.io/leachatetools/reference/leachate_impute_groups.md),
+supplied as the default — swap in your own groups to impute a different
+chemistry (see *Imputing in another domain*).
 
 The work is split across three functions:
 
 | Function | Role | Engine |
 |----|----|----|
-| [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md) | Fit the metals/organics model(s) once on training data | `brms` (Stan) |
-| [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md) | Fill BDL and missing metals/organics on new data | `brms` posterior |
+| [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md) | Fit one model per group once on training data | `brms` (Stan) |
+| [`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md) / [`leachate_impute_groups()`](https://vorpalvorpal.github.io/leachatetools/reference/leachate_impute_groups.md) | Describe the groups to impute (or use the leachate preset) | — |
+| [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md) | Fill BDL and missing group analytes on new data | `brms` posterior |
 | [`impute_coanalytes()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_coanalytes.md) | Fill missing normalisation co-analytes (DOC, Ca, Mg, hardness) | [`mgcv::gam`](https://rdrr.io/pkg/mgcv/man/gam.html) |
 
 ## The data contract
@@ -102,12 +112,13 @@ conservative stand-in and the sample is kept.
 ## Fitting the model
 
 [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
-discovers the analyte groups automatically: anything matching the
-built-in metals list becomes the metals model, the remaining
-non-excluded concentration analytes become the organics model, and
-microbiological counts and qualitative descriptors are excluded
-outright. Fitting runs MCMC through Stan, so it takes minutes, not
-seconds — do it once and reuse the result.
+assigns analytes to the groups it was given (the leachate preset by
+default): the `metals` group claims anything in the built-in metals
+list, the catch-all `organics` group takes the remaining non-excluded
+concentration analytes, and microbiological counts and qualitative
+descriptors are excluded outright (`exclude =`). Fitting runs MCMC
+through Stan, so it takes minutes, not seconds — do it once and reuse
+the result.
 
 ``` r
 
@@ -130,36 +141,77 @@ floor of two axes. The console reports which variables entered the PCA,
 how many axes were retained, and the analytes in each group, so you can
 confirm the model saw what you expected.
 
-A metal or organic is only modelled if it is *detected* in at least
+A target analyte is only modelled if it is *detected* in at least
 `min_target_detect_freq` of samples (default 5%). Near- or
 all-below-detection analytes carry no signal to impute from and would
 otherwise inflate the model — on a panel with a hundred
 mostly-undetected organics this filter is what keeps the fit tractable.
 
+## Imputing in another domain
+
+The metals/organics split is a *preset*, not a hard-coded assumption. To
+impute a different chemistry, pass your own list of
+[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)
+objects. Each group is fitted as its own joint model (analytes in the
+same group borrow residual correlation from one another; separate groups
+do not), and each may carry a presence hurdle. A group with
+`targets = NULL` is the catch-all — it claims every remaining modellable
+analyte not already taken by an earlier group.
+
+``` r
+
+model <- fit_imputation_model(
+  monitoring_long,
+  groups = list(
+    impute_group("trace_metals", targets = c("As", "Cd", "Pb"),
+                 hurdle = c("As", "Cd", "Pb")),
+    impute_group("nutrients",    targets = NULL,            # catch-all
+                 hurdle = c("NO3-N", "P-total"))
+  ),
+  exclude = c("Coliforms", "Turbidity")   # never modelled
+)
+```
+
+[`leachate_impute_groups()`](https://vorpalvorpal.github.io/leachatetools/reference/leachate_impute_groups.md)
+returns the default preset, so you can inspect or extend it rather than
+starting from scratch.
+
 ## Choosing the imputation method
 
 `fit_imputation_model(impute_method =)` controls how below-detection
-cells and cross-analyte coupling are handled. All three options share
-the same PCA predictors and mean structure; they differ only in the
-likelihood:
+cells and cross-analyte coupling are handled. All three share the same
+PCA predictors; `"rescor_mi"` and `"cens"` fit a wide multivariate
+model, while `"cens_factor"` fits a single long-format model with a
+shared per-sample factor:
 
 | `impute_method` | BDL handling | Coupling | Notes |
 |----|----|----|----|
-| `"rescor_mi"` *(default)* | `mi()` (imputed) + DL cap | full residual correlation | most accurate recovery; posterior **draws are memory-heavy** |
-| `"cens"` | `cens("left")` (proper censoring) | none | fastest; clean BDL; no borrowing across metals |
-| `"cens_factor"` | `cens("left")` | shared per-sample latent factor | censoring **and** coupling; calibrated, cheap uncertainty |
+| `"rescor_mi"` *(default)* | `mi()` (imputed) + DL cap | full residual-correlation matrix | most accurate recovery; posterior **draws are memory-heavy** |
+| `"cens"` | `cens("left")` (proper censoring) | none | fastest; cleanest convergence; no borrowing across metals |
+| `"cens_factor"` | `cens("left")` | shared per-sample latent factor | proper censoring **and** coupling; calibrated, cheap uncertainty |
 
 The trade-off is accuracy versus the cost of uncertainty. `brms` cannot
 combine a full residual correlation (`rescor = TRUE`) with proper
 left-censoring, so the default pairs residual correlation with `mi()`
-imputation and a post-hoc cap. A preliminary hold-out benchmark on real
-data found `"rescor_mi"` recovered masked metals most accurately
-(coupling helps most when it is strongest), which is why it is the
-default. But its posterior **draws** are expensive — and can exhaust
-memory — whereas `"cens"`/`"cens_factor"` give well-calibrated intervals
-cheaply and `"cens_factor"` recovers much of the coupling. Prefer a cens
-method when you need uncertainty (`return = "draws"`) or hit memory
-limits; prefer the default for point estimates.
+imputation and a post-hoc cap. A hold-out benchmark on real data found
+`"rescor_mi"` recovers masked metals most accurately (the full
+residual-correlation matrix is the strongest coupling), which is why it
+is the default — but its posterior **draws** are expensive and can
+exhaust memory.
+
+`"cens"` and `"cens_factor"` give well-calibrated intervals cheaply.
+They differ in coupling: `"cens"` treats the metals independently, while
+`"cens_factor"` adds a single per-sample latent factor shared across all
+analytes — fitted in long format, so the factor is well-identified (each
+sample contributes several analyte observations) and genuinely lets an
+observed metal inform the unobserved/BDL ones at that sample. In the
+B.S01 hold-out this coupling places `"cens_factor"` between `"cens"` and
+`"rescor_mi"` on accuracy (RMSE 0.43 vs 0.53 and 0.25) while converging
+best of the three (R̂ 1.006). Prefer a cens method when you need
+uncertainty (`return = "draws"`) or hit memory limits — `"cens_factor"`
+when you also want cross-analyte borrowing, `"cens"` when you want the
+simplest, fastest fit; prefer the default `"rescor_mi"` for the most
+accurate point estimates.
 
 ``` r
 
@@ -202,10 +254,25 @@ An imputed below-detection value must never exceed its detection limit.
 The posterior prediction is not itself constrained below the DL, so
 [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
 **caps** any imputed BDL cell at its original detection limit
-(`bdl_cap = TRUE`, the default) and warns, naming the affected analytes,
-when the cap fires — those samples can then be inspected rather than
-trusted blindly. Frequent cap firing signals tension between the
-modelled chemistry and the reported detection limits.
+(`bdl_cap = TRUE`, the default) and warns when the cap fires, with a
+per-analyte breakdown (how many cells, and the worst exceedance ratio)
+so the activations are auditable rather than just an aggregate count.
+Frequent cap firing signals tension between the modelled chemistry and
+the reported limits.
+
+For a full per-cell audit, the result carries a `"bdl_cap_summary"`
+attribute — one row per capped (`sample_id`, `analyte`) cell with its
+detection limit, the uncapped estimate, and the exceedance ratio.
+Retrieve it with
+[`bdl_cap_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/bdl_cap_summary.md)
+on the frame as returned (plain attributes are dropped by most dplyr
+verbs, so read it before further wrangling):
+
+``` r
+
+filled <- impute_chemistry(monitoring_long, model)
+bdl_cap_summary(filled)   # NULL (with a message) if nothing was capped
+```
 
 ## Imputing normalisation co-analytes
 

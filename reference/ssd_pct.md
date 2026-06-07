@@ -7,9 +7,11 @@ Quick point-estimate only (no CI, no bootstrapping).
 ``` r
 ssd_pct(
   analyte,
-  conc_ug_L,
+  conc,
+  conc_units = NULL,
   method = "multi",
-  hardness_mg_L = NULL,
+  hardness = NULL,
+  hardness_units = NULL,
   guideline_dir = getOption("leachatetools.guideline_dir")
 )
 ```
@@ -19,13 +21,18 @@ ssd_pct(
 - analyte:
 
   Character. Analyte name (key in .SSD_NAME_MAP). Supply "NO3-N"
-  together with `hardness_mg_L` for automatic class selection, or supply
-  the explicit class name ("NO3-N_soft" etc.).
+  together with `hardness` for automatic class selection, or supply the
+  explicit class name ("NO3-N_soft" etc.).
 
-- conc_ug_L:
+- conc:
 
-  Numeric. Concentration in µg/L (after any external physicochemical
-  corrections).
+  Numeric or `units` object. Concentration to evaluate. Bare numeric
+  requires `conc_units`.
+
+- conc_units:
+
+  Character. Unit of `conc` when it is bare numeric, e.g. `"ug/L"` or
+  `"mg/L"`. Ignored when `conc` is a `units` object.
 
 - method:
 
@@ -33,10 +40,16 @@ ssd_pct(
   model-averages; "anzecc" uses the per-analyte distribution that best
   matches the original ANZG derivation.
 
-- hardness_mg_L:
+- hardness:
 
-  Numeric or NULL. Required for NO3-N analyte. Hardness in mg/L CaCO3 at
-  the time of measurement.
+  Numeric or `units` object, or `NULL`. Required for the NO3-N analyte.
+  Hardness at the time of measurement. Bare numeric requires
+  `hardness_units`.
+
+- hardness_units:
+
+  Character. Unit of `hardness` when it is bare numeric, e.g. `"mg/L"`.
+  Ignored when `hardness` is a `units` object or `NULL`.
 
 - guideline_dir:
 
@@ -50,6 +63,6 @@ Numeric — % species affected, or NA.
 ## Examples
 
 ``` r
-ssd_pct("Zn", conc_ug_L = 30)
+ssd_pct("Zn", conc = 30, conc_units = "ug/L")
 #> [1] 42.01064
 ```

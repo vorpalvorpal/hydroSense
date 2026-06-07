@@ -64,7 +64,8 @@ compared against a DGV or passed to <code><a href="ssd_paf.html">ssd_paf()</a></
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">correct_ammonia_ph_temp</span><span class="op">(</span></span>
-<span>  <span class="va">conc_ug_L</span>,</span>
+<span>  <span class="va">conc</span>,</span>
+<span>  conc_units <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">pH</span>,</span>
 <span>  <span class="va">temperature_C</span>,</span>
 <span>  ref_pH <span class="op">=</span> <span class="fl">7</span>,</span>
@@ -76,16 +77,22 @@ compared against a DGV or passed to <code><a href="ssd_paf.html">ssd_paf()</a></
     <h2 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h2>
 
 
-<dl><dt id="arg-conc-ug-l">conc_ug_L<a class="anchor" aria-label="anchor" href="#arg-conc-ug-l"></a></dt>
-<dd><p>Measured total ammonia-N (µg/L). Numeric vector.</p></dd>
+<dl><dt id="arg-conc">conc<a class="anchor" aria-label="anchor" href="#arg-conc"></a></dt>
+<dd><p>Measured total ammonia-N. Numeric vector or <code>units</code> object.
+Bare numeric requires <code>conc_units</code>.</p></dd>
+
+
+<dt id="arg-conc-units">conc_units<a class="anchor" aria-label="anchor" href="#arg-conc-units"></a></dt>
+<dd><p>Character. Unit of <code>conc</code> when it is bare numeric,
+e.g. <code>"ug/L"</code> or <code>"mg/L"</code>. Ignored when <code>conc</code> is a <code>units</code> object.</p></dd>
 
 
 <dt id="arg-ph">pH<a class="anchor" aria-label="anchor" href="#arg-ph"></a></dt>
-<dd><p>Sample pH. Recycled against <code>conc_ug_L</code>.</p></dd>
+<dd><p>Sample pH. Recycled against <code>conc</code>.</p></dd>
 
 
 <dt id="arg-temperature-c">temperature_C<a class="anchor" aria-label="anchor" href="#arg-temperature-c"></a></dt>
-<dd><p>Sample temperature (°C). Recycled against <code>conc_ug_L</code>.</p></dd>
+<dd><p>Sample temperature (°C). Recycled against <code>conc</code>.</p></dd>
 
 
 <dt id="arg-ref-ph-ref-temperature-c">ref_pH, ref_temperature_C<a class="anchor" aria-label="anchor" href="#arg-ref-ph-ref-temperature-c"></a></dt>
@@ -97,7 +104,8 @@ different reference.</p></dd>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>Total ammonia-N normalised to the reference condition (µg/L), the
-length of the recycled inputs. Pass this to <code>ssd_paf("NH3-N", ...)</code>.</p>
+length of the recycled inputs. Pass this to
+<code>ssd_paf("NH3-N", conc = ., conc_units = "ug/L")</code>.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
@@ -129,7 +137,7 @@ Fisheries Research Board of Canada 32(12):2379–2383.</p>
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># 900 µg/L total ammonia-N measured at pH 8.5, 20 °C is far more toxic than</span></span></span>
 <span class="r-in"><span><span class="co"># the same number at the pH 7.0 reference, so it normalises sharply upward:</span></span></span>
-<span class="r-in"><span><span class="fu">correct_ammonia_ph_temp</span><span class="op">(</span><span class="fl">900</span>, pH <span class="op">=</span> <span class="fl">8.5</span>, temperature_C <span class="op">=</span> <span class="fl">20</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu">correct_ammonia_ph_temp</span><span class="op">(</span><span class="fl">900</span>, conc_units <span class="op">=</span> <span class="st">"ug/L"</span>, pH <span class="op">=</span> <span class="fl">8.5</span>, temperature_C <span class="op">=</span> <span class="fl">20</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 25394.81</span>
 </code></pre></div>
     </div>

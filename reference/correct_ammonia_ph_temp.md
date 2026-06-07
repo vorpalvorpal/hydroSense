@@ -14,7 +14,8 @@ as `"NH3-N"`.
 
 ``` r
 correct_ammonia_ph_temp(
-  conc_ug_L,
+  conc,
+  conc_units = NULL,
   pH,
   temperature_C,
   ref_pH = 7,
@@ -24,17 +25,23 @@ correct_ammonia_ph_temp(
 
 ## Arguments
 
-- conc_ug_L:
+- conc:
 
-  Measured total ammonia-N (µg/L). Numeric vector.
+  Measured total ammonia-N. Numeric vector or `units` object. Bare
+  numeric requires `conc_units`.
+
+- conc_units:
+
+  Character. Unit of `conc` when it is bare numeric, e.g. `"ug/L"` or
+  `"mg/L"`. Ignored when `conc` is a `units` object.
 
 - pH:
 
-  Sample pH. Recycled against `conc_ug_L`.
+  Sample pH. Recycled against `conc`.
 
 - temperature_C:
 
-  Sample temperature (°C). Recycled against `conc_ug_L`.
+  Sample temperature (°C). Recycled against `conc`.
 
 - ref_pH, ref_temperature_C:
 
@@ -44,7 +51,8 @@ correct_ammonia_ph_temp(
 ## Value
 
 Total ammonia-N normalised to the reference condition (µg/L), the length
-of the recycled inputs. Pass this to `ssd_paf("NH3-N", ...)`.
+of the recycled inputs. Pass this to
+`ssd_paf("NH3-N", conc = ., conc_units = "ug/L")`.
 
 ## Details
 
@@ -78,6 +86,6 @@ Fisheries Research Board of Canada 32(12):2379–2383.
 ``` r
 # 900 µg/L total ammonia-N measured at pH 8.5, 20 °C is far more toxic than
 # the same number at the pH 7.0 reference, so it normalises sharply upward:
-correct_ammonia_ph_temp(900, pH = 8.5, temperature_C = 20)
+correct_ammonia_ph_temp(900, conc_units = "ug/L", pH = 8.5, temperature_C = 20)
 #> [1] 25394.81
 ```

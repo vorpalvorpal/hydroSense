@@ -47,9 +47,11 @@
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">ssd_paf</span><span class="op">(</span></span>
 <span>  <span class="va">analyte</span>,</span>
-<span>  <span class="va">conc_ug_L</span>,</span>
+<span>  <span class="va">conc</span>,</span>
+<span>  conc_units <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"multi"</span>, <span class="st">"anzecc"</span><span class="op">)</span>,</span>
-<span>  hardness_mg_L <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  hardness <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  hardness_units <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  hardness_cv <span class="op">=</span> <span class="fl">0.05</span>,</span>
 <span>  guideline_dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"leachatetools.guideline_dir"</span><span class="op">)</span>,</span>
 <span>  nboot <span class="op">=</span> <span class="fl">0L</span>,</span>
@@ -63,13 +65,18 @@
 
 <dl><dt id="arg-analyte">analyte<a class="anchor" aria-label="anchor" href="#arg-analyte"></a></dt>
 <dd><p>Character. Analyte name (key in .SSD_NAME_MAP).
-Supply "NO3-N" together with <code>hardness_mg_L</code> for automatic class
+Supply "NO3-N" together with <code>hardness</code> for automatic class
 selection, or supply the explicit class name ("NO3-N_soft" etc.).</p></dd>
 
 
-<dt id="arg-conc-ug-l">conc_ug_L<a class="anchor" aria-label="anchor" href="#arg-conc-ug-l"></a></dt>
-<dd><p>Numeric. Concentration in µg/L (after any external
-physicochemical corrections).</p></dd>
+<dt id="arg-conc">conc<a class="anchor" aria-label="anchor" href="#arg-conc"></a></dt>
+<dd><p>Numeric or <code>units</code> object. Concentration to evaluate.
+Bare numeric requires <code>conc_units</code>.</p></dd>
+
+
+<dt id="arg-conc-units">conc_units<a class="anchor" aria-label="anchor" href="#arg-conc-units"></a></dt>
+<dd><p>Character. Unit of <code>conc</code> when it is bare numeric,
+e.g. <code>"ug/L"</code> or <code>"mg/L"</code>. Ignored when <code>conc</code> is a <code>units</code> object.</p></dd>
 
 
 <dt id="arg-method">method<a class="anchor" aria-label="anchor" href="#arg-method"></a></dt>
@@ -78,9 +85,16 @@ distributions and model-averages; "anzecc" uses the per-analyte
 distribution that best matches the original ANZG derivation.</p></dd>
 
 
-<dt id="arg-hardness-mg-l">hardness_mg_L<a class="anchor" aria-label="anchor" href="#arg-hardness-mg-l"></a></dt>
-<dd><p>Numeric or NULL. Required for NO3-N analyte.
-Hardness in mg/L CaCO3 at the time of measurement.</p></dd>
+<dt id="arg-hardness">hardness<a class="anchor" aria-label="anchor" href="#arg-hardness"></a></dt>
+<dd><p>Numeric or <code>units</code> object, or <code>NULL</code>. Required for
+the NO3-N analyte.  Hardness at the time of measurement.  Bare numeric
+requires <code>hardness_units</code>.</p></dd>
+
+
+<dt id="arg-hardness-units">hardness_units<a class="anchor" aria-label="anchor" href="#arg-hardness-units"></a></dt>
+<dd><p>Character. Unit of <code>hardness</code> when it is bare
+numeric, e.g. <code>"mg/L"</code>.  Ignored when <code>hardness</code> is a <code>units</code> object
+or <code>NULL</code>.</p></dd>
 
 
 <dt id="arg-hardness-cv">hardness_cv<a class="anchor" aria-label="anchor" href="#arg-hardness-cv"></a></dt>
@@ -108,7 +122,7 @@ getOption("leachatetools.guideline_dir").</p></dd>
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>Named list:
 $analyte        character
-$conc_ug_L      numeric
+$conc_ug_L      numeric — resolved concentration in µg/L
 $method         character
 $pct            numeric — % species affected, NA if no model
 $lower          numeric — lower CI %
@@ -121,7 +135,7 @@ $note           character vector — caveats</p>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># Fraction of species affected by 9.3 mg/L total ammonia-N at the pH 7.0 /</span></span></span>
 <span class="r-in"><span><span class="co"># 20 degC index condition. Uses the package's bundled SSD data; set</span></span></span>
 <span class="r-in"><span><span class="co"># options(leachatetools.guideline_dir=) to fit from the ANZG XLSX files.</span></span></span>
-<span class="r-in"><span><span class="fu">ssd_paf</span><span class="op">(</span><span class="st">"NH3-N"</span>, conc_ug_L <span class="op">=</span> <span class="fl">9321</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu">ssd_paf</span><span class="op">(</span><span class="st">"NH3-N"</span>, conc <span class="op">=</span> <span class="fl">9321</span>, conc_units <span class="op">=</span> <span class="st">"ug/L"</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $analyte</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "NH3-N"</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -145,7 +159,8 @@ $note           character vector — caveats</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># NO3-N needs hardness for automatic soft/moderate/hard SSD selection:</span></span></span>
-<span class="r-in"><span><span class="fu">ssd_paf</span><span class="op">(</span><span class="st">"NO3-N"</span>, conc_ug_L <span class="op">=</span> <span class="fl">50000</span>, hardness_mg_L <span class="op">=</span> <span class="fl">90</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu">ssd_paf</span><span class="op">(</span><span class="st">"NO3-N"</span>, conc <span class="op">=</span> <span class="fl">50000</span>, conc_units <span class="op">=</span> <span class="st">"ug/L"</span>,</span></span>
+<span class="r-in"><span>        hardness <span class="op">=</span> <span class="fl">90</span>, hardness_units <span class="op">=</span> <span class="st">"mg/L"</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $analyte</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "NO3-N"</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

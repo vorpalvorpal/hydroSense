@@ -15,7 +15,7 @@ call this so the transform is identical on both paths.
 ## Usage
 
 ``` r
-.log_transform_pca(mat, eps = 1e-09)
+.log_transform_pca(mat, no_log_vars = .PCA_NO_LOG_VARS, eps = 1e-09)
 ```
 
 ## Arguments
@@ -23,6 +23,11 @@ call this so the transform is identical on both paths.
 - mat:
 
   Numeric matrix with named columns (samples × variables).
+
+- no_log_vars:
+
+  Column names to leave on their native scale. Default
+  [.PCA_NO_LOG_VARS](https://vorpalvorpal.github.io/leachatetools/reference/dot-PCA_NO_LOG_VARS.md).
 
 - eps:
 

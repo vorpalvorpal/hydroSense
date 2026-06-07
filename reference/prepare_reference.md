@@ -15,6 +15,7 @@ prepare_reference(
   summary = c("geom_mean", "median", "arith_mean", "p80", "p90", "p95"),
   bootstrap_ci = FALSE,
   n_boot = 1000L,
+  conc_units = NULL,
   eps = 1e-09
 )
 ```
@@ -26,8 +27,10 @@ prepare_reference(
   Long-format chemistry data frame for the reference (background)
   site(s). Same schema as the input to
   [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md):
-  `analyte`, `value`, `detected`. BDL (`detected == FALSE`) observations
-  contribute `0` to the summary statistic.
+  `analyte`, `value`, `detected`. Toxicant concentrations must be in
+  µg/L before normalisation; supply them either via a `units.analyte`
+  column or via the `conc_units` argument. BDL (`detected == FALSE`)
+  observations contribute `0` to the summary statistic.
 
 - analyte_metadata:
 
@@ -52,6 +55,14 @@ prepare_reference(
 
   Number of bootstrap replicates if `bootstrap_ci = TRUE`. Default
   `1000L`.
+
+- conc_units:
+
+  Character. Unit string (e.g. `"mg/L"`, `"ug/L"`) applied uniformly to
+  all SSD-eligible rows in `reference_data` when it has no
+  `units.analyte` column. Ignored when `reference_data` carries
+  `units.analyte`. Required when the data lacks `units.analyte` and
+  toxicant concentrations are not already in µg/L.
 
 - eps:
 

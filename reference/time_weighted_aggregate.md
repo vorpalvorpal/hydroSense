@@ -1,7 +1,7 @@
 # Time-weighted chronic aggregation for any long-format value column
 
 For each (focal date × monitoring feature × analyte) combination,
-aggregates values from the preceding `window_days` using
+aggregates values from the preceding `window` (in days) using
 exponential-decay temporal weighting and forward-step duration
 weighting. This is the chronic exposure / response predictor used for
 downstream calibration against biological community state.
@@ -12,8 +12,10 @@ downstream calibration against biological community state.
 time_weighted_aggregate(
   df,
   focal_dates,
-  tau_days = 90,
-  window_days = 365,
+  tau = NULL,
+  tau_units = NULL,
+  window = NULL,
+  window_units = NULL,
   summary = c("geom_mean", "arith_mean", "p90"),
   anchor_outside_window = TRUE,
   eps = 1e-09
@@ -45,16 +47,28 @@ time_weighted_aggregate(
   frame with columns `focal_date` (Date) and `site_id` (character)
   specifying per-feature focal dates.
 
-- tau_days:
+- tau:
 
-  Exponential-decay rate parameter in days. Default 90. The effective
-  half-life is `tau_days * log(2)` ≈ 62 days at the default. Choose to
-  match the response timescale of the downstream biology (algae:
-  days–weeks; macroinvertebrates: weeks–months; fish: months–years).
+  Exponential-decay rate parameter. Numeric or `units` object; bare
+  numeric requires `tau_units`. Default `NULL` → 90 days. The effective
+  half-life is `tau * log(2)` ≈ 62 days at the default. Choose to match
+  the response timescale of the downstream biology (algae: days–weeks;
+  macroinvertebrates: weeks–months; fish: months–years).
 
-- window_days:
+- tau_units:
 
-  Look-back window in days. Default 365.
+  Character unit string for `tau` when it is bare numeric, e.g. `"d"`.
+  Ignored when `tau` is a `units` object or `NULL`.
+
+- window:
+
+  Look-back window. Numeric or `units` object; bare numeric requires
+  `window_units`. Default `NULL` → 365 days.
+
+- window_units:
+
+  Character unit string for `window` when it is bare numeric, e.g.
+  `"d"`. Ignored when `window` is a `units` object or `NULL`.
 
 - summary:
 
@@ -112,19 +126,20 @@ sampling where storm events are sampled more frequently than base-flow
 periods, which would otherwise over-weight episodic concentrations.
 
 **Exponential-decay temporal weighting** assigns higher weight to recent
-samples, with a half-life of approximately `tau_days * log(2)` days.
+samples, with a half-life of approximately `tau * log(2)` days (at the
+default of 90 d).
 
 These two components are the only weighting scheme offered, by design:
 forward-step duration weighting is the minimal correction for irregular
 / pulse-biased sampling, and exponential decay is the standard memory
 kernel for a community integrating a fluctuating exposure (one
-interpretable parameter, `tau_days`, tied to the target biology's
-response time). Richer kernels would add parameters without a defensible
-way to fit them from routine monitoring data, so they are left out —
-tune `tau_days` rather than swapping the kernel.
+interpretable parameter, `tau`, tied to the target biology's response
+time). Richer kernels would add parameters without a defensible way to
+fit them from routine monitoring data, so they are left out — tune `tau`
+rather than swapping the kernel.
 
 **Combined weight** for sample *i* is
-`w_i = Δt_i × exp(-(focal_date - midpoint_i) / tau_days)`, where
+`w_i = Δt_i × exp(-(focal_date - midpoint_i) / tau_d)`, where
 `midpoint_i` is the midpoint of sample *i*'s representative interval.
 
 **Choosing `summary`:**
@@ -161,7 +176,8 @@ cu <- subset(leachate_demo(), site_id == "downstream" & analyte == "Cu")
 time_weighted_aggregate(
   cu,
   focal_dates = as.Date(c("2024-06-01", "2024-12-01")),
-  tau_days = 90, window_days = 365, summary = "geom_mean"
+  tau = 90, tau_units = "d", window = 365, window_units = "d",
+  summary = "geom_mean"
 )
 #> # A tibble: 2 × 8
 #>   focal_date site_id    sample_id     analyte value detected n_samples_in_window

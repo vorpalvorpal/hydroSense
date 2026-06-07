@@ -60,7 +60,7 @@ call this so the transform is identical on both paths.</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">.log_transform_pca</span><span class="op">(</span><span class="va">mat</span>, eps <span class="op">=</span> <span class="fl">1e-09</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">.log_transform_pca</span><span class="op">(</span><span class="va">mat</span>, no_log_vars <span class="op">=</span> <span class="va">.PCA_NO_LOG_VARS</span>, eps <span class="op">=</span> <span class="fl">1e-09</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -69,6 +69,11 @@ call this so the transform is identical on both paths.</p>
 
 <dl><dt id="arg-mat">mat<a class="anchor" aria-label="anchor" href="#arg-mat"></a></dt>
 <dd><p>Numeric matrix with named columns (samples × variables).</p></dd>
+
+
+<dt id="arg-no-log-vars">no_log_vars<a class="anchor" aria-label="anchor" href="#arg-no-log-vars"></a></dt>
+<dd><p>Column names to leave on their native scale.  Default
+<a href="dot-PCA_NO_LOG_VARS.html">.PCA_NO_LOG_VARS</a>.</p></dd>
 
 
 <dt id="arg-eps">eps<a class="anchor" aria-label="anchor" href="#arg-eps"></a></dt>

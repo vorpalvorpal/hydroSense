@@ -59,13 +59,17 @@ normalisation in <code><a href="add_amspaf.html">add_amspaf()</a></code>.</p>
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">estimate_water_temp</span><span class="op">(</span></span>
 <span>  <span class="va">air_temp_df</span>,</span>
-<span>  <span class="va">water_temp_obs</span>,</span>
+<span>  water_temp_obs <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  target_dates <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  lag_days <span class="op">=</span> <span class="fl">0L</span>,</span>
 <span>  site_id <span class="op">=</span> <span class="cn">NA_character_</span>,</span>
 <span>  seasonal <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"off"</span>, <span class="st">"on"</span><span class="op">)</span>,</span>
 <span>  seasonal_min_n <span class="op">=</span> <span class="fl">8L</span>,</span>
-<span>  seasonal_min_quarters <span class="op">=</span> <span class="fl">3L</span></span>
+<span>  seasonal_min_quarters <span class="op">=</span> <span class="fl">3L</span>,</span>
+<span>  fallback <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  select <span class="op">=</span> <span class="st">"auto"</span>,</span>
+<span>  auto_min_n <span class="op">=</span> <span class="fl">20L</span>,</span>
+<span>  water_body_type <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -84,10 +88,9 @@ columns:</p><ul><li><p><code>datetime</code> (Date or POSIXct) — measurement d
 <dd><p>Data frame of observed water temperatures, used to
 calibrate the air-water regression. Required columns:</p><ul><li><p><code>datetime</code> (Date or POSIXct)</p></li>
 <li><p><code>water_temp_C</code> (numeric) — observed water temperature in Celsius
-At least 10 paired observations are recommended. Cannot be <code>NULL</code> —
-a regression requires training data. If you have no water temperature
-observations at all, collect a season of spot measurements alongside
-air temperatures before proceeding.</p></li>
+At least 10 paired observations are recommended; fewer than 5 triggers an
+error unless <code>fallback</code> is also supplied. <code>NULL</code> is accepted when <code>fallback</code>
+is provided.</p></li>
 </ul></dd>
 
 
@@ -130,6 +133,43 @@ calendar quarters the training observations must span before the seasonal
 model is considered (default 3). Calibration data confined to one or two
 seasons cannot anchor an annual cycle and would extrapolate badly.</p></dd>
 
+
+<dt id="arg-fallback">fallback<a class="anchor" aria-label="anchor" href="#arg-fallback"></a></dt>
+<dd><p>Air-to-water relationship used when there are too few paired
+observations to fit a regression (fewer than 5 rows in <code>water_temp_obs</code>,
+or <code>water_temp_obs = NULL</code>). Accepted forms:</p><ul><li><p><code>"identity"</code> — <code>water = air</code> (simplest default for small streams).</p></li>
+<li><p><code>c(intercept, slope)</code> — <code>water = intercept + slope * air</code>.</p></li>
+<li><p>A function <code>function(air) ...</code> — arbitrary transformation.</p></li>
+</ul><p><code>NULL</code> (default) preserves the existing behaviour: fewer than 5 pairs is
+a hard error.</p></dd>
+
+
+<dt id="arg-select">select<a class="anchor" aria-label="anchor" href="#arg-select"></a></dt>
+<dd><p>Antecedence window for the air-temperature regressor, in days.
+The regressor is the trailing <code>select</code>-day mean of air temperature.</p><ul><li><p><code>"auto"</code> (default) — select the window by leave-one-out cross-validation
+(PRESS statistic, exact for OLS) with the <strong>1-SE rule</strong>: the shortest
+window whose CV RMSE is within one SE of the best is chosen, to avoid
+over-fitting to noise. Requires at least <code>auto_min_n</code> pairs; falls back
+to 1 (or to the <code>water_body_type</code> default) when pairs are insufficient.</p></li>
+<li><p>A positive integer — use that fixed window (1 = daily air temp,
+equivalent to the original behaviour).</p></li>
+</ul></dd>
+
+
+<dt id="arg-auto-min-n">auto_min_n<a class="anchor" aria-label="anchor" href="#arg-auto-min-n"></a></dt>
+<dd><p>Integer. Minimum number of paired observations required
+before the <code>select = "auto"</code> window search is attempted (default 20).
+Below this threshold the window falls back to 1 (or <code>water_body_type</code>).</p></dd>
+
+
+<dt id="arg-water-body-type">water_body_type<a class="anchor" aria-label="anchor" href="#arg-water-body-type"></a></dt>
+<dd><p>Character. Physical type of the water body, used as
+the fallback window when <code>select = "auto"</code> but <code>n_pairs &lt; auto_min_n</code>.
+One of <code>"stream_small"</code> (1 d), <code>"stream_large"</code> (5 d), <code>"estuary"</code> (7 d),
+<code>"pond"</code> (10 d), <code>"lake"</code> (30 d), <code>"reservoir"</code> (60 d), <code>"groundwater"</code>
+(300 d). <code>NULL</code> (default) falls back to window = 1. Ignored when the CV
+search runs.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -141,11 +181,16 @@ columns:</p><ul><li><p><code>datetime</code> (Date)</p></li>
 <li><p><code>site_id</code> — from <code>site_id</code> argument</p></li>
 <li><p><code>sample_id</code> — <code>NA_character_</code> (set by caller if needed)
 Attributes attached for inspection:</p></li>
-<li><p><code>attr(result, "lm_fit")</code> — the selected fitted <code>lm</code> object.</p></li>
-<li><p><code>attr(result, "model")</code> — label of the selected model.</p></li>
+<li><p><code>attr(result, "lm_fit")</code> — the selected fitted <code>lm</code> object (<code>NULL</code> for fallback).</p></li>
+<li><p><code>attr(result, "model")</code> — label of the selected model (<code>"fallback"</code> when
+no pairs were available).</p></li>
 <li><p><code>attr(result, "seasonal_used")</code> — <code>TRUE</code> if the seasonal model won.</p></li>
 <li><p><code>attr(result, "model_comparison")</code> — data frame of AICc / R² per
 candidate model and which was selected.</p></li>
+<li><p><code>attr(result, "window_selected")</code> — chosen antecedence window in days
+(<code>NA</code> for fallback path).</p></li>
+<li><p><code>attr(result, "window_comparison")</code> — data frame of LOO-CV RMSE per
+candidate window (<code>NULL</code> when window was fixed or search was skipped).</p></li>
 </ul></div>
     <div class="section level2">
     <h2 id="air-temperature-variable">Air temperature variable<a class="anchor" aria-label="anchor" href="#air-temperature-variable"></a></h2>
@@ -173,19 +218,24 @@ provided: you must supply site-appropriate temperature estimates.</p>
     <h2 id="model-selection">Model selection<a class="anchor" aria-label="anchor" href="#model-selection"></a></h2>
 
 
-<p>Water temperature lags air temperature seasonally (thermal hysteresis): at
-the same air temperature, water tends to be cooler in spring and warmer in
-autumn. A same-day air-only regression averages through that loop. Adding a
-<strong>first-harmonic day-of-year term</strong> — <code>sin(2*pi*doy/365.25)</code> and
-<code>cos(2*pi*doy/365.25)</code> — lets the regression represent it. Day-of-year is
-cyclic, so it must enter as these harmonics, not as a raw linear term.</p>
-<p>Under <code>seasonal = "auto"</code> both candidate models are fitted and compared by
-<strong>AICc</strong> (Akaike Information Criterion with the small-sample correction);
-the lower-AICc model is used. AICc — not in-sample R² or RMSE — is the
-selection rule, because a larger model's in-sample fit can only improve and
-would always be chosen even when it overfits. The seasonal model is only
-eligible when there are at least <code>seasonal_min_n</code> observations spanning at
-least <code>seasonal_min_quarters</code> quarters; otherwise the air-only model is used.</p>
+<p><strong>Window selection</strong> (antecedence timescale): water bodies with more thermal
+mass integrate air temperature over longer periods. The function searches
+log-spaced trailing windows from 1 to 300 days, fitting a simple OLS for
+each, and selects by leave-one-out CV RMSE (PRESS statistic — closed form,
+no refitting loop). The <strong>1-SE rule</strong> then chooses the shortest window within
+one standard error of the best, avoiding spurious preference for a long window
+that barely beats shorter alternatives. All window candidates have the same
+number of parameters, so AICc cannot distinguish them; CV is required.</p>
+<p><strong>Seasonal term</strong> (thermal hysteresis): water temperature lags air
+temperature seasonally — at the same air temperature, water tends to be
+cooler in spring and warmer in autumn. Adding a <strong>first-harmonic day-of-year
+term</strong> — <code>sin(2*pi*doy/365.25)</code> and <code>cos(2*pi*doy/365.25)</code> — lets the
+regression represent it. Under <code>seasonal = "auto"</code> both the window-regressor-
+only and window-regressor + harmonics models are compared by <strong>AICc</strong>; the
+lower-AICc model is used. AICc is appropriate here because the two candidates
+differ in complexity (2 vs 4 parameters). The seasonal model is only eligible
+when there are at least <code>seasonal_min_n</code> observations spanning at least
+<code>seasonal_min_quarters</code> quarters.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
@@ -209,6 +259,7 @@ Australian location; <code><a href="add_amspaf.html">add_amspaf()</a></code>, wh
 <span class="r-in"><span>  <span class="va">air</span><span class="op">$</span><span class="va">air_temp_mean_C</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/match.html" class="external-link">match</a></span><span class="op">(</span><span class="va">wt_obs</span><span class="op">$</span><span class="va">datetime</span>, <span class="va">air</span><span class="op">$</span><span class="va">datetime</span><span class="op">)</span><span class="op">]</span> <span class="op">*</span> <span class="fl">0.85</span> <span class="op">+</span> <span class="fl">2</span> <span class="op">+</span></span></span>
 <span class="r-in"><span>  <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">80</span>, <span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">wt</span> <span class="op">&lt;-</span> <span class="fu">estimate_water_temp</span><span class="op">(</span><span class="va">air</span>, <span class="va">wt_obs</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Selected antecedence window: 1 d (LOO-CV RMSE = 1.09 °C, n = 80).</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Selected air-water model: air + season (day-of-year harmonic). R² = 0.976,</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>   RMSE = 1.01 °C, AICc = 239.4 (n = 80).</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>   AICc comparison (lower preferred): air only = 243.7, air + season = 239.4.</span>

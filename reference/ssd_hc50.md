@@ -10,7 +10,8 @@ Concentration Addition combination step of msPAF.
 ssd_hc50(
   analyte,
   method = c("multi", "anzecc"),
-  hardness_mg_L = NULL,
+  hardness = NULL,
+  hardness_units = NULL,
   guideline_dir = getOption("leachatetools.guideline_dir")
 )
 ```
@@ -20,8 +21,8 @@ ssd_hc50(
 - analyte:
 
   Character. Analyte name (key in .SSD_NAME_MAP). Supply "NO3-N"
-  together with `hardness_mg_L` for automatic class selection, or supply
-  the explicit class name ("NO3-N_soft" etc.).
+  together with `hardness` for automatic class selection, or supply the
+  explicit class name ("NO3-N_soft" etc.).
 
 - method:
 
@@ -29,10 +30,16 @@ ssd_hc50(
   model-averages; "anzecc" uses the per-analyte distribution that best
   matches the original ANZG derivation.
 
-- hardness_mg_L:
+- hardness:
 
-  Numeric or NULL. Required for NO3-N analyte. Hardness in mg/L CaCO3 at
-  the time of measurement.
+  Numeric or `units` object, or `NULL`. Required for the NO3-N analyte.
+  Hardness at the time of measurement. Bare numeric requires
+  `hardness_units`.
+
+- hardness_units:
+
+  Character. Unit of `hardness` when it is bare numeric, e.g. `"mg/L"`.
+  Ignored when `hardness` is a `units` object or `NULL`.
 
 - guideline_dir:
 

@@ -3,8 +3,7 @@
 Applies the models fitted by
 [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
 to `df`, returning posterior mean estimates for missing and
-below-detection-limit (BDL) observations in the metals and organics
-groups.
+below-detection-limit (BDL) observations in every fitted group.
 
 ## Usage
 
@@ -12,8 +11,7 @@ groups.
 impute_chemistry(
   df,
   model,
-  metal_hurdle = TRUE,
-  organic_hurdle = TRUE,
+  apply_hurdles = TRUE,
   bdl_cap = TRUE,
   return = c("point", "draws"),
   ndraws = NULL,
@@ -32,13 +30,10 @@ impute_chemistry(
   Fitted model from
   [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md).
 
-- metal_hurdle:
+- apply_hurdles:
 
-  Logical. Apply metal-presence hurdle? Default `TRUE`.
-
-- organic_hurdle:
-
-  Logical. Apply DOC-like-presence hurdle? Default `TRUE`.
+  Logical. Apply each group's presence hurdle? Default `TRUE`. When
+  `FALSE`, every sample is eligible for every group.
 
 - bdl_cap:
 
@@ -65,33 +60,36 @@ impute_chemistry(
 
 ## Value
 
-`df` with BDL and missing cells in the metals/organics groups replaced
-by posterior mean estimates, plus columns:
+`df` with BDL and missing cells in every fitted group replaced by
+posterior mean estimates, plus columns:
 
 - `imputed` (logical) — `TRUE` for filled cells
 
 - `imputed_kind` — `"observed"`, `"censored_left"`, or `"missing"`
 
+When `bdl_cap = TRUE` and any imputed BDL cell exceeded its detection
+limit, a per-cell audit of the cap activations is attached as the
+`"bdl_cap_summary"` attribute; retrieve it with
+[`bdl_cap_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/bdl_cap_summary.md).
+
 ## Details
 
 **Hurdles**
 
-Imputed values are only returned for samples that meet the relevant
-hurdle:
-
-- *Metals*: at least one metal analyte present (detected or BDL) at the
-  sample. Samples with no metals recorded are not imputed — a leachate
-  metal pulse may simply not have arrived at this location yet.
-
-- *Organics*: at least one of DOC, TOC, BOD, COD or cBOD present at the
-  sample.
-
-Samples failing a hurdle pass through unchanged (non-imputed values are
-preserved; BDL values remain flagged as BDL).
+Each fitted group may carry a presence hurdle (see
+[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)).
+When `apply_hurdles = TRUE`, imputed values for a group are only
+returned for samples carrying at least one of that group's hurdle
+analytes (detected or BDL) — e.g. under the leachate preset, a sample
+with no metals recorded is not given imputed metals, because a leachate
+metal pulse may simply not have arrived at that location yet. Samples
+failing a hurdle pass through unchanged (non-imputed values preserved;
+BDL values remain flagged as BDL).
 
 ## See also
 
-[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md),
+[`bdl_cap_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/bdl_cap_summary.md)
 
 ## Examples
 

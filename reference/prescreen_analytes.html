@@ -64,6 +64,7 @@ signal.</p>
 <span>  potency_keep <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  potency_frac <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  group_by_feature <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  conc_units <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  analyte_metadata <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  return <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"vector"</span>, <span class="st">"table"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -110,6 +111,14 @@ be more precautionary.</p></dd>
 per <code>site_id</code> and an analyte is included only if it passes in <em>all</em>
 features (worst-case feature, pooled counts). If <code>FALSE</code> (default),
 frequency is pooled across all samples.</p></dd>
+
+
+<dt id="arg-conc-units">conc_units<a class="anchor" aria-label="anchor" href="#arg-conc-units"></a></dt>
+<dd><p>Character. Unit string (e.g. <code>"mg/L"</code>, <code>"ug/L"</code>) applied
+to toxicant concentrations in <code>df</code> when it has no <code>units.analyte</code> column.
+Only matters when <code>potency_keep = TRUE</code>, because the potency threshold
+comparison needs values in µg/L (matching <code>dgv_95pct_ug_L</code>). Ignored when
+<code>potency_keep = FALSE</code> or <code>df</code> already carries a <code>units.analyte</code> column.</p></dd>
 
 
 <dt id="arg-analyte-metadata">analyte_metadata<a class="anchor" aria-label="anchor" href="#arg-analyte-metadata"></a></dt>

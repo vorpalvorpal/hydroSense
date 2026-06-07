@@ -60,6 +60,7 @@ object is passed as the <code>reference</code> argument to <code><a href="add_am
 <span>  summary <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"geom_mean"</span>, <span class="st">"median"</span>, <span class="st">"arith_mean"</span>, <span class="st">"p80"</span>, <span class="st">"p90"</span>, <span class="st">"p95"</span><span class="op">)</span>,</span>
 <span>  bootstrap_ci <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  n_boot <span class="op">=</span> <span class="fl">1000L</span>,</span>
+<span>  conc_units <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  eps <span class="op">=</span> <span class="fl">1e-09</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -71,7 +72,9 @@ object is passed as the <code>reference</code> argument to <code><a href="add_am
 <dl><dt id="arg-reference-data">reference_data<a class="anchor" aria-label="anchor" href="#arg-reference-data"></a></dt>
 <dd><p>Long-format chemistry data frame for the reference
 (background) site(s). Same schema as the input to <code><a href="add_amspaf.html">add_amspaf()</a></code>:
-<code>analyte</code>, <code>value</code>, <code>detected</code>. BDL (<code>detected == FALSE</code>) observations
+<code>analyte</code>, <code>value</code>, <code>detected</code>. Toxicant concentrations must be in µg/L
+before normalisation; supply them either via a <code>units.analyte</code> column or
+via the <code>conc_units</code> argument. BDL (<code>detected == FALSE</code>) observations
 contribute <code>0</code> to the summary statistic.</p></dd>
 
 
@@ -98,6 +101,14 @@ default).  Adds <code>ref_lower</code>, <code>ref_upper</code>, and <code>n_boot
 <dt id="arg-n-boot">n_boot<a class="anchor" aria-label="anchor" href="#arg-n-boot"></a></dt>
 <dd><p>Number of bootstrap replicates if <code>bootstrap_ci = TRUE</code>.
 Default <code>1000L</code>.</p></dd>
+
+
+<dt id="arg-conc-units">conc_units<a class="anchor" aria-label="anchor" href="#arg-conc-units"></a></dt>
+<dd><p>Character. Unit string (e.g. <code>"mg/L"</code>, <code>"ug/L"</code>) applied
+uniformly to all SSD-eligible rows in <code>reference_data</code> when it has no
+<code>units.analyte</code> column. Ignored when <code>reference_data</code> carries
+<code>units.analyte</code>. Required when the data lacks <code>units.analyte</code> and toxicant
+concentrations are not already in µg/L.</p></dd>
 
 
 <dt id="arg-eps">eps<a class="anchor" aria-label="anchor" href="#arg-eps"></a></dt>

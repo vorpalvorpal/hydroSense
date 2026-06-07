@@ -1,8 +1,12 @@
 # Analytes that must never enter the imputation model as response variables
 
-These are excluded from both the metals and organics groups. They are
-typically non-concentration measurements (counts, qualitative, physical)
-for which a log-normal concentration model is inappropriate.
+The default `exclude` set for
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
+(a leachate-preset default; override via the `exclude` argument for
+other domains). These are typically non-concentration measurements
+(counts, qualitative, physical) for which a log-normal concentration
+model is inappropriate, so they are excluded from every imputation
+group.
 
 ## Usage
 

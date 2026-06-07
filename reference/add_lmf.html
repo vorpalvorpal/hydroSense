@@ -60,7 +60,8 @@ model. See the file-level header for full methodological detail.</p>
 <span>  reference_data <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  lmf_analyte_uuid <span class="op">=</span> <span class="cn">NA_character_</span>,</span>
 <span>  calibration_window_years <span class="op">=</span> <span class="fl">5</span>,</span>
-<span>  min_leachate_total_n_mgl <span class="op">=</span> <span class="fl">20</span>,</span>
+<span>  min_leachate_total_n <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  min_leachate_total_n_units <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  rsd_default <span class="op">=</span> <span class="fl">0.05</span>,</span>
 <span>  min_ref_samples <span class="op">=</span> <span class="fl">10</span>,</span>
 <span>  min_leachate_samples <span class="op">=</span> <span class="fl">10</span>,</span>
@@ -122,12 +123,19 @@ Window is centred on the input data's date range and shifted backwards if
 future data are unavailable. Default <code>5</code>.</p></dd>
 
 
-<dt id="arg-min-leachate-total-n-mgl">min_leachate_total_n_mgl<a class="anchor" aria-label="anchor" href="#arg-min-leachate-total-n-mgl"></a></dt>
-<dd><p>Minimum total N (mg/L, sum of NH4 + NO3 +
-NO2) for a leachate sample to qualify for end-member calibration. Excludes
+<dt id="arg-min-leachate-total-n">min_leachate_total_n<a class="anchor" aria-label="anchor" href="#arg-min-leachate-total-n"></a></dt>
+<dd><p>Minimum total N (sum of NH4-N + NO3-N + NO2-N)
+for a leachate sample to qualify for end-member calibration. Excludes
 non-representative samples (dilution events, treatment upsets). Total N is
 used rather than NH4-N alone because aerated leachate features may have
-nitrified NH4 to NO3. Default <code>20</code>.</p></dd>
+nitrified NH4 to NO3. Numeric or <code>units</code> object; bare numeric requires
+<code>min_leachate_total_n_units</code>. Default <code>NULL</code> → 20 mg/L.</p></dd>
+
+
+<dt id="arg-min-leachate-total-n-units">min_leachate_total_n_units<a class="anchor" aria-label="anchor" href="#arg-min-leachate-total-n-units"></a></dt>
+<dd><p>Character unit string for
+<code>min_leachate_total_n</code> when it is bare numeric, e.g. <code>"mg/L"</code>. Ignored
+when <code>min_leachate_total_n</code> is a <code>units</code> object or <code>NULL</code>.</p></dd>
 
 
 <dt id="arg-rsd-default">rsd_default<a class="anchor" aria-label="anchor" href="#arg-rsd-default"></a></dt>
