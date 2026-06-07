@@ -175,7 +175,7 @@ test_that("no fallback with fewer than 5 rows still errors", {
   )
   expect_error(
     suppressMessages(estimate_water_temp(air, wobs)),
-    class = "cli_error"
+    "paired observations"
   )
 })
 

@@ -55,6 +55,7 @@ reference:
       - leachate_impute_groups
       - impute_chemistry
       - impute_coanalytes
+      - bdl_cap_summary
 
   - title: Toxicity & single-substance PAF
     desc: >

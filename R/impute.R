@@ -1799,7 +1799,7 @@ bdl_cap_summary <- function(x) {
     dplyr::arrange(dplyr::desc(.data$max_ratio))
 
   analyte_lines <- stats::setNames(
-    sprintf("%s: %d cell%s, up to %.1f× DL",
+    sprintf("%s: %d cell%s, up to %.1f\u00d7 DL",
             by_analyte$analyte, by_analyte$cells,
             ifelse(by_analyte$cells == 1L, "", "s"), by_analyte$max_ratio),
     rep("*", nrow(by_analyte))
