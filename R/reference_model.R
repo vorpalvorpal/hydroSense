@@ -320,6 +320,14 @@
 #' @param conc_units Unit string (e.g. `"mg/L"`, `"ug/L"`) for reference
 #'   chemistry when no `units.analyte` column is present.
 #' @param analyte_metadata Analyte metadata, or `NULL` for the bundled CSV.
+#' @param imputation_model Optional `imputation_model` from
+#'   [fit_imputation_model()] (fit on the reference site's own chemistry).  When
+#'   supplied, missing analytes are imputed in raw concentration space *before*
+#'   the per-analyte models are fitted, so a well-sampled analyte lifts a
+#'   sparsely-sampled one into a richer spread of hydrological regimes.  Imputed
+#'   rows (`detected = TRUE`) are used as model anchors alongside measured
+#'   observations.  Requires **brms**.  Default `NULL` (measured observations
+#'   only).
 #' @param match_window_days Integer; tier-1 time tolerance in days (default 5).
 #' @param match_hydro_tol Numeric; tier-1 hydro tolerance (default `NULL` →
 #'   `0.5 × IQR` of the reference event-API series).
@@ -389,6 +397,7 @@ fit_reference_model <- function(
     longitude          = NULL,
     conc_units         = NULL,
     analyte_metadata   = NULL,
+    imputation_model   = NULL,
     match_window_days  = 5L,
     match_hydro_tol    = NULL,
     api_windows_short  = c(3L, 7L, 14L),
@@ -411,6 +420,13 @@ fit_reference_model <- function(
   summary <- match.arg(summary,
     c("geom_mean", "median", "arith_mean", "p80", "p90", "p95"))
   checkmate::assert_number(eps, lower = 0)
+  if (!is.null(imputation_model) &&
+      !inherits(imputation_model, "imputation_model")) {
+    cli::cli_abort(
+      "{.arg imputation_model} must be an {.cls imputation_model} from \\
+       {.fn fit_imputation_model}, or {.val NULL}."
+    )
+  }
 
   ## ── Hydrology ──────────────────────────────────────────────────────────────
   if (is.null(hydro)) {
@@ -460,6 +476,19 @@ fit_reference_model <- function(
     !meta$analyte %in% .AMSPAF_EXCLUDED_ANALYTES
   ]
   reference <- .convert_df_tox_to_ugL(reference, ssd_analytes, conc_units, "reference")
+
+  ## ── Optional impute-first ──────────────────────────────────────────────────
+  ## Complete missing analytes in raw concentration space before modelling, so a
+  ## well-sampled analyte lifts a sparsely-sampled one into a richer spread of
+  ## hydrological regimes (e.g. 100 Zn obs → 100 Cu anchors via the Cu–Zn
+  ## relationship).  Imputed metal rows are marked detected = TRUE and flow into
+  ## the per-analyte GAMs exactly like measured observations.
+  if (!is.null(imputation_model)) {
+    if (!"site_id" %in% names(reference)) {
+      reference$site_id <- "reference"
+    }
+    reference <- impute_chemistry(reference, imputation_model)
+  }
 
   # Build working frame: BDL rows contribute 0 to the static summary but keep
   # their DL value for normalisation (so value_norm is not zero-inflated before

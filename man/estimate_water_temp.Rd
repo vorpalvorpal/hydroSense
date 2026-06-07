@@ -72,9 +72,9 @@ or \code{water_temp_obs = NULL}). Accepted forms:
 \item \code{"identity"} — \code{water = air} (simplest default for small streams).
 \item \code{c(intercept, slope)} — \code{water = intercept + slope * air}.
 \item A function \code{function(air) ...} — arbitrary transformation.
-}
 \code{NULL} (default) preserves the existing behaviour: fewer than 5 pairs is
-a hard error.}
+a hard error.
+}}
 
 \item{select}{Antecedence window for the air-temperature regressor, in days.
 The regressor is the trailing \code{select}-day mean of air temperature.

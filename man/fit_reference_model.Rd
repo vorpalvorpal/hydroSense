@@ -12,6 +12,7 @@ fit_reference_model(
   longitude = NULL,
   conc_units = NULL,
   analyte_metadata = NULL,
+  imputation_model = NULL,
   match_window_days = 5L,
   match_hydro_tol = NULL,
   api_windows_short = c(3L, 7L, 14L),
@@ -44,6 +45,15 @@ Ignored if \code{hydro} already has a \code{type} column.  Default \code{"rainfa
 chemistry when no \code{units.analyte} column is present.}
 
 \item{analyte_metadata}{Analyte metadata, or \code{NULL} for the bundled CSV.}
+
+\item{imputation_model}{Optional \code{imputation_model} from
+\code{\link[=fit_imputation_model]{fit_imputation_model()}} (fit on the reference site's own chemistry).  When
+supplied, missing analytes are imputed in raw concentration space \emph{before}
+the per-analyte models are fitted, so a well-sampled analyte lifts a
+sparsely-sampled one into a richer spread of hydrological regimes.  Imputed
+rows (\code{detected = TRUE}) are used as model anchors alongside measured
+observations.  Requires \strong{brms}.  Default \code{NULL} (measured observations
+only).}
 
 \item{match_window_days}{Integer; tier-1 time tolerance in days (default 5).}
 
