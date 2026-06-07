@@ -8,10 +8,12 @@ amspaf_daily(
   df,
   temperature = NULL,
   reference = NULL,
+  reference_model = NULL,
+  imputation_model = NULL,
   start = NULL,
   end = NULL,
   by = "day",
-  interpolation = c("forward_fill", "linear"),
+  interpolation = c("forward_fill", "linear", "model"),
   leading_edge = c("drop", "backfill"),
   analyte_metadata = NULL,
   method = c("multi", "anzecc"),
@@ -37,7 +39,21 @@ present for the same day, the grab measurement takes priority.
 \code{NULL} (default) means temperature must come from \code{df} rows alone.}
 
 \item{reference}{Background reference chemistry for ARA adjustment. Accepts
-the same four forms as \code{\link[=add_amspaf]{add_amspaf()}}.}
+the same four forms as \code{\link[=add_amspaf]{add_amspaf()}}. Controls \strong{only} whether background
+is subtracted; it is independent of \code{interpolation}. With
+\code{interpolation = "model"}, pass the same \code{reference_model} here to assess
+the leachate-attributable increment, or \code{NULL} to assess total
+concentration.}
+
+\item{reference_model}{A \code{reference_model} from \code{\link[=fit_reference_model]{fit_reference_model()}}.
+\strong{Required} when \code{interpolation = "model"} — it supplies the background
+and catchment hydrology used by the season-blind target impact model
+(\code{\link[=fit_target_model]{fit_target_model()}}) that interpolates toxicants between grabs. Ignored
+for the \code{"forward_fill"} and \code{"linear"} paths.}
+
+\item{imputation_model}{Optional \code{imputation_model} from
+\code{\link[=fit_imputation_model]{fit_imputation_model()}}, passed to \code{\link[=fit_target_model]{fit_target_model()}} for tier-2
+enrichment under \code{interpolation = "model"}. Requires \strong{brms}.}
 
 \item{start, end}{Date boundaries for the daily grid. Default: earliest and
 latest \code{datetime} values in \code{df}. Coerced to \code{Date}.}
@@ -108,6 +124,13 @@ For SSD-eligible toxicants (metals, ammonia), interpolation is performed
 in log-concentration space, which is more appropriate for log-normally
 distributed data and avoids negative intermediate values.  Co-analytes
 (pH, temperature, DOC, hardness) are interpolated linearly.
+\item \code{"model"} fits a season-blind \code{\link[=fit_target_model]{fit_target_model()}} on the grab
+chemistry and the supplied \code{reference_model}, and predicts each
+toxicant's concentration between grabs as
+\code{reference + impact}, where the impact (the leachate-attributable
+increment) is modelled from hydrology and a persistent latent state but
+\strong{never} from day-of-year. Co-analytes are forward-filled. Requires
+\code{reference_model}; see \code{\link[=fit_target_model]{fit_target_model()}} for the method.
 }
 Below-detection values are treated as their detection-limit value for
 interpolation purposes, matching the treatment in \code{\link[=add_amspaf]{add_amspaf()}}.

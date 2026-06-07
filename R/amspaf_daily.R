@@ -40,6 +40,13 @@
 #'     in log-concentration space, which is more appropriate for log-normally
 #'     distributed data and avoids negative intermediate values.  Co-analytes
 #'     (pH, temperature, DOC, hardness) are interpolated linearly.
+#'   \item `"model"` fits a season-blind [fit_target_model()] on the grab
+#'     chemistry and the supplied `reference_model`, and predicts each
+#'     toxicant's concentration between grabs as
+#'     `reference + impact`, where the impact (the leachate-attributable
+#'     increment) is modelled from hydrology and a persistent latent state but
+#'     **never** from day-of-year. Co-analytes are forward-filled. Requires
+#'     `reference_model`; see [fit_target_model()] for the method.
 #' }
 #' Below-detection values are treated as their detection-limit value for
 #' interpolation purposes, matching the treatment in [add_amspaf()].
@@ -80,7 +87,19 @@
 #'   present for the same day, the grab measurement takes priority.
 #'   `NULL` (default) means temperature must come from `df` rows alone.
 #' @param reference Background reference chemistry for ARA adjustment. Accepts
-#'   the same four forms as [add_amspaf()].
+#'   the same four forms as [add_amspaf()]. Controls **only** whether background
+#'   is subtracted; it is independent of `interpolation`. With
+#'   `interpolation = "model"`, pass the same `reference_model` here to assess
+#'   the leachate-attributable increment, or `NULL` to assess total
+#'   concentration.
+#' @param reference_model A `reference_model` from [fit_reference_model()].
+#'   **Required** when `interpolation = "model"` — it supplies the background
+#'   and catchment hydrology used by the season-blind target impact model
+#'   ([fit_target_model()]) that interpolates toxicants between grabs. Ignored
+#'   for the `"forward_fill"` and `"linear"` paths.
+#' @param imputation_model Optional `imputation_model` from
+#'   [fit_imputation_model()], passed to [fit_target_model()] for tier-2
+#'   enrichment under `interpolation = "model"`. Requires **brms**.
 #' @param start,end Date boundaries for the daily grid. Default: earliest and
 #'   latest `datetime` values in `df`. Coerced to `Date`.
 #' @param by Temporal resolution string passed to [seq.Date()]. Default
@@ -139,10 +158,12 @@ amspaf_daily <- function(
     df,
     temperature          = NULL,
     reference            = NULL,
+    reference_model      = NULL,
+    imputation_model     = NULL,
     start                = NULL,
     end                  = NULL,
     by                   = "day",
-    interpolation        = c("forward_fill", "linear"),
+    interpolation        = c("forward_fill", "linear", "model"),
     leading_edge         = c("drop", "backfill"),
     analyte_metadata     = NULL,
     method               = c("multi", "anzecc"),
@@ -161,6 +182,19 @@ amspaf_daily <- function(
   checkmate::assert_flag(require_temperature)
   checkmate::assert_int(min_analytes, lower = 1L)
   checkmate::assert_string(by, min.chars = 1L)
+
+  ## interpolation = "model" needs a fitted reference_model to predict the
+  ## site impact; co-analytes are still forward-filled (toxicants come from the
+  ## target model). ARA on/off is controlled separately by `reference`.
+  if (interpolation == "model" && !inherits(reference_model, "reference_model")) {
+    cli::cli_abort(c(
+      "{.code interpolation = \"model\"} requires a fitted {.arg reference_model} \\
+       (from {.fn fit_reference_model}).",
+      "i" = "ARA is controlled separately by {.arg reference}: pass the same \\
+             model (or a {.cls prepared_reference}) to subtract background, or \\
+             {.val NULL} to assess total concentration."
+    ))
+  }
 
   if (!is.null(temperature)) {
     checkmate::assert_data_frame(temperature)
@@ -193,11 +227,14 @@ amspaf_daily <- function(
   site_results <- lapply(sites, function(site) {
     site_rows <- dplyr::filter(df, .data$site_id == .env$site)
 
-    ## Step 1: Interpolate each analyte onto the daily grid.
+    ## Step 1: Interpolate each analyte onto the daily grid.  For the "model"
+    ## path, co-analytes are forward-filled here and toxicants are overwritten
+    ## in Step 1b by the fitted target model.
+    base_interp <- if (interpolation == "model") "forward_fill" else interpolation
     daily_long <- .build_daily_chem(
       site_rows     = site_rows,
       dates         = all_dates,
-      interpolation = interpolation,
+      interpolation = base_interp,
       leading_edge  = leading_edge,
       tox_analytes  = tox_analytes
     )
@@ -207,6 +244,19 @@ amspaf_daily <- function(
     ## Step 2: Fill temperature from external series on non-grab days.
     if (!is.null(temperature)) {
       daily_long <- .fill_external_temperature(daily_long, temperature)
+    }
+
+    ## Step 1b: model interpolation of toxicants (season-blind impact model).
+    if (interpolation == "model") {
+      daily_long <- .daily_tox_from_model(
+        daily_long       = daily_long,
+        site_rows        = site_rows,
+        reference_model  = reference_model,
+        imputation_model = imputation_model,
+        conc_units       = conc_units,
+        meta             = meta,
+        tox_analytes     = tox_analytes
+      )
     }
 
     ## Step 3: Compute per-day diagnostics from SSD-eligible rows.
@@ -563,6 +613,111 @@ amspaf_daily <- function(
       datetime  = .data$.date
     ) |>
     dplyr::select(-".measured")
+}
+
+
+#' Model-based daily toxicant interpolation (season-blind impact model)
+#'
+#' Fits a [fit_target_model()] on the site's grab chemistry and the supplied
+#' `reference_model`, predicts each toxicant's normalised concentration
+#' `C_norm = ref_norm + impact` on every daily date, and reconstructs the raw
+#' µg/L concentration `C_raw = C_norm / factor` (the normalisation is
+#' multiplicative, so the factor is `normalise(1, co-analytes_of_the_day)`).
+#' Modelled-toxicant rows in `daily_long` are replaced with these estimates
+#' (in µg/L, `units.analyte = "ug/L"`); co-analytes and non-modelled toxicants
+#' are left untouched. On any failure the input is returned unchanged.
+#'
+#' @param daily_long Output of `.build_daily_chem()` (+ temperature fill).
+#' @param site_rows Grab chemistry for the site (passed to the target model).
+#' @param reference_model A `reference_model`.
+#' @param imputation_model Optional `imputation_model` (tier-2 enrichment).
+#' @param conc_units Units for `site_rows` toxicants when no `units.analyte`.
+#' @param meta Analyte metadata (normalisation formulas).
+#' @param tox_analytes SSD-eligible analyte names.
+#' @return `daily_long` with modelled-toxicant rows replaced.
+#' @keywords internal
+.daily_tox_from_model <- function(daily_long, site_rows, reference_model,
+                                   imputation_model, conc_units, meta,
+                                   tox_analytes) {
+  tm <- tryCatch(
+    fit_target_model(
+      target           = site_rows,
+      reference_model  = reference_model,
+      imputation_model = imputation_model,
+      conc_units       = conc_units,
+      analyte_metadata = meta
+    ),
+    error = function(e) {
+      cli::cli_warn(c(
+        "Target model fit failed; falling back to forward-fill for toxicants.",
+        "x" = conditionMessage(e)
+      ))
+      NULL
+    }
+  )
+  if (is.null(tm) || length(tm$models) == 0L) return(daily_long)
+
+  modelled <- names(tm$models)
+  qdates   <- sort(unique(daily_long$.date))
+  pred <- .resolve_target_impact(tm, tibble::tibble(date = qdates), modelled)
+  if (nrow(pred) == 0L) return(daily_long)
+
+  ## Per-date co-analyte lookup (named numeric vector keyed by analyte).
+  co <- daily_long[!daily_long$analyte %in% tox_analytes &
+                     (is.na(daily_long$detected) | daily_long$detected), , drop = FALSE]
+  co_split <- split(
+    data.frame(analyte = co$analyte, value = co$value, stringsAsFactors = FALSE),
+    as.character(co$.date)
+  )
+  co_vec_for <- function(d) {
+    cd <- co_split[[as.character(d)]]
+    if (is.null(cd)) return(numeric(0))
+    stats::setNames(cd$value, cd$analyte)
+  }
+
+  ## Normalisation factor = normalise(1, co-analytes) per analyte (multiplicative).
+  meta_norm <- meta |>
+    dplyr::select("analyte", "normalisation_formula", "coanalytes_required")
+  fac_lookup <- stats::setNames(
+    lapply(modelled, function(a) {
+      row <- meta_norm[meta_norm$analyte == a, , drop = FALSE]
+      list(
+        parsed = if (nrow(row)) .parse_normalisation_formula(
+                   row$normalisation_formula %||% "") else NULL
+      )
+    }), modelled
+  )
+
+  ## Measured (grab) dates per modelled analyte, for the .measured flag.
+  sr_mod <- site_rows[site_rows$analyte %in% modelled &
+                        (is.na(site_rows$detected) | site_rows$detected), ,
+                      drop = FALSE]
+  measured_key <- paste(sr_mod$analyte, as.Date(sr_mod$datetime))
+
+  ## Reconstruct raw µg/L per (date, analyte).
+  pred$C_raw <- vapply(seq_len(nrow(pred)), function(i) {
+    a  <- pred$analyte[i]; d <- pred$date[i]
+    parsed <- fac_lookup[[a]]$parsed
+    if (is.null(parsed)) return(pred$C_norm[i])
+    factor <- .apply_normalisation(parsed, 1, co_vec_for(d))
+    if (is.na(factor) || factor <= 0) return(NA_real_)
+    pred$C_norm[i] / factor
+  }, numeric(1L))
+
+  pred_ok <- pred[is.finite(pred$C_raw), , drop = FALSE]
+  model_rows <- tibble::tibble(
+    .date         = pred_ok$date,
+    value         = pred_ok$C_raw,
+    detected      = TRUE,
+    .measured     = paste(pred_ok$analyte, pred_ok$date) %in% measured_key,
+    analyte       = pred_ok$analyte,
+    units.analyte = "ug/L"
+  )
+
+  ## Replace modelled-toxicant rows; keep co-analytes + non-modelled toxicants.
+  keep <- dplyr::filter(daily_long, !.data$analyte %in% .env$modelled)
+  if (!"units.analyte" %in% names(keep)) keep$units.analyte <- NA_character_
+  dplyr::bind_rows(keep, model_rows)
 }
 
 
