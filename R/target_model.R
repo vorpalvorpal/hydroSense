@@ -437,18 +437,27 @@ fit_target_model <- function(
 #' Pooled (hierarchical) season-blind impact response across analytes
 #'
 #' Fits a single factor-smooth GAM
-#' `I ~ s(hydro_short, analyte, bs="fs") + s(hydro_long, analyte, bs="fs")`
-#' at one AIC-selected common window pair, so each analyte's hydrological
-#' response is shrunk toward a shared population response (partial pooling).
-#' This regularises noisy, low-SNR analytes by borrowing a response shape from
-#' co-varying ones — it does **not** add hydrological coverage (co-sampled
+#' `z ~ s(hydro_short, analyte, bs="fs") + s(hydro_long, analyte, bs="fs")`
+#' at one AIC-selected common window pair, where `z = (I - mu_a) / sd_a` is the
+#' impact standardised **per analyte**. Pooling on this common unit scale shares
+#' the response *shape* across analytes while leaving each analyte's *magnitude*
+#' untouched (it is restored by de-standardising the fitted shape,
+#' `fitted_I = mu_a + sd_a * z_hat`). This is essential: the `bs = "fs"` penalty
+#' shrinks each analyte's level as well as its wiggliness, so pooling the raw
+#' `I` would drag a large-signal analyte (e.g. Cu) toward a population dominated
+#' by near-zero ones and inflate the near-zero ones in turn.
+#'
+#' Pooling regularises noisy, low-SNR analytes by borrowing a response shape
+#' from co-varying ones — it does **not** add hydrological coverage (co-sampled
 #' analytes share the same regimes). Analytes with fewer than `min_obs_model`
-#' anchors get a per-analyte flat bridge; if pooling fails or doesn't beat an
-#' analyte-intercept null, the poolable analytes fall back to independent fits.
+#' anchors, or with ~no impact variance (no shape to share), get a per-analyte
+#' flat bridge; if pooling fails or doesn't beat the no-shared-shape null
+#' (`z ~ 1`), the poolable analytes fall back to independent fits.
 #'
 #' @return Named list (per analyte) of `.fit_impact_response()`-shaped objects;
-#'   pooled analytes additionally carry `pooled = TRUE`, `analyte`, and
-#'   `pool_levels` for prediction.
+#'   pooled analytes additionally carry `pooled = TRUE`, `analyte`,
+#'   `pool_levels`, and the de-standardisation pair `pool_center` (`mu_a`) and
+#'   `pool_scale` (`sd_a`) for prediction.
 #' @keywords internal
 .fit_pooled_impact_response <- function(anchors_all, target_analytes, hydro,
                                          hydro_type, api_windows_short,
@@ -469,6 +478,14 @@ fit_target_model <- function(
                          api_windows_long, auto_select, min_obs_model, eps)
   }
 
+  bridge_for <- function(nm, ws, wl) {
+    obs <- anchors_for(nm, ws, wl)
+    list(
+      impact_fit = NULL, window_short = ws, window_long = wl, tier = "bridge",
+      n_obs = nrow(obs), anchors = dplyr::mutate(obs, S = .data$I)
+    )
+  }
+
   counts   <- anchors_all |> dplyr::count(.data$analyte)
   poolable <- intersect(target_analytes,
                         counts$analyte[counts$n >= min_obs_model])
@@ -476,23 +493,45 @@ fit_target_model <- function(
 
   out <- list()
   for (nm in small) {                       # too few anchors -> flat bridge
-    obs <- anchors_for(nm, api_windows_short[1L], api_windows_long[length(api_windows_long)])
-    out[[nm]] <- list(
-      impact_fit = NULL, window_short = api_windows_short[1L],
-      window_long = api_windows_long[length(api_windows_long)], tier = "bridge",
-      n_obs = nrow(obs), anchors = dplyr::mutate(obs, S = .data$I)
-    )
+    out[[nm]] <- bridge_for(nm, api_windows_short[1L],
+                            api_windows_long[length(api_windows_long)])
   }
+
+  ## Per-analyte standardisation of the impact `I` BEFORE pooling.  `I` is
+  ## window-independent (windows change only the hydro features), so the
+  ## centre/scale are computed once.  Pooling the SHAPE on a common z-scale is
+  ## what keeps a large-magnitude analyte (e.g. Cu) from being shrunk toward a
+  ## population dominated by near-zero analytes — and a near-zero analyte
+  ## (e.g. Ni) from being inflated toward one carrying the big signal.  Without
+  ## this, the shared `bs = "fs"` penalty (which shrinks each analyte's level,
+  ## not just its wiggliness) cross-contaminates impact magnitudes across
+  ## chemically unrelated analytes.
+  zstats <- anchors_all |>
+    dplyr::filter(.data$analyte %in% .env$poolable) |>
+    dplyr::summarise(mu = mean(.data$I, na.rm = TRUE),
+                     sd = stats::sd(.data$I, na.rm = TRUE), .by = "analyte")
+  ## Analytes with ~no impact variance carry no shape to share -> flat bridge.
+  flat_nm  <- zstats$analyte[!is.finite(zstats$sd) | zstats$sd < eps]
+  poolable <- setdiff(poolable, flat_nm)
+  for (nm in flat_nm) {
+    out[[nm]] <- bridge_for(nm, api_windows_short[1L],
+                            api_windows_long[length(api_windows_long)])
+  }
+
   if (length(poolable) < 2L) {              # nothing to pool
     for (nm in poolable) out[[nm]] <- per_analyte_fit(nm)
     return(out[target_analytes])
   }
 
-  ## AIC-select a common (short, long) window for the pooled factor-smooth fit.
+  zsd <- function(nm) zstats$sd[zstats$analyte == nm]
+  zmu <- function(nm) zstats$mu[zstats$analyte == nm]
+
+  ## AIC-select a common (short, long) window for the pooled factor-smooth fit,
+  ## fitted on the standardised response z = (I - mu_a) / sd_a.
   build_df <- function(ws, wl) {
     purrr::map_dfr(poolable, function(nm) {
       o <- anchors_for(nm, ws, wl)
-      tibble::tibble(I = o$I, hydro_short = o$hydro_short,
+      tibble::tibble(z = (o$I - zmu(nm)) / zsd(nm), hydro_short = o$hydro_short,
                      hydro_long = o$hydro_long, analyte = nm)
     }) |> dplyr::mutate(analyte = factor(.data$analyte))
   }
@@ -503,7 +542,7 @@ fit_target_model <- function(
     ## them but keep the fit (only a hard error means "unusable").
     tryCatch(
       suppressWarnings(
-        mgcv::gam(I ~ s(hydro_short, analyte, bs = "fs", k = k_h) +
+        mgcv::gam(z ~ s(hydro_short, analyte, bs = "fs", k = k_h) +
                       s(hydro_long,  analyte, bs = "fs", k = k_h),
                   data = df_m, method = "REML")
       ),
@@ -533,7 +572,9 @@ fit_target_model <- function(
     return(out[target_analytes])
   }
 
-  null_fit <- tryCatch(mgcv::gam(I ~ analyte, data = best_df, method = "REML"),
+  ## Null on the SAME (z) scale: "no shared hydro shape, every analyte flat at
+  ## its own mean" (z is de-meaned per analyte, so the null is z ~ 1).
+  null_fit <- tryCatch(mgcv::gam(z ~ 1, data = best_df, method = "REML"),
                        error = function(e) NULL)
   pooled_useful <- !is.null(null_fit) && best_aic < stats::AIC(null_fit)
   lev <- levels(best_df$analyte)
@@ -544,19 +585,18 @@ fit_target_model <- function(
       nd <- tibble::tibble(hydro_short = obs$hydro_short,
                            hydro_long = obs$hydro_long,
                            analyte = factor(nm, levels = lev))
-      fitted_I <- as.numeric(stats::predict(best, newdata = nd))
+      ## De-standardise the shared shape back to this analyte's own magnitude.
+      z_hat    <- as.numeric(stats::predict(best, newdata = nd))
+      fitted_I <- zmu(nm) + zsd(nm) * z_hat
       out[[nm]] <- list(
         impact_fit = best, window_short = best_ws, window_long = best_wl,
         tier = "model", n_obs = nrow(obs),
         anchors = dplyr::mutate(obs, S = .data$I - fitted_I),
-        pooled = TRUE, analyte = nm, pool_levels = lev
+        pooled = TRUE, analyte = nm, pool_levels = lev,
+        pool_center = zmu(nm), pool_scale = zsd(nm)
       )
     } else {
-      out[[nm]] <- list(
-        impact_fit = NULL, window_short = best_ws, window_long = best_wl,
-        tier = "bridge", n_obs = nrow(obs),
-        anchors = dplyr::mutate(obs, S = .data$I)
-      )
+      out[[nm]] <- bridge_for(nm, best_ws, best_wl)
     }
   }
   out[target_analytes]
@@ -721,8 +761,15 @@ fit_target_model <- function(
   hydro_pred <- if (m$tier == "model" && !is.null(m$impact_fit)) {
     nd <- dplyr::tibble(hydro_short = feats$hydro_short,
                         hydro_long = feats$hydro_long)
-    if (isTRUE(m$pooled)) nd$analyte <- factor(m$analyte, levels = m$pool_levels)
-    as.numeric(stats::predict(m$impact_fit, newdata = nd))
+    if (isTRUE(m$pooled)) {
+      ## Pooled fit predicts the shared shape on the standardised (z) scale;
+      ## de-standardise back to this analyte's own magnitude.
+      nd$analyte <- factor(m$analyte, levels = m$pool_levels)
+      z_hat <- as.numeric(stats::predict(m$impact_fit, newdata = nd))
+      m$pool_center + m$pool_scale * z_hat
+    } else {
+      as.numeric(stats::predict(m$impact_fit, newdata = nd))
+    }
   } else rep(0, length(qdates))
   s_interp <- vapply(seq_along(qdates), function(i) {
     .interp_residual(m$anchors, qdates[i], feats$hydro_short[i], feats$hydro_long[i])

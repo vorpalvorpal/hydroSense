@@ -360,6 +360,65 @@ test_that("pool = TRUE with a single modelled analyte falls back gracefully", {
   )
 })
 
+# Four large hydro-driven toxicants + one tiny one (Ni).  The large siblings
+# form a high-amplitude "population" hydro response; the bug drags the tiny
+# analyte toward it.  All share the same first-flush shape so they pool.
+make_multi_scale <- function(site, dates, hydro, big_mult, ni_mult, seed = 7) {
+  set.seed(seed)
+  api7 <- leachatetools:::.compute_api(hydro$value, hydro$date, dates, 7L)
+  api7 <- (api7 - mean(api7)) / (stats::sd(api7) + 1e-9)
+  bases <- c(Cu = 0.5, Zn = 5, Pb = 0.8, Cr = 1.0)           # large toxicants
+  purrr::pmap_dfr(list(dates, api7), function(d, a) {
+    flush <- exp(0.8 * a)
+    big <- vapply(bases, function(b) exp(rnorm(1, log(b), 0.1)) * big_mult * flush,
+                  numeric(1))
+    tibble::tibble(
+      sample_id = paste0(site, format(d, "%Y%m%d")), site_id = site,
+      datetime = d,
+      analyte = c(names(bases), "Ni", "pH", "DOC", "hardness", "Ca", "Mg"),
+      value = c(unname(big),
+                exp(rnorm(1, log(0.3), 0.1)) * ni_mult * flush,  # tiny Ni
+                7, 3, 40, 8, 5),                                 # constant co-analytes
+      detected = TRUE)
+  })
+}
+
+test_that("pool = TRUE preserves per-analyte magnitude (no cross-contamination)", {
+  # Regression test for the pooling bug where a single bs='fs' fit on the raw
+  # impact shrank each analyte's response toward the population: with several
+  # large-signal toxicants present, a near-zero analyte (Ni) was dragged up
+  # toward their high-amplitude hydro response (on the real B.S01 data Ni's
+  # daily AmsPAF share jumped from ~0% to ~40% while Cu collapsed from ~45% to
+  # 0%).  The fix pools the standardised (z) SHAPE and restores each analyte's
+  # own magnitude.
+  #
+  # The bridge residual S = I - fitted_I self-corrects AT anchors, so the bug is
+  # only visible BETWEEN anchors where the pooled hydro response dominates
+  # (the daily-grid-over-sparse-grabs case).  We put all anchors in 2021 and
+  # query in 2022 (beyond every anchor), where S_interp is a per-analyte
+  # constant, so the day-to-day variation across query dates is purely the
+  # pooled hydro response fitted_I — the quantity the bug inflates for Ni.
+  hydro <- make_hydro(900)                                   # spans 2020-2022
+  dates <- seq(as.Date("2021-01-01"), by = "week", length.out = 52)
+  rm    <- fit_rm(make_multi_scale("reference", dates, hydro, 1, 1), hydro)
+  tgt   <- make_multi_scale("target", dates, hydro, big_mult = 20, ni_mult = 1.1,
+                            seed = 8)
+  tm <- fit_target_model(tgt, rm, conc_units = "ug/L", min_obs_model = 10L,
+                         pool = TRUE, api_windows_short = c(7L, 14L),
+                         api_windows_long = c(30L, 90L))
+  # Ni must actually be jointly pooled with the big siblings, else vacuous.
+  expect_true(isTRUE(tm$models$Ni$pooled) && isTRUE(tm$models$Cu$pooled))
+
+  q   <- tibble::tibble(date = seq(as.Date("2022-02-01"), as.Date("2022-05-01"),
+                                   by = "week"))
+  res <- leachatetools:::.resolve_target_impact(tm, q)
+  big <- stats::sd(res$impact[res$analyte == "Cu"])
+  ni  <- stats::sd(res$impact[res$analyte == "Ni"])
+  # Ni's pooled hydro-response swing must stay far below the big toxicants'.
+  # Under the old raw-I pool Ni was inflated toward the population amplitude.
+  expect_gt(big, ni * 5)
+})
+
 
 ## ── impact_tier surfaced in ara_summary() (issue #14, item A) ─────────────────
 

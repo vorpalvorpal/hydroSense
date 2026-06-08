@@ -18,18 +18,28 @@
 }
 \value{
 Named list (per analyte) of \code{.fit_impact_response()}-shaped objects;
-pooled analytes additionally carry \code{pooled = TRUE}, \code{analyte}, and
-\code{pool_levels} for prediction.
+pooled analytes additionally carry \code{pooled = TRUE}, \code{analyte},
+\code{pool_levels}, and the de-standardisation pair \code{pool_center} (\code{mu_a}) and
+\code{pool_scale} (\code{sd_a}) for prediction.
 }
 \description{
 Fits a single factor-smooth GAM
-\code{I ~ s(hydro_short, analyte, bs="fs") + s(hydro_long, analyte, bs="fs")}
-at one AIC-selected common window pair, so each analyte's hydrological
-response is shrunk toward a shared population response (partial pooling).
-This regularises noisy, low-SNR analytes by borrowing a response shape from
-co-varying ones — it does \strong{not} add hydrological coverage (co-sampled
+\code{z ~ s(hydro_short, analyte, bs="fs") + s(hydro_long, analyte, bs="fs")}
+at one AIC-selected common window pair, where \code{z = (I - mu_a) / sd_a} is the
+impact standardised \strong{per analyte}. Pooling on this common unit scale shares
+the response \emph{shape} across analytes while leaving each analyte's \emph{magnitude}
+untouched (it is restored by de-standardising the fitted shape,
+\code{fitted_I = mu_a + sd_a * z_hat}). This is essential: the \code{bs = "fs"} penalty
+shrinks each analyte's level as well as its wiggliness, so pooling the raw
+\code{I} would drag a large-signal analyte (e.g. Cu) toward a population dominated
+by near-zero ones and inflate the near-zero ones in turn.
+}
+\details{
+Pooling regularises noisy, low-SNR analytes by borrowing a response shape
+from co-varying ones — it does \strong{not} add hydrological coverage (co-sampled
 analytes share the same regimes). Analytes with fewer than \code{min_obs_model}
-anchors get a per-analyte flat bridge; if pooling fails or doesn't beat an
-analyte-intercept null, the poolable analytes fall back to independent fits.
+anchors, or with ~no impact variance (no shape to share), get a per-analyte
+flat bridge; if pooling fails or doesn't beat the no-shared-shape null
+(\code{z ~ 1}), the poolable analytes fall back to independent fits.
 }
 \keyword{internal}
