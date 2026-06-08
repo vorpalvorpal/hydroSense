@@ -180,7 +180,10 @@ fit_target_model <- function(
   ]
   target <- .convert_df_tox_to_ugL(target, ssd_analytes, conc_units, "target")
 
-  if (!is.null(imputation_model)) {
+  ## Impute-first only when the model can actually impute (has fitted groups).
+  ## A PCA-only imputation_model still feeds the WQ layer below via its $pca.
+  if (!is.null(imputation_model) &&
+      length(imputation_model$groups %||% list()) > 0L) {
     if (!"site_id" %in% names(target)) target$site_id <- "target"
     target <- impute_chemistry(target, imputation_model)
   }
@@ -198,20 +201,32 @@ fit_target_model <- function(
     dplyr::distinct(target, .data$sample_id, .data$datetime)
   )
 
-  ## ── Impact anchors: I = value_norm - ref_norm ──────────────────────────────
-  anchors_all <- norm_det |>
+  ## ── Per-sample impact: I = value_norm - ref_norm ───────────────────────────
+  obs_samples <- norm_det |>
     dplyr::select("sample_id", date = ".date", "analyte", "value_norm") |>
     dplyr::inner_join(
       dplyr::select(ref_resolved, "sample_id", "analyte", "ref_norm"),
       by = c("sample_id", "analyte")
     ) |>
     dplyr::mutate(I = .data$value_norm - .data$ref_norm) |>
-    dplyr::filter(is.finite(.data$I)) |>
-    ## one anchor per (date, analyte) — average duplicate same-day grabs
-    dplyr::summarise(
-      I = mean(.data$I, na.rm = TRUE),
-      .by = c("date", "analyte")
-    )
+    dplyr::filter(is.finite(.data$I))
+
+  ## WQ-layer predictor scores (issue #14 item B). The WQ→metal prediction is a
+  ## regression on the imputation model's chemistry PCA — not Bayesian (the
+  ## cross-metal coupling only acts when sibling metals are observed). We reuse
+  ## the PCA to predict each metal from water quality and interpolate only the
+  ## residual `d`, which lets WQ-only days beat pure impact interpolation.
+  pca <- if (!is.null(imputation_model)) imputation_model$pca else NULL
+  pc_cols <- character(0)
+  if (!is.null(pca)) {
+    pc_scores <- .compute_pca_scores(target, pca)
+    pc_cols   <- grep("^PC", names(pc_scores), value = TRUE)
+    obs_samples <- dplyr::left_join(obs_samples, pc_scores, by = "sample_id")
+  }
+
+  ## Date-aggregated impact anchors (average duplicate same-day grabs)
+  anchors_all <- obs_samples |>
+    dplyr::summarise(I = mean(.data$I, na.rm = TRUE), .by = c("date", "analyte"))
 
   ## ── Per-analyte fit ────────────────────────────────────────────────────────
   target_analytes <- intersect(unique(anchors_all$analyte), ssd_analytes)
@@ -232,19 +247,72 @@ fit_target_model <- function(
       obs, hydro, hydro_type, api_windows_short, api_windows_long,
       auto_select, min_obs_model, eps
     )
+
+    ## WQ layer + residual d (only when a PCA is available)
+    fit_res$wq_fit <- NULL
+    fit_res$d_anchors <- NULL
+    if (length(pc_cols) > 0L) {
+      os_nm <- dplyr::filter(obs_samples, .data$analyte == .env$nm)
+      fit_res <- c(fit_res, .fit_wq_layer(
+        os_nm, pc_cols, hydro, hydro_type,
+        fit_res$window_short, fit_res$window_long, min_obs_model
+      ))
+    }
     models[[nm]] <- fit_res
   }
 
   structure(
     list(
-      models       = models,
+      models          = models,
       reference_model = reference_model,
-      hydro        = hydro,
-      hydro_type   = hydro_type,
-      fit_date     = Sys.Date()
+      hydro           = hydro,
+      hydro_type      = hydro_type,
+      pca             = pca,
+      pc_cols         = pc_cols,
+      fit_date        = Sys.Date()
     ),
     class = "target_model"
   )
+}
+
+#' Fit the WQ→metal layer and its residual `d` for one analyte
+#'
+#' A GAM of normalised concentration on the chemistry-PCA scores (the
+#' non-Bayesian WQ prediction), kept only if it beats an intercept-only null by
+#' AIC. The residual `d = value_norm - WQ-prediction` is date-aggregated with
+#' hydro features for bracketing-bridge interpolation, exactly like the impact
+#' state `S`.
+#'
+#' @return List with `wq_fit` (gam or `NULL`) and `d_anchors` (or `NULL`).
+#' @keywords internal
+.fit_wq_layer <- function(os_nm, pc_cols, hydro, hydro_type,
+                           window_short, window_long, min_obs_model) {
+  os_nm <- os_nm[stats::complete.cases(os_nm[, pc_cols, drop = FALSE]), , drop = FALSE]
+  if (nrow(os_nm) < min_obs_model) return(list(wq_fit = NULL, d_anchors = NULL))
+
+  k_pc <- min(4L, nrow(os_nm) - 2L)
+  form <- stats::as.formula(paste(
+    "value_norm ~", paste(sprintf("s(%s, k = %d)", pc_cols, k_pc), collapse = " + ")
+  ))
+  wq_gam <- tryCatch(mgcv::gam(form, data = os_nm, method = "REML"),
+                     error = function(e) NULL, warning = function(w) NULL)
+  if (is.null(wq_gam)) return(list(wq_fit = NULL, d_anchors = NULL))
+
+  null_gam <- tryCatch(mgcv::gam(value_norm ~ 1, data = os_nm, method = "REML"),
+                       error = function(e) NULL)
+  if (is.null(null_gam) || stats::AIC(wq_gam) >= stats::AIC(null_gam)) {
+    return(list(wq_fit = NULL, d_anchors = NULL))
+  }
+
+  os_nm$d <- os_nm$value_norm - as.numeric(stats::predict(wq_gam))
+  d_anch <- os_nm |>
+    dplyr::summarise(S = mean(.data$d, na.rm = TRUE), .by = "date") |>
+    dplyr::arrange(.data$date)
+  feats <- .compute_hydro_features(hydro, d_anch$date, window_short, window_long, hydro_type)
+  d_anch$hydro_short <- feats$hydro_short
+  d_anch$hydro_long  <- feats$hydro_long
+
+  list(wq_fit = wq_gam, d_anchors = d_anch)
 }
 
 
@@ -411,9 +479,15 @@ fit_target_model <- function(
 #' @param target_model A `target_model`.
 #' @param query Tibble with `date` (Date) — the days to predict.
 #' @param analytes Character; analytes to predict (default: all modelled).
+#' @param wq Optional long-format water-quality data frame (`sample_id`,
+#'   `analyte`, `value`) giving each query day's WQ, with `sample_id` equal to
+#'   the query date as a character string. When supplied and the analyte has a
+#'   fitted WQ layer, the day's concentration is predicted as
+#'   `WQ-prediction + d_interp` (tier `"wq"`) instead of `ref + impact`.
 #' @return Tibble `(date, analyte, ref_norm, impact, C_norm, impact_tier)`.
 #' @keywords internal
-.resolve_target_impact <- function(target_model, query, analytes = NULL) {
+.resolve_target_impact <- function(target_model, query, analytes = NULL,
+                                    wq = NULL) {
   qdates <- sort(unique(as.Date(query$date)))
   if (is.null(analytes)) analytes <- names(target_model$models)
   analytes <- intersect(analytes, names(target_model$models))
@@ -432,6 +506,12 @@ fit_target_model <- function(
   ) |>
     dplyr::mutate(date = as.Date(.data$sample_id))
 
+  ## WQ-layer PC scores at the query dates (sample_id == date string)
+  pc_q <- NULL
+  if (!is.null(wq) && !is.null(target_model$pca)) {
+    pc_q <- .compute_pca_scores(wq, target_model$pca)
+  }
+
   out <- vector("list", length(analytes))
   for (j in seq_along(analytes)) {
     nm <- analytes[j]
@@ -442,34 +522,64 @@ fit_target_model <- function(
       target_model$hydro_type
     )
 
-    hydro_pred <- if (m$tier == "model" && !is.null(m$impact_fit)) {
-      as.numeric(stats::predict(m$impact_fit, newdata = dplyr::tibble(
-        hydro_short = feats$hydro_short, hydro_long = feats$hydro_long
-      )))
-    } else rep(0, length(qdates))
-
-    s_interp <- vapply(seq_along(qdates), function(i) {
-      .interp_residual(m$anchors, qdates[i], feats$hydro_short[i], feats$hydro_long[i])
-    }, numeric(1L))
-
-    impact <- hydro_pred + s_interp
-
-    ref_norm_nm <- ref_q$ref_norm[ref_q$analyte == nm]
+    ref_norm_nm  <- ref_q$ref_norm[ref_q$analyte == nm]
     ref_dates_nm <- ref_q$date[ref_q$analyte == nm]
-    ref_lookup <- stats::setNames(ref_norm_nm, as.character(ref_dates_nm))
-    ref_vec <- as.numeric(ref_lookup[as.character(qdates)])
+    ref_lookup   <- stats::setNames(ref_norm_nm, as.character(ref_dates_nm))
+    ref_vec      <- as.numeric(ref_lookup[as.character(qdates)])
     ref_vec[is.na(ref_vec)] <- 0
+
+    use_wq <- !is.null(pc_q) && !is.null(m$wq_fit) && !is.null(m$d_anchors)
+    if (use_wq) {
+      ## Tier "wq": WQ-prediction + interpolated residual d, anchored by the
+      ## day's own water quality (sharper than pure impact interpolation).
+      pc_lookup <- dplyr::left_join(
+        tibble::tibble(sample_id = as.character(qdates)), pc_q, by = "sample_id"
+      )
+      c_wq <- as.numeric(stats::predict(m$wq_fit, newdata = pc_lookup))
+      d_interp <- vapply(seq_along(qdates), function(i) {
+        .interp_residual(m$d_anchors, qdates[i], feats$hydro_short[i], feats$hydro_long[i])
+      }, numeric(1L))
+      c_norm <- pmax(c_wq + d_interp, 0)
+      ## Where the WQ prediction is unavailable (NA PCs), fall back to impact.
+      bad <- !is.finite(c_norm)
+      tier_vec <- rep("wq", length(qdates))
+      if (any(bad)) {
+        c_norm[bad] <- pmax(ref_vec[bad] +
+          .impact_at(m, feats, qdates, bad), 0)
+        tier_vec[bad] <- m$tier
+      }
+      impact <- c_norm - ref_vec
+    } else {
+      impact   <- .impact_at(m, feats, qdates, rep(TRUE, length(qdates)))
+      c_norm   <- pmax(ref_vec + impact, 0)
+      tier_vec <- rep(m$tier, length(qdates))
+    }
 
     out[[j]] <- tibble::tibble(
       date        = qdates,
       analyte     = nm,
       ref_norm    = ref_vec,
       impact      = impact,
-      C_norm      = pmax(ref_vec + impact, 0),
-      impact_tier = m$tier
+      C_norm      = c_norm,
+      impact_tier = tier_vec
     )
   }
   dplyr::bind_rows(out)
+}
+
+#' Impact estimate `beta·f(hydro) + S_interp` at query dates (subset by `mask`)
+#' @keywords internal
+.impact_at <- function(m, feats, qdates, mask) {
+  hydro_pred <- if (m$tier == "model" && !is.null(m$impact_fit)) {
+    as.numeric(stats::predict(m$impact_fit, newdata = dplyr::tibble(
+      hydro_short = feats$hydro_short, hydro_long = feats$hydro_long
+    )))
+  } else rep(0, length(qdates))
+  s_interp <- vapply(seq_along(qdates), function(i) {
+    .interp_residual(m$anchors, qdates[i], feats$hydro_short[i], feats$hydro_long[i])
+  }, numeric(1L))
+  res <- hydro_pred + s_interp
+  res[mask]
 }
 
 
@@ -502,6 +612,11 @@ print.target_model <- function(x, ...) {
   if (n_bridge > 0L) {
     nms <- names(Filter(function(m) m$tier == "bridge", x$models))
     cat(sprintf("  bridge-only (%d):  %s\n", n_bridge, paste(nms, collapse = ", ")))
+  }
+  n_wq <- sum(vapply(x$models, function(m) !is.null(m$wq_fit), logical(1L)))
+  if (n_wq > 0L) {
+    nms <- names(Filter(function(m) !is.null(m$wq_fit), x$models))
+    cat(sprintf("  WQ layer (%d):  %s\n", n_wq, paste(nms, collapse = ", ")))
   }
   invisible(x)
 }

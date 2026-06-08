@@ -4,7 +4,7 @@
 \alias{.resolve_target_impact}
 \title{Predict the site impact (and implied normalised concentration) at query dates}
 \usage{
-.resolve_target_impact(target_model, query, analytes = NULL)
+.resolve_target_impact(target_model, query, analytes = NULL, wq = NULL)
 }
 \arguments{
 \item{target_model}{A \code{target_model}.}
@@ -12,6 +12,12 @@
 \item{query}{Tibble with \code{date} (Date) — the days to predict.}
 
 \item{analytes}{Character; analytes to predict (default: all modelled).}
+
+\item{wq}{Optional long-format water-quality data frame (\code{sample_id},
+\code{analyte}, \code{value}) giving each query day's WQ, with \code{sample_id} equal to
+the query date as a character string. When supplied and the analyte has a
+fitted WQ layer, the day's concentration is predicted as
+\code{WQ-prediction + d_interp} (tier \code{"wq"}) instead of \code{ref + impact}.}
 }
 \value{
 Tibble \verb{(date, analyte, ref_norm, impact, C_norm, impact_tier)}.

@@ -677,12 +677,21 @@ amspaf_daily <- function(
 
   modelled <- names(tm$models)
   qdates   <- sort(unique(daily_long$.date))
-  pred <- .resolve_target_impact(tm, tibble::tibble(date = qdates), modelled)
-  if (nrow(pred) == 0L) return(daily_long)
 
   ## Per-date co-analyte lookup (named numeric vector keyed by analyte).
   co <- daily_long[!daily_long$analyte %in% tox_analytes &
                      (is.na(daily_long$detected) | daily_long$detected), , drop = FALSE]
+
+  ## WQ layer (issue #14 item B): pass the day's water quality so analytes with
+  ## a fitted WQ→metal relationship are predicted as WQ-prediction + d_interp,
+  ## keyed by sample_id == date string.
+  wq_long <- if (!is.null(tm$pca)) {
+    tibble::tibble(sample_id = as.character(co$.date),
+                   analyte = co$analyte, value = co$value)
+  } else NULL
+  pred <- .resolve_target_impact(tm, tibble::tibble(date = qdates), modelled,
+                                 wq = wq_long)
+  if (nrow(pred) == 0L) return(daily_long)
   co_split <- split(
     data.frame(analyte = co$analyte, value = co$value, stringsAsFactors = FALSE),
     as.character(co$.date)

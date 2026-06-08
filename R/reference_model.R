@@ -483,7 +483,8 @@ fit_reference_model <- function(
   ## hydrological regimes (e.g. 100 Zn obs → 100 Cu anchors via the Cu–Zn
   ## relationship).  Imputed metal rows are marked detected = TRUE and flow into
   ## the per-analyte GAMs exactly like measured observations.
-  if (!is.null(imputation_model)) {
+  if (!is.null(imputation_model) &&
+      length(imputation_model$groups %||% list()) > 0L) {
     if (!"site_id" %in% names(reference)) {
       reference$site_id <- "reference"
     }

@@ -205,6 +205,93 @@ test_that("amspaf_daily(interpolation='model') requires a reference_model", {
   )
 })
 
+## ── WQ layer + residual d (issue #14, item B) ────────────────────────────────
+
+# Chemistry where Cu tracks EC (a leachate tracer), so the WQ layer has signal.
+make_wq_chem <- function(site, dates, mult = 1, seed = 1) {
+  set.seed(seed)
+  analytes <- c("Cu", "Zn", "Ni", "pH", "EC", "DOC", "hardness", "Ca", "Mg")
+  purrr::map_dfr(dates, function(d) {
+    ec <- runif(1, 100, 600)
+    tibble::tibble(
+      sample_id = paste0(site, format(d, "%Y%m%d")), site_id = site,
+      datetime = d, analyte = analytes,
+      value = c(exp(rnorm(1, log(0.2 + ec / 1000), 0.2)) * mult,
+                exp(rnorm(1, log(5), 0.4)) * mult, exp(rnorm(1, log(0.3), 0.3)) * mult,
+                runif(1, 6.5, 8), ec, runif(1, 1, 5),
+                runif(1, 20, 60), runif(1, 4, 12), runif(1, 2, 8)),
+      detected = TRUE)
+  })
+}
+
+# A Stan-free PCA-only imputation_model (same shape the bs01 script builds).
+make_pca_model <- function(chem, wq = c("pH", "EC", "DOC", "Ca", "Mg", "hardness")) {
+  pca <- leachatetools:::.prepare_chem_pca(chem, wq_vars = wq)
+  structure(list(pca = pca, pca_vars = wq), class = "imputation_model")
+}
+
+test_that("fit_target_model() fits a WQ layer when a PCA model is supplied", {
+  dates <- seq(as.Date("2021-01-01"), by = "week", length.out = 60)
+  rm    <- fit_rm(make_wq_chem("reference", dates), make_hydro())
+  tgt   <- make_wq_chem("target", dates, mult = 8, seed = 2)
+  tm <- fit_target_model(tgt, rm, imputation_model = make_pca_model(tgt),
+                         conc_units = "ug/L", min_obs_model = 10L,
+                         api_windows_short = c(7L), api_windows_long = c(30L))
+  expect_false(is.null(tm$pca))
+  expect_true(length(tm$pc_cols) > 0L)
+  # At least one analyte earned a WQ layer
+  expect_true(any(vapply(tm$models, function(m) !is.null(m$wq_fit), logical(1L))))
+})
+
+test_that("WQ-only PCA model does not trigger the (brms) impute-first warning", {
+  dates <- seq(as.Date("2021-01-01"), by = "week", length.out = 60)
+  rm    <- fit_rm(make_wq_chem("reference", dates), make_hydro())
+  tgt   <- make_wq_chem("target", dates, mult = 8, seed = 2)
+  expect_no_warning(
+    fit_target_model(tgt, rm, imputation_model = make_pca_model(tgt),
+                     conc_units = "ug/L", min_obs_model = 10L,
+                     api_windows_short = c(7L), api_windows_long = c(30L))
+  )
+})
+
+test_that(".resolve_target_impact() uses the 'wq' tier when wq is supplied", {
+  dates <- seq(as.Date("2021-01-01"), by = "week", length.out = 60)
+  rm    <- fit_rm(make_wq_chem("reference", dates), make_hydro())
+  tgt   <- make_wq_chem("target", dates, mult = 8, seed = 2)
+  tm <- fit_target_model(tgt, rm, imputation_model = make_pca_model(tgt),
+                         conc_units = "ug/L", min_obs_model = 10L,
+                         api_windows_short = c(7L), api_windows_long = c(30L))
+
+  qdates <- as.Date(c("2021-04-07", "2021-04-14"))
+  wq <- tibble::tibble(
+    sample_id = rep(as.character(qdates), each = 2),
+    analyte   = rep(c("EC", "pH"), times = 2),
+    value     = c(550, 7.2, 120, 7.2)     # day 1 high EC, day 2 low EC
+  )
+  res <- leachatetools:::.resolve_target_impact(
+    tm, tibble::tibble(date = qdates), analytes = "Cu", wq = wq
+  )
+  expect_true(all(res$impact_tier == "wq"))
+  # Cu tracks EC: the high-EC day should predict a higher normalised Cu
+  cu_hi <- res$C_norm[res$date == qdates[1]]
+  cu_lo <- res$C_norm[res$date == qdates[2]]
+  expect_gt(cu_hi, cu_lo)
+})
+
+test_that("without a wq argument the resolver falls back to the impact tiers", {
+  dates <- seq(as.Date("2021-01-01"), by = "week", length.out = 60)
+  rm    <- fit_rm(make_wq_chem("reference", dates), make_hydro())
+  tgt   <- make_wq_chem("target", dates, mult = 8, seed = 2)
+  tm <- fit_target_model(tgt, rm, imputation_model = make_pca_model(tgt),
+                         conc_units = "ug/L", min_obs_model = 10L,
+                         api_windows_short = c(7L), api_windows_long = c(30L))
+  res <- leachatetools:::.resolve_target_impact(
+    tm, tibble::tibble(date = as.Date("2021-04-07")), analytes = "Cu"  # no wq
+  )
+  expect_true(all(res$impact_tier %in% c("model", "bridge")))
+})
+
+
 ## ── impact_tier surfaced in ara_summary() (issue #14, item A) ─────────────────
 
 test_that("amspaf_daily(interpolation='model') surfaces impact_tier in ara_summary()", {
