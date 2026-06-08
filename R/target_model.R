@@ -98,14 +98,15 @@
 #' @param auto_select Logical; AIC window selection per analyte (default `TRUE`).
 #' @param min_obs_model Integer; minimum impact anchors required to attempt the
 #'   `f(hydro)` GAM. Below this, the analyte uses the bridge tier. Default `12L`.
-#' @param pool Logical (default `FALSE`). When `TRUE`, the per-analyte hydro
+#' @param pool Logical (default `TRUE`). When `TRUE`, the per-analyte hydro
 #'   responses are **partially pooled**: a single factor-smooth GAM
 #'   (`bs = "fs"`) is fitted across all sufficiently-sampled analytes at one
 #'   common AIC-selected window, shrinking each analyte's response toward a
 #'   shared shape. This *regularises* noisy, low-signal analytes (it does not
 #'   add hydrological coverage — co-sampled analytes already share the same
 #'   regimes), and falls back to independent fits if it fails or doesn't beat an
-#'   analyte-intercept null.
+#'   analyte-intercept null. Set `pool = FALSE` to force independent per-analyte
+#'   fits (appropriate only when all analytes are densely sampled).
 #' @param eps Small positive guard. Default `1e-9`.
 #'
 #' @return An object of class `target_model`:
@@ -146,7 +147,7 @@ fit_target_model <- function(
     api_windows_long   = c(30L, 60L, 90L, 180L),
     auto_select        = TRUE,
     min_obs_model      = 12L,
-    pool               = FALSE,
+    pool               = TRUE,
     eps                = 1e-9
 ) {
   ## ── Validation ─────────────────────────────────────────────────────────────

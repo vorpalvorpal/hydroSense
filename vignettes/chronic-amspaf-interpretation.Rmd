@@ -374,14 +374,15 @@ grabs. A water-quality-bearing day is then anchored by *today's* chemistry
 neighbouring grabs — the sharper estimate, because conductivity and the like are
 contemporaneous evidence of a leachate excursion.
 
-**Partial pooling (`pool = TRUE`).** By default each analyte's hydrological
-response is fitted independently. With `pool = TRUE`, a single factor-smooth GAM
-is fitted jointly across analytes, shrinking each response toward a shared shape.
-This *regularises* noisy, low-signal analytes by borrowing a response shape from
-co-varying ones; it does not add hydrological coverage, since co-sampled metals
-already see the same flow regimes. Useful when several metals are sparsely or
-noisily measured; otherwise the independent fits (with their AIC flat-bridge
-fallback) are already adequate.
+**Partial pooling (`pool = TRUE`, the default).** A single factor-smooth GAM
+is fitted jointly across analytes, shrinking each analyte's hydrological response
+toward a shared shape. This *regularises* noisy, low-signal analytes by borrowing
+a response shape from co-varying ones; it does not add hydrological coverage,
+since co-sampled metals already see the same flow regimes. In leachate datasets,
+BDL-heavy analytes with sparse detections are the norm rather than the exception,
+so pooled regularisation is almost always preferable. Set `pool = FALSE` only
+when all analytes are densely and reliably detected, making independent fits with
+their AIC flat-bridge fallback fully adequate.
 
 ---
 
