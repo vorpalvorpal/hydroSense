@@ -17,7 +17,10 @@ add_amspaf(
   tau = 90,
   tau_units = "day",
   window = 365,
-  window_units = "day"
+  window_units = "day",
+  return = c("summary", "draws"),
+  interval = 0.9,
+  central = c("median", "mean")
 )
 }
 \arguments{

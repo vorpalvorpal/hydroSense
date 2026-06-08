@@ -318,7 +318,10 @@ add_amspaf <- function(
     tau              = 90,
     tau_units        = "day",
     window           = 365,
-    window_units     = "day"
+    window_units     = "day",
+    return           = c("summary", "draws"),
+    interval         = 0.90,
+    central          = c("median", "mean")
 ) {
   checkmate::assert_data_frame(df)
   checkmate::assert_names(
@@ -327,6 +330,8 @@ add_amspaf <- function(
   )
   method      <- match.arg(method)
   ref_summary <- match.arg(ref_summary)
+  return      <- match.arg(return)
+  central     <- match.arg(central)
   checkmate::assert_int(min_analytes, lower = 1L)
   checkmate::assert_flag(require_temperature)
 
@@ -425,18 +430,29 @@ add_amspaf <- function(
     dplyr::ungroup()
 
   ## End-of-call summary of dropped analytes (single message rather than
-  ## per-sample warnings — important for large datasets)
-  .summarise_amspaf_diagnostics(amspaf_df, min_analytes)
+  ## per-sample warnings — important for large datasets).
+  ## In draws mode, structural diagnostics (dropped analytes, ref_source) are
+  ## identical across draws; restrict to a representative draw to avoid ×N
+  ## over-counting.
+  amspaf_df_rep <- if ("draw_id" %in% names(amspaf_df) && nrow(amspaf_df) > 0L) {
+    min_did <- min(amspaf_df[["draw_id"]], na.rm = TRUE)
+    dplyr::filter(amspaf_df, .data$draw_id == .env$min_did)
+  } else {
+    amspaf_df
+  }
+  .summarise_amspaf_diagnostics(amspaf_df_rep, min_analytes)
 
   ## End-of-call summary of analytes assessed without a reference match
   ## (ARA enabled but no background available — assessed against raw conc).
-  .summarise_ara_coverage(amspaf_df, ara_enabled)
+  .summarise_ara_coverage(amspaf_df_rep, ara_enabled)
 
   ## ara_diag is a diagnostic list-column; flatten it for the ara_summary
   ## attribute, then remove from the output data frame.
+  ## In draws mode restrict to the representative draw (draw-aware ARA
+  ## diagnostics are a Chunk 3 refinement).
   if ("ara_diag" %in% names(amspaf_df)) {
     ara_summary_out <- purrr::map2_dfr(
-      amspaf_df$sample_id, amspaf_df$ara_diag,
+      amspaf_df_rep$sample_id, amspaf_df_rep$ara_diag,
       function(sid, d) {
         if (!is.null(d) && nrow(d) > 0L) dplyr::mutate(d, sample_id = sid)
         else NULL
@@ -482,6 +498,10 @@ add_amspaf <- function(
   } else if ("datetime" %in% names(result)) {
     result <- dplyr::arrange(result, .data$datetime)
   }
+
+  ## Collapse draws to posterior median + CI (default), or return raw draws.
+  ## Point input: summarise_draws is a no-op (identity).
+  if (return == "summary") result <- summarise_draws(result, interval, central)
 
   ## Store ARA cell-level diagnostics as an attribute for ara_summary()
   attr(result, "ara_summary") <- ara_summary_out
@@ -681,56 +701,78 @@ compute_amspaf_per_sample <- function(
   }
   has_imputed <- "imputed" %in% names(sample_data)
 
-  sample_ids <- unique(sample_data$sample_id)
+  ## Draw-carrier: broadcast exact cells so every row has a concrete draw_id.
+  ## In the point case (no draw_id column, or all-NA) this assigns draw_id=1L
+  ## everywhere; is_draws_mode=FALSE triggers output stripping at the end so
+  ## the returned schema is byte-identical to pre-draws behaviour.
+  is_draws_mode <- "draw_id" %in% names(sample_data) &&
+    !all(is.na(sample_data[["draw_id"]]))
+  draws       <- .draw_domain(sample_data)
+  sample_data <- .broadcast_draws(sample_data, draws)
 
-  ## ── Phase 1: per-sample normalisation + ARA ──────────────────────────────
-  ## When ref_table carries a sample_id column (temporal/reference_model path),
-  ## slice it to the current sample before passing to .amspaf_adjust().
+  ## ── Phase 1: per-(sample, draw) normalisation + ARA ──────────────────────
+  ## After broadcasting every row has a concrete draw_id, so we iterate over
+  ## (sample_id, draw_id) blocks.  Within a block each analyte appears exactly
+  ## once, so .amspaf_adjust's coanalyte deframe() is safe.
+  ## ref_table is keyed by sample_id only (reference background is not drawn),
+  ## so the temporal-ref slice is unchanged.
   has_temporal_ref <- "sample_id" %in% names(ref_table)
+  block_keys <- dplyr::distinct(sample_data, .data$sample_id, .data$draw_id)
 
-  adj_list <- lapply(sample_ids, function(sid) {
-    rows <- dplyr::filter(sample_data, .data$sample_id == .env$sid)
+  adj_list <- purrr::pmap(block_keys, function(sample_id, draw_id) {
+    rows <- dplyr::filter(sample_data,
+      .data$sample_id == .env$sample_id,
+      .data$draw_id   == .env$draw_id
+    )
     rt <- if (has_temporal_ref) {
-      dplyr::filter(ref_table, .data$sample_id == .env$sid) |>
+      dplyr::filter(ref_table, .data$sample_id == .env$sample_id) |>
         dplyr::select(-"sample_id")
     } else {
       ref_table
     }
-    c(list(sample_id = sid),
+    c(list(sample_id = sample_id, draw_id = draw_id),
       .amspaf_adjust(rows, rt, ssd_params, ara_enabled))
   })
 
-  ## Samples that pass min_analytes (after dropping missing-co-analyte rows)
+  ## Blocks that pass min_analytes (after dropping missing-co-analyte rows)
   keep <- purrr::keep(adj_list, function(z) nrow(z$tox) >= min_analytes)
-  if (length(keep) == 0L) return(.amspaf_empty_row(with_sample_id = TRUE))
+  if (length(keep) == 0L) {
+    empty <- .amspaf_empty_row(with_sample_id = TRUE)
+    if (!is_draws_mode) empty <- dplyr::select(empty, -"draw_id")
+    return(empty)
+  }
 
   tox_keep <- purrr::map_dfr(keep, function(z) {
-    dplyr::mutate(z$tox, sample_id = z$sample_id)
+    dplyr::mutate(z$tox, sample_id = z$sample_id, draw_id = z$draw_id)
   })
 
   ## ── Phase 2: batched PAF (one ssd_hp() call per analyte) ─────────────────
+  ## ssd_hp() is called once per analyte across ALL (sample, draw) rows — the
+  ## extra rows from draws are just more concentrations in the same vectorised
+  ## call.  No per-draw SSD evaluation loop needed.
   tox_keep <- .amspaf_add_paf(tox_keep, ssd_params, method, guideline_dir)
 
-  ## Per-sample diagnostic list-columns
-  dropped_lookup <- stats::setNames(
-    lapply(keep, `[[`, "dropped"),
-    vapply(keep, `[[`, character(1), "sample_id")
-  )
-  ara_diag_lookup <- stats::setNames(
-    lapply(keep, `[[`, "ara_diag"),
-    vapply(keep, `[[`, character(1), "sample_id")
-  )
+  ## Per-block diagnostic lookup (composite key "sample_id\x01draw_id")
+  .ck <- function(z) paste(z$sample_id, z$draw_id, sep = "\x01")
+  dropped_lookup  <- stats::setNames(lapply(keep, `[[`, "dropped"),
+                                     vapply(keep, .ck, character(1)))
+  ara_diag_lookup <- stats::setNames(lapply(keep, `[[`, "ara_diag"),
+                                     vapply(keep, .ck, character(1)))
 
-  ## ── Phase 3: per-sample CA/IA combination ────────────────────────────────
-  tox_keep |>
-    dplyr::group_by(.data$sample_id) |>
+  ## ── Phase 3: per-(sample, draw) CA/IA combination ────────────────────────
+  result <- tox_keep |>
+    dplyr::group_by(.data$sample_id, .data$draw_id) |>
     dplyr::group_modify(\(.x, .y) {
+      key <- paste(.y$sample_id, .y$draw_id, sep = "\x01")
       res <- .amspaf_combine(.x, has_imputed)
-      res$dropped_analytes <- list(dropped_lookup[[.y$sample_id]])
-      res$ara_diag         <- list(ara_diag_lookup[[.y$sample_id]])
+      res$dropped_analytes <- list(dropped_lookup[[key]])
+      res$ara_diag         <- list(ara_diag_lookup[[key]])
       res
     }) |>
     dplyr::ungroup()
+
+  if (!is_draws_mode) result <- dplyr::select(result, -"draw_id")
+  result
 }
 
 
@@ -1070,7 +1112,8 @@ compute_amspaf_one_sample <- function(
     dominant_analyte   = character(0),
     max_paf            = numeric(0),
     analyte_pafs       = list(),
-    dropped_analytes   = list()
+    dropped_analytes   = list(),
+    draw_id            = integer(0)
   )
   if (with_sample_id) {
     out <- tibble::add_column(out, sample_id = character(0), .before = 1L)

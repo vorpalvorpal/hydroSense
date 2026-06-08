@@ -202,6 +202,19 @@ amspaf_daily <- function(
       must.include = c("datetime", "value"))
   }
 
+  ## Draws not yet supported: interpolating draw-bearing chemistry onto a
+  ## daily grid requires the temporal-correlation design from issue #16.
+  ## Use add_amspaf() on the draw-carrier frame then time_weighted_aggregate()
+  ## to propagate draws through the chronic pipeline instead.
+  if ("draw_id" %in% names(df) && !all(is.na(df[["draw_id"]]))) {
+    cli::cli_abort(c(
+      "{.fn amspaf_daily} does not yet support draws-mode input.",
+      "i" = "To propagate imputation uncertainty through the chronic pipeline, \\
+             call {.fn add_amspaf} on the draw-carrier frame, then \\
+             {.fn time_weighted_aggregate} to aggregate draws over time."
+    ))
+  }
+
   ## --- Normalise datetime to Date; ensure detected column -------------------
   df <- dplyr::mutate(df, datetime = as.Date(.data$datetime))
   if (!"detected" %in% names(df)) {

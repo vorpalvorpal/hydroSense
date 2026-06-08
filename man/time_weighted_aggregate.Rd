@@ -13,7 +13,10 @@ time_weighted_aggregate(
   window_units = NULL,
   summary = c("geom_mean", "arith_mean", "p90"),
   anchor_outside_window = TRUE,
-  eps = 1e-09
+  eps = 1e-09,
+  return = c("summary", "draws"),
+  interval = 0.9,
+  central = c("median", "mean")
 )
 }
 \arguments{
