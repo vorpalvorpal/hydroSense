@@ -931,25 +931,46 @@ impute_chemistry <- function(
 #' @param min_obs Minimum number of quantified observations required to fit a
 #'   GAM for a target.  Targets with fewer observations are skipped.
 #'   Default `10L`.
+#' @param return `"point"` (default) for the posterior mean of the GAM
+#'   prediction — identical to pre-draws behaviour.  `"draws"` for
+#'   full posterior-predictive draws: each missing co-analyte cell emits
+#'   `N` rows keyed by `draw_id 1..N`, reflecting both parameter uncertainty
+#'   (`beta ~ N(coef(gam), Vp)`) and residual Gaussian noise (`gam$sig2`).
+#'   Observed co-analyte cells keep `draw_id = NA`.
+#' @param ndraws Number of draws to generate.  Required when
+#'   `return = "draws"` and `df` contains no existing draws.  When `df`
+#'   already carries draws (from [impute_chemistry()]), `N` is inferred
+#'   from the existing draw domain; `ndraws` must be `NULL` or equal to
+#'   that count.
+#' @param seed Optional integer seed passed to [set.seed()] before the
+#'   sampling calls, for reproducibility.
 #'
 #' @return `df` with missing co-analyte rows filled in, tagged with
-#'   `imputed = TRUE` and `imputed_kind = "missing"`.  All other rows are
-#'   unchanged.
+#'   `imputed = TRUE` and `imputed_kind = "missing"`.  In `"draws"` mode
+#'   each imputed cell is replicated `N` times with `draw_id 1..N`;
+#'   observed cells keep `draw_id = NA`.  In `"point"` mode the output
+#'   schema is unchanged from the pre-draws behaviour.
 #'
-#' @seealso [fit_imputation_model()], [impute_chemistry()]
+#' @seealso [fit_imputation_model()], [impute_chemistry()], [summarise_draws()]
 #' @examples
 #' \dontrun{
-#' # Deterministic GAM-based imputation of normalisation co-analytes
-#' # (pH, DOC, hardness, ...) from the measured analyte suite.
-#' impute_coanalytes(monitoring_long)
+#' # Deterministic GAM-based imputation (default, point mode)
+#' impute_coanalytes(monitoring_long, model)
+#'
+#' # Posterior-predictive draws when df already carries metals draws
+#' impute_coanalytes(metals_draws, model, return = "draws")
 #' }
 #' @export
 impute_coanalytes <- function(
     df,
     model,
-    targets = NULL,
-    min_obs = 10L
+    targets  = NULL,
+    min_obs  = 10L,
+    return   = c("point", "draws"),
+    ndraws   = NULL,
+    seed     = NULL
 ) {
+  return <- match.arg(return)
   if (is.null(targets)) targets <- .COANALYTE_TARGETS
   checkmate::assert_data_frame(df)
   checkmate::assert_names(names(df),
@@ -965,7 +986,33 @@ impute_coanalytes <- function(
        target analytes?"
     )
 
+  # ── Resolve draw count N ──────────────────────────────────────────────────
+  domain <- .draw_domain(df)
+  if (return == "draws") {
+    if (length(domain) > 0L) {
+      if (!is.null(ndraws) && as.integer(ndraws) != length(domain)) {
+        cli::cli_abort(c(
+          "{.arg ndraws} = {ndraws} conflicts with the input frame's draw \\
+           domain (N = {length(domain)}).",
+          "i" = "Omit {.arg ndraws} to reuse the existing draw count."
+        ))
+      }
+      N <- length(domain)
+    } else {
+      if (is.null(ndraws))
+        cli::cli_abort(c(
+          "{.arg ndraws} is required when {.arg return = \"draws\"} and the \\
+           input frame carries no draws.",
+          "i" = "E.g. {.code ndraws = 500L}."
+        ))
+      N <- as.integer(ndraws)
+    }
+    if (!is.null(seed)) set.seed(seed)
+  }
+
   # ── Compute PC scores for all samples ─────────────────────────────────────
+  # .compute_pca_scores() uses mean() per cell, so scores are deterministic
+  # even when df carries draws — the draw_id column does not corrupt scoring.
   pca_scores <- .compute_pca_scores(df, model$pca)
   pc_cols    <- paste0("PC", seq_len(model$pca$n_pcs))
 
@@ -1045,19 +1092,48 @@ impute_coanalytes <- function(
 
     # ── Predict for missing samples ──────────────────────────────────────────
     pred_data <- dplyr::filter(pca_scores, .data$sample_id %in% missing_ids)
-    pred_vals <- exp(
-      as.numeric(stats::predict(gam_fit, newdata = pred_data, type = "response"))
-    )
 
-    new_rows <- tibble::tibble(
-      sample_id    = pred_data$sample_id,
-      analyte      = tgt,
-      value        = pred_vals,
-      detected     = TRUE,
-      imputed      = TRUE,
-      imputed_kind = "missing"
-    ) |>
-      dplyr::left_join(sample_meta, by = "sample_id")
+    if (return == "point") {
+      pred_vals <- exp(
+        as.numeric(stats::predict(gam_fit, newdata = pred_data, type = "response"))
+      )
+
+      new_rows <- tibble::tibble(
+        sample_id    = pred_data$sample_id,
+        analyte      = tgt,
+        value        = pred_vals,
+        detected     = TRUE,
+        imputed      = TRUE,
+        imputed_kind = "missing"
+      ) |>
+        dplyr::left_join(sample_meta, by = "sample_id")
+
+    } else {
+      # Posterior-predictive draws: beta ~ N(coef, Vp) + residual Gaussian noise.
+      # Xp is n_miss x n_coef; t(beta_draws) is n_coef x N → eta_mat is n_miss x N.
+      Xp         <- stats::predict(gam_fit, newdata = pred_data, type = "lpmatrix")
+      beta_draws <- mgcv::rmvn(N, coef(gam_fit), gam_fit$Vp)  # N x n_coef
+      eta_mat    <- Xp %*% t(beta_draws)                        # n_miss x N
+      eps_mat    <- matrix(
+        stats::rnorm(length(eta_mat), 0, sqrt(gam_fit$sig2)),
+        nrow = nrow(eta_mat)
+      )
+      value_mat  <- exp(eta_mat + eps_mat)                       # n_miss x N
+
+      # as.numeric reads column-major: all n_miss rows of draw 1, then draw 2,
+      # etc. rep(..., times=N) and rep(..., each=n_miss) match that layout.
+      n_miss <- nrow(pred_data)
+      new_rows <- tibble::tibble(
+        sample_id    = rep(pred_data$sample_id, times = N),
+        draw_id      = rep(seq_len(N), each = n_miss),
+        analyte      = tgt,
+        value        = as.numeric(value_mat),
+        detected     = TRUE,
+        imputed      = TRUE,
+        imputed_kind = "missing"
+      ) |>
+        dplyr::left_join(sample_meta, by = "sample_id")
+    }
 
     result <- dplyr::bind_rows(result, new_rows)
   }
