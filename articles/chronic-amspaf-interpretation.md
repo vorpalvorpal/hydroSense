@@ -402,15 +402,23 @@ estimate, because conductivity and the like are contemporaneous evidence
 of a leachate excursion.
 
 **Partial pooling (`pool = TRUE`, the default).** A single factor-smooth
-GAM is fitted jointly across analytes, shrinking each analyte’s
-hydrological response toward a shared shape. This *regularises* noisy,
-low-signal analytes by borrowing a response shape from co-varying ones;
-it does not add hydrological coverage, since co-sampled metals already
-see the same flow regimes. In leachate datasets, BDL-heavy analytes with
-sparse detections are the norm rather than the exception, so pooled
-regularisation is almost always preferable. Set `pool = FALSE` only when
-all analytes are densely and reliably detected, making independent fits
-with their AIC flat-bridge fallback fully adequate.
+GAM is fitted jointly across analytes. Crucially, it pools each
+analyte’s impact only after *standardising it to a per-analyte z-score*
+(`z = (I - mu_a) / sd_a`), so the shared smooth borrows the response
+**shape** across analytes while each analyte keeps its own **magnitude**
+(restored by de-standardising the fitted shape). This matters because
+the `bs = "fs"` penalty shrinks each analyte’s level, not just its
+wiggliness: pooling the raw impact would drag a large-signal analyte
+(say Cu) toward a population dominated by near-zero ones and inflate the
+near-zero ones (say Ni) in turn. Standardised pooling *regularises*
+noisy, low-signal analytes by lending them a shape without distorting
+magnitudes; it does not add hydrological coverage, since co-sampled
+metals already see the same flow regimes. In leachate datasets,
+BDL-heavy analytes with sparse detections are the norm rather than the
+exception, so pooled regularisation is almost always preferable. Set
+`pool = FALSE` only when all analytes are densely and reliably detected,
+making independent fits with their AIC flat-bridge fallback fully
+adequate.
 
 ------------------------------------------------------------------------
 
