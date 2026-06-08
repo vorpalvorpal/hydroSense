@@ -98,6 +98,14 @@
 #' @param auto_select Logical; AIC window selection per analyte (default `TRUE`).
 #' @param min_obs_model Integer; minimum impact anchors required to attempt the
 #'   `f(hydro)` GAM. Below this, the analyte uses the bridge tier. Default `12L`.
+#' @param pool Logical (default `FALSE`). When `TRUE`, the per-analyte hydro
+#'   responses are **partially pooled**: a single factor-smooth GAM
+#'   (`bs = "fs"`) is fitted across all sufficiently-sampled analytes at one
+#'   common AIC-selected window, shrinking each analyte's response toward a
+#'   shared shape. This *regularises* noisy, low-signal analytes (it does not
+#'   add hydrological coverage — co-sampled analytes already share the same
+#'   regimes), and falls back to independent fits if it fails or doesn't beat an
+#'   analyte-intercept null.
 #' @param eps Small positive guard. Default `1e-9`.
 #'
 #' @return An object of class `target_model`:
@@ -138,10 +146,12 @@ fit_target_model <- function(
     api_windows_long   = c(30L, 60L, 90L, 180L),
     auto_select        = TRUE,
     min_obs_model      = 12L,
+    pool               = FALSE,
     eps                = 1e-9
 ) {
   ## ── Validation ─────────────────────────────────────────────────────────────
   checkmate::assert_data_frame(target)
+  checkmate::assert_flag(pool)
   checkmate::assert_names(names(target),
     must.include = c("sample_id", "datetime", "analyte", "value", "detected"))
   if (!inherits(reference_model, "reference_model")) {
@@ -228,27 +238,36 @@ fit_target_model <- function(
   anchors_all <- obs_samples |>
     dplyr::summarise(I = mean(.data$I, na.rm = TRUE), .by = c("date", "analyte"))
 
-  ## ── Per-analyte fit ────────────────────────────────────────────────────────
+  ## ── Hydro response: pooled (factor-smooth shrinkage) or per-analyte ─────────
   target_analytes <- intersect(unique(anchors_all$analyte), ssd_analytes)
+
+  if (pool && length(target_analytes) >= 2L) {
+    base_models <- .fit_pooled_impact_response(
+      anchors_all, target_analytes, hydro, hydro_type,
+      api_windows_short, api_windows_long, auto_select, min_obs_model, eps
+    )
+  } else {
+    base_models <- stats::setNames(
+      lapply(target_analytes, function(nm) {
+        obs <- anchors_all |>
+          dplyr::filter(.data$analyte == .env$nm) |>
+          dplyr::arrange(.data$date)
+        feats <- .compute_hydro_features(
+          hydro, obs$date, max(api_windows_short), max(api_windows_long), hydro_type
+        )
+        obs <- dplyr::bind_cols(obs, dplyr::select(feats, -"date"))
+        .fit_impact_response(obs, hydro, hydro_type, api_windows_short,
+                             api_windows_long, auto_select, min_obs_model, eps)
+      }),
+      target_analytes
+    )
+  }
+
+  ## ── WQ layer + residual d per analyte (only when a PCA is available) ────────
   models <- vector("list", length(target_analytes))
   names(models) <- target_analytes
-
   for (nm in target_analytes) {
-    obs <- anchors_all |>
-      dplyr::filter(.data$analyte == .env$nm) |>
-      dplyr::arrange(.data$date)
-
-    feats <- .compute_hydro_features(
-      hydro, obs$date, max(api_windows_short), max(api_windows_long), hydro_type
-    )
-    obs <- dplyr::bind_cols(obs, dplyr::select(feats, -"date"))
-
-    fit_res <- .fit_impact_response(
-      obs, hydro, hydro_type, api_windows_short, api_windows_long,
-      auto_select, min_obs_model, eps
-    )
-
-    ## WQ layer + residual d (only when a PCA is available)
+    fit_res <- base_models[[nm]]
     fit_res$wq_fit <- NULL
     fit_res$d_anchors <- NULL
     if (length(pc_cols) > 0L) {
@@ -414,6 +433,134 @@ fit_target_model <- function(
   )
 }
 
+#' Pooled (hierarchical) season-blind impact response across analytes
+#'
+#' Fits a single factor-smooth GAM
+#' `I ~ s(hydro_short, analyte, bs="fs") + s(hydro_long, analyte, bs="fs")`
+#' at one AIC-selected common window pair, so each analyte's hydrological
+#' response is shrunk toward a shared population response (partial pooling).
+#' This regularises noisy, low-SNR analytes by borrowing a response shape from
+#' co-varying ones — it does **not** add hydrological coverage (co-sampled
+#' analytes share the same regimes). Analytes with fewer than `min_obs_model`
+#' anchors get a per-analyte flat bridge; if pooling fails or doesn't beat an
+#' analyte-intercept null, the poolable analytes fall back to independent fits.
+#'
+#' @return Named list (per analyte) of `.fit_impact_response()`-shaped objects;
+#'   pooled analytes additionally carry `pooled = TRUE`, `analyte`, and
+#'   `pool_levels` for prediction.
+#' @keywords internal
+.fit_pooled_impact_response <- function(anchors_all, target_analytes, hydro,
+                                         hydro_type, api_windows_short,
+                                         api_windows_long, auto_select,
+                                         min_obs_model, eps) {
+  anchors_for <- function(nm, ws, wl) {
+    obs <- anchors_all |>
+      dplyr::filter(.data$analyte == .env$nm) |>
+      dplyr::arrange(.data$date)
+    f <- .compute_hydro_features(hydro, obs$date, ws, wl, hydro_type)
+    obs$hydro_short <- f$hydro_short
+    obs$hydro_long  <- f$hydro_long
+    obs
+  }
+  per_analyte_fit <- function(nm) {
+    obs <- anchors_for(nm, max(api_windows_short), max(api_windows_long))
+    .fit_impact_response(obs, hydro, hydro_type, api_windows_short,
+                         api_windows_long, auto_select, min_obs_model, eps)
+  }
+
+  counts   <- anchors_all |> dplyr::count(.data$analyte)
+  poolable <- intersect(target_analytes,
+                        counts$analyte[counts$n >= min_obs_model])
+  small    <- setdiff(target_analytes, poolable)
+
+  out <- list()
+  for (nm in small) {                       # too few anchors -> flat bridge
+    obs <- anchors_for(nm, api_windows_short[1L], api_windows_long[length(api_windows_long)])
+    out[[nm]] <- list(
+      impact_fit = NULL, window_short = api_windows_short[1L],
+      window_long = api_windows_long[length(api_windows_long)], tier = "bridge",
+      n_obs = nrow(obs), anchors = dplyr::mutate(obs, S = .data$I)
+    )
+  }
+  if (length(poolable) < 2L) {              # nothing to pool
+    for (nm in poolable) out[[nm]] <- per_analyte_fit(nm)
+    return(out[target_analytes])
+  }
+
+  ## AIC-select a common (short, long) window for the pooled factor-smooth fit.
+  build_df <- function(ws, wl) {
+    purrr::map_dfr(poolable, function(nm) {
+      o <- anchors_for(nm, ws, wl)
+      tibble::tibble(I = o$I, hydro_short = o$hydro_short,
+                     hydro_long = o$hydro_long, analyte = nm)
+    }) |> dplyr::mutate(analyte = factor(.data$analyte))
+  }
+  fit_pool <- function(df_m) {
+    nlev <- nlevels(df_m$analyte)
+    k_h  <- max(3L, min(4L, floor(nrow(df_m) / nlev) - 1L))
+    ## Factor-smooth fits routinely emit benign convergence warnings — suppress
+    ## them but keep the fit (only a hard error means "unusable").
+    tryCatch(
+      suppressWarnings(
+        mgcv::gam(I ~ s(hydro_short, analyte, bs = "fs", k = k_h) +
+                      s(hydro_long,  analyte, bs = "fs", k = k_h),
+                  data = df_m, method = "REML")
+      ),
+      error = function(e) NULL
+    )
+  }
+  grid <- expand.grid(ws = api_windows_short, wl = api_windows_long)
+  grid <- grid[grid$ws < grid$wl, , drop = FALSE]
+  if (!auto_select || nrow(grid) == 0L) {
+    grid <- data.frame(ws = api_windows_short[1L],
+                       wl = api_windows_long[length(api_windows_long)])
+  }
+  best <- NULL; best_aic <- Inf; best_ws <- grid$ws[1L]; best_wl <- grid$wl[1L]
+  best_df <- NULL
+  for (i in seq_len(nrow(grid))) {
+    dfm <- build_df(grid$ws[i], grid$wl[i])
+    f   <- fit_pool(dfm)
+    if (is.null(f)) next
+    a <- stats::AIC(f)
+    if (is.finite(a) && a < best_aic) {
+      best_aic <- a; best <- f; best_ws <- grid$ws[i]; best_wl <- grid$wl[i]
+      best_df <- dfm
+    }
+  }
+  if (is.null(best)) {                      # pooled fit failed -> independent
+    for (nm in poolable) out[[nm]] <- per_analyte_fit(nm)
+    return(out[target_analytes])
+  }
+
+  null_fit <- tryCatch(mgcv::gam(I ~ analyte, data = best_df, method = "REML"),
+                       error = function(e) NULL)
+  pooled_useful <- !is.null(null_fit) && best_aic < stats::AIC(null_fit)
+  lev <- levels(best_df$analyte)
+
+  for (nm in poolable) {
+    obs <- anchors_for(nm, best_ws, best_wl)
+    if (pooled_useful) {
+      nd <- tibble::tibble(hydro_short = obs$hydro_short,
+                           hydro_long = obs$hydro_long,
+                           analyte = factor(nm, levels = lev))
+      fitted_I <- as.numeric(stats::predict(best, newdata = nd))
+      out[[nm]] <- list(
+        impact_fit = best, window_short = best_ws, window_long = best_wl,
+        tier = "model", n_obs = nrow(obs),
+        anchors = dplyr::mutate(obs, S = .data$I - fitted_I),
+        pooled = TRUE, analyte = nm, pool_levels = lev
+      )
+    } else {
+      out[[nm]] <- list(
+        impact_fit = NULL, window_short = best_ws, window_long = best_wl,
+        tier = "bridge", n_obs = nrow(obs),
+        anchors = dplyr::mutate(obs, S = .data$I)
+      )
+    }
+  }
+  out[target_analytes]
+}
+
 
 ## ============================================================================
 ## Internal: resolve the impact at query dates
@@ -571,9 +718,10 @@ fit_target_model <- function(
 #' @keywords internal
 .impact_at <- function(m, feats, qdates, mask) {
   hydro_pred <- if (m$tier == "model" && !is.null(m$impact_fit)) {
-    as.numeric(stats::predict(m$impact_fit, newdata = dplyr::tibble(
-      hydro_short = feats$hydro_short, hydro_long = feats$hydro_long
-    )))
+    nd <- dplyr::tibble(hydro_short = feats$hydro_short,
+                        hydro_long = feats$hydro_long)
+    if (isTRUE(m$pooled)) nd$analyte <- factor(m$analyte, levels = m$pool_levels)
+    as.numeric(stats::predict(m$impact_fit, newdata = nd))
   } else rep(0, length(qdates))
   s_interp <- vapply(seq_along(qdates), function(i) {
     .interp_residual(m$anchors, qdates[i], feats$hydro_short[i], feats$hydro_long[i])

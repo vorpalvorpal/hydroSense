@@ -16,6 +16,7 @@ fit_target_model(
   api_windows_long = c(30L, 60L, 90L, 180L),
   auto_select = TRUE,
   min_obs_model = 12L,
+  pool = FALSE,
   eps = 1e-09
 )
 }
@@ -53,6 +54,15 @@ memory windows (days) for \code{f(hydro)}, selected by AIC.}
 
 \item{min_obs_model}{Integer; minimum impact anchors required to attempt the
 \code{f(hydro)} GAM. Below this, the analyte uses the bridge tier. Default \code{12L}.}
+
+\item{pool}{Logical (default \code{FALSE}). When \code{TRUE}, the per-analyte hydro
+responses are \strong{partially pooled}: a single factor-smooth GAM
+(\code{bs = "fs"}) is fitted across all sufficiently-sampled analytes at one
+common AIC-selected window, shrinking each analyte's response toward a
+shared shape. This \emph{regularises} noisy, low-signal analytes (it does not
+add hydrological coverage — co-sampled analytes already share the same
+regimes), and falls back to independent fits if it fails or doesn't beat an
+analyte-intercept null.}
 
 \item{eps}{Small positive guard. Default \code{1e-9}.}
 }

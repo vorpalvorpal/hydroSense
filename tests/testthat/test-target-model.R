@@ -292,6 +292,75 @@ test_that("without a wq argument the resolver falls back to the impact tiers", {
 })
 
 
+## ── hierarchical pooling of the hydro response (issue #14, item C) ────────────
+
+# Chemistry whose metal impact is genuinely driven by short-window antecedent
+# rainfall (first flush) — so the pooled factor-smooth response has signal.
+make_hydro_driven <- function(site, dates, hydro, mult = 1, seed = 5) {
+  set.seed(seed)
+  analytes <- c("Cu", "Zn", "Ni", "pH", "DOC", "hardness", "Ca", "Mg")
+  api7 <- leachatetools:::.compute_api(hydro$value, hydro$date, dates, 7L)
+  api7 <- (api7 - mean(api7)) / (stats::sd(api7) + 1e-9)
+  purrr::pmap_dfr(list(dates, api7), function(d, a) {
+    flush <- exp(0.8 * a)   # metals rise with antecedent rainfall
+    tibble::tibble(
+      sample_id = paste0(site, format(d, "%Y%m%d")), site_id = site,
+      datetime = d, analyte = analytes,
+      value = c(exp(rnorm(1, log(0.5), 0.15)) * mult * flush,
+                exp(rnorm(1, log(5),   0.15)) * mult * flush,
+                exp(rnorm(1, log(0.3), 0.15)) * mult * flush,
+                runif(1, 6.5, 8), runif(1, 1, 5), runif(1, 20, 60),
+                runif(1, 4, 12), runif(1, 2, 8)),
+      detected = TRUE)
+  })
+}
+
+test_that("pool = TRUE produces a valid model and finite predictions", {
+  dates <- seq(as.Date("2021-01-01"), by = "week", length.out = 70)
+  rm    <- fit_rm(make_chem("reference", dates), make_hydro(800))
+  tgt   <- make_chem("target", dates, mult = 10, seed = 2)
+  tm <- fit_target_model(tgt, rm, conc_units = "ug/L", min_obs_model = 10L,
+                         pool = TRUE, api_windows_short = c(7L, 14L),
+                         api_windows_long = c(30L, 90L))
+  expect_s3_class(tm, "target_model")
+  res <- leachatetools:::.resolve_target_impact(
+    tm, tibble::tibble(date = seq(as.Date("2021-03-01"), as.Date("2021-09-01"),
+                                  by = "month"))
+  )
+  expect_true(all(is.finite(res$impact)))
+})
+
+test_that("pool = TRUE fires the pooled 'model' tier on hydro-driven impact", {
+  hydro <- make_hydro(900)
+  dates <- seq(as.Date("2021-01-01"), by = "week", length.out = 80)
+  rm    <- fit_rm(make_chem("reference", dates), hydro)
+  tgt   <- make_hydro_driven("target", dates, hydro, mult = 10, seed = 5)
+  tm <- fit_target_model(tgt, rm, conc_units = "ug/L", min_obs_model = 10L,
+                         pool = TRUE, api_windows_short = c(7L, 14L),
+                         api_windows_long = c(30L, 90L))
+  tiers <- vapply(tm$models, `[[`, character(1), "tier")
+  # at least one analyte's response is pooled-modelled
+  expect_true(any(tiers == "model"))
+  pooled <- Filter(function(m) isTRUE(m$pooled), tm$models)
+  expect_true(length(pooled) >= 1L)
+  # pooled analytes share one common window (the hallmark of a single joint fit)
+  expect_equal(length(unique(vapply(pooled, `[[`, integer(1), "window_short"))), 1L)
+})
+
+test_that("pool = TRUE with a single modelled analyte falls back gracefully", {
+  dates <- seq(as.Date("2021-01-01"), by = "week", length.out = 40)
+  rm    <- fit_rm(make_chem("reference", dates), make_hydro())
+  # one toxicant only
+  tgt <- make_chem("target", dates, mult = 10, seed = 2) |>
+    dplyr::filter(!analyte %in% c("Zn", "Ni"))
+  expect_no_error(
+    fit_target_model(tgt, rm, conc_units = "ug/L", min_obs_model = 8L,
+                     pool = TRUE, api_windows_short = c(7L),
+                     api_windows_long = c(30L))
+  )
+})
+
+
 ## ── impact_tier surfaced in ara_summary() (issue #14, item A) ─────────────────
 
 test_that("amspaf_daily(interpolation='model') surfaces impact_tier in ara_summary()", {
