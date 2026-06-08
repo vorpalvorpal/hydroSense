@@ -284,6 +284,136 @@ explicitly in any report.
 
 ------------------------------------------------------------------------
 
+## Predicting the target site between grabs
+
+[`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md)
+predicts the *background*.
+[`fit_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_target_model.md)
+is its counterpart for the *impacted* site: it predicts the
+leachate-attributable increment
+
+``` math
+I(t) = C_\text{norm}(t) - \text{ref}_\text{norm}(t)
+```
+
+— the very quantity
+[`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md)
+reports as `C_excess` — so that `amspaf_daily(interpolation = "model")`
+can fill the days between grab samples with a chemistry-grounded
+estimate instead of a forward-filled concentration.
+
+**The crucial asymmetry: the target model is season-blind.** This is the
+one place where the target and reference logic must *differ*. Natural
+background chemistry genuinely follows the calendar (leaf litter,
+baseflow recession, snowmelt), so the reference model legitimately
+carries a cyclic day-of-year term. Site impacts do not. They are driven
+by **management failure** — a leachate breach — not by the season. Heavy
+summer rain *enables* an existing breach to escape; it does not *cause*
+one. A year of perfect management has zero impact despite identical
+rainfall. Letting day-of-year predict impact would hallucinate a breach
+from the calendar — for example, forecasting elevated metals every
+February simply because past Februaries happened to coincide with
+breaches. The target model therefore excludes day-of-year entirely.
+Hydrology enters only as a *modulator* of how an already-present impact
+expresses itself (first-flush mobilisation, dilution, antecedent
+memory), never as a generator:
+
+``` math
+I(t) = \beta \cdot f(\text{hydro}_t) + S(t)
+```
+
+`f(hydro)` is a thin-plate GAM on the short- and long-window antecedent
+indices (no seasonal term), kept only when it beats an intercept-only
+null by AIC. `S(t)` is a persistent latent state interpolated between
+observation anchors by a hydrology-weighted bridge: it pinches to the
+observed residual on each sampling day, and between two grabs it leans
+toward whichever bracketing sample’s antecedent hydrology more closely
+matches the day being predicted. The **perfect-management invariant**
+falls out by construction — when every observed impact is ≈ 0, the
+fitted response is flat and the interpolated state stays ≈ 0, so no
+impact is invented on un-sampled high-rainfall days.
+
+This is, in effect, a season-blind, hydrology-modulated variant of
+**WRTDS-Kalman** (Zhang & Hirsch 2019) applied to the ARA impact
+residual; the hydrological response `f(hydro)` follows
+**concentration–discharge** theory (Godsey, Kirchner & Clow 2009), which
+is why `\beta` is left free-signed per analyte (a first-flush metal
+rises with antecedent rainfall; a dilution-controlled one falls).
+
+``` r
+
+ref_model <- fit_reference_model(reference_chem, latitude = -33.8,
+                                 longitude = 151.2, conc_units = "ug/L")
+
+# Daily AmsPAF (leachate-attributable increment) — model interpolation + ARA
+daily_ara <- amspaf_daily(
+  target_chem,
+  reference       = ref_model,   # subtract background (ARA on)
+  reference_model = ref_model,   # season-blind impact model interpolates toxicants
+  interpolation   = "model"
+)
+
+# Daily total msPAF — same interpolation, ARA off (reference = NULL)
+daily_total <- amspaf_daily(
+  target_chem,
+  reference       = NULL,
+  reference_model = ref_model,
+  interpolation   = "model"
+)
+```
+
+Note that `reference` and `reference_model` play distinct roles:
+`reference_model` is what *interpolates* the toxicants (it is required
+for the `"model"` path), while `reference` independently controls
+whether the background is *subtracted*. Passing the same model to both
+gives the added-risk increment; passing `reference = NULL` assesses the
+total concentration. Using one interpolation for both panels keeps the
+with/without-ARA comparison apples-to-apples.
+
+**Optional impute-first.** Both
+[`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md)
+and
+[`fit_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_target_model.md)
+accept an `imputation_model` (from
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md),
+fit on that site’s own chemistry). When supplied, missing analytes are
+imputed in raw concentration space *before* modelling, so a well-sampled
+analyte lifts a sparsely-sampled one into a richer spread of
+hydrological regimes (e.g. 100 zinc observations turn 20 copper
+observations into 100 copper anchors via the Cu–Zn relationship). This
+requires **brms**.
+
+**The water-quality layer (predicting from cheap indicators).** On days
+where the cheap water-quality suite (pH, EC, redox indicators) was
+measured but the metals were not, the metal can be predicted directly
+from water quality. Because the cross-metal coupling in the imputation
+model only acts when *sibling* metals are observed, a metals-absent
+prediction reduces to a plain regression on the chemistry PCA — cheap
+and not Bayesian.
+[`fit_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_target_model.md)
+exploits this: when the supplied `imputation_model` carries a fitted PCA
+(a full brms model, or a lightweight PCA-only one), each analyte gets a
+GAM of concentration on the PCA scores, and only the *residual* of that
+regression is interpolated between grabs. A water-quality-bearing day is
+then anchored by *today’s* chemistry (tier `"wq"` in
+[`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md))
+rather than by pure interpolation from neighbouring grabs — the sharper
+estimate, because conductivity and the like are contemporaneous evidence
+of a leachate excursion.
+
+**Partial pooling (`pool = TRUE`, the default).** A single factor-smooth
+GAM is fitted jointly across analytes, shrinking each analyte’s
+hydrological response toward a shared shape. This *regularises* noisy,
+low-signal analytes by borrowing a response shape from co-varying ones;
+it does not add hydrological coverage, since co-sampled metals already
+see the same flow regimes. In leachate datasets, BDL-heavy analytes with
+sparse detections are the norm rather than the exception, so pooled
+regularisation is almost always preferable. Set `pool = FALSE` only when
+all analytes are densely and reliably detected, making independent fits
+with their AIC flat-bridge fallback fully adequate.
+
+------------------------------------------------------------------------
+
 ## Reference summary statistic
 
 The Added Risk Approach (ARA) subtracts a background “reference”

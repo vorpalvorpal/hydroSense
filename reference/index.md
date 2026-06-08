@@ -76,6 +76,9 @@ background adjustment. Includes the static and temporal
   : Fit a temporal reference model for contemporaneous ARA background
   subtraction
 
+- [`fit_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_target_model.md)
+  : Fit a season-blind predictive model of the site impact
+
 - [`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md)
   :
 

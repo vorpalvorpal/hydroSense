@@ -14,10 +14,12 @@ amspaf_daily(
   df,
   temperature = NULL,
   reference = NULL,
+  reference_model = NULL,
+  imputation_model = NULL,
   start = NULL,
   end = NULL,
   by = "day",
-  interpolation = c("forward_fill", "linear"),
+  interpolation = c("forward_fill", "linear", "model"),
   leading_edge = c("drop", "backfill"),
   analyte_metadata = NULL,
   method = c("multi", "anzecc"),
@@ -54,6 +56,30 @@ amspaf_daily(
   Background reference chemistry for ARA adjustment. Accepts the same
   four forms as
   [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md).
+  Controls **only** whether background is subtracted; it is independent
+  of `interpolation`. With `interpolation = "model"`, pass the same
+  `reference_model` here to assess the leachate-attributable increment,
+  or `NULL` to assess total concentration.
+
+- reference_model:
+
+  A `reference_model` from
+  [`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md).
+  **Required** when `interpolation = "model"` — it supplies the
+  background and catchment hydrology used by the season-blind target
+  impact model
+  ([`fit_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_target_model.md))
+  that interpolates toxicants between grabs. Ignored for the
+  `"forward_fill"` and `"linear"` paths.
+
+- imputation_model:
+
+  Optional `imputation_model` from
+  [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md),
+  passed to
+  [`fit_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_target_model.md)
+  for tier-2 enrichment under `interpolation = "model"`. Requires
+  **brms**.
 
 - start, end:
 
@@ -169,6 +195,17 @@ Each analyte is interpolated independently:
   in log-concentration space, which is more appropriate for log-normally
   distributed data and avoids negative intermediate values. Co-analytes
   (pH, temperature, DOC, hardness) are interpolated linearly.
+
+- `"model"` fits a season-blind
+  [`fit_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_target_model.md)
+  on the grab chemistry and the supplied `reference_model`, and predicts
+  each toxicant's concentration between grabs as `reference + impact`,
+  where the impact (the leachate-attributable increment) is modelled
+  from hydrology and a persistent latent state but **never** from
+  day-of-year. Co-analytes are forward-filled. Requires
+  `reference_model`; see
+  [`fit_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_target_model.md)
+  for the method.
 
 Below-detection values are treated as their detection-limit value for
 interpolation purposes, matching the treatment in

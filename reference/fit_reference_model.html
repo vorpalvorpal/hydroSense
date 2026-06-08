@@ -62,6 +62,7 @@ rather than a static time-average.</p>
 <span>  longitude <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  conc_units <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  analyte_metadata <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  imputation_model <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  match_window_days <span class="op">=</span> <span class="fl">5L</span>,</span>
 <span>  match_hydro_tol <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  api_windows_short <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">3L</span>, <span class="fl">7L</span>, <span class="fl">14L</span><span class="op">)</span>,</span>
@@ -109,6 +110,17 @@ chemistry when no <code>units.analyte</code> column is present.</p></dd>
 
 <dt id="arg-analyte-metadata">analyte_metadata<a class="anchor" aria-label="anchor" href="#arg-analyte-metadata"></a></dt>
 <dd><p>Analyte metadata, or <code>NULL</code> for the bundled CSV.</p></dd>
+
+
+<dt id="arg-imputation-model">imputation_model<a class="anchor" aria-label="anchor" href="#arg-imputation-model"></a></dt>
+<dd><p>Optional <code>imputation_model</code> from
+<code><a href="fit_imputation_model.html">fit_imputation_model()</a></code> (fit on the reference site's own chemistry).  When
+supplied, missing analytes are imputed in raw concentration space <em>before</em>
+the per-analyte models are fitted, so a well-sampled analyte lifts a
+sparsely-sampled one into a richer spread of hydrological regimes.  Imputed
+rows (<code>detected = TRUE</code>) are used as model anchors alongside measured
+observations.  Requires <strong>brms</strong>.  Default <code>NULL</code> (measured observations
+only).</p></dd>
 
 
 <dt id="arg-match-window-days">match_window_days<a class="anchor" aria-label="anchor" href="#arg-match-window-days"></a></dt>

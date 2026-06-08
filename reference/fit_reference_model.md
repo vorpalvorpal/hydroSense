@@ -17,6 +17,7 @@ fit_reference_model(
   longitude = NULL,
   conc_units = NULL,
   analyte_metadata = NULL,
+  imputation_model = NULL,
   match_window_days = 5L,
   match_hydro_tol = NULL,
   api_windows_short = c(3L, 7L, 14L),
@@ -63,6 +64,18 @@ fit_reference_model(
 - analyte_metadata:
 
   Analyte metadata, or `NULL` for the bundled CSV.
+
+- imputation_model:
+
+  Optional `imputation_model` from
+  [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
+  (fit on the reference site's own chemistry). When supplied, missing
+  analytes are imputed in raw concentration space *before* the
+  per-analyte models are fitted, so a well-sampled analyte lifts a
+  sparsely-sampled one into a richer spread of hydrological regimes.
+  Imputed rows (`detected = TRUE`) are used as model anchors alongside
+  measured observations. Requires **brms**. Default `NULL` (measured
+  observations only).
 
 - match_window_days:
 

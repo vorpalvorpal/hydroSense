@@ -58,10 +58,12 @@ analysis, visualisation, and downstream <code><a href="time_weighted_aggregate.h
 <span>  <span class="va">df</span>,</span>
 <span>  temperature <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  reference <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  reference_model <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  imputation_model <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  start <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  end <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  by <span class="op">=</span> <span class="st">"day"</span>,</span>
-<span>  interpolation <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"forward_fill"</span>, <span class="st">"linear"</span><span class="op">)</span>,</span>
+<span>  interpolation <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"forward_fill"</span>, <span class="st">"linear"</span>, <span class="st">"model"</span><span class="op">)</span>,</span>
 <span>  leading_edge <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"drop"</span>, <span class="st">"backfill"</span><span class="op">)</span>,</span>
 <span>  analyte_metadata <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"multi"</span>, <span class="st">"anzecc"</span><span class="op">)</span>,</span>
@@ -96,7 +98,25 @@ present for the same day, the grab measurement takes priority.
 
 <dt id="arg-reference">reference<a class="anchor" aria-label="anchor" href="#arg-reference"></a></dt>
 <dd><p>Background reference chemistry for ARA adjustment. Accepts
-the same four forms as <code><a href="add_amspaf.html">add_amspaf()</a></code>.</p></dd>
+the same four forms as <code><a href="add_amspaf.html">add_amspaf()</a></code>. Controls <strong>only</strong> whether background
+is subtracted; it is independent of <code>interpolation</code>. With
+<code>interpolation = "model"</code>, pass the same <code>reference_model</code> here to assess
+the leachate-attributable increment, or <code>NULL</code> to assess total
+concentration.</p></dd>
+
+
+<dt id="arg-reference-model">reference_model<a class="anchor" aria-label="anchor" href="#arg-reference-model"></a></dt>
+<dd><p>A <code>reference_model</code> from <code><a href="fit_reference_model.html">fit_reference_model()</a></code>.
+<strong>Required</strong> when <code>interpolation = "model"</code> — it supplies the background
+and catchment hydrology used by the season-blind target impact model
+(<code><a href="fit_target_model.html">fit_target_model()</a></code>) that interpolates toxicants between grabs. Ignored
+for the <code>"forward_fill"</code> and <code>"linear"</code> paths.</p></dd>
+
+
+<dt id="arg-imputation-model">imputation_model<a class="anchor" aria-label="anchor" href="#arg-imputation-model"></a></dt>
+<dd><p>Optional <code>imputation_model</code> from
+<code><a href="fit_imputation_model.html">fit_imputation_model()</a></code>, passed to <code><a href="fit_target_model.html">fit_target_model()</a></code> for tier-2
+enrichment under <code>interpolation = "model"</code>. Requires <strong>brms</strong>.</p></dd>
 
 
 <dt id="arg-start-end">start, end<a class="anchor" aria-label="anchor" href="#arg-start-end"></a></dt>
@@ -199,6 +219,13 @@ For SSD-eligible toxicants (metals, ammonia), interpolation is performed
 in log-concentration space, which is more appropriate for log-normally
 distributed data and avoids negative intermediate values.  Co-analytes
 (pH, temperature, DOC, hardness) are interpolated linearly.</p></li>
+<li><p><code>"model"</code> fits a season-blind <code><a href="fit_target_model.html">fit_target_model()</a></code> on the grab
+chemistry and the supplied <code>reference_model</code>, and predicts each
+toxicant's concentration between grabs as
+<code>reference + impact</code>, where the impact (the leachate-attributable
+increment) is modelled from hydrology and a persistent latent state but
+<strong>never</strong> from day-of-year. Co-analytes are forward-filled. Requires
+<code>reference_model</code>; see <code><a href="fit_target_model.html">fit_target_model()</a></code> for the method.</p></li>
 </ul><p>Below-detection values are treated as their detection-limit value for
 interpolation purposes, matching the treatment in <code><a href="add_amspaf.html">add_amspaf()</a></code>.</p>
     </div>

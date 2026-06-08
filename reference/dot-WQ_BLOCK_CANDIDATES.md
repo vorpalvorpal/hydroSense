@@ -14,7 +14,7 @@ out by prescreen.
 
 ## Format
 
-An object of class `character` of length 32.
+An object of class `character` of length 34.
 
 ## Details
 

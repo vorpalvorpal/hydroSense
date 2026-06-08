@@ -98,10 +98,9 @@ estimate_water_temp(
 
   - `c(intercept, slope)` — `water = intercept + slope * air`.
 
-  - A function `function(air) ...` — arbitrary transformation.
-
-  `NULL` (default) preserves the existing behaviour: fewer than 5 pairs
-  is a hard error.
+  - A function `function(air) ...` — arbitrary transformation. `NULL`
+    (default) preserves the existing behaviour: fewer than 5 pairs is a
+    hard error.
 
 - select:
 

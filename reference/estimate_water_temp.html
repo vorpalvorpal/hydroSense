@@ -139,9 +139,10 @@ seasons cannot anchor an annual cycle and would extrapolate badly.</p></dd>
 observations to fit a regression (fewer than 5 rows in <code>water_temp_obs</code>,
 or <code>water_temp_obs = NULL</code>). Accepted forms:</p><ul><li><p><code>"identity"</code> — <code>water = air</code> (simplest default for small streams).</p></li>
 <li><p><code>c(intercept, slope)</code> — <code>water = intercept + slope * air</code>.</p></li>
-<li><p>A function <code>function(air) ...</code> — arbitrary transformation.</p></li>
-</ul><p><code>NULL</code> (default) preserves the existing behaviour: fewer than 5 pairs is
-a hard error.</p></dd>
+<li><p>A function <code>function(air) ...</code> — arbitrary transformation.
+<code>NULL</code> (default) preserves the existing behaviour: fewer than 5 pairs is
+a hard error.</p></li>
+</ul></dd>
 
 
 <dt id="arg-select">select<a class="anchor" aria-label="anchor" href="#arg-select"></a></dt>

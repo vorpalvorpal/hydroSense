@@ -30,7 +30,15 @@ The package has three pillars:
   feed a multi-substance potentially-affected-fraction
   ([`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md))
   that combines toxicants by concentration- and response-addition and
-  subtracts the *local* background via the Added Risk Approach.
+  subtracts the *local* background via the Added Risk Approach. The
+  background can be a static reference or a *contemporaneous* one
+  ([`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md))
+  that predicts what the reference site would have shown at each
+  sample’s moment from hydrology and season; a season-blind companion
+  ([`fit_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_target_model.md))
+  predicts the impacted site between grabs, so
+  [`amspaf_daily()`](https://vorpalvorpal.github.io/leachatetools/reference/amspaf_daily.md)
+  can return a continuous daily risk series.
 
 Toxicity is grounded in the ANZECC/ANZG freshwater guideline datasets,
 with bioavailability and physicochemical normalisations (hardness, pH,
@@ -184,6 +192,9 @@ background adjustment. Includes the static and temporal
 - [`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md)
   : Fit a temporal reference model for contemporaneous ARA background
   subtraction
+
+- [`fit_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_target_model.md)
+  : Fit a season-blind predictive model of the site impact
 
 - [`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md)
   :
