@@ -332,3 +332,108 @@ draw_measurement_error <- function(df,
 
   dplyr::bind_rows(non_eligible, expanded)
 }
+
+
+## ── GAM coefficient perturbation (issue #16, Chunk B) ────────────────────────
+
+#' Perturb a single mgcv GAM by drawing from its posterior coefficient distribution
+#'
+#' Draws one set of coefficients from `N(coef(g), Vp)` and assigns them to
+#' `g$coefficients` so that subsequent `predict.gam()` calls use the draw.
+#' `predict.gam()` dispatches through `g$coefficients`, so this gives an
+#' honest posterior-predictive draw without refitting.
+#'
+#' Returns `g` unperturbed when `$Vp` is absent, NULL, or when the draw
+#' produces non-finite values (near-singular posterior).  A symmetric PD
+#' jitter is attempted once before giving up.
+#'
+#' @param g A fitted `mgcv::gam` object, or `NULL`.
+#' @return `g` with `$coefficients` replaced by a single posterior draw,
+#'   or `g` unchanged on failure.
+#' @keywords internal
+.perturb_gam <- function(g) {
+  if (is.null(g) || is.null(g$Vp)) return(g)
+  Vp       <- g$Vp
+  new_coef <- tryCatch(
+    as.numeric(mgcv::rmvn(1L, stats::coef(g), Vp)),
+    error = function(e) {
+      jitter <- pmax(max(abs(diag(Vp))), 1e-10) * 1e-8
+      Vp_reg <- Vp; diag(Vp_reg) <- diag(Vp_reg) + jitter
+      tryCatch(
+        as.numeric(mgcv::rmvn(1L, stats::coef(g), Vp_reg)),
+        error = function(e2) NULL
+      )
+    }
+  )
+  if (is.null(new_coef) || !all(is.finite(new_coef))) return(g)
+  g$coefficients <- new_coef
+  g
+}
+
+
+#' Perturb all GAM fits inside a reference_model
+#'
+#' Draws independent posterior-coefficient samples for each analyte's
+#' `gamm_fit`.  Used when `amspaf_daily(reference = NULL)` (total-
+#' concentration mode), where `ref_norm` enters the result directly and
+#' its uncertainty should be reflected.  When background is subtracted
+#' via the same reference model, the reference-GAM contribution cancels
+#' and this function should NOT be called.
+#'
+#' @param rm A `reference_model` from [fit_reference_model()].
+#' @return A copy of `rm` with each `gamm_fit` replaced by a posterior draw.
+#' @keywords internal
+.perturb_reference_model <- function(rm) {
+  for (nm in names(rm$models)) {
+    gf <- rm$models[[nm]]$gamm_fit
+    if (!is.null(gf)) rm$models[[nm]]$gamm_fit <- .perturb_gam(gf)
+  }
+  rm
+}
+
+
+#' Perturb all GAM fits inside a target_model for one draw
+#'
+#' Draws posterior-coefficient samples for the impact GAMs and WQ-layer GAMs.
+#' Pooled analytes (all sharing one factor-smooth `impact_fit`) receive
+#' **one shared draw** to preserve cross-analyte coherence — the same
+#' perturbed fit object is assigned to every pooled analyte.  Non-pooled
+#' `impact_fit`s and all `wq_fit`s are perturbed independently.
+#'
+#' @param tm A `target_model` from [fit_target_model()].
+#' @param perturb_reference Logical; when `TRUE`, also perturb the embedded
+#'   `reference_model`'s GAMs (use only when `amspaf_daily(reference = NULL)`
+#'   — total-concentration mode — so that `ref_norm` uncertainty is not
+#'   inadvertently cancelled by a downstream subtraction).
+#' @return A modified copy of `tm`.  The original object is not mutated
+#'   (R copy-on-modify semantics).
+#' @keywords internal
+.perturb_target_model <- function(tm, perturb_reference = FALSE) {
+  # Identify analytes with a shared pooled factor-smooth impact_fit
+  pooled_nms <- names(Filter(function(m) isTRUE(m$pooled), tm$models))
+
+  # Draw ONE perturbed pooled fit and assign it to all pooled analytes
+  if (length(pooled_nms) > 0L) {
+    pool_fit_p <- .perturb_gam(tm$models[[pooled_nms[1L]]]$impact_fit)
+    for (nm in pooled_nms) tm$models[[nm]]$impact_fit <- pool_fit_p
+  }
+
+  # Perturb non-pooled impact_fits independently
+  non_pooled <- setdiff(names(tm$models), pooled_nms)
+  for (nm in non_pooled) {
+    gf <- tm$models[[nm]]$impact_fit
+    if (!is.null(gf)) tm$models[[nm]]$impact_fit <- .perturb_gam(gf)
+  }
+
+  # Perturb wq_fits independently (one per analyte, each is its own posterior)
+  for (nm in names(tm$models)) {
+    wf <- tm$models[[nm]]$wq_fit
+    if (!is.null(wf)) tm$models[[nm]]$wq_fit <- .perturb_gam(wf)
+  }
+
+  if (perturb_reference && !is.null(tm$reference_model)) {
+    tm$reference_model <- .perturb_reference_model(tm$reference_model)
+  }
+
+  tm
+}
