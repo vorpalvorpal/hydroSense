@@ -189,3 +189,146 @@ summarise_draws <- function(df, interval = 0.90,
 
   dplyr::bind_rows(draw_rows, broadcast)
 }
+
+
+#' Expand observed measurements into lognormal posterior-predictive draws
+#'
+#' Turns observed, detected, exact (`draw_id = NA`, `!imputed`) cells that
+#' carry a per-measurement uncertainty column into N lognormal draws,
+#' propagating analytical error through the pipeline alongside imputation
+#' uncertainty from [impute_chemistry()] / [impute_coanalytes()].
+#'
+#' Cells without reported error (NA or zero in `error_col`), BDL cells
+#' (`detected = FALSE`), and already-drawn or imputed cells pass through
+#' unchanged.
+#'
+#' **Lognormal parameterisation — geometric-mean convention:** the reported
+#' value \eqn{v} is the geometric mean (median) of the draw distribution.
+#' For coefficient of variation \eqn{CV}:
+#'
+#' \deqn{\sigma_{\log} = \sqrt{\log(1 + CV^2)},\quad
+#'       \mu = \log v,\quad
+#'       \text{draws} = \exp(\mathcal{N}(\mu,\, \sigma_{\log}^2))}
+#'
+#' The arithmetic mean of the draws is \eqn{v \exp(\sigma_{\log}^2/2)},
+#' which exceeds \eqn{v} by < 0.5 % at 10 % RSD.
+#'
+#' **Documented independence approximations:** measurement error is treated
+#' as independent of imputation error (cross-source index-pairing) and
+#' independent across analytes within a sample.
+#'
+#' **Call order:** `impute_chemistry()` → `impute_coanalytes()` →
+#' `draw_measurement_error()` → `add_amspaf()`.  Imputation establishes the
+#' draw count N; this function reuses it.
+#'
+#' @param df Long-format data frame following the draw-carrier contract.
+#' @param error_col Name (string) of the column carrying per-measurement
+#'   uncertainty.  Must exist in `df`.  Rows with NA or zero values are not
+#'   expanded.
+#' @param error_type `"cv"` (default): `error_col` contains coefficients of
+#'   variation (e.g. `0.05` = 5 % RSD, matching the [add_lmf()] convention).
+#'   `"sd"`: `error_col` contains absolute standard deviations on the natural
+#'   concentration scale; CV is derived as `sd / value`.
+#' @param ndraws Number of draws.  Required when `df` carries no existing
+#'   draws.  When draws are already present N is inferred from the draw
+#'   domain; `ndraws` must match or be `NULL`.
+#' @param seed Optional integer seed passed to [set.seed()] before sampling,
+#'   for reproducibility.
+#'
+#' @return `df` with eligible observed cells replaced by N lognormal draw
+#'   rows (`draw_id 1..N`).  Ineligible cells are unchanged.  Returns `df`
+#'   unmodified when no eligible cells exist (including when all `error_col`
+#'   values are `NA`).
+#'
+#' @seealso [impute_chemistry()], [impute_coanalytes()], [summarise_draws()]
+#' @export
+draw_measurement_error <- function(df,
+                                    error_col,
+                                    error_type = c("cv", "sd"),
+                                    ndraws     = NULL,
+                                    seed       = NULL) {
+  error_type <- match.arg(error_type)
+  checkmate::assert_data_frame(df)
+  checkmate::assert_string(error_col)
+  if (!error_col %in% names(df))
+    cli::cli_abort(c(
+      "{.arg error_col} = {.val {error_col}} not found in {.arg df}.",
+      "i" = "Available columns: {.and {.val {names(df)}}}."
+    ))
+
+  err_vals <- df[[error_col]]
+
+  # No non-NA errors → no eligible cells → identity (schema unchanged)
+  if (all(is.na(err_vals))) return(df)
+
+  # ── Resolve draw count N ──────────────────────────────────────────────────
+  domain <- .draw_domain(df)
+  if (length(domain) > 0L) {
+    if (!is.null(ndraws) && as.integer(ndraws) != length(domain)) {
+      cli::cli_abort(c(
+        "{.arg ndraws} = {ndraws} conflicts with the input frame's draw \\
+         domain (N = {length(domain)}).",
+        "i" = "Omit {.arg ndraws} to reuse the existing draw count."
+      ))
+    }
+    N <- length(domain)
+  } else {
+    if (is.null(ndraws))
+      cli::cli_abort(c(
+        "{.arg ndraws} is required when {.arg df} carries no existing draws.",
+        "i" = "E.g. {.code ndraws = 500L}."
+      ))
+    N <- as.integer(ndraws)
+  }
+
+  # ── Identify eligible rows ────────────────────────────────────────────────
+  # Eligible: detected, exact (draw_id NA or column absent), not imputed,
+  # and carries a positive finite error value.
+  has_draw <- "draw_id" %in% names(df)
+  exact_m  <- if (has_draw) is.na(df[["draw_id"]]) else rep(TRUE, nrow(df))
+
+  imp_col  <- df[["imputed"]]
+  imp_m    <- if (is.null(imp_col)) rep(FALSE, nrow(df)) else
+                replace(imp_col, is.na(imp_col), FALSE)
+
+  det_col  <- df[["detected"]]
+  det_m    <- replace(det_col, is.na(det_col), FALSE)
+
+  elig_m   <- exact_m & !imp_m & det_m &
+              !is.na(err_vals) & is.finite(err_vals) & err_vals > 0
+
+  # No eligible rows → identity
+  if (!any(elig_m)) return(df)
+
+  if (!is.null(seed)) set.seed(seed)
+
+  eligible     <- df[ elig_m, , drop = FALSE]
+  non_eligible <- df[!elig_m, , drop = FALSE]
+
+  n_elig    <- nrow(eligible)
+  vals      <- eligible[["value"]]
+  errs      <- eligible[[error_col]]
+
+  cv        <- if (error_type == "cv") errs else errs / vals
+  sigma_log <- sqrt(log(1 + cv^2))
+  mu        <- log(vals)           # geometric mean = median = reported value
+
+  # n_elig × N matrix of natural-scale draws.
+  # R recycles length-n_elig vectors over the columns of the n_elig × N matrix
+  # (column-major layout), so raw_mat[i,j] * sigma_log[i] for all i, j.
+  raw_mat   <- matrix(stats::rnorm(n_elig * N), nrow = n_elig, ncol = N)
+  value_mat <- exp(raw_mat * sigma_log + mu)      # n_elig × N
+
+  # Expand: replicate each eligible row N times (column-major order).
+  # as.numeric(value_mat) = c(row1_draw1, row2_draw1, ..., row1_draw2, ...)
+  expanded              <- eligible[rep(seq_len(n_elig), times = N), , drop = FALSE]
+  expanded[["draw_id"]] <- rep(seq_len(N), each = n_elig)
+  expanded[["value"]]   <- as.numeric(value_mat)
+  rownames(expanded)    <- NULL
+
+  # Add draw_id column to non-eligible rows if missing (so bind_rows types match)
+  if (!"draw_id" %in% names(non_eligible))
+    non_eligible[["draw_id"]] <- NA_integer_
+
+  dplyr::bind_rows(non_eligible, expanded)
+}
