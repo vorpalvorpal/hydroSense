@@ -1,0 +1,284 @@
+---
+title: "Daily AmsPAF with uncertainty quantification"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Daily AmsPAF with uncertainty quantification}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>",
+  fig.width  = 7,
+  fig.height = 4
+)
+```
+
+`amspaf_daily()` can propagate uncertainty through the entire daily
+interpolation pipeline, producing a credible envelope around each daily
+AmsPAF estimate that **balloons between grab samples and pinches to
+near-zero width on sampled days**.  This vignette explains the model,
+shows how to use it, and describes how to interpret the output.
+
+## Why a credible interval matters
+
+The daily AmsPAF series is constructed by interpolating sparse grab
+samples (typically fortnightly or monthly) onto a daily grid.  Between
+grabs, concentrations are unknown: the impact model predicts a best-guess
+trajectory driven by hydrology, but that prediction carries genuine
+uncertainty.  Without propagating this uncertainty the point estimate can
+create a false sense of precision — especially in the middle of long gaps
+between samples.
+
+The uncertainty comes from several sources:
+
+| Source | Symbol | Description |
+|--------|--------|-------------|
+| Reference GAM coefficients | S1 | Posterior spread of the reference model's GAM fits (Bayesian posterior via Vp matrix) |
+| Impact GAM coefficients | S2 | Same for the target model's impact-response GAMs |
+| WQ-layer GAM coefficients | S3 | Same for the water quality covariate GAMs |
+| OU bridge on residual state *S* | S4 | The latent residual impact state *S* between grab anchors follows an Ornstein–Uhlenbeck bridge: variance 0 at anchors, maximal mid-gap |
+| OU bridge on WQ score *d* | S5 | Same for the WQ-score prediction in leading and trailing zones |
+| Anchor grab measurement error | S6 | Lognormal multiplicative error on the observed grab concentrations that anchor the bridge |
+| Co-analyte grab measurement error | S7 | Same for co-analytes (pH, DOC, hardness, …) that control bioavailability normalisations |
+
+S4 is the dominant source of uncertainty for long inter-sample gaps; S1–S3
+matter most for long-range comparisons where the GAM extrapolates; S6–S7
+contribute mostly at the anchor days themselves.
+
+## The OU bridge in one paragraph
+
+Between two consecutive grab dates (anchors), the residual latent impact
+state *S* is modelled as an **Ornstein–Uhlenbeck bridge** — a continuous-time
+AR(1) process conditioned to equal zero at both ends.  The marginal variance
+of the bridge at time *t* within a gap of length *L* is
+
+$$\mathrm{Var}[S(t)] = \gamma \frac{(1-u^2)(1-v^2)}{1-s^2}$$
+
+where $u = e^{-\theta t}$, $v = e^{-\theta(L-t)}$, $s = e^{-\theta L}$, and
+$\gamma = \sigma^2/(2\theta)$ is the marginal variance of the stationary OU
+process.  As $\theta \to 0$ this converges exactly to the Brownian bridge
+$\sigma^2 t(L-t)/L$.
+
+The parameters $\theta$ (mean-reversion rate, 1/day) and $\gamma$ are
+estimated by method of moments from the observed residual-state values at
+the grab-sample anchor dates:
+
+* $\hat\gamma$ = sample variance of the anchor *S* values
+* $\hat\sigma^2$ = median quadratic variation $(\Delta S)^2 / \Delta t$
+  over consecutive anchor pairs
+* $\hat\theta = \hat\sigma^2 / (2\hat\gamma)$
+
+When fewer than two finite anchors are available, or when the anchor
+series is essentially constant, the estimator returns a "degenerate"
+flag and the bridge collapses to zero — no uncertainty is added.
+
+## Getting started
+
+### Minimal example
+
+```{r demo-draw, eval = FALSE}
+library(leachatetools)
+
+demo   <- leachate_demo()
+target <- subset(demo, site_id == "downstream")
+ref_m  <- fit_reference_model(
+  subset(demo, site_id == "reference"),
+  hydro = demo_hydro()
+)
+
+# 50 stochastic draws; return the 90% credible interval summary
+out <- amspaf_daily(
+  target,
+  reference_model     = ref_m,
+  interpolation       = "model",
+  ndraws              = 50L,
+  seed                = 42L,
+  return              = "summary",
+  interval            = 0.9,
+  require_temperature = FALSE
+)
+
+head(out[, c("date", "amspaf", "amspaf_lower", "amspaf_upper")])
+```
+
+With `return = "summary"` (the default when `ndraws` is supplied) you get
+one row per day with three columns:
+
+* `amspaf` — deterministic centre-line (heuristic-blend point prediction,
+  identical to the output of a non-draws run with `interpolation = "model"`)
+* `amspaf_lower` — lower bound of the credible interval
+* `amspaf_upper` — upper bound of the credible interval
+
+### Including measurement error (S6 + S7)
+
+Pass `grab_cv` to add lognormal grab-measurement error.  A scalar applies
+the same CV to all analytes; a named vector sets analyte-specific CVs.
+
+```{r grab-cv, eval = FALSE}
+out_cv <- amspaf_daily(
+  target,
+  reference_model     = ref_m,
+  interpolation       = "model",
+  ndraws              = 50L,
+  seed                = 42L,
+  return              = "summary",
+  interval            = 0.9,
+  grab_cv             = 0.15,        # 15% relative analytical uncertainty
+  require_temperature = FALSE
+)
+```
+
+### Widening the bridge envelope
+
+The `ou_scale` argument multiplies $\sigma^2$ and $\gamma$ (without
+changing $\theta$, so the correlation length is preserved).  Use it to
+inflate the OU envelope if the default calibration feels too narrow for
+your data — for example when grab samples are infrequent or analyte
+concentrations are highly variable.
+
+```{r ou-scale, eval = FALSE}
+out_wide <- amspaf_daily(
+  target,
+  reference_model = ref_m,
+  interpolation   = "model",
+  ndraws          = 50L,
+  seed            = 42L,
+  ou_scale        = 2,              # double the bridge variance
+  require_temperature = FALSE
+)
+```
+
+### Getting raw draws
+
+With `return = "draws"` you get one row per (day × draw), allowing you to
+build custom summaries, correlate with other variables, or feed the draws
+into a downstream chronic aggregate.
+
+```{r draws, eval = FALSE}
+draws <- amspaf_daily(
+  target,
+  reference_model = ref_m,
+  interpolation   = "model",
+  ndraws          = 50L,
+  seed            = 42L,
+  return          = "draws",
+  require_temperature = FALSE
+)
+# draws$draw_id runs from 1 to 50
+range(draws$draw_id)
+```
+
+### Speeding things up with parallel execution
+
+For large `ndraws` or multi-year grids, use `parallel = TRUE` with a
+`future` parallel plan.  The **future.apply** package must be installed.
+
+```{r parallel, eval = FALSE}
+library(future)
+plan(multisession, workers = 4)
+
+out_par <- amspaf_daily(
+  target,
+  reference_model = ref_m,
+  interpolation   = "model",
+  ndraws          = 200L,
+  seed            = 42L,
+  parallel        = TRUE,
+  require_temperature = FALSE
+)
+
+plan(sequential)      # restore single-threaded execution
+```
+
+Note that parallel draws use an independent RNG stream
+(L'Ecuyer-CMRG via `future.apply`), so they will differ numerically from a
+sequential run with the same seed, but are themselves reproducible.
+
+## Plotting the credible envelope
+
+```{r plot, eval = FALSE}
+library(ggplot2)
+
+ggplot(out, aes(date)) +
+  geom_ribbon(aes(ymin = amspaf_lower, ymax = amspaf_upper),
+              fill = "steelblue", alpha = 0.25) +
+  geom_line(aes(y = amspaf), colour = "steelblue", linewidth = 0.8) +
+  scale_y_continuous(labels = scales::label_percent(scale = 1)) +
+  labs(
+    title    = "Daily AmsPAF with 90% credible interval",
+    subtitle = "Ribbon balloons mid-gap, pinches at grab-sample dates",
+    x = NULL, y = "% species affected"
+  ) +
+  theme_minimal()
+```
+
+## Interpreting the width of the envelope
+
+**Narrow ribbon at a grab date**: the bridge is pinned to the observed
+concentration.  Remaining width comes from GAM coefficient uncertainty
+(S1–S3) and measurement error (S6–S7).
+
+**Wide ribbon mid-gap**: the OU bridge has spread away from the anchors.
+The width is controlled by the estimated $\gamma$ (residual-state marginal
+variance from the anchor series) and the gap length.  A site with
+infrequent, irregular sampling will show a wider envelope than one with
+fortnightly grabs.
+
+**Asymmetric ribbon**: the response of AmsPAF to concentration is
+nonlinear (SSD-based), so the ribbon can be skewed even when the underlying
+concentration draws are symmetric.
+
+**Envelope does not cover the centre line**: this should never happen in
+practice, but if your `ndraws` is very small (e.g., 5) and the interval is
+wide (e.g., 0.99), quantile estimates can be noisy.  Increase `ndraws`.
+
+## Parameter interpretation table
+
+| Parameter | What it controls | Typical values |
+|-----------|-----------------|----------------|
+| `ndraws` | Number of Monte Carlo draws; more → smoother CI | 50–200 for exploratory work; 500+ for publication |
+| `interval` | Nominal coverage of the credible interval | 0.9 (default), 0.95, 0.80 |
+| `grab_cv` | Relative analytical uncertainty on grab concentrations | 0.10–0.20 for routine ICP-MS; 0.05 for reference standards |
+| `ou_scale` | Envelope inflation factor; > 1 widens mid-gap spread | 1 (default); try 2–4 for sparse sampling |
+| `seed` | RNG seed for reproducibility | Any integer |
+| `parallel` | Use `future.apply` for concurrent draws | `FALSE` (default); `TRUE` with a `future::plan()` |
+
+## How the centre line is computed
+
+The `amspaf` column in `return = "summary"` is the **deterministic
+heuristic-blend point prediction**, which is identical to running
+`amspaf_daily()` without `ndraws`.  It is *not* the median of the draws.
+This means the centre line:
+
+* is computationally cheap (no randomness),
+* is exactly reproducible regardless of `ndraws` or `seed`,
+* is identical to the pre-uncertainty-propagation output, so adding `ndraws`
+  to an existing call does not change the point estimate.
+
+The lower and upper bounds are empirical quantiles of the stochastic draws.
+
+## Connection to the chronic pipeline
+
+The `return = "draws"` output can be passed into `time_weighted_aggregate()`
+to propagate daily uncertainty through to the chronic AmsPAF (via the
+draw-carrier contract).  The chronic draws can then be summarised with
+`summarise_draws()`.
+
+```{r chronic, eval = FALSE}
+draws_daily  <- amspaf_daily(..., return = "draws")
+draws_amspaf <- dplyr::filter(draws_daily, FALSE)  # placeholder
+# See vignette("chronic-amspaf-interpretation") for the chronic pathway
+```
+
+See the *Uncertainty propagation* section of
+`vignette("chronic-amspaf-interpretation")` for the end-to-end workflow.
+
+## See also
+
+* [amspaf_daily()] — full parameter reference
+* [fit_reference_model()] — fitting the reference/impact model
+* [summarise_draws()] — collapse draws to median + credible interval
+* `vignette("chronic-amspaf-interpretation")` — interpreting chronic AmsPAF

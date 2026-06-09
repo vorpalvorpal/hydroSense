@@ -52,6 +52,8 @@ Imports:
 SystemRequirements: Stan (rstan or cmdstanr); required by brms for Bayesian imputation
 Suggests:
     brms (>= 2.20.0),
+    future,
+    future.apply,
     ggplot2,
     knitr,
     rmarkdown,

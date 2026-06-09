@@ -321,3 +321,73 @@ test_that("G6d: .empty_daily_result modes return correct column sets", {
   expect_equal(nrow(sm), 0L)
   expect_equal(nrow(dr), 0L)
 })
+
+
+## ── H2: parallel argument ─────────────────────────────────────────────────────
+
+## H2a: parallel=TRUE errors cleanly when future.apply is not installed
+test_that("H2a: parallel=TRUE without future.apply gives informative error", {
+  skip_if(requireNamespace("future.apply", quietly = TRUE),
+          "future.apply is installed — cannot test the absence error")
+  df <- make_chem_f("target", seq(as.Date("2021-01-01"), by = "2 weeks",
+                                   length.out = 5L), seed = 2L)
+  expect_error(
+    amspaf_daily(df, ndraws = 2L, interpolation = "forward_fill",
+                 parallel = TRUE, require_temperature = FALSE),
+    regexp = "future\\.apply"
+  )
+})
+
+## H2b: parallel=TRUE with future.apply gives the same structure as sequential
+test_that("H2b: parallel draws output schema matches sequential", {
+  skip_if(is.null(.tf$rm), "Reference model not fitted")
+  skip_if(!requireNamespace("future.apply", quietly = TRUE),
+          "future.apply not installed")
+
+  run <- function(par) suppressMessages(
+    amspaf_daily(
+      .tf$tgt,
+      reference_model = .tf$rm,
+      interpolation   = "model",
+      ndraws          = 4L,
+      seed            = 1L,
+      return          = "summary",
+      parallel        = par,
+      require_temperature = FALSE,
+      conc_units      = "ug/L"
+    )
+  )
+  out_seq <- run(FALSE)
+  out_par <- run(TRUE)
+
+  ## Schema must match
+  expect_equal(names(out_seq), names(out_par))
+  expect_equal(nrow(out_seq),  nrow(out_par))
+  ## CI bounds present and ordered
+  expect_true(all(out_par$amspaf_lower <= out_par$amspaf_upper + 1e-9))
+})
+
+## H2c: parallel=TRUE is reproducible with the same seed
+test_that("H2c: parallel draws are reproducible with same seed", {
+  skip_if(is.null(.tf$rm), "Reference model not fitted")
+  skip_if(!requireNamespace("future.apply", quietly = TRUE),
+          "future.apply not installed")
+
+  run_par <- function() suppressMessages(
+    amspaf_daily(
+      .tf$tgt,
+      reference_model = .tf$rm,
+      interpolation   = "model",
+      ndraws          = 4L,
+      seed            = 99L,
+      return          = "draws",
+      parallel        = TRUE,
+      require_temperature = FALSE,
+      conc_units      = "ug/L"
+    )
+  )
+  r1 <- run_par()
+  r2 <- run_par()
+  expect_equal(r1$amspaf, r2$amspaf,
+               label = "parallel draws reproducible with same seed")
+})

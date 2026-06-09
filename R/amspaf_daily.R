@@ -146,6 +146,14 @@
 #'   (default `1`).  Multiplies \eqn{\sigma^2} and \eqn{\gamma} (marginal
 #'   variance) without changing \eqn{\theta} (correlation length).  Use values
 #'   > 1 to widen the between-grab uncertainty bands.
+#' @param parallel Logical (default `FALSE`).  When `TRUE`, the per-draw loop
+#'   for each site is parallelised via [future.apply::future_lapply()], which
+#'   honours whatever [future::plan()] the caller has established.  Requires
+#'   the **future.apply** package.  Set a parallel plan before calling, e.g.
+#'   `future::plan(future::multisession, workers = 4)`.  In parallel mode the
+#'   RNG stream for each draw is managed by `future.apply` (L'Ecuyer-CMRG),
+#'   so draws will differ from sequential mode even with the same `seed`, but
+#'   are themselves reproducible.
 #'
 #' @return
 #' **Point mode** (`ndraws = NULL`): a tibble with one row per (site
@@ -210,7 +218,8 @@ amspaf_daily <- function(
     interval             = 0.9,
     central              = c("median", "mean"),
     grab_cv              = NULL,
-    ou_scale             = 1
+    ou_scale             = 1,
+    parallel             = FALSE
 ) {
   ## --- Validate inputs -------------------------------------------------------
   checkmate::assert_data_frame(df)
@@ -230,7 +239,17 @@ amspaf_daily <- function(
   if (!is.null(grab_cv)) {
     checkmate::assert_numeric(grab_cv, lower = 0, finite = TRUE, min.len = 1L)
   }
-  if (!is.null(seed)) {
+  checkmate::assert_flag(parallel)
+  if (parallel && !requireNamespace("future.apply", quietly = TRUE)) {
+    cli::cli_abort(c(
+      "{.arg parallel = TRUE} requires the {.pkg future.apply} package.",
+      "i" = "Install it with {.code install.packages(\"future.apply\")} and set a \\
+             parallel plan with {.code future::plan(future::multisession)}."
+    ))
+  }
+  if (!is.null(seed) && !parallel) {
+    ## Sequential mode: set a global seed and restore on exit.
+    ## Parallel mode: future.apply manages per-draw seeds via future.seed.
     old_seed <- if (exists(".Random.seed", envir = .GlobalEnv))
                   get(".Random.seed", envir = .GlobalEnv) else NULL
     set.seed(as.integer(seed))
@@ -390,40 +409,57 @@ amspaf_daily <- function(
         ## G2: .predict_daily_tox uses fdm$co_split (exact) for clean C_raw
         ## reconstruction; S7 co-analyte perturbations enter add_amspaf's
         ## normalisation via draw-bearing co-analyte rows in the synthetic frame.
-        tox_draw_rows <- vector("list", ndraws)
-        co_draw_rows  <- if (!is.null(grab_cv)) vector("list", ndraws) else NULL
-
-        for (d_idx in seq_len(ndraws)) {
-          tm_p <- .perturb_target_model(fdm$tm, perturb_reference = perturb_ref)
-          if (!is.null(grab_cv)) {
-            tm_p <- .perturb_anchors_in_model(tm_p, fdm, grab_cv)   # S6
-          }
-          eps_paths <- stats::setNames(
-            lapply(fdm$modelled, function(nm) .ou_bridge_draw(fdm$ou[[nm]]$factors)),
-            fdm$modelled
-          )
-          ## S7: perturbed wq_long shifts WQ-layer scores; co_split stays exact.
-          co_p_wq <- if (!is.null(grab_cv)) .perturb_co_split(fdm, grab_cv) else
-                       list(co_split = fdm$co_split, wq_long = fdm$wq_long)
-          mr_d <- .predict_daily_tox(
-            fdm,
-            tm_p      = tm_p,
-            eps_paths = eps_paths,
-            co_split  = fdm$co_split,      # exact → clean C_raw
-            wq_long   = co_p_wq$wq_long    # perturbed when S7 active
-          )
-          if (!is.null(mr_d)) {
-            mr_d$draw_id <- as.integer(d_idx)
-            tox_draw_rows[[d_idx]] <- mr_d
-          }
-          ## S7: per-draw co-analyte rows carry the perturbed values into the
-          ## synthetic frame so add_amspaf's normalisation sees the S7 spread.
-          if (!is.null(co_draw_rows)) {
-            co_draw_rows[[d_idx]] <- .co_draw_rows(
-              daily_long_exact, co_p_wq$co_split, d_idx
+        ##
+        ## H2: the draw loop is refactored into a closure so it can be run
+        ## sequentially (lapply) or in parallel (future.apply::future_lapply).
+        ## The closure captures fdm, perturb_ref, grab_cv, daily_long_exact.
+        .draw_fn <- local({
+          .fdm              <- fdm
+          .perturb_ref      <- perturb_ref
+          .grab_cv          <- grab_cv
+          .daily_long_exact <- daily_long_exact
+          function(d_idx) {
+            tm_p <- .perturb_target_model(.fdm$tm, perturb_reference = .perturb_ref)
+            if (!is.null(.grab_cv))
+              tm_p <- .perturb_anchors_in_model(tm_p, .fdm, .grab_cv)   # S6
+            eps_paths <- stats::setNames(
+              lapply(.fdm$modelled, function(nm) .ou_bridge_draw(.fdm$ou[[nm]]$factors)),
+              .fdm$modelled
+            )
+            ## S7: perturbed wq_long shifts WQ-layer scores; co_split stays exact.
+            co_p_wq <- if (!is.null(.grab_cv))
+                         .perturb_co_split(.fdm, .grab_cv)
+                       else list(co_split = .fdm$co_split, wq_long = .fdm$wq_long)
+            mr_d <- .predict_daily_tox(
+              .fdm,
+              tm_p      = tm_p,
+              eps_paths = eps_paths,
+              co_split  = .fdm$co_split,         # exact → clean C_raw
+              wq_long   = co_p_wq$wq_long        # perturbed when S7 active
+            )
+            if (!is.null(mr_d)) mr_d$draw_id <- as.integer(d_idx)
+            list(
+              tox_rows = mr_d,
+              co_rows  = if (!is.null(.grab_cv))
+                           .co_draw_rows(.daily_long_exact, co_p_wq$co_split, d_idx)
+                         else NULL
             )
           }
+        })
+
+        draw_results <- if (parallel) {
+          future.apply::future_lapply(
+            seq_len(ndraws), .draw_fn,
+            future.seed = if (!is.null(seed)) as.integer(seed) else TRUE
+          )
+        } else {
+          lapply(seq_len(ndraws), .draw_fn)
         }
+
+        tox_draw_rows <- lapply(draw_results, `[[`, "tox_rows")
+        co_draw_rows  <- if (!is.null(grab_cv))
+                           lapply(draw_results, `[[`, "co_rows")
+                         else NULL
 
         tox_draw_long <- dplyr::bind_rows(Filter(Negate(is.null), tox_draw_rows))
 

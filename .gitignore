@@ -26,3 +26,6 @@ docs/
 
 # README render preview (generated from README.Rmd)
 /README.html
+
+# Pre-built vignette HTML (generated artefacts)
+vignettes/*.html

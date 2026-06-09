@@ -33,6 +33,13 @@ New return modes:
 The `seed` argument saves and restores `.Random.seed` so that calling
 `amspaf_daily()` with a seed does not alter the caller's RNG state.
 
+A new `parallel = FALSE` argument opts in to parallel draw execution via
+`future.apply::future_lapply()`, honouring whatever `future::plan()` the
+caller has established.  The **future.apply** package is listed in `Suggests`.
+
+A new vignette `vignette("daily-uncertainty")` describes the model,
+parameters, and how to interpret credible envelopes.
+
 ## End-to-end uncertainty propagation (issue #2)
 
 Added a draw-carrier contract throughout the pipeline: a long-format chemistry
