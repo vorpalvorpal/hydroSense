@@ -204,3 +204,120 @@ test_that("F6: summary CI bounds straddle the central estimate", {
   expect_true(all(out$amspaf <= out$amspaf_upper + 1e-9),
               label = "central <= upper bound")
 })
+
+
+## ── G6: additional integration tests ─────────────────────────────────────────
+
+## G6a: ou_scale > 1 widens the credible interval
+test_that("G6a: ou_scale = 2 produces wider CI than ou_scale = 1", {
+  skip_if(is.null(.tf$rm), "Reference model not fitted")
+
+  run <- function(scale) suppressMessages(
+    amspaf_daily(
+      .tf$tgt,
+      reference_model = .tf$rm,
+      interpolation   = "model",
+      ndraws          = 20L,
+      seed            = 1L,
+      return          = "summary",
+      interval        = 0.9,
+      ou_scale        = scale,
+      require_temperature = FALSE,
+      conc_units      = "ug/L"
+    )
+  )
+  out1 <- run(1)
+  out2 <- run(2)
+
+  width1 <- mean(out1$amspaf_upper - out1$amspaf_lower, na.rm = TRUE)
+  width2 <- mean(out2$amspaf_upper - out2$amspaf_lower, na.rm = TRUE)
+  expect_gt(width2, width1,
+            label = "ou_scale=2 gives wider average CI than ou_scale=1")
+})
+
+
+## G6b: grab_cv widens CI (S6 + S7 contribute extra spread)
+test_that("G6b: grab_cv = 0.3 widens CI compared to grab_cv = NULL", {
+  skip_if(is.null(.tf$rm), "Reference model not fitted")
+
+  run <- function(gcv) suppressMessages(
+    amspaf_daily(
+      .tf$tgt,
+      reference_model = .tf$rm,
+      interpolation   = "model",
+      ndraws          = 20L,
+      seed            = 1L,
+      return          = "summary",
+      interval        = 0.9,
+      grab_cv         = gcv,
+      require_temperature = FALSE,
+      conc_units      = "ug/L"
+    )
+  )
+  out_base <- run(NULL)
+  out_gcv  <- run(0.3)
+
+  width_base <- mean(out_base$amspaf_upper - out_base$amspaf_lower, na.rm = TRUE)
+  width_gcv  <- mean(out_gcv$amspaf_upper  - out_gcv$amspaf_lower,  na.rm = TRUE)
+  expect_gte(width_gcv, width_base,
+             label = "grab_cv does not shrink the CI")
+})
+
+
+## G6c: multi-site — both sites contribute correct row counts
+test_that("G6c: multi-site draws output has ndraws rows per (date, site_id)", {
+  skip_if(is.null(.tf$rm), "Reference model not fitted")
+  n <- 4L
+
+  ## Build a second site with different chemistry
+  tgt2 <- make_chem_f("site2", .tf$dates, mult = 2, seed = 5L)
+  both <- dplyr::bind_rows(.tf$tgt, tgt2)
+
+  out <- suppressMessages(
+    amspaf_daily(
+      both,
+      reference_model = .tf$rm,
+      interpolation   = "model",
+      ndraws          = n,
+      seed            = 1L,
+      return          = "draws",
+      require_temperature = FALSE,
+      conc_units      = "ug/L"
+    )
+  )
+
+  counts <- out |>
+    dplyr::group_by(.data$date, .data$site_id) |>
+    dplyr::summarise(n_rows = dplyr::n(), .groups = "drop")
+
+  expect_true(all(counts$n_rows == n),
+              label = "every (date, site_id) cell has exactly ndraws rows")
+  expect_true(length(unique(out$site_id)) == 2L,
+              label = "output contains rows for both sites")
+})
+
+
+## G6d: .empty_daily_result() returns the correct column schema per mode
+test_that("G6d: .empty_daily_result modes return correct column sets", {
+  pt  <- leachatetools:::.empty_daily_result("point")
+  sm  <- leachatetools:::.empty_daily_result("summary")
+  dr  <- leachatetools:::.empty_daily_result("draws")
+
+  ## Point: standard schema, no CI columns, no draw_id
+  expect_true(all(c("date","site_id","amspaf","n_analytes_used") %in% names(pt)))
+  expect_false("amspaf_lower" %in% names(pt))
+  expect_false("draw_id"      %in% names(pt))
+
+  ## Summary: adds amspaf_lower / amspaf_upper
+  expect_true(all(c("amspaf","amspaf_lower","amspaf_upper") %in% names(sm)))
+  expect_false("draw_id" %in% names(sm))
+
+  ## Draws: adds draw_id
+  expect_true("draw_id" %in% names(dr))
+  expect_false("amspaf_lower" %in% names(dr))
+
+  ## All are zero-row tibbles
+  expect_equal(nrow(pt), 0L)
+  expect_equal(nrow(sm), 0L)
+  expect_equal(nrow(dr), 0L)
+})

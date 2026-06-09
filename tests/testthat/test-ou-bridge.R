@@ -233,3 +233,57 @@ test_that("B10: empirical SD at anchor positions ≈ 0 across many draws", {
   # Variance at anchor positions should be (numerically) 0
   expect_true(all(e_var[anchor_pos] < 1e-20))
 })
+
+
+## ── G5: additional calibration tests ─────────────────────────────────────────
+
+test_that("G5a: MoM gamma estimate within factor-4 of simulated truth", {
+  ## Dense-enough grab series lets the quadratic-variation estimator converge
+  ## to a rough multiple of the truth.  Factor-4 tolerance accounts for
+  ## finite-sample and Euler-Maruyama discretisation bias.
+  gamma_true <- 2.0
+  theta_true <- 0.10
+
+  ## Simulate discrete OU at 14-day spacing, 40 grabs.
+  set.seed(2025L)
+  n     <- 40L
+  dates <- as.Date("2020-01-01") + (seq_len(n) - 1L) * 14L
+  phi   <- exp(-theta_true * 14)
+  s2d   <- gamma_true * (1 - phi^2)
+  S     <- numeric(n); S[1L] <- stats::rnorm(1, 0, sqrt(gamma_true))
+  for (i in seq_len(n - 1L))
+    S[i + 1L] <- phi * S[i] + stats::rnorm(1, 0, sqrt(s2d))
+
+  p <- leachatetools:::.estimate_ou_params(dates, S)
+  expect_false(p$degenerate)
+  expect_true(p$gamma >= gamma_true / 4 && p$gamma <= gamma_true * 4,
+              label = sprintf("gamma_hat=%.3f; true=%.3f", p$gamma, gamma_true))
+})
+
+
+test_that("G5c: empirical OU bridge midpoint variance within factor-2 of theory", {
+  ## Use known parameters so the theoretical conditional variance is exact.
+  theta  <- 0.15
+  gamma  <- 3.0
+  sigma2 <- 2 * theta * gamma
+
+  ## 20-day gap; midpoint at t=10.
+  L       <- 20L
+  a_dates <- as.Date(c("2021-01-01", "2021-01-21"))
+  t_dates <- seq(a_dates[1L], a_dates[2L], by = "day")
+  fac     <- leachatetools:::.ou_bridge_factors(a_dates, t_dates, theta, sigma2, gamma)
+
+  set.seed(42L)
+  draws <- replicate(1500L, leachatetools:::.ou_bridge_draw(fac))
+
+  mid_idx  <- which(t_dates == as.Date("2021-01-11"))   # t = 10
+  emp_var  <- stats::var(draws[mid_idx, ])
+
+  ## Theoretical: Var = γ(1−u²)(1−v²)/(1−s²), u=v=exp(-θ·10), s=exp(-θ·20)
+  u        <- exp(-theta * 10)
+  s        <- exp(-theta * L)
+  theo_var <- gamma * (1 - u^2)^2 / (1 - s^2)
+
+  expect_true(emp_var >= theo_var / 2 && emp_var <= theo_var * 2,
+              label = sprintf("emp_var=%.4f; theo_var=%.4f", emp_var, theo_var))
+})
