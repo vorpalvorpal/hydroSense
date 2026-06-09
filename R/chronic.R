@@ -90,6 +90,18 @@
 #'   the in-window portion of its interval.
 #' @param eps Small positive guard added inside the log for geometric mean
 #'   to avoid `log(0)`. Default `1e-9`.
+#' @param return Output mode for draw-carrier input (see [summarise_draws()]).
+#'   `"summary"` (default) collapses posterior draws to a central estimate plus
+#'   a credible interval (`value`, `value_lower`, `value_upper`, `n_draws`);
+#'   `"draws"` returns the raw per-draw chronic rows (`draw_id 1..N`).  For
+#'   point (non-draw) input both modes return byte-identical output with no
+#'   interval columns.  Draws are paired across time by `draw_id` (an
+#'   index-pairing approximation that assumes temporal independence; see the
+#'   OU/Kalman smoothing roadmap item).
+#' @param interval Width of the credible interval when `return = "summary"`.
+#'   Default `0.90` (5th/95th percentile bounds).
+#' @param central Central-tendency statistic when `return = "summary"`:
+#'   `"median"` (default) or `"mean"`.
 #'
 #' @return A long-format tibble with columns:
 #'   - `focal_date` (Date)

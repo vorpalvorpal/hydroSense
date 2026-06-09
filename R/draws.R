@@ -30,7 +30,7 @@
 #' @keywords internal
 .draw_domain <- function(df) {
   if (!"draw_id" %in% names(df)) return(integer(0))
-  ids <- sort(unique(na.omit(as.integer(df[["draw_id"]]))))
+  ids <- sort(unique(stats::na.omit(as.integer(df[["draw_id"]]))))
   if (length(ids) == 0L) return(integer(0))
 
   expected <- seq_len(max(ids))

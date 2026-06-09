@@ -266,6 +266,17 @@
 #'   derive it with [estimate_water_temp()] (optionally fed by
 #'   [get_silo_air_temp()]). Set `FALSE` only for datasets that do not assess
 #'   ammonia.
+#' @param return Output mode for draw-carrier input (see [summarise_draws()]).
+#'   `"summary"` (default) collapses posterior draws to a central estimate plus
+#'   a credible interval (`value`, `value_lower`, `value_upper`, `n_draws`);
+#'   `"draws"` returns the raw per-draw AmsPAF rows (`draw_id 1..N`) for
+#'   external risk models or further composition (e.g. into
+#'   [time_weighted_aggregate()]).  For point (non-draw) input both modes
+#'   return byte-identical output with no interval columns.
+#' @param interval Width of the credible interval when `return = "summary"`.
+#'   Default `0.90` (5th/95th percentile bounds).
+#' @param central Central-tendency statistic when `return = "summary"`:
+#'   `"median"` (default) or `"mean"`.
 #'
 #' @return The input `df` with AmsPAF rows appended. Each AmsPAF row carries:
 #'   `value` (AmsPAF as a percentage, 0–100+), `detected = TRUE`,

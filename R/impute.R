@@ -1112,7 +1112,7 @@ impute_coanalytes <- function(
       # Posterior-predictive draws: beta ~ N(coef, Vp) + residual Gaussian noise.
       # Xp is n_miss x n_coef; t(beta_draws) is n_coef x N → eta_mat is n_miss x N.
       Xp         <- stats::predict(gam_fit, newdata = pred_data, type = "lpmatrix")
-      beta_draws <- mgcv::rmvn(N, coef(gam_fit), gam_fit$Vp)  # N x n_coef
+      beta_draws <- mgcv::rmvn(N, stats::coef(gam_fit), gam_fit$Vp)  # N x n_coef
       eta_mat    <- Xp %*% t(beta_draws)                        # n_miss x N
       eps_mat    <- matrix(
         stats::rnorm(length(eta_mat), 0, sqrt(gam_fit$sig2)),
