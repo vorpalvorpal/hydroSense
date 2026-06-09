@@ -646,30 +646,26 @@ amspaf_daily <- function(
     dplyr::select(-".measured")
 }
 
-
-#' Model-based daily toxicant interpolation (season-blind impact model)
+#' Fit-once scaffold for the season-blind daily target model (issue #16)
 #'
-#' Fits a [fit_target_model()] on the site's grab chemistry and the supplied
-#' `reference_model`, predicts each toxicant's normalised concentration
-#' `C_norm = ref_norm + impact` on every daily date, and reconstructs the raw
-#' µg/L concentration `C_raw = C_norm / factor` (the normalisation is
-#' multiplicative, so the factor is `normalise(1, co-analytes_of_the_day)`).
-#' Modelled-toxicant rows in `daily_long` are replaced with these estimates
-#' (in µg/L, `units.analyte = "ug/L"`); co-analytes and non-modelled toxicants
-#' are left untouched. On any failure the input is returned unchanged.
+#' Calls [fit_target_model()] once, builds the static scaffolding needed for
+#' per-draw prediction, and precomputes the OU bridge Cholesky factors for
+#' every analyte over the full daily date grid.  The result ("fitted daily
+#' model", `fdm`) is the input to [.predict_daily_tox()]; call
+#' `.predict_daily_tox(fdm)` once for point mode or N times (with a perturbed
+#' target model and OU-sampled `eps_paths`) for draw mode.
 #'
-#' @param daily_long Output of `.build_daily_chem()` (+ temperature fill).
-#' @param site_rows Grab chemistry for the site (passed to the target model).
-#' @param reference_model A `reference_model`.
-#' @param imputation_model Optional `imputation_model` (tier-2 enrichment).
-#' @param conc_units Units for `site_rows` toxicants when no `units.analyte`.
-#' @param meta Analyte metadata (normalisation formulas).
-#' @param tox_analytes SSD-eligible analyte names.
-#' @return `daily_long` with modelled-toxicant rows replaced.
+#' @param site_rows Grab chemistry for the site.
+#' @param reference_model,imputation_model,conc_units,meta,tox_analytes
+#'   Forwarded to [fit_target_model()].
+#' @param daily_long Forward-filled daily chemistry for the site; supplies the
+#'   date grid (`qdates`) and co-analyte values.
+#' @return A named list (`fdm`) or `NULL` on model failure.
 #' @keywords internal
-.daily_tox_from_model <- function(daily_long, site_rows, reference_model,
-                                   imputation_model, conc_units, meta,
-                                   tox_analytes) {
+.fit_daily_target <- function(site_rows, reference_model, imputation_model,
+                               conc_units, meta, tox_analytes, daily_long) {
+  qdates <- sort(unique(daily_long$.date))
+
   tm <- tryCatch(
     fit_target_model(
       target           = site_rows,
@@ -686,36 +682,25 @@ amspaf_daily <- function(
       NULL
     }
   )
-  if (is.null(tm) || length(tm$models) == 0L) return(daily_long)
+  if (is.null(tm) || length(tm$models) == 0L) return(NULL)
 
   modelled <- names(tm$models)
-  qdates   <- sort(unique(daily_long$.date))
 
-  ## Per-date co-analyte lookup (named numeric vector keyed by analyte).
+  ## Per-date co-analyte lookup (static across draws; Chunk D may override).
   co <- daily_long[!daily_long$analyte %in% tox_analytes &
                      (is.na(daily_long$detected) | daily_long$detected), , drop = FALSE]
-
-  ## WQ layer (issue #14 item B): pass the day's water quality so analytes with
-  ## a fitted WQ→metal relationship are predicted as WQ-prediction + d_interp,
-  ## keyed by sample_id == date string.
-  wq_long <- if (!is.null(tm$pca)) {
-    tibble::tibble(sample_id = as.character(co$.date),
-                   analyte = co$analyte, value = co$value)
-  } else NULL
-  pred <- .resolve_target_impact(tm, tibble::tibble(date = qdates), modelled,
-                                 wq = wq_long)
-  if (nrow(pred) == 0L) return(daily_long)
   co_split <- split(
     data.frame(analyte = co$analyte, value = co$value, stringsAsFactors = FALSE),
     as.character(co$.date)
   )
-  co_vec_for <- function(d) {
-    cd <- co_split[[as.character(d)]]
-    if (is.null(cd)) return(numeric(0))
-    stats::setNames(cd$value, cd$analyte)
-  }
 
-  ## Normalisation factor = normalise(1, co-analytes) per analyte (multiplicative).
+  ## WQ layer data for analytes with a fitted WQ→metal response.
+  wq_long <- if (!is.null(tm$pca)) {
+    tibble::tibble(sample_id = as.character(co$.date),
+                   analyte = co$analyte, value = co$value)
+  } else NULL
+
+  ## Normalisation formula lookup (one parsed formula per modelled analyte).
   meta_norm <- meta |>
     dplyr::select("analyte", "normalisation_formula", "coanalytes_required")
   fac_lookup <- stats::setNames(
@@ -728,16 +713,110 @@ amspaf_daily <- function(
     }), modelled
   )
 
-  ## Measured (grab) dates per modelled analyte, for the .measured flag.
+  ## Measured (grab) dates — used to set .measured flags on synthetic rows.
   sr_mod <- site_rows[site_rows$analyte %in% modelled &
                         (is.na(site_rows$detected) | site_rows$detected), ,
                       drop = FALSE]
   measured_key <- paste(sr_mod$analyte, as.Date(sr_mod$datetime))
 
-  ## Reconstruct raw µg/L per (date, analyte).
+  ## OU bridge: precompute Cholesky factors once per analyte over qdates.
+  ## WQ-tier analytes have their own residual d_anchors; others use anchors$S.
+  ou <- stats::setNames(
+    lapply(modelled, function(nm) {
+      m      <- tm$models[[nm]]
+      has_wq <- !is.null(m$wq_fit) && !is.null(m$d_anchors) &&
+                  nrow(m$d_anchors) >= 2L
+      anch   <- if (has_wq) m$d_anchors else m$anchors
+
+      if (is.null(anch) || nrow(anch) < 2L) {
+        return(list(
+          params  = list(theta = 0, sigma2 = 0, gamma = 0, degenerate = TRUE),
+          factors = .ou_bridge_factors(as.Date(character()), qdates, 0, 0, 0)
+        ))
+      }
+
+      params  <- .estimate_ou_params(anch$date, anch$S)
+      factors <- .ou_bridge_factors(
+        anch$date, qdates, params$theta, params$sigma2, params$gamma
+      )
+      list(params = params, factors = factors)
+    }),
+    modelled
+  )
+
+  list(
+    tm           = tm,
+    modelled     = modelled,
+    qdates       = qdates,
+    co_split     = co_split,
+    wq_long      = wq_long,
+    fac_lookup   = fac_lookup,
+    measured_key = measured_key,
+    ou           = ou
+  )
+}
+
+
+#' Per-draw daily toxicant prediction from a pre-fitted scaffold (issue #16)
+#'
+#' Predicts normalised and raw concentrations for one draw (or for the
+#' deterministic point mode when `eps_paths = NULL`).  Always uses the
+#' precomputed static scaffolding from `fdm`; accepts an optionally-perturbed
+#' target model (`tm_p`) and OU bridge fluctuations (`eps_paths`) for draw
+#' mode.  Chunk D will add co-analyte and anchor perturbation via `co_split`
+#' and `wq_long` overrides.
+#'
+#' @param fdm Output of [.fit_daily_target()].
+#' @param tm_p Target model to predict with (default: `fdm$tm`).  For draw
+#'   mode, pass a GAM-perturbed copy from [.perturb_target_model()].
+#' @param eps_paths Named list of mean-zero OU bridge fluctuation paths, one
+#'   numeric vector of length `length(fdm$qdates)` per analyte.  `NULL` (the
+#'   default) means no fluctuation — output is byte-identical to the original
+#'   point-mode path.
+#' @param co_split Per-date co-analyte lookup (default: `fdm$co_split`).
+#'   Chunk D supplies a perturbed version for S7 draws.
+#' @param wq_long WQ layer data (default: `fdm$wq_long`).
+#' @return Tibble of model rows (`.date`, `value`, `detected`, `.measured`,
+#'   `analyte`, `units.analyte`) with `attr("impact_tiers")` attached, or
+#'   `NULL` if prediction produced no finite rows.
+#' @keywords internal
+.predict_daily_tox <- function(fdm,
+                                tm_p      = fdm$tm,
+                                eps_paths = NULL,
+                                co_split  = fdm$co_split,
+                                wq_long   = fdm$wq_long) {
+  pred <- .resolve_target_impact(tm_p, tibble::tibble(date = fdm$qdates),
+                                  fdm$modelled, wq = wq_long)
+  if (nrow(pred) == 0L) return(NULL)
+
+  ## Post-hoc OU bridge ε injection (S4 / S5).
+  ## Add the mean-zero fluctuation ε_d(t) to C_norm for each analyte, then
+  ## re-clamp at 0.  The bridge guarantees ε = 0 at anchor dates, so the
+  ## deterministic mean (.interp_residual centre line) is unchanged there.
+  if (!is.null(eps_paths)) {
+    for (nm in fdm$modelled) {
+      eps_nm <- eps_paths[[nm]]
+      if (!is.null(eps_nm) && length(eps_nm) > 0L) {
+        idx_nm   <- which(pred$analyte == nm)
+        date_pos <- match(pred$date[idx_nm], fdm$qdates)
+        valid    <- !is.na(date_pos)
+        pred$C_norm[idx_nm[valid]] <- pmax(
+          pred$C_norm[idx_nm[valid]] + eps_nm[date_pos[valid]],
+          0
+        )
+      }
+    }
+  }
+
+  ## Reconstruct raw µg/L: C_raw = C_norm / normalisation_factor(co-analytes).
+  co_vec_for <- function(d) {
+    cd <- co_split[[as.character(d)]]
+    if (is.null(cd)) return(numeric(0))
+    stats::setNames(cd$value, cd$analyte)
+  }
   pred$C_raw <- vapply(seq_len(nrow(pred)), function(i) {
-    a  <- pred$analyte[i]; d <- pred$date[i]
-    parsed <- fac_lookup[[a]]$parsed
+    a      <- pred$analyte[i]; d <- pred$date[i]
+    parsed <- fdm$fac_lookup[[a]]$parsed
     if (is.null(parsed)) return(pred$C_norm[i])
     factor <- .apply_normalisation(parsed, 1, co_vec_for(d))
     if (is.na(factor) || factor <= 0) return(NA_real_)
@@ -745,21 +824,65 @@ amspaf_daily <- function(
   }, numeric(1L))
 
   pred_ok <- pred[is.finite(pred$C_raw), , drop = FALSE]
+  if (nrow(pred_ok) == 0L) return(NULL)
+
   model_rows <- tibble::tibble(
     .date         = pred_ok$date,
     value         = pred_ok$C_raw,
     detected      = TRUE,
-    .measured     = paste(pred_ok$analyte, pred_ok$date) %in% measured_key,
+    .measured     = paste(pred_ok$analyte, pred_ok$date) %in% fdm$measured_key,
     analyte       = pred_ok$analyte,
     units.analyte = "ug/L"
   )
+  attr(model_rows, "impact_tiers") <- dplyr::distinct(
+    pred[, c("analyte", "impact_tier")]
+  )
+  model_rows
+}
 
-  ## Replace modelled-toxicant rows; keep co-analytes + non-modelled toxicants.
+
+#' Model-based daily toxicant interpolation (season-blind impact model)
+#'
+#' Thin wrapper: calls [.fit_daily_target()] once then [.predict_daily_tox()]
+#' once (point mode, no ε).  Modelled-toxicant rows in `daily_long` are
+#' replaced; co-analytes and non-modelled toxicants are left untouched.  On
+#' any failure the input is returned unchanged.
+#'
+#' For draw-mode orchestration (Chunk E), call the two underlying helpers
+#' directly: fit once with `.fit_daily_target()`, then loop N times over
+#' `.predict_daily_tox(fdm, perturbed_tm, eps_paths)`.
+#'
+#' @param daily_long Output of `.build_daily_chem()` (+ temperature fill).
+#' @param site_rows Grab chemistry for the site (passed to the target model).
+#' @param reference_model A `reference_model`.
+#' @param imputation_model Optional `imputation_model` (tier-2 enrichment).
+#' @param conc_units Units for `site_rows` toxicants when no `units.analyte`.
+#' @param meta Analyte metadata (normalisation formulas).
+#' @param tox_analytes SSD-eligible analyte names.
+#' @return `daily_long` with modelled-toxicant rows replaced.
+#' @keywords internal
+.daily_tox_from_model <- function(daily_long, site_rows, reference_model,
+                                   imputation_model, conc_units, meta,
+                                   tox_analytes) {
+  fdm <- .fit_daily_target(
+    site_rows        = site_rows,
+    reference_model  = reference_model,
+    imputation_model = imputation_model,
+    conc_units       = conc_units,
+    meta             = meta,
+    tox_analytes     = tox_analytes,
+    daily_long       = daily_long
+  )
+  if (is.null(fdm)) return(daily_long)
+
+  model_rows <- .predict_daily_tox(fdm)
+  if (is.null(model_rows)) return(daily_long)
+
+  modelled <- fdm$modelled
   keep <- dplyr::filter(daily_long, !.data$analyte %in% .env$modelled)
   if (!"units.analyte" %in% names(keep)) keep$units.analyte <- NA_character_
   out <- dplyr::bind_rows(keep, model_rows)
-  ## Per-analyte impact tier ("model" / "bridge"), surfaced for ara_summary().
-  attr(out, "impact_tiers") <- dplyr::distinct(pred[, c("analyte", "impact_tier")])
+  attr(out, "impact_tiers") <- attr(model_rows, "impact_tiers")
   out
 }
 
