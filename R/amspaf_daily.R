@@ -721,6 +721,7 @@ amspaf_daily <- function(
 
   ## OU bridge: precompute Cholesky factors once per analyte over qdates.
   ## WQ-tier analytes have their own residual d_anchors; others use anchors$S.
+  ## Also precompute C_norm_obs at anchor dates for S6 measurement-error scaling.
   ou <- stats::setNames(
     lapply(modelled, function(nm) {
       m      <- tm$models[[nm]]
@@ -730,8 +731,10 @@ amspaf_daily <- function(
 
       if (is.null(anch) || nrow(anch) < 2L) {
         return(list(
-          params  = list(theta = 0, sigma2 = 0, gamma = 0, degenerate = TRUE),
-          factors = .ou_bridge_factors(as.Date(character()), qdates, 0, 0, 0)
+          params          = list(theta = 0, sigma2 = 0, gamma = 0, degenerate = TRUE),
+          factors         = .ou_bridge_factors(as.Date(character()), qdates, 0, 0, 0),
+          c_norm_obs_anch = NULL,
+          has_wq          = has_wq
         ))
       }
 
@@ -739,10 +742,66 @@ amspaf_daily <- function(
       factors <- .ou_bridge_factors(
         anch$date, qdates, params$theta, params$sigma2, params$gamma
       )
-      list(params = params, factors = factors)
+
+      ## C_norm_obs at anchor dates: needed to scale S6 perturbations correctly.
+      ## Model/bridge: C_norm = ref_norm + I.  WQ-tier: C_norm = WQ_pred + d.
+      c_norm_obs_anch <- tryCatch({
+        if (!has_wq) {
+          ref_q   <- .resolve_ref_norm_instant(
+            tm$reference_model,
+            tibble::tibble(sample_id = as.character(anch$date), datetime = anch$date)
+          )
+          ref_lkp <- stats::setNames(
+            ref_q$ref_norm[ref_q$analyte == nm],
+            ref_q$sample_id[ref_q$analyte == nm]
+          )
+          ref_vec <- as.numeric(ref_lkp[as.character(anch$date)])
+          ref_vec[is.na(ref_vec)] <- 0
+          pmax(anch$I + ref_vec, 0)
+        } else if (!is.null(tm$pca) && !is.null(wq_long)) {
+          pc_anch <- .compute_pca_scores(wq_long, tm$pca)
+          nd_anch <- dplyr::left_join(
+            tibble::tibble(sample_id = as.character(anch$date)),
+            pc_anch, by = "sample_id"
+          )
+          wq_pred <- as.numeric(stats::predict(m$wq_fit, newdata = nd_anch))
+          pmax(wq_pred + anch$S, 0)
+        } else NULL
+      }, error = function(e) NULL)
+
+      list(
+        params          = params,
+        factors         = factors,
+        c_norm_obs_anch = c_norm_obs_anch,
+        has_wq          = has_wq
+      )
     }),
     modelled
   )
+
+  ## Co-source grab mapping for S7 (coherent per-grab co-analyte perturbation).
+  ## co_grab_map[[analyte]][[date_str]] = source grab date string (or NA).
+  co_analytes_nm <- unique(co$analyte)
+  co_grab_map <- if (length(co_analytes_nm) > 0L) {
+    co_grabs <- site_rows[
+      site_rows$analyte %in% co_analytes_nm &
+        (is.na(site_rows$detected) | site_rows$detected), ,
+      drop = FALSE
+    ]
+    co_grab_by_a <- split(as.Date(co_grabs$datetime), co_grabs$analyte)
+    stats::setNames(
+      lapply(co_analytes_nm, function(a) {
+        gd <- sort(unique(co_grab_by_a[[a]]))
+        if (length(gd) == 0L) {
+          return(stats::setNames(rep(NA_character_, length(qdates)), as.character(qdates)))
+        }
+        idx <- findInterval(qdates, gd)   # 0 = before first grab
+        src <- ifelse(idx == 0L, NA_character_, as.character(gd[pmax(idx, 1L)]))
+        stats::setNames(src, as.character(qdates))
+      }),
+      co_analytes_nm
+    )
+  } else NULL
 
   list(
     tm           = tm,
@@ -752,7 +811,8 @@ amspaf_daily <- function(
     wq_long      = wq_long,
     fac_lookup   = fac_lookup,
     measured_key = measured_key,
-    ou           = ou
+    ou           = ou,
+    co_grab_map  = co_grab_map
   )
 }
 
@@ -763,8 +823,8 @@ amspaf_daily <- function(
 #' deterministic point mode when `eps_paths = NULL`).  Always uses the
 #' precomputed static scaffolding from `fdm`; accepts an optionally-perturbed
 #' target model (`tm_p`) and OU bridge fluctuations (`eps_paths`) for draw
-#' mode.  Chunk D will add co-analyte and anchor perturbation via `co_split`
-#' and `wq_long` overrides.
+#' mode.  Pass overrides to `co_split` and `wq_long` (from
+#' [.perturb_co_split()]) for S7 co-analyte measurement-error draws.
 #'
 #' @param fdm Output of [.fit_daily_target()].
 #' @param tm_p Target model to predict with (default: `fdm$tm`).  For draw
@@ -838,6 +898,146 @@ amspaf_daily <- function(
     pred[, c("analyte", "impact_tier")]
   )
   model_rows
+}
+
+
+## ── Chunk D: measurement-error perturbation helpers (issue #16, S6 + S7) ─────
+
+#' Perturb anchor residual-state values by grab measurement error (S6)
+#'
+#' For each modelled analyte, draws one lognormal multiplier per anchor grab
+#' (geo-mean = 1, CV = `grab_cv[[nm]]`) and shifts the anchor's S value by
+#' `ΔS = C_norm_obs × (mult − 1)`, where `C_norm_obs` was precomputed in
+#' [.fit_daily_target()].  WQ-tier analytes' `d_anchors` are treated the same
+#' way (their residual `d` responds to C_norm perturbation identically).
+#'
+#' The updated `tm` copy is then passed to [.predict_daily_tox()] for one
+#' draw; the `.interp_residual()` bridge will interpolate between the
+#' perturbed anchor values, providing at-anchor spread equal to the grab
+#' measurement width and mid-gap spread equal to that plus the OU balloon.
+#'
+#' @param tm A `target_model` (typically already GAM-perturbed).
+#' @param fdm Fitted daily scaffold from [.fit_daily_target()]; provides
+#'   `c_norm_obs_anch` and `has_wq` flags.
+#' @param grab_cv Named numeric vector of CVs per analyte, or a single scalar
+#'   applied to all analytes.  Analytes not present in the vector (and without
+#'   a scalar default) are left unperturbed.
+#' @return A modified copy of `tm` with perturbed anchor S values.
+#' @keywords internal
+.perturb_anchors_in_model <- function(tm, fdm, grab_cv) {
+  if (is.null(grab_cv) || (length(grab_cv) == 1L && is.na(grab_cv))) return(tm)
+
+  get_cv <- function(nm) {
+    if (length(grab_cv) == 1L)           return(as.numeric(grab_cv))
+    if (nm %in% names(grab_cv))          return(as.numeric(grab_cv[[nm]]))
+    return(NA_real_)
+  }
+
+  for (nm in fdm$modelled) {
+    cv <- get_cv(nm)
+    if (is.na(cv) || cv <= 0) next
+
+    ou_nm   <- fdm$ou[[nm]]
+    has_wq  <- isTRUE(ou_nm$has_wq)
+    c_norm  <- ou_nm$c_norm_obs_anch
+    anch    <- if (has_wq) tm$models[[nm]]$d_anchors else tm$models[[nm]]$anchors
+
+    if (is.null(anch) || is.null(c_norm) || length(c_norm) != nrow(anch)) next
+
+    sigma_ln <- sqrt(log(1 + cv^2))
+    mult     <- exp(stats::rnorm(nrow(anch), -sigma_ln^2 / 2, sigma_ln))
+    anch_p   <- anch
+    anch_p$S <- anch$S + c_norm * (mult - 1)
+
+    if (has_wq) {
+      tm$models[[nm]]$d_anchors <- anch_p
+    } else {
+      tm$models[[nm]]$anchors <- anch_p
+    }
+  }
+  tm
+}
+
+
+#' Draw coherent co-analyte perturbations for one draw (S7)
+#'
+#' For each co-analyte grab in `fdm`, draws one lognormal multiplier
+#' (geo-mean = 1, per-analyte or global CV from `grab_cv_co`).  Each day in
+#' `co_split` inherits the multiplier of its source grab (from
+#' `fdm$co_grab_map`), preserving temporal coherence: consecutive forward-
+#' filled days that came from the same grab receive the same perturbation.
+#'
+#' @param fdm Fitted daily scaffold from [.fit_daily_target()].
+#' @param grab_cv_co Named numeric vector of CVs per co-analyte, or a single
+#'   scalar.  `NULL` or `NA` → return `fdm$co_split` and `fdm$wq_long` unchanged.
+#' @return Named list `list(co_split, wq_long)` with perturbed values.
+#' @keywords internal
+.perturb_co_split <- function(fdm, grab_cv_co) {
+  if (is.null(fdm$co_grab_map) || is.null(grab_cv_co) ||
+      (length(grab_cv_co) == 1L && is.na(grab_cv_co))) {
+    return(list(co_split = fdm$co_split, wq_long = fdm$wq_long))
+  }
+
+  get_cv_co <- function(a) {
+    if (length(grab_cv_co) == 1L) return(as.numeric(grab_cv_co))
+    if (a %in% names(grab_cv_co)) return(as.numeric(grab_cv_co[[a]]))
+    return(NA_real_)
+  }
+
+  co_analytes_nm <- names(fdm$co_grab_map)
+
+  ## One multiplier per unique (analyte, source-grab-date) pair.
+  all_pairs <- unique(unlist(lapply(co_analytes_nm, function(a) {
+    src <- fdm$co_grab_map[[a]]
+    src_ok <- src[!is.na(src)]
+    paste(a, src_ok, sep = "::")
+  })))
+
+  if (length(all_pairs) == 0L) {
+    return(list(co_split = fdm$co_split, wq_long = fdm$wq_long))
+  }
+
+  analyte_of_pair <- sub("::.*", "", all_pairs)
+  sigma_lns <- vapply(analyte_of_pair, function(a) {
+    cv <- get_cv_co(a)
+    if (is.na(cv) || cv <= 0) 0 else sqrt(log(1 + cv^2))
+  }, numeric(1L))
+
+  mults <- stats::setNames(
+    exp(stats::rnorm(length(all_pairs), -sigma_lns^2 / 2, sigma_lns)),
+    all_pairs
+  )
+
+  ## Apply multipliers to co_split (one date at a time).
+  co_split_d <- lapply(names(fdm$co_split), function(d) {
+    co_day <- fdm$co_split[[d]]
+    for (i in seq_len(nrow(co_day))) {
+      a    <- co_day$analyte[i]
+      cgm  <- fdm$co_grab_map[[a]]
+      if (is.null(cgm)) next
+      src_d <- cgm[d]
+      if (is.na(src_d)) next
+      key <- paste(a, src_d, sep = "::")
+      m   <- mults[[key]]
+      if (!is.null(m) && is.finite(m) && m > 0) co_day$value[i] <- co_day$value[i] * m
+    }
+    co_day
+  })
+  names(co_split_d) <- names(fdm$co_split)
+
+  ## Rebuild wq_long (needed for WQ-layer PC-score computation) if present.
+  wq_long_d <- if (!is.null(fdm$wq_long)) {
+    rows <- lapply(names(co_split_d), function(d) {
+      co_d <- co_split_d[[d]]
+      if (nrow(co_d) == 0L) return(NULL)
+      data.frame(sample_id = d, analyte = co_d$analyte, value = co_d$value,
+                 stringsAsFactors = FALSE)
+    })
+    rows <- Filter(Negate(is.null), rows)
+    if (length(rows) > 0L) tibble::as_tibble(do.call(rbind, rows)) else NULL
+  } else NULL
+
+  list(co_split = co_split_d, wq_long = wq_long_d)
 }
 
 
