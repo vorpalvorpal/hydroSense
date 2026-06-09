@@ -90,6 +90,18 @@
 #'   the in-window portion of its interval.
 #' @param eps Small positive guard added inside the log for geometric mean
 #'   to avoid `log(0)`. Default `1e-9`.
+#' @param return Output mode for draw-carrier input (see [summarise_draws()]).
+#'   `"summary"` (default) collapses posterior draws to a central estimate plus
+#'   a credible interval (`value`, `value_lower`, `value_upper`, `n_draws`);
+#'   `"draws"` returns the raw per-draw chronic rows (`draw_id 1..N`).  For
+#'   point (non-draw) input both modes return byte-identical output with no
+#'   interval columns.  Draws are paired across time by `draw_id` (an
+#'   index-pairing approximation that assumes temporal independence; see the
+#'   OU/Kalman smoothing roadmap item).
+#' @param interval Width of the credible interval when `return = "summary"`.
+#'   Default `0.90` (5th/95th percentile bounds).
+#' @param central Central-tendency statistic when `return = "summary"`:
+#'   `"median"` (default) or `"mean"`.
 #'
 #' @return A long-format tibble with columns:
 #'   - `focal_date` (Date)
@@ -123,9 +135,14 @@ time_weighted_aggregate <- function(
     window_units = NULL,
     summary     = c("geom_mean", "arith_mean", "p90"),
     anchor_outside_window = TRUE,
-    eps         = 1e-9
+    eps         = 1e-9,
+    return      = c("summary", "draws"),
+    interval    = 0.90,
+    central     = c("median", "mean")
 ) {
   summary <- match.arg(summary)
+  return  <- match.arg(return)
+  central <- match.arg(central)
 
   # ── Input validation ───────────────────────────────────────────────────────
   checkmate::assert_data_frame(df)
@@ -141,7 +158,9 @@ time_weighted_aggregate <- function(
   checkmate::assert_flag(anchor_outside_window)
   checkmate::assert_number(eps, lower = 0)
 
-  has_imputed <- "imputed" %in% names(df)
+  has_imputed   <- "imputed" %in% names(df)
+  is_draws_mode <- "draw_id" %in% names(df) && !all(is.na(df[["draw_id"]]))
+  draws         <- .draw_domain(df)
 
   # Normalise datetime to Date for day-level arithmetic
   df <- dplyr::mutate(df,
@@ -249,11 +268,17 @@ time_weighted_aggregate <- function(
       dplyr::filter(.data$sample_id %in% use_uids) |>
       dplyr::left_join(sample_wt, by = "sample_id")
 
-    # ── Aggregate per analyte ─────────────────────────────────────────────
+    # ── Broadcast exact cells and aggregate per (analyte, draw) ──────────
+    # Weights and in-window flags are date-derived (draw-agnostic), so
+    # broadcasting copies them identically across draws — correct behaviour.
+    # In the point case draws=integer(0), broadcast adds draw_id=1L and
+    # the group key is effectively just analyte (one group per analyte).
+    chem_use <- .broadcast_draws(chem_use, draws)
+
     synth_uid <- paste0("chronic_", focal_date, "_", site_id)
 
     analyte_out <- chem_use |>
-      dplyr::group_by(.data$analyte) |>
+      dplyr::group_by(.data$analyte, .data$draw_id) |>
       dplyr::summarise(
         value             = .aggregate_weighted(
           .data$value, .data$.weight, summary, eps
@@ -288,12 +313,17 @@ time_weighted_aggregate <- function(
     ))
   }
 
-  dplyr::bind_rows(results) |>
+  out <- dplyr::bind_rows(results) |>
     dplyr::select(
       "focal_date", "site_id", "sample_id",
       "analyte", "value", "detected",
-      "n_samples_in_window", "n_imputed_in_window"
+      "n_samples_in_window", "n_imputed_in_window",
+      dplyr::any_of("draw_id")
     )
+
+  if (!is_draws_mode) out <- dplyr::select(out, -dplyr::any_of("draw_id"))
+  if (return == "summary") out <- summarise_draws(out, interval, central)
+  out
 }
 
 # ── expand_focal_dates ────────────────────────────────────────────────────────

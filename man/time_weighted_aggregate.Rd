@@ -13,7 +13,10 @@ time_weighted_aggregate(
   window_units = NULL,
   summary = c("geom_mean", "arith_mean", "p90"),
   anchor_outside_window = TRUE,
-  eps = 1e-09
+  eps = 1e-09,
+  return = c("summary", "draws"),
+  interval = 0.9,
+  central = c("median", "mean")
 )
 }
 \arguments{
@@ -59,6 +62,21 @@ the in-window portion of its interval.}
 
 \item{eps}{Small positive guard added inside the log for geometric mean
 to avoid \code{log(0)}. Default \code{1e-9}.}
+
+\item{return}{Output mode for draw-carrier input (see \code{\link[=summarise_draws]{summarise_draws()}}).
+\code{"summary"} (default) collapses posterior draws to a central estimate plus
+a credible interval (\code{value}, \code{value_lower}, \code{value_upper}, \code{n_draws});
+\code{"draws"} returns the raw per-draw chronic rows (\verb{draw_id 1..N}).  For
+point (non-draw) input both modes return byte-identical output with no
+interval columns.  Draws are paired across time by \code{draw_id} (an
+index-pairing approximation that assumes temporal independence; see the
+OU/Kalman smoothing roadmap item).}
+
+\item{interval}{Width of the credible interval when \code{return = "summary"}.
+Default \code{0.90} (5th/95th percentile bounds).}
+
+\item{central}{Central-tendency statistic when \code{return = "summary"}:
+\code{"median"} (default) or \code{"mean"}.}
 }
 \value{
 A long-format tibble with columns:

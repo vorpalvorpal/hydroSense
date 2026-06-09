@@ -112,6 +112,7 @@
 utils::globalVariables(c(
   # NSE column names (dplyr/tidyr)
   "analyte", "atomic_mass.analyte", "Cl_", "Conc", "datetime", "detected",
+  "draw_id", "n_draws", "value_lower", "value_upper",
   "dw_flag", "f", "f_pct", "gradient", "hi_flag", "high_info",
   "informativeness", "ion", "L", "label", "mean_ratio", "n_ref", "n_values",
   "name", "R", "reference", "row_str", "sample_id", "sigma_meas", "sigma_R",

@@ -4,7 +4,15 @@
 \alias{impute_coanalytes}
 \title{Impute missing normalisation co-analytes from the fitted chemistry PCA}
 \usage{
-impute_coanalytes(df, model, targets = NULL, min_obs = 10L)
+impute_coanalytes(
+  df,
+  model,
+  targets = NULL,
+  min_obs = 10L,
+  return = c("point", "draws"),
+  ndraws = NULL,
+  seed = NULL
+)
 }
 \arguments{
 \item{df}{Long-format chemistry data frame (same schema as
@@ -22,11 +30,29 @@ skipped with a warning.}
 \item{min_obs}{Minimum number of quantified observations required to fit a
 GAM for a target.  Targets with fewer observations are skipped.
 Default \code{10L}.}
+
+\item{return}{\code{"point"} (default) for the posterior mean of the GAM
+prediction — identical to pre-draws behaviour.  \code{"draws"} for
+full posterior-predictive draws: each missing co-analyte cell emits
+\code{N} rows keyed by \verb{draw_id 1..N}, reflecting both parameter uncertainty
+(\code{beta ~ N(coef(gam), Vp)}) and residual Gaussian noise (\code{gam$sig2}).
+Observed co-analyte cells keep \code{draw_id = NA}.}
+
+\item{ndraws}{Number of draws to generate.  Required when
+\code{return = "draws"} and \code{df} contains no existing draws.  When \code{df}
+already carries draws (from \code{\link[=impute_chemistry]{impute_chemistry()}}), \code{N} is inferred
+from the existing draw domain; \code{ndraws} must be \code{NULL} or equal to
+that count.}
+
+\item{seed}{Optional integer seed passed to \code{\link[=set.seed]{set.seed()}} before the
+sampling calls, for reproducibility.}
 }
 \value{
 \code{df} with missing co-analyte rows filled in, tagged with
-\code{imputed = TRUE} and \code{imputed_kind = "missing"}.  All other rows are
-unchanged.
+\code{imputed = TRUE} and \code{imputed_kind = "missing"}.  In \code{"draws"} mode
+each imputed cell is replicated \code{N} times with \verb{draw_id 1..N};
+observed cells keep \code{draw_id = NA}.  In \code{"point"} mode the output
+schema is unchanged from the pre-draws behaviour.
 }
 \description{
 Fits a univariate log-Gaussian GAM (\code{mgcv::gam}) for each target
@@ -48,11 +74,13 @@ are conditioned on the same chemical environment summary.
 }
 \examples{
 \dontrun{
-# Deterministic GAM-based imputation of normalisation co-analytes
-# (pH, DOC, hardness, ...) from the measured analyte suite.
-impute_coanalytes(monitoring_long)
+# Deterministic GAM-based imputation (default, point mode)
+impute_coanalytes(monitoring_long, model)
+
+# Posterior-predictive draws when df already carries metals draws
+impute_coanalytes(metals_draws, model, return = "draws")
 }
 }
 \seealso{
-\code{\link[=fit_imputation_model]{fit_imputation_model()}}, \code{\link[=impute_chemistry]{impute_chemistry()}}
+\code{\link[=fit_imputation_model]{fit_imputation_model()}}, \code{\link[=impute_chemistry]{impute_chemistry()}}, \code{\link[=summarise_draws]{summarise_draws()}}
 }

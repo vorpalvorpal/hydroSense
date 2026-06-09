@@ -17,7 +17,10 @@ add_amspaf(
   tau = 90,
   tau_units = "day",
   window = 365,
-  window_units = "day"
+  window_units = "day",
+  return = c("summary", "draws"),
+  interval = 0.9,
+  central = c("median", "mean")
 )
 }
 \arguments{
@@ -88,6 +91,20 @@ integration when \code{reference} is a \code{reference_model}.  Default \code{90
 
 \item{window, window_units}{Look-back window length for chronic integration.
 Default \code{365} days.}
+
+\item{return}{Output mode for draw-carrier input (see \code{\link[=summarise_draws]{summarise_draws()}}).
+\code{"summary"} (default) collapses posterior draws to a central estimate plus
+a credible interval (\code{value}, \code{value_lower}, \code{value_upper}, \code{n_draws});
+\code{"draws"} returns the raw per-draw AmsPAF rows (\verb{draw_id 1..N}) for
+external risk models or further composition (e.g. into
+\code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}).  For point (non-draw) input both modes
+return byte-identical output with no interval columns.}
+
+\item{interval}{Width of the credible interval when \code{return = "summary"}.
+Default \code{0.90} (5th/95th percentile bounds).}
+
+\item{central}{Central-tendency statistic when \code{return = "summary"}:
+\code{"median"} (default) or \code{"mean"}.}
 }
 \value{
 The input \code{df} with AmsPAF rows appended. Each AmsPAF row carries:
