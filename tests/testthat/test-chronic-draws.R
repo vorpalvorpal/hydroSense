@@ -283,6 +283,6 @@ test_that("amspaf_daily errors with a clear message when handed draws input", {
   )
   expect_error(
     amspaf_daily(df_draws),
-    "does not yet support draws"
+    "does not accept draw-bearing input"
   )
 })

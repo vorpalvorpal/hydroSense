@@ -122,9 +122,44 @@
 #' @param require_temperature Logical (default `TRUE`). When `TRUE`, any daily
 #'   sample with `NH3-N` must also carry a `temperature` value. Passed to
 #'   [add_amspaf()]. Set `FALSE` for datasets without ammonia.
+#' @param ndraws Positive integer or `NULL` (default). When non-`NULL`, runs
+#'   the full OU/GAM uncertainty propagation for `ndraws` independent draws.
+#'   Requires `interpolation = "model"`.
+#' @param seed Integer or `NULL`. RNG seed for reproducibility of draws.
+#' @param return `"summary"` (default) or `"draws"`. `"summary"` collapses
+#'   draws to a central estimate plus credible-interval bounds (`amspaf_lower`,
+#'   `amspaf_upper`). `"draws"` returns one row per (site \eqn{\times} day
+#'   \eqn{\times} draw) with a `draw_id` column.  Ignored in point mode
+#'   (`ndraws = NULL`).
+#' @param interval Credible interval width for `return = "summary"` (default
+#'   `0.9`).  The lower bound is the `(1 - interval)/2` quantile, the upper
+#'   is the `1 - (1 - interval)/2` quantile.
+#' @param central Central tendency for `return = "summary"`.  `"median"`
+#'   (default) or `"mean"`.
+#' @param grab_cv Numeric scalar or named numeric vector of coefficients of
+#'   variation for grab-sample measurement error.  A scalar applies the same
+#'   CV to all analytes; a named vector (e.g. `c(Cu = 0.1, pH = 0.02)`)
+#'   applies analyte-specific CVs.  Controls two uncertainty sources:
+#'   S6 (anchor S-value spread at measured dates) and S7 (co-analyte
+#'   normalisation spread).  `NULL` (default) disables S6 and S7.
+#' @param ou_scale Positive numeric scale factor for the OU bridge envelope
+#'   (default `1`).  Multiplies \eqn{\sigma^2} and \eqn{\gamma} (marginal
+#'   variance) without changing \eqn{\theta} (correlation length).  Use values
+#'   > 1 to widen the between-grab uncertainty bands.
 #'
-#' @return A tibble with one row per (site \eqn{\times} day) for days with
-#'   sufficient analyte coverage:
+#' @return
+#' **Point mode** (`ndraws = NULL`): a tibble with one row per (site
+#'   \eqn{\times} day) for days with sufficient analyte coverage.
+#'
+#' **Draws mode** (`ndraws > 0`, `return = "summary"`): same schema plus two
+#'   extra columns `amspaf_lower` and `amspaf_upper` (the credible interval
+#'   bounds from collapsing the `ndraws` posterior draws).
+#'
+#' **Draws mode** (`ndraws > 0`, `return = "draws"`): one row per (site
+#'   \eqn{\times} day \eqn{\times} draw), with an additional `draw_id`
+#'   integer column.
+#'
+#' Common columns:
 #'   \describe{
 #'     \item{`date`}{Date of this daily estimate.}
 #'     \item{`site_id`}{Site identifier.}
@@ -135,10 +170,8 @@
 #'     \item{`n_measured_analytes`}{SSD-eligible analytes with a direct grab
 #'       sample on this day (not interpolated).}
 #'     \item{`days_since_last_sample`}{Days since the most recent grab sample
-#'       for any SSD-eligible analyte. Helps identify heavily interpolated
-#'       regions.}
-#'     \item{`analyte_pafs`}{List column of per-analyte diagnostic tibbles
-#'       (same structure as from [add_amspaf()]).}
+#'       for any SSD-eligible analyte.}
+#'     \item{`analyte_pafs`}{List column of per-analyte diagnostic tibbles.}
 #'   }
 #'   An `"ara_summary"` attribute is attached; retrieve it with [ara_summary()].
 #'
@@ -170,7 +203,14 @@ amspaf_daily <- function(
     guideline_dir        = getOption("leachatetools.guideline_dir"),
     min_analytes         = 3L,
     conc_units           = NULL,
-    require_temperature  = TRUE
+    require_temperature  = TRUE,
+    ndraws               = NULL,
+    seed                 = NULL,
+    return               = c("summary", "draws"),
+    interval             = 0.9,
+    central              = c("median", "mean"),
+    grab_cv              = NULL,
+    ou_scale             = 1
 ) {
   ## --- Validate inputs -------------------------------------------------------
   checkmate::assert_data_frame(df)
@@ -179,9 +219,20 @@ amspaf_daily <- function(
   interpolation <- match.arg(interpolation)
   leading_edge  <- match.arg(leading_edge)
   method        <- match.arg(method)
+  return        <- match.arg(return)
+  central       <- match.arg(central)
   checkmate::assert_flag(require_temperature)
   checkmate::assert_int(min_analytes, lower = 1L)
   checkmate::assert_string(by, min.chars = 1L)
+  checkmate::assert_number(interval, lower = 0, upper = 1)
+  checkmate::assert_number(ou_scale, lower = 0, finite = TRUE)
+  if (!is.null(ndraws)) checkmate::assert_count(ndraws, positive = TRUE)
+  if (!is.null(grab_cv)) {
+    checkmate::assert_numeric(grab_cv, lower = 0, finite = TRUE, min.len = 1L)
+  }
+  if (!is.null(seed)) set.seed(as.integer(seed))
+
+  draws_mode <- !is.null(ndraws)
 
   ## interpolation = "model" needs a fitted reference_model to predict the
   ## site impact; co-analytes are still forward-filled (toxicants come from the
@@ -196,22 +247,30 @@ amspaf_daily <- function(
     ))
   }
 
+  if (draws_mode && interpolation != "model") {
+    cli::cli_abort(c(
+      "{.arg ndraws} requires {.code interpolation = \"model\"}.",
+      "i" = "Draws-mode uncertainty propagation uses the season-blind target \\
+             model to generate chemistry traces; supply a {.arg reference_model} \\
+             and set {.code interpolation = \"model\"}."
+    ))
+  }
+
   if (!is.null(temperature)) {
     checkmate::assert_data_frame(temperature)
     checkmate::assert_names(names(temperature),
       must.include = c("datetime", "value"))
   }
 
-  ## Draws not yet supported: interpolating draw-bearing chemistry onto a
-  ## daily grid requires the temporal-correlation design from issue #16.
-  ## Use add_amspaf() on the draw-carrier frame then time_weighted_aggregate()
-  ## to propagate draws through the chronic pipeline instead.
+  ## Draw-bearing input chemistry is not supported (amspaf_daily generates its
+  ## own draws internally via ndraws; use add_amspaf() directly for existing
+  ## draw-carrier frames).
   if ("draw_id" %in% names(df) && !all(is.na(df[["draw_id"]]))) {
     cli::cli_abort(c(
-      "{.fn amspaf_daily} does not yet support draws-mode input.",
-      "i" = "To propagate imputation uncertainty through the chronic pipeline, \\
-             call {.fn add_amspaf} on the draw-carrier frame, then \\
-             {.fn time_weighted_aggregate} to aggregate draws over time."
+      "{.fn amspaf_daily} does not accept draw-bearing input {.arg df}.",
+      "i" = "Use {.arg ndraws} to generate daily draws internally (requires \\
+             {.code interpolation = \"model\"}), or call {.fn add_amspaf} on \\
+             your draw-carrier frame directly."
     ))
   }
 
@@ -237,12 +296,17 @@ amspaf_daily <- function(
   ## --- Per-site processing ---------------------------------------------------
   sites <- unique(df$site_id)
 
+  ## Reference GAM perturbation (S1) is only meaningful in total-concentration
+  ## mode (reference = NULL) where the reference GAM is NOT subtracted from
+  ## both sides.  When reference = reference_model, ref cancels in C_excess.
+  perturb_ref <- draws_mode && is.null(reference)
+
   site_results <- lapply(sites, function(site) {
     site_rows <- dplyr::filter(df, .data$site_id == .env$site)
 
     ## Step 1: Interpolate each analyte onto the daily grid.  For the "model"
-    ## path, co-analytes are forward-filled here and toxicants are overwritten
-    ## in Step 1b by the fitted target model.
+    ## path, co-analytes are forward-filled here; toxicants are overwritten
+    ## by the fitted target model (step 1b).
     base_interp <- if (interpolation == "model") "forward_fill" else interpolation
     daily_long <- .build_daily_chem(
       site_rows     = site_rows,
@@ -259,23 +323,96 @@ amspaf_daily <- function(
       daily_long <- .fill_external_temperature(daily_long, temperature)
     }
 
-    ## Step 1b: model interpolation of toxicants (season-blind impact model).
+    ## Step 1b: Model interpolation of toxicants (season-blind impact model).
     impact_tiers <- NULL
-    if (interpolation == "model") {
-      daily_long   <- .daily_tox_from_model(
-        daily_long       = daily_long,
-        site_rows        = site_rows,
-        reference_model  = reference_model,
-        imputation_model = imputation_model,
-        conc_units       = conc_units,
-        meta             = meta,
-        tox_analytes     = tox_analytes
-      )
-      impact_tiers <- attr(daily_long, "impact_tiers")
-    }
 
-    ## Step 3: Compute per-day diagnostics from SSD-eligible rows.
-    diag <- .compute_daily_diag(daily_long, tox_analytes, site)
+    if (interpolation == "model") {
+
+      if (draws_mode) {
+        ## ── Draws mode: fit once, iterate N draws ─────────────────────────────
+        fdm <- .fit_daily_target(
+          site_rows        = site_rows,
+          reference_model  = reference_model,
+          imputation_model = imputation_model,
+          conc_units       = conc_units,
+          meta             = meta,
+          tox_analytes     = tox_analytes,
+          daily_long       = daily_long,
+          ou_scale         = ou_scale
+        )
+
+        ## Diagnostics from forward-filled daily_long (counts grab dates,
+        ## independent of draw perturbations).
+        diag <- .compute_daily_diag(daily_long, tox_analytes, site)
+
+        if (is.null(fdm)) {
+          synth <- .build_synthetic_samples(daily_long, site)
+          return(list(synth = synth, diag = diag, tiers = NULL, site = site))
+        }
+
+        ## Point-mode prediction supplies impact_tiers.
+        pt_rows      <- .predict_daily_tox(fdm)
+        impact_tiers <- if (!is.null(pt_rows)) attr(pt_rows, "impact_tiers") else NULL
+
+        ## N draw iterations.
+        tox_draw_rows <- vector("list", ndraws)
+        for (d_idx in seq_len(ndraws)) {
+          tm_p <- .perturb_target_model(fdm$tm, perturb_reference = perturb_ref)
+          if (!is.null(grab_cv)) {
+            tm_p <- .perturb_anchors_in_model(tm_p, fdm, grab_cv)   # S6
+          }
+          eps_paths <- stats::setNames(
+            lapply(fdm$modelled, function(nm) .ou_bridge_draw(fdm$ou[[nm]]$factors)),
+            fdm$modelled
+          )
+          co_p <- .perturb_co_split(fdm, grab_cv)   # S7; no-op when grab_cv NULL
+          mr_d <- .predict_daily_tox(
+            fdm,
+            tm_p      = tm_p,
+            eps_paths = eps_paths,
+            co_split  = co_p$co_split,
+            wq_long   = co_p$wq_long
+          )
+          if (!is.null(mr_d)) {
+            mr_d$draw_id      <- as.integer(d_idx)
+            tox_draw_rows[[d_idx]] <- mr_d
+          }
+        }
+
+        tox_draw_long <- dplyr::bind_rows(Filter(Negate(is.null), tox_draw_rows))
+
+        ## Build draws-expanded daily_long:
+        ##   co-analytes + non-modelled toxicants: exact (draw_id = NA)
+        ##   modelled toxicants: N draw rows
+        daily_long_exact <- daily_long[!daily_long$analyte %in% fdm$modelled, ,
+                                        drop = FALSE]
+        if (!"units.analyte" %in% names(daily_long_exact)) {
+          daily_long_exact$units.analyte <- NA_character_
+        }
+        daily_long <- if (nrow(tox_draw_long) > 0L) {
+          dplyr::bind_rows(daily_long_exact, tox_draw_long)
+        } else {
+          daily_long_exact
+        }
+
+      } else {
+        ## ── Point mode: thin wrapper ──────────────────────────────────────────
+        daily_long   <- .daily_tox_from_model(
+          daily_long       = daily_long,
+          site_rows        = site_rows,
+          reference_model  = reference_model,
+          imputation_model = imputation_model,
+          conc_units       = conc_units,
+          meta             = meta,
+          tox_analytes     = tox_analytes
+        )
+        impact_tiers <- attr(daily_long, "impact_tiers")
+        diag <- .compute_daily_diag(daily_long, tox_analytes, site)
+      }
+
+    } else {
+      diag <- .compute_daily_diag(daily_long, tox_analytes, site)
+    }
 
     ## Step 4: Build synthetic long-format samples (no focal_date!).
     synth <- .build_synthetic_samples(daily_long, site)
@@ -302,6 +439,8 @@ amspaf_daily <- function(
   all_synth_clean <- dplyr::select(all_synth, -".date")
 
   ## --- Run add_amspaf on the daily synthetic samples -------------------------
+  ## In draws mode, request raw per-draw rows so we can extract draw_id and
+  ## per-analyte diagnostics before collapsing ourselves.
   amspaf_out <- add_amspaf(
     df                  = all_synth_clean,
     reference           = reference,
@@ -310,16 +449,14 @@ amspaf_daily <- function(
     guideline_dir       = guideline_dir,
     min_analytes        = min_analytes,
     conc_units          = conc_units,
-    require_temperature = require_temperature
+    require_temperature = require_temperature,
+    return              = if (draws_mode) "draws" else "summary"
   )
 
   ara_summ <- attr(amspaf_out, "ara_summary")
 
   ## Attach the target model's per-analyte impact tier ("model" / "bridge") to
-  ## the ARA diagnostics. ara_summary() is keyed by (sample_id, analyte); the
-  ## synthetic sample_id maps to (site_id, date) via id_date_map, and the impact
-  ## tier is per (site_id, analyte). NA for non-modelled (forward-filled)
-  ## analytes; absent entirely for non-"model" interpolation.
+  ## the ARA diagnostics.
   all_tiers <- dplyr::bind_rows(lapply(site_results, function(z) {
     if (is.null(z$tiers) || nrow(z$tiers) == 0L) return(NULL)
     dplyr::mutate(z$tiers, site_id = z$site)
@@ -344,17 +481,65 @@ amspaf_daily <- function(
     return(result)
   }
 
-  result <- amspaf_rows |>
+  amspaf_dated <- amspaf_rows |>
     dplyr::left_join(id_date_map, by = c("sample_id", "site_id")) |>
-    dplyr::rename(date = ".date", amspaf = "value") |>
-    dplyr::left_join(all_diag, by = c("date", "site_id")) |>
-    dplyr::select(
-      "date", "site_id", "amspaf",
-      "n_analytes_used", "dominant_analyte", "max_paf",
-      "n_measured_analytes", "days_since_last_sample",
-      "analyte_pafs"
-    ) |>
-    dplyr::arrange(.data$site_id, .data$date)
+    dplyr::rename(date = ".date")
+
+  if (draws_mode) {
+    if (return == "draws") {
+      ## One row per (date, site, draw).
+      result <- amspaf_dated |>
+        dplyr::rename(amspaf = "value") |>
+        dplyr::left_join(all_diag, by = c("date", "site_id")) |>
+        dplyr::select(
+          "date", "site_id", "draw_id", "amspaf",
+          "n_analytes_used", "dominant_analyte", "max_paf",
+          "n_measured_analytes", "days_since_last_sample",
+          "analyte_pafs"
+        ) |>
+        dplyr::arrange(.data$site_id, .data$date, .data$draw_id)
+
+    } else {
+      ## Collapse draws → central + credible interval.
+      ## Per-analyte diagnostics use the first draw as a representative.
+      lo_p       <- (1 - interval) / 2
+      hi_p       <- 1 - lo_p
+      central_fn <- if (central == "median") stats::median else base::mean
+      result <- amspaf_dated |>
+        dplyr::group_by(.data$date, .data$site_id) |>
+        dplyr::summarise(
+          amspaf           = central_fn(.data$value),
+          amspaf_lower     = stats::quantile(.data$value, lo_p, names = FALSE),
+          amspaf_upper     = stats::quantile(.data$value, hi_p, names = FALSE),
+          n_analytes_used  = dplyr::first(.data$n_analytes_used),
+          dominant_analyte = dplyr::first(.data$dominant_analyte),
+          max_paf          = dplyr::first(.data$max_paf),
+          analyte_pafs     = list(dplyr::first(.data$analyte_pafs)),
+          .groups          = "drop"
+        ) |>
+        dplyr::left_join(all_diag, by = c("date", "site_id")) |>
+        dplyr::select(
+          "date", "site_id", "amspaf", "amspaf_lower", "amspaf_upper",
+          "n_analytes_used", "dominant_analyte", "max_paf",
+          "n_measured_analytes", "days_since_last_sample",
+          "analyte_pafs"
+        ) |>
+        dplyr::arrange(.data$site_id, .data$date)
+    }
+
+  } else {
+    ## Point mode: unchanged output schema.
+    result <- amspaf_dated |>
+      dplyr::rename(amspaf = "value") |>
+      dplyr::left_join(all_diag, by = c("date", "site_id")) |>
+      dplyr::select(
+        "date", "site_id", "amspaf",
+        "n_analytes_used", "dominant_analyte", "max_paf",
+        "n_measured_analytes", "days_since_last_sample",
+        "analyte_pafs"
+      ) |>
+      dplyr::arrange(.data$site_id, .data$date)
+  }
 
   attr(result, "ara_summary") <- ara_summ
   result
@@ -663,7 +848,8 @@ amspaf_daily <- function(
 #' @return A named list (`fdm`) or `NULL` on model failure.
 #' @keywords internal
 .fit_daily_target <- function(site_rows, reference_model, imputation_model,
-                               conc_units, meta, tox_analytes, daily_long) {
+                               conc_units, meta, tox_analytes, daily_long,
+                               ou_scale = 1) {
   qdates <- sort(unique(daily_long$.date))
 
   tm <- tryCatch(
@@ -738,7 +924,7 @@ amspaf_daily <- function(
         ))
       }
 
-      params  <- .estimate_ou_params(anch$date, anch$S)
+      params  <- .estimate_ou_params(anch$date, anch$S, scale = ou_scale)
       factors <- .ou_bridge_factors(
         anch$date, qdates, params$theta, params$sigma2, params$gamma
       )

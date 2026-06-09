@@ -20,7 +20,14 @@ amspaf_daily(
   guideline_dir = getOption("leachatetools.guideline_dir"),
   min_analytes = 3L,
   conc_units = NULL,
-  require_temperature = TRUE
+  require_temperature = TRUE,
+  ndraws = NULL,
+  seed = NULL,
+  return = c("summary", "draws"),
+  interval = 0.9,
+  central = c("median", "mean"),
+  grab_cv = NULL,
+  ou_scale = 1
 )
 }
 \arguments{
@@ -86,10 +93,50 @@ AmsPAF to be computed. Default \code{3L}.}
 \item{require_temperature}{Logical (default \code{TRUE}). When \code{TRUE}, any daily
 sample with \code{NH3-N} must also carry a \code{temperature} value. Passed to
 \code{\link[=add_amspaf]{add_amspaf()}}. Set \code{FALSE} for datasets without ammonia.}
+
+\item{ndraws}{Positive integer or \code{NULL} (default). When non-\code{NULL}, runs
+the full OU/GAM uncertainty propagation for \code{ndraws} independent draws.
+Requires \code{interpolation = "model"}.}
+
+\item{seed}{Integer or \code{NULL}. RNG seed for reproducibility of draws.}
+
+\item{return}{\code{"summary"} (default) or \code{"draws"}. \code{"summary"} collapses
+draws to a central estimate plus credible-interval bounds (\code{amspaf_lower},
+\code{amspaf_upper}). \code{"draws"} returns one row per (site \eqn{\times} day
+\eqn{\times} draw) with a \code{draw_id} column.  Ignored in point mode
+(\code{ndraws = NULL}).}
+
+\item{interval}{Credible interval width for \code{return = "summary"} (default
+\code{0.9}).  The lower bound is the \code{(1 - interval)/2} quantile, the upper
+is the \code{1 - (1 - interval)/2} quantile.}
+
+\item{central}{Central tendency for \code{return = "summary"}.  \code{"median"}
+(default) or \code{"mean"}.}
+
+\item{grab_cv}{Numeric scalar or named numeric vector of coefficients of
+variation for grab-sample measurement error.  A scalar applies the same
+CV to all analytes; a named vector (e.g. \code{c(Cu = 0.1, pH = 0.02)})
+applies analyte-specific CVs.  Controls two uncertainty sources:
+S6 (anchor S-value spread at measured dates) and S7 (co-analyte
+normalisation spread).  \code{NULL} (default) disables S6 and S7.}
+
+\item{ou_scale}{Positive numeric scale factor for the OU bridge envelope
+(default \code{1}).  Multiplies \eqn{\sigma^2} and \eqn{\gamma} (marginal
+variance) without changing \eqn{\theta} (correlation length).  Use values1 to widen the between-grab uncertainty bands.}
 }
 \value{
-A tibble with one row per (site \eqn{\times} day) for days with
-sufficient analyte coverage:
+\strong{Point mode} (\code{ndraws = NULL}): a tibble with one row per (site
+\eqn{\times} day) for days with sufficient analyte coverage.
+
+\strong{Draws mode} (\code{ndraws > 0}, \code{return = "summary"}): same schema plus two
+extra columns \code{amspaf_lower} and \code{amspaf_upper} (the credible interval
+bounds from collapsing the \code{ndraws} posterior draws).
+
+\strong{Draws mode} (\code{ndraws > 0}, \code{return = "draws"}): one row per (site
+\eqn{\times} day \eqn{\times} draw), with an additional \code{draw_id}
+integer column.
+
+Common columns:
 \describe{
 \item{\code{date}}{Date of this daily estimate.}
 \item{\code{site_id}}{Site identifier.}
@@ -100,10 +147,8 @@ sufficient analyte coverage:
 \item{\code{n_measured_analytes}}{SSD-eligible analytes with a direct grab
 sample on this day (not interpolated).}
 \item{\code{days_since_last_sample}}{Days since the most recent grab sample
-for any SSD-eligible analyte. Helps identify heavily interpolated
-regions.}
-\item{\code{analyte_pafs}}{List column of per-analyte diagnostic tibbles
-(same structure as from \code{\link[=add_amspaf]{add_amspaf()}}).}
+for any SSD-eligible analyte.}
+\item{\code{analyte_pafs}}{List column of per-analyte diagnostic tibbles.}
 }
 An \code{"ara_summary"} attribute is attached; retrieve it with \code{\link[=ara_summary]{ara_summary()}}.
 }

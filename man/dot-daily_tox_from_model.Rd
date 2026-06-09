@@ -33,13 +33,14 @@
 \code{daily_long} with modelled-toxicant rows replaced.
 }
 \description{
-Fits a \code{\link[=fit_target_model]{fit_target_model()}} on the site's grab chemistry and the supplied
-\code{reference_model}, predicts each toxicant's normalised concentration
-\code{C_norm = ref_norm + impact} on every daily date, and reconstructs the raw
-µg/L concentration \code{C_raw = C_norm / factor} (the normalisation is
-multiplicative, so the factor is \code{normalise(1, co-analytes_of_the_day)}).
-Modelled-toxicant rows in \code{daily_long} are replaced with these estimates
-(in µg/L, \code{units.analyte = "ug/L"}); co-analytes and non-modelled toxicants
-are left untouched. On any failure the input is returned unchanged.
+Thin wrapper: calls \code{\link[=.fit_daily_target]{.fit_daily_target()}} once then \code{\link[=.predict_daily_tox]{.predict_daily_tox()}}
+once (point mode, no ε).  Modelled-toxicant rows in \code{daily_long} are
+replaced; co-analytes and non-modelled toxicants are left untouched.  On
+any failure the input is returned unchanged.
+}
+\details{
+For draw-mode orchestration (Chunk E), call the two underlying helpers
+directly: fit once with \code{.fit_daily_target()}, then loop N times over
+\code{.predict_daily_tox(fdm, perturbed_tm, eps_paths)}.
 }
 \keyword{internal}
