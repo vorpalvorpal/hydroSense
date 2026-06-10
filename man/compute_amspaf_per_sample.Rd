@@ -41,10 +41,12 @@ Internal workhorse called by \code{\link[=add_amspaf]{add_amspaf()}} for each \c
 in three phases so the (relatively expensive) SSD evaluation is \strong{batched
 across samples} rather than called once per (sample × analyte):
 \enumerate{
-\item per-sample chemistry normalisation + ARA shift (\code{\link[=.amspaf_adjust]{.amspaf_adjust()}});
+\item chemistry normalisation + ARA shift, vectorised across all rows
+(\code{\link[=.amspaf_adjust]{.amspaf_adjust()}});
 \item one vectorised \code{\link[ssdtools:ssd_hp]{ssdtools::ssd_hp()}} call per analyte across every
 sample (\code{\link[=.amspaf_add_paf]{.amspaf_add_paf()}});
-\item per-sample CA/IA mixture combination (\code{\link[=.amspaf_combine]{.amspaf_combine()}}).
+\item CA/IA mixture combination via grouped reductions over
+(sample, draw\link{, MOA group}).
 }
 }
 \keyword{internal}

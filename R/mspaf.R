@@ -381,9 +381,9 @@ add_amspaf <- function(
 
   ## ARA is "enabled" whenever the caller supplied any reference (a
   ## prepared_reference or a raw data frame).  Only `reference = NULL`
-  ## disables it.  This flag lets compute_amspaf_one_sample() distinguish
-  ## "ARA deliberately off" from "ARA on but this analyte had no reference
-  ## match" — both otherwise collapse to ref_norm = 0 (see ref_source).
+  ## disables it.  This flag lets .amspaf_adjust() distinguish "ARA deliberately
+  ## off" from "ARA on but this analyte had no reference match" — both otherwise
+  ## collapse to ref_norm = 0 (see ref_source).
   ara_enabled <- !is.null(reference)
 
   if (inherits(reference, "reference_model")) {
@@ -677,10 +677,12 @@ compute_ca_group_mspaf <- function(group_data) {
 #' in three phases so the (relatively expensive) SSD evaluation is **batched
 #' across samples** rather than called once per (sample × analyte):
 #' \enumerate{
-#'   \item per-sample chemistry normalisation + ARA shift ([.amspaf_adjust()]);
+#'   \item chemistry normalisation + ARA shift, vectorised across all rows
+#'     ([.amspaf_adjust()]);
 #'   \item one vectorised [ssdtools::ssd_hp()] call per analyte across every
 #'     sample ([.amspaf_add_paf()]);
-#'   \item per-sample CA/IA mixture combination ([.amspaf_combine()]).
+#'   \item CA/IA mixture combination via grouped reductions over
+#'     (sample, draw[, MOA group]).
 #' }
 #'
 #' @param sample_data Per-feature long-format df (may include co-analyte rows
@@ -749,9 +751,9 @@ compute_amspaf_per_sample <- function(
   ## concentration addition within an MOA group (mixture slope = mean component
   ## slope; group msPAF = pnorm(log10(sum TU)/sigma_mix)); independent action
   ## across groups: AmsPAF = 1 - prod(1 - msPAF_group).
-  ## NB: rows with NA moa_group contribute 0 here, reproducing the current
-  ## .amspaf_combine behaviour (`filter(moa_group == NA)` selects nothing) — see
-  ## the implementation note raised on issue #30.
+  ## NB: rows with NA moa_group contribute 0 here, reproducing the previous
+  ## per-group behaviour (`filter(moa_group == NA)` selected nothing) — see the
+  ## implementation note raised on issue #30.
   ca <- tox |>
     dplyr::filter(.data$C_adj > 0, !is.na(.data$moa_group),
                   is.finite(.data$hc50), .data$hc50 > 0,
@@ -809,69 +811,11 @@ compute_amspaf_per_sample <- function(
 
 
 ## ============================================================================
-## compute_amspaf_one_sample
-## ============================================================================
-
-#' Compute AmsPAF for a single sample
-#'
-#' Thin wrapper over the shared AmsPAF helpers ([.amspaf_adjust()],
-#' [.amspaf_add_paf()], [.amspaf_combine()]) that processes one sample in
-#' isolation.  Retained so the normalisation / ARA / CA / IA steps can be
-#' driven (and unit-tested) for a single sample; the batched
-#' [compute_amspaf_per_sample()] path uses the same helpers so behaviour is
-#' guaranteed identical.
-#'
-#' @param sample_rows Long-format chemistry rows for one sample (one row per
-#'   analyte; may include co-analyte rows used for normalisation). Must carry
-#'   a `detected` column.
-#' @param ref_table Tibble `(analyte, ref_norm)` from `prep_ref$ref_table`.
-#' @param ssd_params Tibble from [derive_ssd_params()] (incl. the `fit` column).
-#' @param min_analytes Minimum analytes required.
-#' @param method SSD method (used only for the rare NULL-fit fallback).
-#' @param guideline_dir Path to ANZG XLSX folder (NULL-fit fallback only).
-#' @param has_imputed Logical; whether the input carried an `imputed` column
-#'   (controls `n_analytes_imputed` accounting).
-#' @param ara_enabled Logical; whether the caller supplied a reference.
-#'   Controls the `ref_source` diagnostic (see [.amspaf_adjust()]).
-#'
-#' @return A one-row tibble (or zero-row tibble if the sample fails
-#'   `min_analytes`) with columns `value`, `n_analytes_used`,
-#'   `n_analytes_imputed`, `dominant_analyte`, `max_paf`, `analyte_pafs`,
-#'   `dropped_analytes`.
-#' @keywords internal
-compute_amspaf_one_sample <- function(
-    sample_rows,
-    ref_table,
-    ssd_params,
-    min_analytes,
-    method,
-    guideline_dir,
-    has_imputed = FALSE,
-    ara_enabled = TRUE
-) {
-  if (!"detected" %in% names(sample_rows)) {
-    sample_rows <- dplyr::mutate(sample_rows, detected = TRUE)
-  }
-
-  adj <- .amspaf_adjust(sample_rows, ref_table, ssd_params, ara_enabled)
-
-  if (nrow(adj$tox) < min_analytes) return(.amspaf_empty_row())
-
-  tox <- .amspaf_add_paf(adj$tox, ssd_params, method, guideline_dir)
-  res <- .amspaf_combine(tox, has_imputed)
-  res$dropped_analytes <- list(adj$dropped)
-  res
-}
-
-
-## ============================================================================
 ## Shared AmsPAF helpers
 ## ============================================================================
 ##
-## These power both compute_amspaf_one_sample() (single sample) and
-## compute_amspaf_per_sample() (batched across a feature block).  Keeping the
-## normalisation / ARA / PAF / combine logic in one place guarantees the two
-## entry points cannot diverge.
+## Normalisation / ARA / PAF helpers used by compute_amspaf_per_sample(), each
+## vectorised across all (sample x draw) rows in one call.
 
 #' Normalise chemistry and apply the ARA shift for a block of sample rows
 #'
@@ -1116,51 +1060,6 @@ compute_amspaf_one_sample <- function(
   res <- res[!duplicated(res$conc), c("conc", "est"), drop = FALSE]
   out[pos] <- res$est[match(conc[pos], res$conc)]
   out
-}
-
-#' Combine adjusted+PAF'd tox rows for one sample into a single AmsPAF row
-#'
-#' Performs Concentration Addition within each mode-of-action group and
-#' Independent Action across groups, then assembles the one-row diagnostic
-#' tibble.  Operates on a *single* sample's rows.
-#'
-#' @param tox Rows for one sample from [.amspaf_add_paf()] (needs `C_adj`,
-#'   `hc50`, `sigma`, `moa_group`, `PAF`; `analyte`, `ref_source` carried into
-#'   the `analyte_pafs` diagnostic if present).
-#' @param has_imputed Logical; whether the input carried an `imputed` column.
-#' @return A one-row tibble: `value`, `n_analytes_used`, `n_analytes_imputed`,
-#'   `dominant_analyte`, `max_paf`, `analyte_pafs` (does NOT add `sample_id` or
-#'   `dropped_analytes` — the caller attaches those).
-#' @keywords internal
-.amspaf_combine <- function(tox, has_imputed = FALSE) {
-  n_analytes_imputed <- if (has_imputed && "imputed" %in% names(tox)) {
-    sum(tox$imputed, na.rm = TRUE)
-  } else 0L
-
-  groups         <- unique(tox$moa_group)
-  mspaf_by_group <- vapply(
-    groups,
-    function(g) compute_ca_group_mspaf(dplyr::filter(tox, .data$moa_group == g)),
-    numeric(1)
-  )
-  amspaf <- 1 - prod(1 - mspaf_by_group)
-
-  dominant <- if (any(!is.na(tox$PAF))) {
-    tox$analyte[which.max(tox$PAF)]
-  } else NA_character_
-
-  pafs_cols <- intersect(
-    c("analyte", "C_adj", "PAF", "moa_group", "ref_source"), names(tox)
-  )
-
-  tibble::tibble(
-    value              = amspaf * 100,
-    n_analytes_used    = nrow(tox),
-    n_analytes_imputed = as.integer(n_analytes_imputed),
-    dominant_analyte   = dominant,
-    max_paf            = if (nrow(tox) > 0L) max(tox$PAF, na.rm = TRUE) else NA_real_,
-    analyte_pafs       = list(dplyr::select(tox, dplyr::all_of(pafs_cols)))
-  )
 }
 
 #' Construct an empty (zero-row) AmsPAF result tibble
