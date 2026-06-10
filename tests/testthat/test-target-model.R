@@ -134,44 +134,10 @@ test_that("the impact model carries no day-of-year term (season-blind)", {
 })
 
 
-## ── Residual bridge interpolation ─────────────────────────────────────────────
-
-test_that(".interp_residual() pinches to the anchor value at an anchor date", {
-  anchors <- tibble::tibble(
-    date        = as.Date(c("2021-01-01", "2021-02-01", "2021-03-01")),
-    S           = c(2, -1, 0.5),
-    hydro_short = c(5, 5, 5),
-    hydro_long  = c(10, 10, 10)
-  )
-  # query exactly on the middle anchor -> that anchor's residual
-  v <- leachatetools:::.interp_residual(anchors, as.Date("2021-02-01"), 5, 10)
-  expect_equal(v, -1, tolerance = 1e-6)
-})
-
-test_that(".interp_residual() leans toward the hydrologically similar bracket", {
-  anchors <- tibble::tibble(
-    date        = as.Date(c("2021-01-01", "2021-02-01")),
-    S           = c(2, -1),
-    hydro_short = c(1, 9),   # prev = dry, next = wet
-    hydro_long  = c(1, 9)
-  )
-  qd <- as.Date("2021-01-16")  # midway in time
-  # Dry query -> closer to the dry (prev) anchor's residual (+2)
-  v_dry <- leachatetools:::.interp_residual(anchors, qd, 1, 1)
-  # Wet query -> closer to the wet (next) anchor's residual (-1)
-  v_wet <- leachatetools:::.interp_residual(anchors, qd, 9, 9)
-  expect_gt(v_dry, v_wet)
-  expect_gt(v_dry, 0)    # leans positive (toward dry anchor)
-  expect_lt(v_wet, 0.5)  # leans toward the wet anchor
-})
-
-test_that(".interp_residual() handles single-anchor and empty cases", {
-  one <- tibble::tibble(date = as.Date("2021-01-01"), S = 3,
-                        hydro_short = 5, hydro_long = 10)
-  expect_equal(leachatetools:::.interp_residual(one, as.Date("2021-06-01"), 5, 10), 3)
-  none <- one[0, ]
-  expect_equal(leachatetools:::.interp_residual(none, as.Date("2021-06-01"), 5, 10), 0)
-})
+## (Residual interpolation unit tests removed: `.interp_residual()` is replaced
+## by the state-space smoother. Pinch-at-anchor / mid-gap behaviour is covered by
+## tests/testthat/test-kalman-bridge.R; the residual mean is now a pure temporal
+## smooth — hydrology modulates the *variance*, not the residual mean.)
 
 
 ## ── .resolve_target_impact() output shape ─────────────────────────────────────

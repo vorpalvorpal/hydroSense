@@ -27,7 +27,8 @@ amspaf_daily(
   interval = 0.9,
   central = c("median", "mean"),
   grab_cv = NULL,
-  ou_scale = 1
+  ou_scale = 1,
+  parallel = FALSE
 )
 }
 \arguments{
@@ -123,6 +124,15 @@ normalisation spread).  \code{NULL} (default) disables S6 and S7.}
 \item{ou_scale}{Positive numeric scale factor for the OU bridge envelope
 (default \code{1}).  Multiplies \eqn{\sigma^2} and \eqn{\gamma} (marginal
 variance) without changing \eqn{\theta} (correlation length).  Use values1 to widen the between-grab uncertainty bands.}
+
+\item{parallel}{Logical (default \code{FALSE}).  When \code{TRUE}, the per-draw loop
+for each site is parallelised via \code{\link[future.apply:future_lapply]{future.apply::future_lapply()}}, which
+honours whatever \code{\link[future:plan]{future::plan()}} the caller has established.  Requires
+the \strong{future.apply} package.  Set a parallel plan before calling, e.g.
+\code{future::plan(future::multisession, workers = 4)}.  In parallel mode the
+RNG stream for each draw is managed by \code{future.apply} (L'Ecuyer-CMRG),
+so draws will differ from sequential mode even with the same \code{seed}, but
+are themselves reproducible.}
 }
 \value{
 \strong{Point mode} (\code{ndraws = NULL}): a tibble with one row per (site

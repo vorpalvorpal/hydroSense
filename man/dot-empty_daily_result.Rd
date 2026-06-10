@@ -4,7 +4,11 @@
 \alias{.empty_daily_result}
 \title{Empty tibble matching the amspaf_daily() return schema}
 \usage{
-.empty_daily_result()
+.empty_daily_result(mode = c("point", "summary", "draws"))
+}
+\arguments{
+\item{mode}{One of \code{"point"}, \code{"summary"}, or \code{"draws"} — governs which
+extra columns are included.}
 }
 \description{
 Empty tibble matching the amspaf_daily() return schema
