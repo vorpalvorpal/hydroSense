@@ -219,6 +219,7 @@ amspaf_daily <- function(
     central              = c("median", "mean"),
     grab_cv              = NULL,
     ou_scale             = 1,
+    kappa                = 0.5,
     parallel             = FALSE
 ) {
   ## --- Validate inputs -------------------------------------------------------
@@ -235,6 +236,7 @@ amspaf_daily <- function(
   checkmate::assert_string(by, min.chars = 1L)
   checkmate::assert_number(interval, lower = 0, upper = 1)
   checkmate::assert_number(ou_scale, lower = 0, finite = TRUE)
+  checkmate::assert_number(kappa, lower = 0, finite = TRUE)
   if (!is.null(ndraws)) checkmate::assert_count(ndraws, positive = TRUE)
   if (!is.null(grab_cv)) {
     checkmate::assert_numeric(grab_cv, lower = 0, finite = TRUE, min.len = 1L)
@@ -366,7 +368,9 @@ amspaf_daily <- function(
           meta             = meta,
           tox_analytes     = tox_analytes,
           daily_long       = daily_long,
-          ou_scale         = ou_scale
+          ou_scale         = ou_scale,
+          grab_cv          = grab_cv,
+          kappa            = kappa
         )
 
         ## Diagnostics from forward-filled daily_long (counts grab dates,
@@ -405,37 +409,54 @@ amspaf_daily <- function(
           daily_long_exact
         }
 
+        ## Precompute coherent residual trajectories once per analyte — the
+        ## SINGLE innovation chokepoint (future cross-analyte / inter-site
+        ## coupling correlates the draws here). S4 (mid-gap residual spread) and
+        ## S6 (grab measurement error, via the draw model's observation noise)
+        ## both enter through these paths; theta/gamma are estimated once (the
+        ## per-draw GAM perturbation supplies the S1-S3 trend uncertainty).
+        if (!is.null(seed)) set.seed(as.integer(seed))
+        res_draws <- stats::setNames(lapply(fdm$modelled, function(nm) {
+          sm <- fdm$smoothers[[nm]]
+          if (is.null(sm) || length(sm$grid_dates) == 0L)
+            return(list(grid_dates = as.Date(character()), draws = NULL))
+          dr <- if (is.null(sm$draw_model))
+                  matrix(sm$mean, nrow = length(sm$grid_dates), ncol = ndraws)
+                else .kalman_draw(sm$draw_model, ndraws)
+          list(grid_dates = sm$grid_dates, draws = dr)
+        }), fdm$modelled)
+
         ## N stochastic draw iterations (draw_id = 1..N).
         ## G2: .predict_daily_tox uses fdm$co_split (exact) for clean C_raw
         ## reconstruction; S7 co-analyte perturbations enter add_amspaf's
         ## normalisation via draw-bearing co-analyte rows in the synthetic frame.
         ##
-        ## H2: the draw loop is refactored into a closure so it can be run
-        ## sequentially (lapply) or in parallel (future.apply::future_lapply).
-        ## The closure captures fdm, perturb_ref, grab_cv, daily_long_exact.
+        ## H2: the draw loop is a closure so it can run sequentially (lapply) or
+        ## in parallel (future.apply::future_lapply).
         .draw_fn <- local({
           .fdm              <- fdm
           .perturb_ref      <- perturb_ref
           .grab_cv          <- grab_cv
           .daily_long_exact <- daily_long_exact
+          .res_draws        <- res_draws
           function(d_idx) {
             tm_p <- .perturb_target_model(.fdm$tm, perturb_reference = .perturb_ref)
-            if (!is.null(.grab_cv))
-              tm_p <- .perturb_anchors_in_model(tm_p, .fdm, .grab_cv)   # S6
-            eps_paths <- stats::setNames(
-              lapply(.fdm$modelled, function(nm) .ou_bridge_draw(.fdm$ou[[nm]]$factors)),
-              .fdm$modelled
-            )
+            ## Residual path for this draw (S impact / d WQ), per analyte.
+            residual_paths <- stats::setNames(lapply(.fdm$modelled, function(nm) {
+              rd <- .res_draws[[nm]]
+              if (is.null(rd$draws)) return(rep(NA_real_, length(.fdm$qdates)))
+              .residual_on_qdates(rd$grid_dates, rd$draws[, d_idx], .fdm$qdates)
+            }), .fdm$modelled)
             ## S7: perturbed wq_long shifts WQ-layer scores; co_split stays exact.
             co_p_wq <- if (!is.null(.grab_cv))
                          .perturb_co_split(.fdm, .grab_cv)
                        else list(co_split = .fdm$co_split, wq_long = .fdm$wq_long)
             mr_d <- .predict_daily_tox(
               .fdm,
-              tm_p      = tm_p,
-              eps_paths = eps_paths,
-              co_split  = .fdm$co_split,         # exact → clean C_raw
-              wq_long   = co_p_wq$wq_long        # perturbed when S7 active
+              tm_p           = tm_p,
+              residual_paths = residual_paths,
+              co_split       = .fdm$co_split,    # exact → clean C_raw
+              wq_long        = co_p_wq$wq_long   # perturbed when S7 active
             )
             if (!is.null(mr_d)) mr_d$draw_id <- as.integer(d_idx)
             list(
@@ -984,7 +1005,7 @@ amspaf_daily <- function(
 #' @keywords internal
 .fit_daily_target <- function(site_rows, reference_model, imputation_model,
                                conc_units, meta, tox_analytes, daily_long,
-                               ou_scale = 1) {
+                               ou_scale = 1, grab_cv = NULL, kappa = 0.5) {
   qdates <- sort(unique(daily_long$.date))
 
   tm <- tryCatch(
@@ -1040,62 +1061,69 @@ amspaf_daily <- function(
                       drop = FALSE]
   measured_key <- paste(sr_mod$analyte, as.Date(sr_mod$datetime))
 
-  ## OU bridge: precompute Cholesky factors once per analyte over qdates.
-  ## WQ-tier analytes have their own residual d_anchors; others use anchors$S.
-  ## Also precompute C_norm_obs at anchor dates for S6 measurement-error scaling.
-  ou <- stats::setNames(
+  ## State-space residual smoother: build once per analyte over qdates.
+  ## WQ-tier analytes smooth their residual d (d_anchors); others smooth the
+  ## impact residual S (anchors). The CENTRE model pins to anchors (r -> 0) and
+  ## its posterior mean is the deterministic centre line; the DRAW model carries
+  ## the S6 grab measurement error as observation noise r_i. Hydrology modulates
+  ## the process variance (q_mult) inside .analyte_residual_smoother().
+  get_cv <- function(nm) {
+    if (is.null(grab_cv))        return(NA_real_)
+    if (length(grab_cv) == 1L)   return(as.numeric(grab_cv))
+    if (nm %in% names(grab_cv))  return(as.numeric(grab_cv[[nm]]))
+    NA_real_
+  }
+
+  smoothers <- stats::setNames(
     lapply(modelled, function(nm) {
       m      <- tm$models[[nm]]
       has_wq <- !is.null(m$wq_fit) && !is.null(m$d_anchors) &&
                   nrow(m$d_anchors) >= 2L
       anch   <- if (has_wq) m$d_anchors else m$anchors
+      empty  <- list(grid_dates = as.Date(character()), mean = numeric(0),
+                     draw_model = NULL)
+      if (is.null(anch) || nrow(anch) < 1L) return(empty)
 
-      if (is.null(anch) || nrow(anch) < 2L) {
-        return(list(
-          params          = list(theta = 0, sigma2 = 0, gamma = 0, degenerate = TRUE),
-          factors         = .ou_bridge_factors(as.Date(character()), qdates, 0, 0, 0),
-          c_norm_obs_anch = NULL,
-          has_wq          = has_wq
-        ))
+      ## Centre smoother (r -> 0): posterior mean = deterministic centre line.
+      sm_c <- .analyte_residual_smoother(m, tm, qdates, kappa = kappa,
+                                         scale = ou_scale, r_vec = NULL)
+      if (is.null(sm_c)) return(empty)
+
+      ## Draw model: add S6 grab measurement error as observation noise r_i,
+      ## scaled by C_norm_obs at the anchors (model: C_norm = ref + I;
+      ## WQ-tier: C_norm = WQ_pred + d).
+      draw_model <- sm_c$model
+      cv <- get_cv(nm)
+      if (!is.na(cv) && cv > 0 && !is.null(sm_c$model)) {
+        c_norm_obs <- tryCatch({
+          if (!has_wq) {
+            ref_q   <- .resolve_ref_norm_instant(
+              tm$reference_model,
+              tibble::tibble(sample_id = as.character(anch$date),
+                             datetime = anch$date))
+            ref_lkp <- stats::setNames(
+              ref_q$ref_norm[ref_q$analyte == nm],
+              ref_q$sample_id[ref_q$analyte == nm])
+            rv <- as.numeric(ref_lkp[as.character(anch$date)]); rv[is.na(rv)] <- 0
+            pmax(anch$I + rv, 0)
+          } else if (!is.null(tm$pca) && !is.null(wq_long)) {
+            pc_anch <- .compute_pca_scores(wq_long, tm$pca)
+            nd_anch <- dplyr::left_join(
+              tibble::tibble(sample_id = as.character(anch$date)),
+              pc_anch, by = "sample_id")
+            pmax(as.numeric(stats::predict(m$wq_fit, newdata = nd_anch)) +
+                   anch$S, 0)
+          } else NULL
+        }, error = function(e) NULL)
+        if (!is.null(c_norm_obs)) {
+          sm_d <- .analyte_residual_smoother(m, tm, qdates, kappa = kappa,
+                                             scale = ou_scale,
+                                             r_vec = (cv * c_norm_obs)^2)
+          if (!is.null(sm_d) && !is.null(sm_d$model)) draw_model <- sm_d$model
+        }
       }
 
-      params  <- .estimate_ou_params(anch$date, anch$S, scale = ou_scale)
-      factors <- .ou_bridge_factors(
-        anch$date, qdates, params$theta, params$sigma2, params$gamma
-      )
-
-      ## C_norm_obs at anchor dates: needed to scale S6 perturbations correctly.
-      ## Model/bridge: C_norm = ref_norm + I.  WQ-tier: C_norm = WQ_pred + d.
-      c_norm_obs_anch <- tryCatch({
-        if (!has_wq) {
-          ref_q   <- .resolve_ref_norm_instant(
-            tm$reference_model,
-            tibble::tibble(sample_id = as.character(anch$date), datetime = anch$date)
-          )
-          ref_lkp <- stats::setNames(
-            ref_q$ref_norm[ref_q$analyte == nm],
-            ref_q$sample_id[ref_q$analyte == nm]
-          )
-          ref_vec <- as.numeric(ref_lkp[as.character(anch$date)])
-          ref_vec[is.na(ref_vec)] <- 0
-          pmax(anch$I + ref_vec, 0)
-        } else if (!is.null(tm$pca) && !is.null(wq_long)) {
-          pc_anch <- .compute_pca_scores(wq_long, tm$pca)
-          nd_anch <- dplyr::left_join(
-            tibble::tibble(sample_id = as.character(anch$date)),
-            pc_anch, by = "sample_id"
-          )
-          wq_pred <- as.numeric(stats::predict(m$wq_fit, newdata = nd_anch))
-          pmax(wq_pred + anch$S, 0)
-        } else NULL
-      }, error = function(e) NULL)
-
-      list(
-        params          = params,
-        factors         = factors,
-        c_norm_obs_anch = c_norm_obs_anch,
-        has_wq          = has_wq
-      )
+      list(grid_dates = sm_c$grid_dates, mean = sm_c$mean, draw_model = draw_model)
     }),
     modelled
   )
@@ -1132,7 +1160,9 @@ amspaf_daily <- function(
     wq_long      = wq_long,
     fac_lookup   = fac_lookup,
     measured_key = measured_key,
-    ou           = ou,
+    smoothers    = smoothers,
+    kappa        = kappa,
+    ou_scale     = ou_scale,
     co_grab_map  = co_grab_map
   )
 }
@@ -1141,19 +1171,19 @@ amspaf_daily <- function(
 #' Per-draw daily toxicant prediction from a pre-fitted scaffold (issue #16)
 #'
 #' Predicts normalised and raw concentrations for one draw (or for the
-#' deterministic point mode when `eps_paths = NULL`).  Always uses the
+#' deterministic centre line when `residual_paths = NULL`).  Always uses the
 #' precomputed static scaffolding from `fdm`; accepts an optionally-perturbed
-#' target model (`tm_p`) and OU bridge fluctuations (`eps_paths`) for draw
-#' mode.  Pass overrides to `co_split` and `wq_long` (from
+#' target model (`tm_p`) and a per-analyte residual path (`residual_paths`) for
+#' draw mode.  Pass overrides to `co_split` and `wq_long` (from
 #' [.perturb_co_split()]) for S7 co-analyte measurement-error draws.
 #'
 #' @param fdm Output of [.fit_daily_target()].
 #' @param tm_p Target model to predict with (default: `fdm$tm`).  For draw
 #'   mode, pass a GAM-perturbed copy from [.perturb_target_model()].
-#' @param eps_paths Named list of mean-zero OU bridge fluctuation paths, one
-#'   numeric vector of length `length(fdm$qdates)` per analyte.  `NULL` (the
-#'   default) means no fluctuation — output is byte-identical to the original
-#'   point-mode path.
+#' @param residual_paths Named list of residual paths (impact `S` or WQ `d`),
+#'   one numeric vector of length `length(fdm$qdates)` per analyte (`NA` outside
+#'   the analyte's clipped grab span).  `NULL` (the default) uses the smoother
+#'   posterior means — the deterministic centre line.
 #' @param co_split Per-date co-analyte lookup (default: `fdm$co_split`).
 #'   Chunk D supplies a perturbed version for S7 draws.
 #' @param wq_long WQ layer data (default: `fdm$wq_long`).
@@ -1162,32 +1192,27 @@ amspaf_daily <- function(
 #'   `NULL` if prediction produced no finite rows.
 #' @keywords internal
 .predict_daily_tox <- function(fdm,
-                                tm_p      = fdm$tm,
-                                eps_paths = NULL,
-                                co_split  = fdm$co_split,
-                                wq_long   = fdm$wq_long) {
-  pred <- .resolve_target_impact(tm_p, tibble::tibble(date = fdm$qdates),
-                                  fdm$modelled, wq = wq_long)
-  if (nrow(pred) == 0L) return(NULL)
-
-  ## Post-hoc OU bridge ε injection (S4 / S5).
-  ## Add the mean-zero fluctuation ε_d(t) to C_norm for each analyte, then
-  ## re-clamp at 0.  The bridge guarantees ε = 0 at anchor dates, so the
-  ## deterministic mean (.interp_residual centre line) is unchanged there.
-  if (!is.null(eps_paths)) {
-    for (nm in fdm$modelled) {
-      eps_nm <- eps_paths[[nm]]
-      if (!is.null(eps_nm) && length(eps_nm) > 0L) {
-        idx_nm   <- which(pred$analyte == nm)
-        date_pos <- match(pred$date[idx_nm], fdm$qdates)
-        valid    <- !is.na(date_pos)
-        pred$C_norm[idx_nm[valid]] <- pmax(
-          pred$C_norm[idx_nm[valid]] + eps_nm[date_pos[valid]],
-          0
-        )
-      }
-    }
+                                tm_p           = fdm$tm,
+                                residual_paths = NULL,
+                                co_split       = fdm$co_split,
+                                wq_long        = fdm$wq_long) {
+  ## Residual paths (S for impact tier, d for WQ tier) on qdates, NA outside the
+  ## per-analyte clipped grab span. NULL -> deterministic centre line (smoother
+  ## posterior means from the fit-once scaffold).
+  if (is.null(residual_paths)) {
+    residual_paths <- stats::setNames(lapply(fdm$modelled, function(nm) {
+      sm <- fdm$smoothers[[nm]]
+      if (is.null(sm) || length(sm$grid_dates) == 0L)
+        return(rep(NA_real_, length(fdm$qdates)))
+      .residual_on_qdates(sm$grid_dates, sm$mean, fdm$qdates)
+    }), fdm$modelled)
   }
+
+  pred <- .resolve_target_impact(tm_p, tibble::tibble(date = fdm$qdates),
+                                 fdm$modelled, wq = wq_long,
+                                 residual_paths = residual_paths,
+                                 kappa = fdm$kappa, scale = fdm$ou_scale)
+  if (nrow(pred) == 0L) return(NULL)
 
   ## Reconstruct raw µg/L: C_raw = C_norm / normalisation_factor(co-analytes).
   co_vec_for <- function(d) {
@@ -1222,62 +1247,9 @@ amspaf_daily <- function(
 }
 
 
-## ── Chunk D: measurement-error perturbation helpers (issue #16, S6 + S7) ─────
-
-#' Perturb anchor residual-state values by grab measurement error (S6)
-#'
-#' For each modelled analyte, draws one lognormal multiplier per anchor grab
-#' (geo-mean = 1, CV = `grab_cv[[nm]]`) and shifts the anchor's S value by
-#' `ΔS = C_norm_obs × (mult − 1)`, where `C_norm_obs` was precomputed in
-#' [.fit_daily_target()].  WQ-tier analytes' `d_anchors` are treated the same
-#' way (their residual `d` responds to C_norm perturbation identically).
-#'
-#' The updated `tm` copy is then passed to [.predict_daily_tox()] for one
-#' draw; the `.interp_residual()` bridge will interpolate between the
-#' perturbed anchor values, providing at-anchor spread equal to the grab
-#' measurement width and mid-gap spread equal to that plus the OU balloon.
-#'
-#' @param tm A `target_model` (typically already GAM-perturbed).
-#' @param fdm Fitted daily scaffold from [.fit_daily_target()]; provides
-#'   `c_norm_obs_anch` and `has_wq` flags.
-#' @param grab_cv Named numeric vector of CVs per analyte, or a single scalar
-#'   applied to all analytes.  Analytes not present in the vector (and without
-#'   a scalar default) are left unperturbed.
-#' @return A modified copy of `tm` with perturbed anchor S values.
-#' @keywords internal
-.perturb_anchors_in_model <- function(tm, fdm, grab_cv) {
-  if (is.null(grab_cv) || (length(grab_cv) == 1L && is.na(grab_cv))) return(tm)
-
-  get_cv <- function(nm) {
-    if (length(grab_cv) == 1L)           return(as.numeric(grab_cv))
-    if (nm %in% names(grab_cv))          return(as.numeric(grab_cv[[nm]]))
-    return(NA_real_)
-  }
-
-  for (nm in fdm$modelled) {
-    cv <- get_cv(nm)
-    if (is.na(cv) || cv <= 0) next
-
-    ou_nm   <- fdm$ou[[nm]]
-    has_wq  <- isTRUE(ou_nm$has_wq)
-    c_norm  <- ou_nm$c_norm_obs_anch
-    anch    <- if (has_wq) tm$models[[nm]]$d_anchors else tm$models[[nm]]$anchors
-
-    if (is.null(anch) || is.null(c_norm) || length(c_norm) != nrow(anch)) next
-
-    sigma_ln <- sqrt(log(1 + cv^2))
-    mult     <- exp(stats::rnorm(nrow(anch), -sigma_ln^2 / 2, sigma_ln))
-    anch_p   <- anch
-    anch_p$S <- anch$S + c_norm * (mult - 1)
-
-    if (has_wq) {
-      tm$models[[nm]]$d_anchors <- anch_p
-    } else {
-      tm$models[[nm]]$anchors <- anch_p
-    }
-  }
-  tm
-}
+## ── Chunk D: co-analyte measurement-error perturbation helpers (S7) ──────────
+## (S6 grab measurement error now enters as the Kalman observation noise r_i in
+## .fit_daily_target(); there is no separate anchor-perturbation step.)
 
 
 #' Draw coherent co-analyte perturbations for one draw (S7)

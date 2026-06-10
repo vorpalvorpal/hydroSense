@@ -15,7 +15,7 @@
 )
 }
 \arguments{
-\item{grid_dates}{Sorted Date vector: the daily grid to predict on.}
+\item{grid_dates}{Sorted, consecutive-day Date vector: the grid to predict on.}
 
 \item{anchor_dates, anchor_S}{Observed anchors (must fall within \code{grid_dates}).}
 
@@ -32,6 +32,8 @@ A KFAS \code{SSModel}, or \code{NULL} if \code{gamma <= 0} or no anchors on the 
 The grid is stored in \code{attr(., "grid_dates")}.
 }
 \description{
-Build a KFAS state-space model for one residual series on a grid
+\strong{Invariant:} \code{grid_dates} must be \emph{consecutive days} (step = 1 day). The
+transition \code{phi = exp(-theta)} assumes a unit time step between adjacent grid
+points, so a sparse/irregular grid would mis-state the correlation length.
 }
 \keyword{internal}

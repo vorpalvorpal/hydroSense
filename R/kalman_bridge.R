@@ -121,6 +121,7 @@ NULL
   pos <- match(as.Date(anchor_dates), grid_dates)
   keep <- !is.na(pos)
   pos <- pos[keep]; aS <- anchor_S[keep]
+  if (!is.null(r_vec)) r_vec <- rep_len(r_vec, length(keep))[keep]
   if (length(pos) == 0L) return(NULL)
 
   phi <- exp(-theta)
@@ -202,6 +203,7 @@ NULL
   d  <- as.Date(anchor_dates)
   ok <- is.finite(anchor_S) & !is.na(d)
   d  <- d[ok]; aS <- anchor_S[ok]
+  if (!is.null(r_vec)) r_vec <- rep_len(r_vec, length(ok))[ok]
   tgt <- sort(unique(as.Date(target_dates)))
 
   if (length(d) == 0L)

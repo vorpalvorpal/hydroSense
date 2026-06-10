@@ -28,6 +28,7 @@ amspaf_daily(
   central = c("median", "mean"),
   grab_cv = NULL,
   ou_scale = 1,
+  kappa = 0.5,
   parallel = FALSE
 )
 }

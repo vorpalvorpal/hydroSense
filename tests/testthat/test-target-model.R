@@ -358,12 +358,12 @@ test_that("pool = TRUE preserves per-analyte magnitude (no cross-contamination)"
   # 0%).  The fix pools the standardised (z) SHAPE and restores each analyte's
   # own magnitude.
   #
-  # The bridge residual S = I - fitted_I self-corrects AT anchors, so the bug is
-  # only visible BETWEEN anchors where the pooled hydro response dominates
-  # (the daily-grid-over-sparse-grabs case).  We put all anchors in 2021 and
-  # query in 2022 (beyond every anchor), where S_interp is a per-analyte
-  # constant, so the day-to-day variation across query dates is purely the
-  # pooled hydro response fitted_I — the quantity the bug inflates for Ni.
+  # The bug is visible BETWEEN anchors where the pooled hydro response dominates
+  # (the daily-grid-over-sparse-grabs case).  The smoother clips to the grab span
+  # (no prediction beyond the last anchor), so we query daily WITHIN the 2021
+  # span, between the weekly anchors: the day-to-day variation is the pooled
+  # hydro response fitted_I plus each analyte's own smoothed residual — the
+  # magnitude the bug inflates for Ni.
   hydro <- make_hydro(900)                                   # spans 2020-2022
   dates <- seq(as.Date("2021-01-01"), by = "week", length.out = 52)
   rm    <- fit_rm(make_multi_scale("reference", dates, hydro, 1, 1), hydro)
@@ -375,8 +375,8 @@ test_that("pool = TRUE preserves per-analyte magnitude (no cross-contamination)"
   # Ni must actually be jointly pooled with the big siblings, else vacuous.
   expect_true(isTRUE(tm$models$Ni$pooled) && isTRUE(tm$models$Cu$pooled))
 
-  q   <- tibble::tibble(date = seq(as.Date("2022-02-01"), as.Date("2022-05-01"),
-                                   by = "week"))
+  q   <- tibble::tibble(date = seq(as.Date("2021-02-03"), as.Date("2021-11-01"),
+                                   by = "day"))
   res <- leachatetools:::.resolve_target_impact(tm, q)
   big <- stats::sd(res$impact[res$analyte == "Cu"])
   ni  <- stats::sd(res$impact[res$analyte == "Ni"])

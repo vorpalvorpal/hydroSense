@@ -4,7 +4,15 @@
 \alias{.resolve_target_impact}
 \title{Predict the site impact (and implied normalised concentration) at query dates}
 \usage{
-.resolve_target_impact(target_model, query, analytes = NULL, wq = NULL)
+.resolve_target_impact(
+  target_model,
+  query,
+  analytes = NULL,
+  wq = NULL,
+  residual_paths = NULL,
+  kappa = 0.5,
+  scale = 1
+)
 }
 \arguments{
 \item{target_model}{A \code{target_model}.}

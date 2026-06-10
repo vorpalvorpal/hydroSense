@@ -12,7 +12,9 @@
   meta,
   tox_analytes,
   daily_long,
-  ou_scale = 1
+  ou_scale = 1,
+  grab_cv = NULL,
+  kappa = 0.5
 )
 }
 \arguments{

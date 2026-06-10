@@ -77,15 +77,16 @@ make_hydro_e <- function(n = 700, seed = 99) {
 })
 
 
-## ── E1: c_norm_obs_anch precomputed for model-tier ───────────────────────────
+## ── E1: smoother scaffold carries a grid/mean and a draw model ───────────────
 
-test_that("E1: fdm$ou[[nm]]$c_norm_obs_anch is non-NULL and positive for >= 1 analyte", {
+test_that("E1: fdm$smoothers carry grid/mean and a draw model for >= 1 analyte", {
   fdm <- .te$fdm
-  has_obs <- vapply(fdm$modelled, function(nm) {
-    obs <- fdm$ou[[nm]]$c_norm_obs_anch
-    !is.null(obs) && length(obs) > 0L && all(is.finite(obs)) && all(obs >= 0)
+  has_dm <- vapply(fdm$modelled, function(nm) {
+    sm <- fdm$smoothers[[nm]]
+    !is.null(sm) && length(sm$grid_dates) > 0L &&
+      length(sm$mean) == length(sm$grid_dates) && !is.null(sm$draw_model)
   }, logical(1L))
-  expect_true(any(has_obs), label = "at least one analyte has valid c_norm_obs_anch")
+  expect_true(any(has_dm), label = "at least one analyte has a draw model")
 })
 
 
@@ -106,40 +107,49 @@ test_that("E2: fdm$co_grab_map is a named list covering co-analytes", {
 })
 
 
-## ── E3: .perturb_anchors_in_model changes S when CV > 0 ──────────────────────
+## ── E3: grab_cv > 0 widens the draw spread at anchors (S6 as obs noise) ───────
 
-test_that("E3: anchor S values change when grab_cv > 0", {
-  fdm <- .te$fdm
-  tm  <- fdm$tm
-  set.seed(42L)
-  tm_p <- leachatetools:::.perturb_anchors_in_model(tm, fdm, grab_cv = 0.1)
+test_that("E3: grab_cv > 0 widens draw spread at anchors vs no grab_cv", {
+  fdm0 <- .te$fdm                                       # built without grab_cv
+  fdm_cv <- leachatetools:::.fit_daily_target(
+    site_rows = .te$tgt, reference_model = .te$rm, imputation_model = NULL,
+    conc_units = "ug/L", meta = .te$meta, tox_analytes = .te$tox_nms,
+    daily_long = .te$daily_long, grab_cv = 0.2)
 
-  # Find an analyte with a valid c_norm_obs_anch
   nm_test <- NULL
-  for (nm in fdm$modelled) {
-    if (!is.null(fdm$ou[[nm]]$c_norm_obs_anch) && nrow(tm$models[[nm]]$anchors) >= 2L) {
-      nm_test <- nm; break
-    }
+  for (nm in fdm0$modelled) {
+    if (!is.null(fdm0$smoothers[[nm]]$draw_model) &&
+        !is.null(fdm_cv$smoothers[[nm]]$draw_model)) { nm_test <- nm; break }
   }
-  skip_if(is.null(nm_test), "No suitable analyte with valid c_norm_obs_anch")
+  skip_if(is.null(nm_test), "No analyte with a draw model in both fits")
 
-  orig_S <- tm$models[[nm_test]]$anchors$S
-  pert_S <- tm_p$models[[nm_test]]$anchors$S
-  expect_false(isTRUE(all.equal(orig_S, pert_S)),
-               label = "perturbed S differs from original")
+  grid <- fdm0$smoothers[[nm_test]]$grid_dates
+  pos  <- match(fdm0$tm$models[[nm_test]]$anchors$date, grid)
+  pos  <- pos[!is.na(pos)]
+  set.seed(1L); d0  <- leachatetools:::.kalman_draw(fdm0$smoothers[[nm_test]]$draw_model, 200L)
+  set.seed(1L); dcv <- leachatetools:::.kalman_draw(fdm_cv$smoothers[[nm_test]]$draw_model, 200L)
+  sd0  <- mean(apply(d0[pos, , drop = FALSE],  1L, stats::sd))
+  sdcv <- mean(apply(dcv[pos, , drop = FALSE], 1L, stats::sd))
+  expect_gt(sdcv, sd0)                                  # S6 adds anchor spread
 })
 
 
-## ── E4: zero CV leaves anchors unchanged ────────────────────────────────────
+## ── E4: without grab_cv the draws pin (tighter) at anchors than mid-gap ───────
 
-test_that("E4: grab_cv = 0 leaves anchors identical to original", {
+test_that("E4: with no grab_cv, draw spread is smaller at anchors than mid-gap", {
   fdm <- .te$fdm
-  tm  <- fdm$tm
-  tm_p <- leachatetools:::.perturb_anchors_in_model(tm, fdm, grab_cv = 0)
-  for (nm in fdm$modelled) {
-    expect_equal(tm_p$models[[nm]]$anchors$S, tm$models[[nm]]$anchors$S,
-                 info = nm)
-  }
+  nm  <- NULL
+  for (a in fdm$modelled) if (!is.null(fdm$smoothers[[a]]$draw_model)) { nm <- a; break }
+  skip_if(is.null(nm), "No analyte with a draw model")
+
+  grid <- fdm$smoothers[[nm]]$grid_dates
+  pos  <- match(fdm$tm$models[[nm]]$anchors$date, grid); pos <- pos[!is.na(pos)]
+  skip_if(length(pos) < 2L, "Need >= 2 anchors on the grid")
+  mid  <- pmin(pos[-length(pos)] + 7L, length(grid))     # mid-gap samples
+  set.seed(2L); d <- leachatetools:::.kalman_draw(fdm$smoothers[[nm]]$draw_model, 200L)
+  sd_anchor <- mean(apply(d[pos, , drop = FALSE], 1L, stats::sd))
+  sd_mid    <- mean(apply(d[mid, , drop = FALSE], 1L, stats::sd))
+  expect_lt(sd_anchor, sd_mid)
 })
 
 
@@ -197,36 +207,41 @@ test_that("E6: forward-filled days from the same grab get the same multiplier", 
 })
 
 
-## ── E7: S6+S7 perturbations change .predict_daily_tox output ────────────────
+## ── E7: a draw (S4+S6 residual path + GAM) + S7 shift .predict_daily_tox ─────
 
-test_that("E7: anchor + co perturbations shift .predict_daily_tox output", {
-  fdm <- .te$fdm
+test_that("E7: residual draw (S4/S6) + GAM + co perturbations shift the output", {
+  fdm <- leachatetools:::.fit_daily_target(
+    site_rows = .te$tgt, reference_model = .te$rm, imputation_model = NULL,
+    conc_units = "ug/L", meta = .te$meta, tox_analytes = .te$tox_nms,
+    daily_long = .te$daily_long, grab_cv = 0.2)
 
-  # Point-mode baseline
-  rows_base <- leachatetools:::.predict_daily_tox(fdm, eps_paths = NULL)
+  rows_base <- leachatetools:::.predict_daily_tox(fdm)   # centre
 
-  # Perturb anchors (S6) and co-analytes (S7)
   set.seed(11L)
-  tm_p <- leachatetools:::.perturb_anchors_in_model(fdm$tm, fdm, grab_cv = 0.2)
+  tm_p <- leachatetools:::.perturb_target_model(fdm$tm)
+  rp <- stats::setNames(lapply(fdm$modelled, function(nm) {
+    sm <- fdm$smoothers[[nm]]
+    if (is.null(sm$draw_model))
+      leachatetools:::.residual_on_qdates(sm$grid_dates, sm$mean, fdm$qdates)
+    else {
+      dr <- leachatetools:::.kalman_draw(sm$draw_model, 1L)
+      leachatetools:::.residual_on_qdates(sm$grid_dates, dr[, 1L], fdm$qdates)
+    }
+  }), fdm$modelled)
   co_p <- leachatetools:::.perturb_co_split(fdm, grab_cv_co = 0.2)
 
   rows_pert <- leachatetools:::.predict_daily_tox(
-    fdm,
-    tm_p     = tm_p,
-    co_split = co_p$co_split,
-    wq_long  = co_p$wq_long
-  )
+    fdm, tm_p = tm_p, residual_paths = rp,
+    co_split = fdm$co_split, wq_long = co_p$wq_long)
 
-  # At least some values should differ after perturbation
-  common_analytes <- intersect(
-    unique(rows_base$analyte), unique(rows_pert$analyte)
-  )
+  common_analytes <- intersect(unique(rows_base$analyte), unique(rows_pert$analyte))
   any_diff <- FALSE
   for (nm in common_analytes) {
     v_base <- rows_base$value[rows_base$analyte == nm]
     v_pert <- rows_pert$value[rows_pert$analyte == nm]
-    if (!isTRUE(all.equal(v_base, v_pert))) { any_diff <- TRUE; break }
+    if (length(v_base) == length(v_pert) && !isTRUE(all.equal(v_base, v_pert))) {
+      any_diff <- TRUE; break
+    }
   }
-  expect_true(any_diff,
-              label = "at least one analyte has different values after S6+S7 perturbation")
+  expect_true(any_diff, label = "values differ after S4/S6 + GAM + S7 perturbation")
 })
