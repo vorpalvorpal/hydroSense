@@ -22,15 +22,18 @@ suppressMessages({
   devtools::load_all(".", quiet = TRUE)
 })
 
-CACHE_V3  <- "test data/bs01_v3_cache.rds"
-BASELINE  <- "dev/baseline_bs01_centreline.rds"
-CACHE_ARA <- "dev/bs01_kalman_cache_ara.rds"   # separate caches = independent
-CACHE_TOT <- "dev/bs01_kalman_cache_tot.rds"   # checkpoints, lighter memory
-GUIDE     <- "guideline data"
-N_DRAWS   <- 20L   # add_amspaf over N draws x 1800 days dominates runtime
-SEED      <- 42L
-INTERVAL  <- 0.9
-TOX_RSD   <- 0.15
+CACHE_V3   <- "test data/bs01_v3_cache.rds"
+BASELINE   <- "dev/baseline_bs01_centreline.rds"
+DRAWS_ARA  <- "dev/bs01_kalman_draws_ara.rds"  # raw per-(day,draw) AmsPAF — LONG to build
+DRAWS_TOT  <- "dev/bs01_kalman_draws_tot.rds"  #   (the add_amspaf cost; see issue #30)
+CENTRE     <- "dev/bs01_kalman_centre.rds"     # deterministic centre lines — fast (point mode)
+GUIDE      <- "guideline data"
+N_DRAWS    <- 20L   # raise once #30 makes draws cheap
+SEED       <- 42L
+INTERVAL   <- 0.5   # 25-75% band. Change this freely: re-summarising the cached
+                    # draws is INSTANT. Only deleting the DRAWS_* caches forces
+                    # the long re-run.
+TOX_RSD    <- 0.15
 options(leachatetools.guideline_dir = GUIDE)
 
 stopifnot(file.exists(CACHE_V3), file.exists(BASELINE))
@@ -38,21 +41,46 @@ cc   <- readRDS(CACHE_V3)
 base <- readRDS(BASELINE)
 da   <- cc$daily_args
 START <- da$start; END <- da$end
-pick <- function(x) x[, intersect(c("date","amspaf","amspaf_lower","amspaf_upper"),
-                                  names(x)), drop = FALSE]
 
-## ── NEW: state-space daily AmsPAF with credible interval (ARA + non-ARA) ──────
-## Each call is cached separately and memory released between them.
-run_draws <- function(reference) suppressMessages(do.call(amspaf_daily, c(da, list(
-  reference = reference, ndraws = N_DRAWS, seed = SEED, return = "summary",
-  interval = INTERVAL, grab_cv = TOX_RSD))))
-if (!file.exists(CACHE_ARA)) {
-  cat("ARA draws ...\n"); saveRDS(run_draws(da$reference_model), CACHE_ARA); gc()
+## ── NEW: state-space daily AmsPAF (ARA + non-ARA) ────────────────────────────
+## Cache the RAW per-(day, draw) AmsPAF once (return = "draws"); this is the slow
+## part (add_amspaf over N x days — issue #30). Any credible interval is then an
+## instant re-summarise of the cache. The deterministic centre line (which is
+## interval-independent) comes from a fast point-mode run, cached separately.
+draws_run <- function(reference) suppressMessages(do.call(amspaf_daily, c(da, list(
+  reference = reference, ndraws = N_DRAWS, seed = SEED, return = "draws",
+  grab_cv = TOX_RSD))))
+if (!file.exists(DRAWS_ARA)) {
+  cat("ARA draws (long) ...\n");   saveRDS(draws_run(da$reference_model), DRAWS_ARA); gc()
 }
-if (!file.exists(CACHE_TOT)) {
-  cat("total (non-ARA) draws ...\n"); saveRDS(run_draws(NULL), CACHE_TOT); gc()
+if (!file.exists(DRAWS_TOT)) {
+  cat("total draws (long) ...\n"); saveRDS(draws_run(NULL),               DRAWS_TOT); gc()
 }
-new_ara <- pick(readRDS(CACHE_ARA)); new_tot <- pick(readRDS(CACHE_TOT))
+if (!file.exists(CENTRE)) {
+  cat("deterministic centre lines (point mode, fast) ...\n")
+  ctr <- function(reference)
+    suppressMessages(do.call(amspaf_daily, c(da, list(reference = reference))))
+  saveRDS(list(ara   = ctr(da$reference_model)[, c("date", "amspaf")],
+               total = ctr(NULL)[,              c("date", "amspaf")]), CENTRE)
+}
+
+## Summarise the cached draws at INTERVAL (instant) and attach the deterministic
+## centre — equivalent to amspaf_daily(return = "summary", interval = INTERVAL),
+## but the interval is now a cheap post-hoc choice. (summarise_draws() would give
+## the same lower/upper from this per-(day,draw) frame.)
+ctr_cache <- readRDS(CENTRE)
+band <- function(draws_path, centre_df) {
+  lo <- (1 - INTERVAL) / 2
+  q  <- readRDS(draws_path) |>
+    dplyr::group_by(.data$date) |>
+    dplyr::summarise(
+      amspaf_lower = stats::quantile(.data$amspaf, lo,     names = FALSE, na.rm = TRUE),
+      amspaf_upper = stats::quantile(.data$amspaf, 1 - lo, names = FALSE, na.rm = TRUE),
+      .groups = "drop")
+  dplyr::left_join(centre_df, q, by = "date")
+}
+new_ara <- band(DRAWS_ARA, ctr_cache$ara)
+new_tot <- band(DRAWS_TOT, ctr_cache$total)
 
 ## ── Sampling-events completeness (per grab date) ─────────────────────────────
 tc <- cc$target_chem
@@ -87,11 +115,13 @@ pA <- old_line(base$total, "A. Old centre line — no ARA (total mixture)",
                "Pre-rework deterministic interpolation")
 pB <- old_line(base$ara,   "B. Old centre line — Added Risk (ARA)",
                "Pre-rework deterministic interpolation")
+ci_lab <- sprintf("%g%% CI (%g-%g pct)", 100 * INTERVAL,
+                  100 * (1 - INTERVAL) / 2, 100 * (1 - (1 - INTERVAL) / 2))
 pC <- new_band(new_tot, base$total,
-               "C. New centre + 90% CI — no ARA",
+               sprintf("C. New centre + %s — no ARA", ci_lab),
                "State-space smoother (blue) vs old centre (grey dashed)")
 pD <- new_band(new_ara, base$ara,
-               "D. New centre + 90% CI — Added Risk (ARA)",
+               sprintf("D. New centre + %s — Added Risk (ARA)", ci_lab),
                "State-space smoother (blue) vs old centre (grey dashed)")
 pE <- ggplot(cc$lmf_ts, aes(datetime, lmf)) +
   geom_line(colour = "grey60") + geom_point(size = 1, colour = "grey20") +
