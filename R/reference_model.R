@@ -916,3 +916,31 @@ ara_summary <- function(x) {
   }
   s
 }
+
+#' Per-analyte PAF breakdown from add_amspaf()
+#'
+#' After calling [add_amspaf()], this accessor returns the per-analyte
+#' contribution breakdown behind each AmsPAF value: the ARA-adjusted
+#' concentration, single-substance PAF, MOA group and reference source for every
+#' assessed (sample × draw × analyte). It replaces the former `analyte_pafs`
+#' list-column with a flat, tidy frame (filter/join directly).
+#'
+#' The attribute is stored by [add_amspaf()] and is dropped by most dplyr verbs,
+#' so read it before further wrangling.
+#'
+#' @param x A data frame returned by [add_amspaf()].
+#' @return A tibble with columns `site_id`, `sample_id`, `draw_id` (draws mode
+#'   only), `analyte`, `C_adj`, `PAF`, `moa_group`, `ref_source`. Returns `NULL`
+#'   (with a message) if the attribute is absent.
+#' @seealso [add_amspaf()], [ara_summary()]
+#' @export
+analyte_pafs <- function(x) {
+  s <- attr(x, "analyte_pafs")
+  if (is.null(s)) {
+    cli::cli_inform("No {.field analyte_pafs} attribute found. \\
+                    Call {.fn analyte_pafs} on the direct output of \\
+                    {.fn add_amspaf} before any further wrangling.")
+    return(NULL)
+  }
+  s
+}

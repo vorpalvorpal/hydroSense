@@ -171,9 +171,9 @@ test_that("F5: ndraws = NULL returns standard point-mode schema", {
   )
   expected_cols <- c("date", "site_id", "amspaf", "n_analytes_used",
                      "dominant_analyte", "max_paf",
-                     "n_measured_analytes", "days_since_last_sample",
-                     "analyte_pafs")
+                     "n_measured_analytes", "days_since_last_sample")
   expect_true(all(expected_cols %in% names(out)))
+  expect_false("analyte_pafs" %in% names(out))   # now an attribute (issue #30)
   expect_false("amspaf_lower" %in% names(out))
   expect_false("draw_id"      %in% names(out))
   expect_s3_class(out$date, "Date")

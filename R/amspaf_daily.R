@@ -179,9 +179,11 @@
 #'       sample on this day (not interpolated).}
 #'     \item{`days_since_last_sample`}{Days since the most recent grab sample
 #'       for any SSD-eligible analyte.}
-#'     \item{`analyte_pafs`}{List column of per-analyte diagnostic tibbles.}
 #'   }
-#'   An `"ara_summary"` attribute is attached; retrieve it with [ara_summary()].
+#'   `"analyte_pafs"` (per-analyte PAF breakdown, re-keyed by date) and
+#'   `"ara_summary"` attributes are attached; retrieve them with [analyte_pafs()]
+#'   and [ara_summary()]. (`analyte_pafs` is now a flat attribute, not a
+#'   list-column — issue #30.)
 #'
 #' @seealso [add_amspaf()], [time_weighted_aggregate()],
 #'   [estimate_water_temp()], [get_silo_air_temp()]
@@ -605,8 +607,7 @@ amspaf_daily <- function(
         dplyr::select(
           "date", "site_id", "draw_id", "amspaf",
           "n_analytes_used", "dominant_analyte", "max_paf",
-          "n_measured_analytes", "days_since_last_sample",
-          "analyte_pafs"
+          "n_measured_analytes", "days_since_last_sample"
         ) |>
         dplyr::arrange(.data$site_id, .data$date, .data$draw_id)
 
@@ -639,8 +640,7 @@ amspaf_daily <- function(
           dplyr::select(
             "date", "site_id", "amspaf", "amspaf_lower", "amspaf_upper",
             "n_analytes_used", "dominant_analyte", "max_paf",
-            "n_measured_analytes", "days_since_last_sample",
-            "analyte_pafs"
+            "n_measured_analytes", "days_since_last_sample"
           ) |>
           dplyr::arrange(.data$site_id, .data$date)
       } else {
@@ -676,8 +676,7 @@ amspaf_daily <- function(
           dplyr::select(
             "date", "site_id", "amspaf", "amspaf_lower", "amspaf_upper",
             "n_analytes_used", "dominant_analyte", "max_paf",
-            "n_measured_analytes", "days_since_last_sample",
-            "analyte_pafs"
+            "n_measured_analytes", "days_since_last_sample"
           ) |>
           dplyr::arrange(.data$site_id, .data$date)
       }
@@ -691,13 +690,24 @@ amspaf_daily <- function(
       dplyr::select(
         "date", "site_id", "amspaf",
         "n_analytes_used", "dominant_analyte", "max_paf",
-        "n_measured_analytes", "days_since_last_sample",
-        "analyte_pafs"
+        "n_measured_analytes", "days_since_last_sample"
       ) |>
       dplyr::arrange(.data$site_id, .data$date)
   }
 
-  attr(result, "ara_summary") <- ara_summ
+  ## Per-analyte PAF breakdown, re-keyed from the synthetic sample_id to date.
+  apafs <- attr(amspaf_out, "analyte_pafs")
+  if (!is.null(apafs) && nrow(apafs) > 0L && exists("id_date_map")) {
+    apafs <- apafs |>
+      dplyr::left_join(
+        dplyr::distinct(id_date_map, .data$sample_id, .data$site_id, .data$.date),
+        by = intersect(c("sample_id", "site_id"), names(apafs))
+      ) |>
+      dplyr::rename(date = ".date") |>
+      dplyr::select(-dplyr::any_of("sample_id"))
+  }
+  attr(result, "analyte_pafs") <- apafs
+  attr(result, "ara_summary")  <- ara_summ
   result
 }
 

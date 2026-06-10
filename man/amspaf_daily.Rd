@@ -159,9 +159,11 @@ Common columns:
 sample on this day (not interpolated).}
 \item{\code{days_since_last_sample}}{Days since the most recent grab sample
 for any SSD-eligible analyte.}
-\item{\code{analyte_pafs}}{List column of per-analyte diagnostic tibbles.}
 }
-An \code{"ara_summary"} attribute is attached; retrieve it with \code{\link[=ara_summary]{ara_summary()}}.
+\code{"analyte_pafs"} (per-analyte PAF breakdown, re-keyed by date) and
+\code{"ara_summary"} attributes are attached; retrieve them with \code{\link[=analyte_pafs]{analyte_pafs()}}
+and \code{\link[=ara_summary]{ara_summary()}}. (\code{analyte_pafs} is now a flat attribute, not a
+list-column — issue #30.)
 }
 \description{
 Interpolates per-analyte grab chemistry onto a daily date grid and computes

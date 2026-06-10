@@ -282,14 +282,15 @@
 #'   `value` (AmsPAF as a percentage, 0–100+), `detected = TRUE`,
 #'   `analyte = "AmsPAF"`, `n_analytes_used` (integer),
 #'   `n_analytes_imputed` (integer, 0 if `imputed` column absent),
-#'   `dominant_analyte` (character), `max_paf` (numeric),
-#'   `analyte_pafs` (list column of per-analyte diagnostic tibbles, each with
-#'   `analyte`, `C_adj`, `PAF`, `moa_group`, and `ref_source` — one of
-#'   `"disabled"`, `"matched"`, `"unmatched"` recording how the ARA reference
-#'   was resolved for that analyte).
+#'   `dominant_analyte` (character), and `max_paf` (numeric).
 #'
-#'   The result also carries an `"ara_summary"` attribute (a tibble) with
-#'   per-(sample × analyte) ARA diagnostics.  Retrieve it with [ara_summary()].
+#'   The result carries two attributes (read them before further dplyr wrangling,
+#'   which drops attributes): `"analyte_pafs"` — the per-analyte PAF breakdown as
+#'   a flat tibble (`site_id`, `sample_id`, `draw_id` in draws mode, `analyte`,
+#'   `C_adj`, `PAF`, `moa_group`, `ref_source`), retrieved with [analyte_pafs()];
+#'   and `"ara_summary"` — per-(sample × analyte) ARA diagnostics, retrieved with
+#'   [ara_summary()]. (`analyte_pafs` was formerly a per-row list-column; it is
+#'   now a flat attribute — issue #30.)
 #'
 #'   Tier breaks are not provided by this package — AmsPAF is a continuous
 #'   risk metric and the threshold at which a community is "impacted"
@@ -424,60 +425,56 @@ add_amspaf <- function(
   ## Step 3: Compute AmsPAF per feature, per sample.
   ## ================================================================
 
-  amspaf_df <-
-    df |>
-    dplyr::group_by(.data$site_id) |>
-    dplyr::group_modify(\(.x, .y) {
-      compute_amspaf_per_sample(
-        sample_data   = .x,
-        ref_table     = ref_table,
-        ssd_params    = ssd_params,
-        min_analytes  = min_analytes,
-        method        = method,
-        guideline_dir = guideline_dir,
-        ara_enabled   = ara_enabled
-      )
-    }) |>
-    dplyr::ungroup()
-
-  ## End-of-call summary of dropped analytes (single message rather than
-  ## per-sample warnings — important for large datasets).
-  ## In draws mode, structural diagnostics (dropped analytes, ref_source) are
-  ## identical across draws; restrict to a representative draw to avoid ×N
-  ## over-counting.
-  amspaf_df_rep <- if ("draw_id" %in% names(amspaf_df) && nrow(amspaf_df) > 0L) {
-    min_did <- min(amspaf_df[["draw_id"]], na.rm = TRUE)
-    dplyr::filter(amspaf_df, .data$draw_id == .env$min_did)
-  } else {
-    amspaf_df
-  }
-  .summarise_amspaf_diagnostics(amspaf_df_rep, min_analytes)
-
-  ## End-of-call summary of analytes assessed without a reference match
-  ## (ARA enabled but no background available — assessed against raw conc).
-  .summarise_ara_coverage(amspaf_df_rep, ara_enabled)
-
-  ## ara_diag is a diagnostic list-column; flatten it for the ara_summary
-  ## attribute, then remove from the output data frame.
-  ## In draws mode restrict to the representative draw (draw-aware ARA
-  ## diagnostics are a Chunk 3 refinement).
-  if ("ara_diag" %in% names(amspaf_df)) {
-    ara_summary_out <- purrr::map2_dfr(
-      amspaf_df_rep$sample_id, amspaf_df_rep$ara_diag,
-      function(sid, d) {
-        if (!is.null(d) && nrow(d) > 0L) dplyr::mutate(d, sample_id = sid)
-        else NULL
-      }
+  ## Per-site engine via split() + lapply (not group_modify): the per-site flat
+  ## diagnostic attributes (analyte_pafs / dropped / ara_diag) would be stripped
+  ## by group_modify's row-binding, so collect them explicitly. (issue #30)
+  site_ids <- sort(unique(df$site_id))
+  per_site <- lapply(site_ids, function(sid) {
+    r <- compute_amspaf_per_sample(
+      sample_data   = df[df$site_id == sid, , drop = FALSE],
+      ref_table     = ref_table,
+      ssd_params    = ssd_params,
+      min_analytes  = min_analytes,
+      method        = method,
+      guideline_dir = guideline_dir,
+      ara_enabled   = ara_enabled
     )
-    amspaf_df <- dplyr::select(amspaf_df, -"ara_diag")
-  } else {
-    ara_summary_out <- NULL
-  }
+    r$site_id <- sid
+    r
+  })
+  amspaf_df <- dplyr::bind_rows(per_site)
 
-  ## dropped_analytes is a diagnostic list-column; remove from the final
-  ## output rows (still emitted in summary above)
-  if ("dropped_analytes" %in% names(amspaf_df))
-    amspaf_df <- dplyr::select(amspaf_df, -"dropped_analytes")
+  collect_attr <- function(nm) {
+    parts <- Map(function(r, sid) {
+      a <- attr(r, nm)
+      if (is.null(a) || nrow(a) == 0L) return(NULL)
+      a$site_id <- sid
+      a
+    }, per_site, site_ids)
+    dplyr::bind_rows(Filter(Negate(is.null), parts))
+  }
+  analyte_pafs_flat <- collect_attr("analyte_pafs")   # full per-(sample,draw)
+  dropped_flat      <- collect_attr("dropped")
+  ara_diag_flat     <- collect_attr("ara_diag")
+
+  ## Structural diagnostics (dropped analytes, ref_source) are identical across
+  ## draws; restrict to a representative draw for the end-of-call summaries and
+  ## the ara_summary attribute (avoids ×N over-counting).
+  rep_draw <- function(flat) {
+    if (is.null(flat) || nrow(flat) == 0L || !"draw_id" %in% names(flat))
+      return(flat)
+    dplyr::filter(flat, .data$draw_id == min(flat$draw_id, na.rm = TRUE))
+  }
+  .summarise_amspaf_diagnostics(rep_draw(dropped_flat))
+  .summarise_ara_coverage(rep_draw(analyte_pafs_flat), ara_enabled)
+
+  ## ara_summary attribute: per-cell ARA diagnostics for the representative draw
+  ## (sample_id + diagnostic columns, matching the historical shape).
+  ara_diag_rep <- rep_draw(ara_diag_flat)
+  ara_summary_out <- if (!is.null(ara_diag_rep) && nrow(ara_diag_rep) > 0L) {
+    dplyr::select(ara_diag_rep, "sample_id", "analyte", "ref_norm", "C_norm",
+                  "C_adj", "C_excess", "floor_fired", "ref_source", "ref_tier")
+  } else NULL
 
   amspaf_df <- dplyr::mutate(amspaf_df,
     analyte  = "AmsPAF",
@@ -514,8 +511,10 @@ add_amspaf <- function(
   ## Point input: summarise_draws is a no-op (identity).
   if (return == "summary") result <- summarise_draws(result, interval, central)
 
-  ## Store ARA cell-level diagnostics as an attribute for ara_summary()
-  attr(result, "ara_summary") <- ara_summary_out
+  ## Store ARA cell-level diagnostics as an attribute for ara_summary(), and the
+  ## per-analyte PAF breakdown (full per-(sample, draw)) for analyte_pafs().
+  attr(result, "ara_summary")  <- ara_summary_out
+  attr(result, "analyte_pafs") <- analyte_pafs_flat
 
   result
 }
@@ -714,83 +713,97 @@ compute_amspaf_per_sample <- function(
 
   ## Draw-carrier: broadcast exact cells so every row has a concrete draw_id.
   ## In the point case (no draw_id column, or all-NA) this assigns draw_id=1L
-  ## everywhere; is_draws_mode=FALSE triggers output stripping at the end so
+  ## everywhere; is_draws_mode=FALSE strips draw_id from the output at the end so
   ## the returned schema is byte-identical to pre-draws behaviour.
   is_draws_mode <- "draw_id" %in% names(sample_data) &&
     !all(is.na(sample_data[["draw_id"]]))
   draws       <- .draw_domain(sample_data)
   sample_data <- .broadcast_draws(sample_data, draws)
 
-  ## ── Phase 1: per-(sample, draw) normalisation + ARA ──────────────────────
-  ## After broadcasting every row has a concrete draw_id, so we iterate over
-  ## (sample_id, draw_id) blocks.  Within a block each analyte appears exactly
-  ## once, so .amspaf_adjust's coanalyte deframe() is safe.
-  ## ref_table is keyed by sample_id only (reference background is not drawn),
-  ## so the temporal-ref slice is unchanged.
-  has_temporal_ref <- "sample_id" %in% names(ref_table)
+  ## ── Phase 1: normalisation + ARA, vectorised across the WHOLE frame ────────
+  ## .amspaf_adjust() handles all (sample, draw) blocks in one pass (co-analytes
+  ## joined wide; each analyte's formula evaluated once across its rows), so
+  ## there is no per-block dplyr loop. (issue #30)
+  adj <- .amspaf_adjust(sample_data, ref_table, ssd_params, ara_enabled)
+  tox <- adj$tox
+  tox$imp_n <- if (has_imputed && "imputed" %in% names(tox))
+    as.integer(tox$imputed) else 0L
 
-  ## Split ONCE by (sample_id, draw_id) rather than filtering the whole frame per
-  ## block (which is O(n_blocks * n_rows) — quadratic for many daily samples x
-  ## draws). split() preserves within-group row order, and Phase 3 re-groups and
-  ## sorts the result by (sample_id, draw_id), so the output is identical to the
-  ## previous per-block filtering. The temporal reference is likewise split once
-  ## by sample_id instead of filtered per block.
-  blk_key  <- paste(sample_data$sample_id, sample_data$draw_id, sep = "\x01")
-  sd_split <- split(sample_data, blk_key)
-  rt_split <- if (has_temporal_ref) split(ref_table, ref_table$sample_id) else NULL
-
-  adj_list <- lapply(sd_split, function(rows) {
-    sid <- rows$sample_id[1L]
-    did <- rows$draw_id[1L]
-    rt <- if (has_temporal_ref) {
-      r <- rt_split[[as.character(sid)]]
-      if (is.null(r)) r <- ref_table[0L, , drop = FALSE]
-      dplyr::select(r, -"sample_id")
-    } else {
-      ref_table
-    }
-    c(list(sample_id = sid, draw_id = did),
-      .amspaf_adjust(rows, rt, ssd_params, ara_enabled))
-  })
-
-  ## Blocks that pass min_analytes (after dropping missing-co-analyte rows)
-  keep <- purrr::keep(adj_list, function(z) nrow(z$tox) >= min_analytes)
-  if (length(keep) == 0L) {
+  ## Blocks (sample_id, draw_id) passing min_analytes after missing-co drops.
+  n_by <- dplyr::count(tox, .data$sample_id, .data$draw_id, name = "nblk")
+  keep_keys <- n_by |>
+    dplyr::filter(.data$nblk >= min_analytes) |>
+    dplyr::select("sample_id", "draw_id")
+  if (nrow(keep_keys) == 0L) {
     empty <- .amspaf_empty_row(with_sample_id = TRUE)
     if (!is_draws_mode) empty <- dplyr::select(empty, -"draw_id")
     return(empty)
   }
+  tox <- dplyr::semi_join(tox, keep_keys, by = c("sample_id", "draw_id"))
 
-  tox_keep <- purrr::map_dfr(keep, function(z) {
-    dplyr::mutate(z$tox, sample_id = z$sample_id, draw_id = z$draw_id)
-  })
+  ## ── Phase 2: batched PAF — one ssd_hp() per analyte across all rows. ──────
+  tox <- .amspaf_add_paf(tox, ssd_params, method, guideline_dir)
 
-  ## ── Phase 2: batched PAF (one ssd_hp() call per analyte) ─────────────────
-  ## ssd_hp() is called once per analyte across ALL (sample, draw) rows — the
-  ## extra rows from draws are just more concentrations in the same vectorised
-  ## call.  No per-draw SSD evaluation loop needed.
-  tox_keep <- .amspaf_add_paf(tox_keep, ssd_params, method, guideline_dir)
-
-  ## Per-block diagnostic lookup (composite key "sample_id\x01draw_id")
-  .ck <- function(z) paste(z$sample_id, z$draw_id, sep = "\x01")
-  dropped_lookup  <- stats::setNames(lapply(keep, `[[`, "dropped"),
-                                     vapply(keep, .ck, character(1)))
-  ara_diag_lookup <- stats::setNames(lapply(keep, `[[`, "ara_diag"),
-                                     vapply(keep, .ck, character(1)))
-
-  ## ── Phase 3: per-(sample, draw) CA/IA combination ────────────────────────
-  result <- tox_keep |>
+  ## ── Phase 3: vectorised CA (per sample x draw x MOA group) then IA. ───────
+  ## De Zwart & Posthuma (2005, Integr. Environ. Assess. Manag. 1:e1, eq.6):
+  ## concentration addition within an MOA group (mixture slope = mean component
+  ## slope; group msPAF = pnorm(log10(sum TU)/sigma_mix)); independent action
+  ## across groups: AmsPAF = 1 - prod(1 - msPAF_group).
+  ## NB: rows with NA moa_group contribute 0 here, reproducing the current
+  ## .amspaf_combine behaviour (`filter(moa_group == NA)` selects nothing) — see
+  ## the implementation note raised on issue #30.
+  ca <- tox |>
+    dplyr::filter(.data$C_adj > 0, !is.na(.data$moa_group),
+                  is.finite(.data$hc50), .data$hc50 > 0,
+                  is.finite(.data$sigma), .data$sigma > 0) |>
+    dplyr::mutate(TU = .data$C_adj / .data$hc50) |>
+    dplyr::group_by(.data$sample_id, .data$draw_id, .data$moa_group) |>
+    dplyr::summarise(TU_mix = sum(.data$TU), sigma_mix = mean(.data$sigma),
+                     .groups = "drop") |>
+    dplyr::mutate(msPAF = ifelse(.data$TU_mix > 0,
+                    stats::pnorm(log10(.data$TU_mix) / .data$sigma_mix), 0))
+  ia <- ca |>
     dplyr::group_by(.data$sample_id, .data$draw_id) |>
-    dplyr::group_modify(\(.x, .y) {
-      key <- paste(.y$sample_id, .y$draw_id, sep = "\x01")
-      res <- .amspaf_combine(.x, has_imputed)
-      res$dropped_analytes <- list(dropped_lookup[[key]])
-      res$ara_diag         <- list(ara_diag_lookup[[key]])
-      res
-    }) |>
-    dplyr::ungroup()
+    dplyr::summarise(amspaf = 1 - prod(1 - .data$msPAF), .groups = "drop")
 
-  if (!is_draws_mode) result <- dplyr::select(result, -"draw_id")
+  ## Per-block scalars over the kept (post-drop) tox rows.
+  scal <- tox |>
+    dplyr::group_by(.data$sample_id, .data$draw_id) |>
+    dplyr::summarise(
+      n_analytes_used    = dplyr::n(),
+      n_analytes_imputed = as.integer(sum(.data$imp_n)),
+      dominant_analyte   = if (any(!is.na(.data$PAF)))
+                             .data$analyte[which.max(.data$PAF)] else NA_character_,
+      max_paf            = max(.data$PAF, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  result <- scal |>
+    dplyr::left_join(ia, by = c("sample_id", "draw_id")) |>
+    dplyr::mutate(value = dplyr::coalesce(.data$amspaf, 0) * 100) |>
+    dplyr::select("sample_id", "draw_id", "value", "n_analytes_used",
+                  "n_analytes_imputed", "dominant_analyte", "max_paf") |>
+    dplyr::arrange(.data$sample_id, .data$draw_id)
+
+  ## Flat diagnostics for the kept blocks, attached as attributes (no list-cols).
+  brk <- tox |>
+    dplyr::select(dplyr::any_of(c("sample_id", "draw_id", "analyte",
+                                  "C_adj", "PAF", "moa_group", "ref_source"))) |>
+    dplyr::arrange(.data$sample_id, .data$draw_id, .data$analyte)
+  dropped_flat  <- dplyr::semi_join(adj$dropped, keep_keys,
+                                    by = c("sample_id", "draw_id"))
+  ara_diag_flat <- dplyr::semi_join(adj$ara_diag, keep_keys,
+                                    by = c("sample_id", "draw_id"))
+
+  if (!is_draws_mode) {
+    result        <- dplyr::select(result, -"draw_id")
+    brk           <- dplyr::select(brk, -dplyr::any_of("draw_id"))
+    dropped_flat  <- dplyr::select(dropped_flat, -dplyr::any_of("draw_id"))
+    ara_diag_flat <- dplyr::select(ara_diag_flat, -dplyr::any_of("draw_id"))
+  }
+  attr(result, "analyte_pafs") <- brk
+  attr(result, "dropped")      <- dropped_flat
+  attr(result, "ara_diag")     <- ara_diag_flat
   result
 }
 
@@ -888,19 +901,20 @@ compute_amspaf_one_sample <- function(
 #' @keywords internal
 .amspaf_adjust <- function(sample_rows, ref_table, ssd_params,
                            ara_enabled = TRUE) {
-  ## Co-analyte lookup (all detected values present in this block).  When the
-  ## block holds multiple samples this still works because the per-analyte
-  ## normalisation only ever reads a sample's own co-analyte rows — but to be
-  ## safe the batched caller passes one sample at a time into this helper.
-  coanalyte_vals <- sample_rows |>
-    dplyr::filter(.data$detected) |>
-    dplyr::select("analyte", "value") |>
-    tibble::deframe()
+  ## Per-(sample, draw) keys present in this frame. The batched caller passes the
+  ## whole site frame (many samples x draws); normalisation reads each row's own
+  ## sample/draw co-analyte values via a wide pivot (vectorised), so this helper
+  ## no longer needs one-sample-at-a-time calls. (issue #30)
+  keys <- intersect(c("sample_id", "draw_id"), names(sample_rows))
 
   empty_dropped <- tibble::tibble(
     analyte = character(0), reason = character(0)
   )
 
+  ## A temporal reference is keyed by (sample_id, analyte); a static one by
+  ## analyte only. Join on whichever keys ref_table carries (the reference is
+  ## never drawn, so a per-sample ref broadcasts to all of that sample's draws).
+  ref_keys <- intersect(c("sample_id", "analyte"), names(ref_table))
   tox <- sample_rows |>
     dplyr::filter(.data$analyte %in% ssd_params$analyte) |>
     dplyr::left_join(
@@ -908,7 +922,7 @@ compute_amspaf_one_sample <- function(
                     "moa_group", "parsed_formula", "coanalytes_req"),
       by = "analyte"
     ) |>
-    dplyr::left_join(ref_table, by = "analyte")
+    dplyr::left_join(ref_table, by = ref_keys)
 
   if (nrow(tox) == 0L) {
     return(list(
@@ -942,29 +956,60 @@ compute_amspaf_one_sample <- function(
   )
 
   ## ── Chemistry normalisation (BDL → 0; missing co-analyte → NA → dropped) ──
-  tox <- dplyr::mutate(
-    tox,
-    C_norm = purrr::pmap_dbl(
-      list(
-        q  = .data$detected,
-        C  = .data$value,
-        pf = .data$parsed_formula,
-        cr = .data$coanalytes_req
-      ),
-      function(q, C, pf, cr) {
-        if (!q) return(0)
-        co_names <- if (nzchar(cr %||% "")) {
-          trimws(strsplit(cr, ",")[[1L]])
-        } else character(0)
-        co_names <- co_names[nzchar(co_names)]
-        co_vals  <- coanalyte_vals[co_names[co_names %in% names(coanalyte_vals)]]
-        .apply_normalisation(pf, C, co_vals)
-      }
-    )
-  )
+  ## Co-analyte values, wide per (sample, draw): one column per detected analyte.
+  ## Each analyte's formula is then evaluated ONCE across all its rows
+  ## (.apply_normalisation vectorises over C + co-analyte vectors), instead of a
+  ## per-row pmap. Missing/undetected co-analyte → NA propagates → row dropped.
+  pre_cols <- names(tox)               # columns to keep (co-analyte join adds more)
+  if (length(keys) > 0L) {
+    co_wide <- sample_rows |>
+      dplyr::filter(.data$detected) |>
+      dplyr::select(dplyr::all_of(keys), "analyte", "value") |>
+      dplyr::distinct(dplyr::across(dplyr::all_of(c(keys, "analyte"))),
+                      .keep_all = TRUE) |>
+      tidyr::pivot_wider(names_from = "analyte", values_from = "value")
+    tox <- dplyr::left_join(tox, co_wide, by = keys, suffix = c("", ".co"))
+    co_col <- function(nm, idx) {
+      if (nm %in% names(tox)) as.numeric(tox[[nm]][idx])
+      else if (paste0(nm, ".co") %in% names(tox)) as.numeric(tox[[paste0(nm, ".co")]][idx])
+      else rep(NA_real_, length(idx))
+    }
+  } else {
+    cav <- sample_rows |>
+      dplyr::filter(.data$detected) |>
+      dplyr::select("analyte", "value") |> tibble::deframe()
+    co_col <- function(nm, idx) {
+      if (nm %in% names(cav)) rep(as.numeric(cav[[nm]]), length(idx))
+      else rep(NA_real_, length(idx))
+    }
+  }
 
+  tox$C_norm <- NA_real_
+  for (a in unique(tox$analyte)) {
+    idx <- which(tox$analyte == a)
+    pf  <- tox$parsed_formula[[idx[1L]]]
+    cr  <- tox$coanalytes_req[idx[1L]]
+    Cv  <- tox$value[idx]
+    if (is.null(pf)) {
+      cn <- Cv
+    } else {
+      co_names <- if (nzchar(cr %||% "")) trimws(strsplit(cr, ",")[[1L]]) else character(0)
+      co_names <- co_names[nzchar(co_names)]
+      co_list  <- stats::setNames(lapply(co_names, co_col, idx = idx), co_names)
+      cn <- .apply_normalisation(pf, Cv, co_list)
+      if (length(cn) != length(idx)) cn <- rep(cn[1L], length(idx))  # error -> NA
+    }
+    cn[!tox$detected[idx]] <- 0   # BDL → 0 (matches the per-row `if (!q) 0`)
+    tox$C_norm[idx] <- cn
+  }
+  ## Drop the wide co-analyte helper columns added by the join.
+  tox <- tox[, intersect(c(pre_cols, "C_norm"), names(tox)), drop = FALSE]
+
+  ## dropped / ara_diag carry the (sample_id, draw_id) keys so the batched caller
+  ## can attribute them per block without per-block lookups.
   dropped <- dplyr::filter(tox, is.na(.data$C_norm)) |>
-    dplyr::transmute(.data$analyte, reason = "missing_co_analyte")
+    dplyr::transmute(dplyr::across(dplyr::any_of(c("sample_id", "draw_id"))),
+                     .data$analyte, reason = "missing_co_analyte")
 
   tox <- tox |>
     dplyr::filter(!is.na(.data$C_norm)) |>
@@ -974,6 +1019,7 @@ compute_amspaf_one_sample <- function(
   if (!"ref_tier" %in% names(tox)) tox$ref_tier <- NA_character_
   ara_diag <- dplyr::transmute(
     tox,
+    dplyr::across(dplyr::any_of(c("sample_id", "draw_id"))),
     analyte     = .data$analyte,
     ref_norm    = .data$ref_norm,
     C_norm      = .data$C_norm,
@@ -1130,8 +1176,6 @@ compute_amspaf_one_sample <- function(
     n_analytes_imputed = integer(0),
     dominant_analyte   = character(0),
     max_paf            = numeric(0),
-    analyte_pafs       = list(),
-    dropped_analytes   = list(),
     draw_id            = integer(0)
   )
   if (with_sample_id) {
@@ -1151,20 +1195,10 @@ compute_amspaf_one_sample <- function(
 #' @param amspaf_df The assembled AmsPAF tibble (must carry `analyte_pafs`).
 #' @param ara_enabled Logical; whether the caller supplied a reference.
 #' @keywords internal
-.summarise_ara_coverage <- function(amspaf_df, ara_enabled) {
+.summarise_ara_coverage <- function(pafs_long, ara_enabled) {
   if (!ara_enabled) return(invisible(NULL))
-  if (!"analyte_pafs" %in% names(amspaf_df) || nrow(amspaf_df) == 0L)
-    return(invisible(NULL))
-
-  pafs_long <- tryCatch(
-    tidyr::unnest(
-      dplyr::select(amspaf_df, dplyr::any_of(c("sample_id", "site_id")),
-                    "analyte_pafs"),
-      cols = "analyte_pafs"
-    ),
-    error = function(e) NULL
-  )
-  if (is.null(pafs_long) || !"ref_source" %in% names(pafs_long))
+  if (is.null(pafs_long) || nrow(pafs_long) == 0L ||
+      !"ref_source" %in% names(pafs_long))
     return(invisible(NULL))
 
   unmatched <- dplyr::filter(pafs_long, .data$ref_source == "unmatched")
@@ -1187,15 +1221,8 @@ compute_amspaf_one_sample <- function(
 
 #' Summarise per-sample dropped-analyte tally and emit a single cli message
 #' @keywords internal
-.summarise_amspaf_diagnostics <- function(amspaf_df, min_analytes) {
-  if (!"dropped_analytes" %in% names(amspaf_df) || nrow(amspaf_df) == 0L)
-    return(invisible(NULL))
-
-  drop_long <- amspaf_df |>
-    dplyr::select(dplyr::any_of(c("sample_id", "site_id")), "dropped_analytes") |>
-    tidyr::unnest(cols = "dropped_analytes")
-
-  if (nrow(drop_long) == 0L) return(invisible(NULL))
+.summarise_amspaf_diagnostics <- function(drop_long, min_analytes = NULL) {
+  if (is.null(drop_long) || nrow(drop_long) == 0L) return(invisible(NULL))
 
   per_analyte <- drop_long |>
     dplyr::count(.data$analyte, .data$reason, name = "n_samples")
