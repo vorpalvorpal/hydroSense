@@ -728,20 +728,28 @@ compute_amspaf_per_sample <- function(
   ## ref_table is keyed by sample_id only (reference background is not drawn),
   ## so the temporal-ref slice is unchanged.
   has_temporal_ref <- "sample_id" %in% names(ref_table)
-  block_keys <- dplyr::distinct(sample_data, .data$sample_id, .data$draw_id)
 
-  adj_list <- purrr::pmap(block_keys, function(sample_id, draw_id) {
-    rows <- dplyr::filter(sample_data,
-      .data$sample_id == .env$sample_id,
-      .data$draw_id   == .env$draw_id
-    )
+  ## Split ONCE by (sample_id, draw_id) rather than filtering the whole frame per
+  ## block (which is O(n_blocks * n_rows) — quadratic for many daily samples x
+  ## draws). split() preserves within-group row order, and Phase 3 re-groups and
+  ## sorts the result by (sample_id, draw_id), so the output is identical to the
+  ## previous per-block filtering. The temporal reference is likewise split once
+  ## by sample_id instead of filtered per block.
+  blk_key  <- paste(sample_data$sample_id, sample_data$draw_id, sep = "\x01")
+  sd_split <- split(sample_data, blk_key)
+  rt_split <- if (has_temporal_ref) split(ref_table, ref_table$sample_id) else NULL
+
+  adj_list <- lapply(sd_split, function(rows) {
+    sid <- rows$sample_id[1L]
+    did <- rows$draw_id[1L]
     rt <- if (has_temporal_ref) {
-      dplyr::filter(ref_table, .data$sample_id == .env$sample_id) |>
-        dplyr::select(-"sample_id")
+      r <- rt_split[[as.character(sid)]]
+      if (is.null(r)) r <- ref_table[0L, , drop = FALSE]
+      dplyr::select(r, -"sample_id")
     } else {
       ref_table
     }
-    c(list(sample_id = sample_id, draw_id = draw_id),
+    c(list(sample_id = sid, draw_id = did),
       .amspaf_adjust(rows, rt, ssd_params, ara_enabled))
   })
 

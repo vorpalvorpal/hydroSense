@@ -12,7 +12,8 @@
   residual_paths = NULL,
   kappa = 0.5,
   scale = 1,
-  ref_q = NULL
+  ref_q = NULL,
+  static = NULL
 )
 }
 \arguments{

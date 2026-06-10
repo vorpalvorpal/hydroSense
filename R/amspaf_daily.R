@@ -1164,6 +1164,50 @@ amspaf_daily <- function(
     )
   } else NULL
 
+  ## Static per-analyte context reused across draws (the per-draw speed path):
+  ##  - hydro features + ref vector (constant across draws),
+  ##  - the impact-GAM design matrix (lpmatrix) so each draw's beta.f(hydro) is
+  ##    `lp %*% coef` (identical to predict.gam, but no per-draw basis rebuild),
+  ##  - the per-(analyte,date) normalisation factor (co_split is exact in the
+  ##    C_raw reconstruction, so the factor is constant across draws).
+  co_by_date <- stats::setNames(lapply(as.character(qdates), function(ds) {
+    cd <- co_split[[ds]]
+    if (is.null(cd)) numeric(0) else stats::setNames(cd$value, cd$analyte)
+  }), as.character(qdates))
+
+  static <- stats::setNames(lapply(modelled, function(nm) {
+    m     <- tm$models[[nm]]
+    feats <- .compute_hydro_features(tm$hydro, qdates, m$window_short,
+                                     m$window_long, tm$hydro_type)
+    ref_lk  <- stats::setNames(ref_q$ref_norm[ref_q$analyte == nm],
+                               as.character(ref_q$date[ref_q$analyte == nm]))
+    ref_vec <- as.numeric(ref_lk[as.character(qdates)]); ref_vec[is.na(ref_vec)] <- 0
+    lp <- NULL
+    if (m$tier == "model" && !is.null(m$impact_fit)) {
+      nd <- dplyr::tibble(hydro_short = feats$hydro_short,
+                          hydro_long  = feats$hydro_long)
+      if (isTRUE(m$pooled)) nd$analyte <- factor(m$analyte, levels = m$pool_levels)
+      lp <- tryCatch(stats::predict(m$impact_fit, newdata = nd, type = "lpmatrix"),
+                     error = function(e) NULL)
+    }
+    parsed <- fac_lookup[[nm]]$parsed
+    fac <- if (is.null(parsed)) rep(1, length(qdates)) else
+      vapply(seq_along(qdates), function(i) {
+        f <- .apply_normalisation(parsed, 1, co_by_date[[i]])
+        if (is.na(f) || f <= 0) NA_real_ else f
+      }, numeric(1L))
+    names(fac) <- as.character(qdates)
+    list(hydro_short = feats$hydro_short, hydro_long = feats$hydro_long,
+         ref_vec = ref_vec, lp = lp, pooled = isTRUE(m$pooled),
+         pool_center = m$pool_center, pool_scale = m$pool_scale, fac = fac)
+  }), modelled)
+
+  ## Flat (analyte date) -> factor lookup for vectorised C_raw reconstruction.
+  fac_lut <- unlist(lapply(modelled, function(nm) {
+    f <- static[[nm]]$fac
+    stats::setNames(as.numeric(f), paste(nm, names(f)))
+  }))
+
   list(
     tm           = tm,
     modelled     = modelled,
@@ -1176,6 +1220,8 @@ amspaf_daily <- function(
     kappa        = kappa,
     ou_scale     = ou_scale,
     ref_q        = ref_q,
+    static       = static,
+    fac_lut      = fac_lut,
     co_grab_map  = co_grab_map
   )
 }
@@ -1225,23 +1271,32 @@ amspaf_daily <- function(
                                  fdm$modelled, wq = wq_long,
                                  residual_paths = residual_paths,
                                  kappa = fdm$kappa, scale = fdm$ou_scale,
-                                 ref_q = fdm$ref_q)
+                                 ref_q = fdm$ref_q, static = fdm$static)
   if (nrow(pred) == 0L) return(NULL)
 
   ## Reconstruct raw µg/L: C_raw = C_norm / normalisation_factor(co-analytes).
-  co_vec_for <- function(d) {
-    cd <- co_split[[as.character(d)]]
-    if (is.null(cd)) return(numeric(0))
-    stats::setNames(cd$value, cd$analyte)
+  ## co_split is exact in this reconstruction (S7 enters via the synthetic
+  ## co-rows), so the factor is constant across draws: use the precomputed flat
+  ## (analyte date) -> factor lookup. Fall back to per-row evaluation only when
+  ## the static context is unavailable (standalone callers).
+  if (!is.null(fdm$fac_lut)) {
+    key <- paste(pred$analyte, as.character(pred$date))
+    pred$C_raw <- pred$C_norm / as.numeric(fdm$fac_lut[key])
+  } else {
+    co_vec_for <- function(d) {
+      cd <- co_split[[as.character(d)]]
+      if (is.null(cd)) return(numeric(0))
+      stats::setNames(cd$value, cd$analyte)
+    }
+    pred$C_raw <- vapply(seq_len(nrow(pred)), function(i) {
+      a      <- pred$analyte[i]; d <- pred$date[i]
+      parsed <- fdm$fac_lookup[[a]]$parsed
+      if (is.null(parsed)) return(pred$C_norm[i])
+      factor <- .apply_normalisation(parsed, 1, co_vec_for(d))
+      if (is.na(factor) || factor <= 0) return(NA_real_)
+      pred$C_norm[i] / factor
+    }, numeric(1L))
   }
-  pred$C_raw <- vapply(seq_len(nrow(pred)), function(i) {
-    a      <- pred$analyte[i]; d <- pred$date[i]
-    parsed <- fdm$fac_lookup[[a]]$parsed
-    if (is.null(parsed)) return(pred$C_norm[i])
-    factor <- .apply_normalisation(parsed, 1, co_vec_for(d))
-    if (is.na(factor) || factor <= 0) return(NA_real_)
-    pred$C_norm[i] / factor
-  }, numeric(1L))
 
   pred_ok <- pred[is.finite(pred$C_raw), , drop = FALSE]
   if (nrow(pred_ok) == 0L) return(NULL)

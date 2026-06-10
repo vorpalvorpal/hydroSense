@@ -684,7 +684,8 @@ fit_target_model <- function(
 #' @keywords internal
 .resolve_target_impact <- function(target_model, query, analytes = NULL,
                                     wq = NULL, residual_paths = NULL,
-                                    kappa = 0.5, scale = 1, ref_q = NULL) {
+                                    kappa = 0.5, scale = 1, ref_q = NULL,
+                                    static = NULL) {
   qdates <- sort(unique(as.Date(query$date)))
   if (is.null(analytes)) analytes <- names(target_model$models)
   analytes <- intersect(analytes, names(target_model$models))
@@ -717,17 +718,30 @@ fit_target_model <- function(
   for (j in seq_along(analytes)) {
     nm <- analytes[j]
     m  <- target_model$models[[nm]]
+    sc <- static[[nm]]
 
-    feats <- .compute_hydro_features(
-      target_model$hydro, qdates, m$window_short, m$window_long,
-      target_model$hydro_type
-    )
-
-    ref_norm_nm  <- ref_q$ref_norm[ref_q$analyte == nm]
-    ref_dates_nm <- ref_q$date[ref_q$analyte == nm]
-    ref_lookup   <- stats::setNames(ref_norm_nm, as.character(ref_dates_nm))
-    ref_vec      <- as.numeric(ref_lookup[as.character(qdates)])
-    ref_vec[is.na(ref_vec)] <- 0
+    ## ref_vec and beta.f(hydro) are static across draws — use the precomputed
+    ## context when supplied (and compute beta.f as lpmatrix %*% coef, which
+    ## equals predict.gam() but avoids rebuilding the basis every draw).
+    if (!is.null(sc)) {
+      feats   <- list(hydro_short = sc$hydro_short, hydro_long = sc$hydro_long)
+      ref_vec <- sc$ref_vec
+      hp <- if (!is.null(sc$lp)) {
+        z <- as.numeric(sc$lp %*% stats::coef(m$impact_fit))
+        if (isTRUE(sc$pooled)) sc$pool_center + sc$pool_scale * z else z
+      } else rep(0, length(qdates))
+    } else {
+      feats <- .compute_hydro_features(
+        target_model$hydro, qdates, m$window_short, m$window_long,
+        target_model$hydro_type
+      )
+      ref_norm_nm  <- ref_q$ref_norm[ref_q$analyte == nm]
+      ref_dates_nm <- ref_q$date[ref_q$analyte == nm]
+      ref_lookup   <- stats::setNames(ref_norm_nm, as.character(ref_dates_nm))
+      ref_vec      <- as.numeric(ref_lookup[as.character(qdates)])
+      ref_vec[is.na(ref_vec)] <- 0
+      hp <- .hydro_pred(m, feats, qdates)          # beta.f(hydro), season-blind
+    }
 
     ## Residual path on qdates (NA outside the analyte's clipped grab span).
     ## Provided by the caller (draw column or centre mean) or, if NULL, built
@@ -739,8 +753,6 @@ fit_target_model <- function(
       rp <- if (is.null(sm)) rep(NA_real_, length(qdates))
             else .residual_on_qdates(sm$grid_dates, sm$mean, qdates)
     }
-
-    hp <- .hydro_pred(m, feats, qdates)            # beta.f(hydro), season-blind
 
     use_wq <- !is.null(pc_q) && !is.null(m$wq_fit) && !is.null(m$d_anchors)
     if (use_wq) {
