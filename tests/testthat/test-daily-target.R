@@ -82,8 +82,8 @@ test_that("D1: .fit_daily_target returns a list with required fields", {
     daily_long       = .td$daily_long
   )
   expect_type(fdm, "list")
-  expect_true(all(c("tm", "modelled", "qdates", "co_split",
-                    "wq_long", "fac_lookup", "measured_key", "ou") %in% names(fdm)))
+  expect_true(all(c("tm", "modelled", "qdates", "co_split", "wq_long",
+                    "fac_lookup", "measured_key", "smoothers") %in% names(fdm)))
   expect_s3_class(fdm$tm, "target_model")
   expect_true(length(fdm$modelled) > 0L)
   expect_true(all(fdm$modelled %in% names(fdm$tm$models)))
@@ -91,9 +91,9 @@ test_that("D1: .fit_daily_target returns a list with required fields", {
 })
 
 
-## ── D2: OU factors have correct length ───────────────────────────────────────
+## ── D2: smoother scaffold present, clipped within the daily grid ──────────────
 
-test_that("D2: fdm$ou[[nm]]$factors$n_target == length(fdm$qdates)", {
+test_that("D2: fdm$smoothers carry a grid (clipped within qdates) and a mean", {
   fdm <- leachatetools:::.fit_daily_target(
     site_rows        = .td$tgt,
     reference_model  = .td$rm,
@@ -103,16 +103,20 @@ test_that("D2: fdm$ou[[nm]]$factors$n_target == length(fdm$qdates)", {
     tox_analytes     = .td$tox_nms,
     daily_long       = .td$daily_long
   )
+  qr <- range(fdm$qdates)
   for (nm in fdm$modelled) {
-    expect_equal(fdm$ou[[nm]]$factors$n_target, length(fdm$qdates),
-                 info = paste("analyte", nm))
+    sm <- fdm$smoothers[[nm]]
+    expect_true(length(sm$grid_dates) > 0L, info = paste("analyte", nm))
+    expect_equal(length(sm$mean), length(sm$grid_dates), info = nm)
+    expect_gte(min(sm$grid_dates), qr[1L])             # clipped within the grid
+    expect_lte(max(sm$grid_dates), qr[2L])
   }
 })
 
 
-## ── D3: degenerate OU when anchors < 2 ───────────────────────────────────────
+## ── D3: degenerate smoother (no draw model) when anchors < 2 ──────────────────
 
-test_that("D3: degenerate OU params when analyte has < 2 anchor observations", {
+test_that("D3: degenerate smoother (NULL draw_model) when analyte has 1 grab", {
   ## Build minimal single-obs target chemistry (1 grab per analyte)
   single_date <- as.Date("2021-07-01")
   one_grab    <- make_chem("target", single_date, mult = 3, seed = 5)
@@ -134,8 +138,9 @@ test_that("D3: degenerate OU params when analyte has < 2 anchor observations", {
   )
   if (!is.null(fdm)) {
     for (nm in fdm$modelled) {
-      expect_true(fdm$ou[[nm]]$params$degenerate,
-                  info = paste("expected degenerate OU for", nm, "with 1 grab"))
+      sm <- fdm$smoothers[[nm]]
+      expect_null(sm$draw_model,
+                  info = paste("expected degenerate smoother for", nm, "with 1 grab"))
     }
   }
 })
@@ -162,9 +167,9 @@ test_that("D4: .predict_daily_tox (point mode) returns finite C_raw for all rows
 })
 
 
-## ── D5: eps_paths = NULL ≡ eps_paths = all-zeros ─────────────────────────────
+## ── D5: residual_paths = NULL (centre means) ≡ explicit centre paths ──────────
 
-test_that("D5: NULL eps_paths and zero eps_paths give identical output", {
+test_that("D5: NULL residual_paths equals the explicit centre (smoother means)", {
   fdm <- leachatetools:::.fit_daily_target(
     site_rows        = .td$tgt,
     reference_model  = .td$rm,
@@ -174,19 +179,19 @@ test_that("D5: NULL eps_paths and zero eps_paths give identical output", {
     tox_analytes     = .td$tox_nms,
     daily_long       = .td$daily_long
   )
-  rows_null <- leachatetools:::.predict_daily_tox(fdm, eps_paths = NULL)
-  zero_eps  <- stats::setNames(
-    lapply(fdm$modelled, function(nm) rep(0, length(fdm$qdates))),
-    fdm$modelled
-  )
-  rows_zero <- leachatetools:::.predict_daily_tox(fdm, eps_paths = zero_eps)
-  expect_equal(rows_null$value, rows_zero$value)
+  rows_null <- leachatetools:::.predict_daily_tox(fdm, residual_paths = NULL)
+  centre <- stats::setNames(lapply(fdm$modelled, function(nm) {
+    sm <- fdm$smoothers[[nm]]
+    leachatetools:::.residual_on_qdates(sm$grid_dates, sm$mean, fdm$qdates)
+  }), fdm$modelled)
+  rows_centre <- leachatetools:::.predict_daily_tox(fdm, residual_paths = centre)
+  expect_equal(rows_null$value, rows_centre$value)
 })
 
 
-## ── D6: non-zero eps changes output ──────────────────────────────────────────
+## ── D6: a raised residual path shifts C_raw upwards ──────────────────────────
 
-test_that("D6: positive eps_paths shifts C_raw upwards for at least one analyte", {
+test_that("D6: a positive residual path shifts C_raw upwards for that analyte", {
   fdm <- leachatetools:::.fit_daily_target(
     site_rows        = .td$tgt,
     reference_model  = .td$rm,
@@ -196,22 +201,23 @@ test_that("D6: positive eps_paths shifts C_raw upwards for at least one analyte"
     tox_analytes     = .td$tox_nms,
     daily_long       = .td$daily_long
   )
-  rows_base <- leachatetools:::.predict_daily_tox(fdm, eps_paths = NULL)
+  rows_base <- leachatetools:::.predict_daily_tox(fdm, residual_paths = NULL)
 
-  ## Inject a large positive constant ε on the first modelled analyte
-  nm        <- fdm$modelled[[1L]]
-  big_eps   <- stats::setNames(
-    list(rep(1000, length(fdm$qdates))),
-    nm
-  )
-  rows_eps  <- leachatetools:::.predict_daily_tox(fdm, eps_paths = big_eps)
+  ## A large positive residual on the first modelled analyte (over its grid).
+  nm  <- fdm$modelled[[1L]]
+  sm  <- fdm$smoothers[[nm]]
+  rp  <- stats::setNames(lapply(fdm$modelled, function(a) {
+    base <- leachatetools:::.residual_on_qdates(fdm$smoothers[[a]]$grid_dates,
+                                                fdm$smoothers[[a]]$mean, fdm$qdates)
+    if (a == nm) base + 1000 else base
+  }), fdm$modelled)
+  rows_rp <- leachatetools:::.predict_daily_tox(fdm, residual_paths = rp)
 
   base_nm <- rows_base$value[rows_base$analyte == nm]
-  eps_nm  <- rows_eps$value[rows_eps$analyte == nm]
-  expect_true(all(eps_nm >= base_nm - .Machine$double.eps),
-              label = "positive eps should shift value >= base")
-  expect_true(any(eps_nm > base_nm),
-              label = "at least some values strictly higher")
+  rp_nm   <- rows_rp$value[rows_rp$analyte == nm]
+  expect_true(all(rp_nm >= base_nm - .Machine$double.eps),
+              label = "raised residual should shift value >= base")
+  expect_true(any(rp_nm > base_nm), label = "at least some values strictly higher")
 })
 
 

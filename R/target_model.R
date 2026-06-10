@@ -35,7 +35,7 @@
 ## ────────
 ##   .fit_impact_response()  season-blind GAM I ~ s(hydro_short) + s(hydro_long)
 ##   .resolve_target_impact() predict impact (+ implied C_norm) at query dates
-##   .interp_residual()      hydrology-weighted bracketing-anchor bridge
+##   .resolve_target_impact() combines ref + beta.f(hydro) + smoothed residual
 
 
 ## ============================================================================
@@ -607,62 +607,70 @@ fit_target_model <- function(
 ## Internal: resolve the impact at query dates
 ## ============================================================================
 
-#' Hydrology-weighted bracketing-anchor interpolation of the residual state
+#' Standardised short-window hydro feature over query dates (q-modulation input)
 #'
-#' Pinches to the observed residual at each anchor; between two bracketing
-#' anchors it leans toward the one whose antecedent hydrology more closely
-#' matches the query day (and, secondarily, the nearer in time).  Outside the
-#' anchor span it carries the nearest anchor's residual forward/backward (flat).
-#'
-#' @param anchors Tibble with `date`, `S`, `hydro_short`, `hydro_long`
-#'   (≥1 row).
-#' @param qdate Query Date scalar.
-#' @param qshort,qlong Query-day hydro features.
-#' @return Numeric interpolated residual `S`.
+#' Drives the hydrology-modulated process variance of the residual smoother
+#' (`q_mult = exp(kappa * z)`).
 #' @keywords internal
-.interp_residual <- function(anchors, qdate, qshort, qlong) {
-  if (nrow(anchors) == 0L) return(0)
-  if (nrow(anchors) == 1L) return(anchors$S[1L])
+.hydro_zscore <- function(target_model, qdates, m) {
+  feats <- .compute_hydro_features(target_model$hydro, qdates, m$window_short,
+                                   m$window_long, target_model$hydro_type)
+  zs  <- feats$hydro_short
+  sdv <- stats::sd(zs, na.rm = TRUE)
+  if (!is.finite(sdv) || sdv == 0) sdv <- 1
+  (zs - mean(zs, na.rm = TRUE)) / sdv
+}
 
-  ## Pinch exactly to an observation on its own date (residual bridge anchors).
-  exact <- which(anchors$date == qdate)
-  if (length(exact)) return(anchors$S[exact[1L]])
+#' Deterministic season-blind hydrology prediction `beta.f(hydro)` at query dates
+#' @keywords internal
+.hydro_pred <- function(m, feats, qdates) {
+  if (m$tier == "model" && !is.null(m$impact_fit)) {
+    nd <- dplyr::tibble(hydro_short = feats$hydro_short,
+                        hydro_long  = feats$hydro_long)
+    if (isTRUE(m$pooled)) {
+      nd$analyte <- factor(m$analyte, levels = m$pool_levels)
+      z_hat <- as.numeric(stats::predict(m$impact_fit, newdata = nd))
+      m$pool_center + m$pool_scale * z_hat
+    } else {
+      as.numeric(stats::predict(m$impact_fit, newdata = nd))
+    }
+  } else rep(0, length(qdates))
+}
 
-  anchors <- anchors[order(anchors$date), ]
-  ## Standardise hydro features by anchor spread for a scale-free distance
-  s_sd <- stats::sd(anchors$hydro_short, na.rm = TRUE); if (!is.finite(s_sd) || s_sd == 0) s_sd <- 1
-  l_sd <- stats::sd(anchors$hydro_long,  na.rm = TRUE); if (!is.finite(l_sd) || l_sd == 0) l_sd <- 1
-  tau_t <- stats::median(diff(as.numeric(anchors$date)), na.rm = TRUE)
-  if (!is.finite(tau_t) || tau_t <= 0) tau_t <- 1
+#' Build the state-space residual smoother for one analyte
+#'
+#' Uses the WQ residual `d` (`m$d_anchors`, WQ tier) or the impact residual `S`
+#' (`m$anchors`, impact/bridge tier). The daily grid is clipped to the analyte's
+#' grab span; hydrology modulates the process variance. See
+#' [.residual_smoother()].
+#' @keywords internal
+.analyte_residual_smoother <- function(m, target_model, qdates, kappa = 0.5,
+                                       scale = 1, r_vec = NULL) {
+  use_wq <- !is.null(m$wq_fit) && !is.null(m$d_anchors) && nrow(m$d_anchors) >= 2L
+  anch   <- if (use_wq) m$d_anchors else m$anchors
+  if (is.null(anch) || nrow(anch) < 1L) return(NULL)
+  z_hydro <- .hydro_zscore(target_model, qdates, m)
+  .residual_smoother(anch$date, anch$S, qdates, z_hydro = z_hydro,
+                     kappa = kappa, scale = scale, r_vec = r_vec)
+}
 
-  prev_idx <- which(anchors$date <= qdate)
-  next_idx <- which(anchors$date >  qdate)
-
-  if (length(prev_idx) == 0L) return(anchors$S[next_idx[1L]])         # before first
-  if (length(next_idx) == 0L) return(anchors$S[prev_idx[length(prev_idx)]])  # after last
-
-  ip <- prev_idx[length(prev_idx)]
-  inx <- next_idx[1L]
-
-  hydro_dist <- function(i) {
-    sqrt(((qshort - anchors$hydro_short[i]) / s_sd)^2 +
-         ((qlong  - anchors$hydro_long[i])  / l_sd)^2)
-  }
-  wt <- function(i) {
-    dt <- abs(as.numeric(qdate - anchors$date[i])) / tau_t
-    exp(-dt - 0.5 * hydro_dist(i)^2)
-  }
-  wp <- wt(ip); wn <- wt(inx)
-  if (wp + wn <= 0) return(0.5 * (anchors$S[ip] + anchors$S[inx]))
-  (wp * anchors$S[ip] + wn * anchors$S[inx]) / (wp + wn)
+#' Align a residual path (values on the smoother's clipped grid) to query dates
+#'
+#' Returns `NA` for query dates outside the analyte's clipped grab span — those
+#' rows are dropped by [.resolve_target_impact()] (per-analyte clipping).
+#' @keywords internal
+.residual_on_qdates <- function(grid_dates, path, qdates) {
+  lut <- stats::setNames(path, as.character(grid_dates))
+  as.numeric(lut[as.character(qdates)])
 }
 
 #' Predict the site impact (and implied normalised concentration) at query dates
 #'
-#' For each query (date × analyte): `I_hat = beta·f(hydro) + S_interp`, with
-#' `beta·f(hydro)` from the fitted response (0 for bridge-tier analytes) and
-#' `S_interp` from [.interp_residual()].  Also returns `ref_norm` (from the
-#' reference model) and the implied `C_norm = max(ref_norm + I_hat, 0)`.
+#' For each query (date × analyte): `I_hat = beta·f(hydro) + S`, with
+#' `beta·f(hydro)` from the fitted response (0 for bridge-tier analytes) and the
+#' residual `S` from the state-space smoother (`residual_paths`, or the smoother
+#' posterior mean when `NULL`).  Also returns `ref_norm` (from the reference
+#' model) and the implied `C_norm = max(ref_norm + I_hat, 0)`.
 #'
 #' @param target_model A `target_model`.
 #' @param query Tibble with `date` (Date) — the days to predict.
@@ -675,7 +683,9 @@ fit_target_model <- function(
 #' @return Tibble `(date, analyte, ref_norm, impact, C_norm, impact_tier)`.
 #' @keywords internal
 .resolve_target_impact <- function(target_model, query, analytes = NULL,
-                                    wq = NULL) {
+                                    wq = NULL, residual_paths = NULL,
+                                    kappa = 0.5, scale = 1, ref_q = NULL,
+                                    static = NULL) {
   qdates <- sort(unique(as.Date(query$date)))
   if (is.null(analytes)) analytes <- names(target_model$models)
   analytes <- intersect(analytes, names(target_model$models))
@@ -687,12 +697,16 @@ fit_target_model <- function(
     ))
   }
 
-  ## ref_norm at the query dates (synthetic per-date "samples" for the resolver)
-  ref_q <- .resolve_ref_norm_instant(
-    target_model$reference_model,
-    tibble::tibble(sample_id = as.character(qdates), datetime = qdates)
-  ) |>
-    dplyr::mutate(date = as.Date(.data$sample_id))
+  ## ref_norm at the query dates (synthetic per-date "samples" for the resolver).
+  ## Static across draws (ARA cancels it), so it can be precomputed once in
+  ## .fit_daily_target() and passed in via `ref_q`; otherwise compute it here.
+  if (is.null(ref_q)) {
+    ref_q <- .resolve_ref_norm_instant(
+      target_model$reference_model,
+      tibble::tibble(sample_id = as.character(qdates), datetime = qdates)
+    ) |>
+      dplyr::mutate(date = as.Date(.data$sample_id))
+  }
 
   ## WQ-layer PC scores at the query dates (sample_id == date string)
   pc_q <- NULL
@@ -704,78 +718,77 @@ fit_target_model <- function(
   for (j in seq_along(analytes)) {
     nm <- analytes[j]
     m  <- target_model$models[[nm]]
+    sc <- static[[nm]]
 
-    feats <- .compute_hydro_features(
-      target_model$hydro, qdates, m$window_short, m$window_long,
-      target_model$hydro_type
-    )
+    ## ref_vec and beta.f(hydro) are static across draws — use the precomputed
+    ## context when supplied (and compute beta.f as lpmatrix %*% coef, which
+    ## equals predict.gam() but avoids rebuilding the basis every draw).
+    if (!is.null(sc)) {
+      feats   <- list(hydro_short = sc$hydro_short, hydro_long = sc$hydro_long)
+      ref_vec <- sc$ref_vec
+      hp <- if (!is.null(sc$lp)) {
+        z <- as.numeric(sc$lp %*% stats::coef(m$impact_fit))
+        if (isTRUE(sc$pooled)) sc$pool_center + sc$pool_scale * z else z
+      } else rep(0, length(qdates))
+    } else {
+      feats <- .compute_hydro_features(
+        target_model$hydro, qdates, m$window_short, m$window_long,
+        target_model$hydro_type
+      )
+      ref_norm_nm  <- ref_q$ref_norm[ref_q$analyte == nm]
+      ref_dates_nm <- ref_q$date[ref_q$analyte == nm]
+      ref_lookup   <- stats::setNames(ref_norm_nm, as.character(ref_dates_nm))
+      ref_vec      <- as.numeric(ref_lookup[as.character(qdates)])
+      ref_vec[is.na(ref_vec)] <- 0
+      hp <- .hydro_pred(m, feats, qdates)          # beta.f(hydro), season-blind
+    }
 
-    ref_norm_nm  <- ref_q$ref_norm[ref_q$analyte == nm]
-    ref_dates_nm <- ref_q$date[ref_q$analyte == nm]
-    ref_lookup   <- stats::setNames(ref_norm_nm, as.character(ref_dates_nm))
-    ref_vec      <- as.numeric(ref_lookup[as.character(qdates)])
-    ref_vec[is.na(ref_vec)] <- 0
+    ## Residual path on qdates (NA outside the analyte's clipped grab span).
+    ## Provided by the caller (draw column or centre mean) or, if NULL, built
+    ## here from the smoother posterior mean (standalone / point use).
+    rp <- residual_paths[[nm]]
+    if (is.null(rp)) {
+      sm <- .analyte_residual_smoother(m, target_model, qdates, kappa = kappa,
+                                       scale = scale)
+      rp <- if (is.null(sm)) rep(NA_real_, length(qdates))
+            else .residual_on_qdates(sm$grid_dates, sm$mean, qdates)
+    }
 
     use_wq <- !is.null(pc_q) && !is.null(m$wq_fit) && !is.null(m$d_anchors)
     if (use_wq) {
-      ## Tier "wq": WQ-prediction + interpolated residual d, anchored by the
-      ## day's own water quality (sharper than pure impact interpolation).
+      ## Tier "wq": WQ-prediction + smoothed residual d (rp). Where the WQ
+      ## prediction is unavailable (NA PCs), fall back to ref + beta.f(hydro).
       pc_lookup <- dplyr::left_join(
         tibble::tibble(sample_id = as.character(qdates)), pc_q, by = "sample_id"
       )
-      c_wq <- as.numeric(stats::predict(m$wq_fit, newdata = pc_lookup))
-      d_interp <- vapply(seq_along(qdates), function(i) {
-        .interp_residual(m$d_anchors, qdates[i], feats$hydro_short[i], feats$hydro_long[i])
-      }, numeric(1L))
-      c_norm <- pmax(c_wq + d_interp, 0)
-      ## Where the WQ prediction is unavailable (NA PCs), fall back to impact.
-      bad <- !is.finite(c_norm)
+      c_wq   <- as.numeric(stats::predict(m$wq_fit, newdata = pc_lookup))
+      c_norm <- pmax(c_wq + rp, 0)
       tier_vec <- rep("wq", length(qdates))
+      bad <- !is.finite(c_norm) & !is.na(rp)       # within span but WQ missing
       if (any(bad)) {
-        c_norm[bad] <- pmax(ref_vec[bad] +
-          .impact_at(m, feats, qdates, bad), 0)
+        c_norm[bad]  <- pmax(ref_vec[bad] + hp[bad], 0)
         tier_vec[bad] <- m$tier
       }
       impact <- c_norm - ref_vec
     } else {
-      impact   <- .impact_at(m, feats, qdates, rep(TRUE, length(qdates)))
+      impact   <- hp + rp
       c_norm   <- pmax(ref_vec + impact, 0)
       tier_vec <- rep(m$tier, length(qdates))
     }
 
+    ## Per-analyte clip: drop query dates outside the smoother grid (rp == NA).
+    keep <- !is.na(rp)
+    if (!any(keep)) next
     out[[j]] <- tibble::tibble(
-      date        = qdates,
+      date        = qdates[keep],
       analyte     = nm,
-      ref_norm    = ref_vec,
-      impact      = impact,
-      C_norm      = c_norm,
-      impact_tier = tier_vec
+      ref_norm    = ref_vec[keep],
+      impact      = impact[keep],
+      C_norm      = c_norm[keep],
+      impact_tier = tier_vec[keep]
     )
   }
   dplyr::bind_rows(out)
-}
-
-#' Impact estimate `beta·f(hydro) + S_interp` at query dates (subset by `mask`)
-#' @keywords internal
-.impact_at <- function(m, feats, qdates, mask) {
-  hydro_pred <- if (m$tier == "model" && !is.null(m$impact_fit)) {
-    nd <- dplyr::tibble(hydro_short = feats$hydro_short,
-                        hydro_long = feats$hydro_long)
-    if (isTRUE(m$pooled)) {
-      ## Pooled fit predicts the shared shape on the standardised (z) scale;
-      ## de-standardise back to this analyte's own magnitude.
-      nd$analyte <- factor(m$analyte, levels = m$pool_levels)
-      z_hat <- as.numeric(stats::predict(m$impact_fit, newdata = nd))
-      m$pool_center + m$pool_scale * z_hat
-    } else {
-      as.numeric(stats::predict(m$impact_fit, newdata = nd))
-    }
-  } else rep(0, length(qdates))
-  s_interp <- vapply(seq_along(qdates), function(i) {
-    .interp_residual(m$anchors, qdates[i], feats$hydro_short[i], feats$hydro_long[i])
-  }, numeric(1L))
-  res <- hydro_pred + s_interp
-  res[mask]
 }
 
 

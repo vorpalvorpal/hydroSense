@@ -39,8 +39,8 @@ The uncertainty comes from several sources:
 | Reference GAM coefficients | S1 | Posterior spread of the reference model's GAM fits (Bayesian posterior via Vp matrix) |
 | Impact GAM coefficients | S2 | Same for the target model's impact-response GAMs |
 | WQ-layer GAM coefficients | S3 | Same for the water quality covariate GAMs |
-| OU bridge on residual state *S* | S4 | The latent residual impact state *S* between grab anchors follows an Ornstein–Uhlenbeck bridge: variance 0 at anchors, maximal mid-gap |
-| OU bridge on WQ score *d* | S5 | Same for the WQ-score prediction in leading and trailing zones |
+| State-space residual *S* | S4 | The latent residual impact *S* is a continuous-time AR(1)/Ornstein–Uhlenbeck process fitted by a Kalman smoother; the posterior variance pinches at grabs and balloons mid-gap |
+| State-space WQ residual *d* | S5 | Same for the WQ-tier residual *d* |
 | Anchor grab measurement error | S6 | Lognormal multiplicative error on the observed grab concentrations that anchor the bridge |
 | Co-analyte grab measurement error | S7 | Same for co-analytes (pH, DOC, hardness, …) that control bioavailability normalisations |
 
@@ -48,32 +48,42 @@ S4 is the dominant source of uncertainty for long inter-sample gaps; S1–S3
 matter most for long-range comparisons where the GAM extrapolates; S6–S7
 contribute mostly at the anchor days themselves.
 
-## The OU bridge in one paragraph
+## The state-space smoother in one paragraph
 
-Between two consecutive grab dates (anchors), the residual latent impact
-state *S* is modelled as an **Ornstein–Uhlenbeck bridge** — a continuous-time
-AR(1) process conditioned to equal zero at both ends.  The marginal variance
-of the bridge at time *t* within a gap of length *L* is
+The residual latent impact state *S* is modelled as a **continuous-time
+AR(1) / Ornstein–Uhlenbeck process** and fitted to the grab-sample anchors by a
+**Kalman filter + smoother** (via the **KFAS** package) over a daily grid.  The
+posterior mean of the smoother *is* the centre line, and its posterior
+covariance gives coherent draws — so the centre line and the credible band come
+from **one** model.  The band pinches at grabs (to the grab measurement width)
+and balloons mid-gap; longer gaps balloon more.
 
-$$\mathrm{Var}[S(t)] = \gamma \frac{(1-u^2)(1-v^2)}{1-s^2}$$
+Two parameters are estimated per analyte from the anchor residuals:
 
-where $u = e^{-\theta t}$, $v = e^{-\theta(L-t)}$, $s = e^{-\theta L}$, and
-$\gamma = \sigma^2/(2\theta)$ is the marginal variance of the stationary OU
-process.  As $\theta \to 0$ this converges exactly to the Brownian bridge
-$\sigma^2 t(L-t)/L$.
+* $\hat\gamma$ — the marginal (stationary) variance, the well-identified moment:
+  the sample variance of the anchor *S* values.
+* $\hat\theta$ — the mean-reversion rate (inverse correlation length), fitted by
+  1-D maximum likelihood of the exact irregular-spacing OU likelihood, bounded so
+  the correlation length stays within $[0.5\times, 10\times]$ the median anchor
+  spacing.
 
-The parameters $\theta$ (mean-reversion rate, 1/day) and $\gamma$ are
-estimated by method of moments from the observed residual-state values at
-the grab-sample anchor dates:
+A **fallback ladder** keeps sparse series well-behaved: analytes with fewer than
+~8 anchors pin $\theta$ at the long-correlation bound (≈ a Brownian bridge);
+fewer than two finite anchors, or an essentially constant series, are
+"degenerate" and add no uncertainty.
 
-* $\hat\gamma$ = sample variance of the anchor *S* values
-* $\hat\sigma^2$ = median quadratic variation $(\Delta S)^2 / \Delta t$
-  over consecutive anchor pairs
-* $\hat\theta = \hat\sigma^2 / (2\hat\gamma)$
+**An honesty note on $\theta$.** With the ~12–30 grabs typical of routine
+monitoring, $\theta$ (the correlation length) is only weakly identified
+regardless of estimator — the likelihood in $\theta$ is flat because pinning the
+autocorrelation decay needs many lags.  The smoother removes the bias of the old
+method-of-moments estimate and makes the band *coherent*, but it cannot
+manufacture information: the band is driven mainly by $\hat\gamma$, and sparse
+("bridge-tier") analytes degrade gracefully to a Brownian bridge.
 
-When fewer than two finite anchors are available, or when the anchor
-series is essentially constant, the estimator returns a "degenerate"
-flag and the bridge collapses to zero — no uncertainty is added.
+The daily grid is **clipped per analyte** to that analyte's grab span: no
+prediction is produced before its first grab or after its last (extrapolating
+the management residual beyond the data is not attempted), so coverage can be
+ragged across analytes.
 
 ## Getting started
 
@@ -131,13 +141,20 @@ out_cv <- amspaf_daily(
 )
 ```
 
-### Widening the bridge envelope
+### Widening the envelope, and hydrology-driven width
 
-The `ou_scale` argument multiplies $\sigma^2$ and $\gamma$ (without
-changing $\theta$, so the correlation length is preserved).  Use it to
-inflate the OU envelope if the default calibration feels too narrow for
-your data — for example when grab samples are infrequent or analyte
-concentrations are highly variable.
+`ou_scale` multiplies the marginal variance $\gamma$ (leaving $\theta$, hence the
+correlation length, unchanged) — a global knob to inflate the envelope if the
+default calibration feels too narrow (infrequent grabs, highly variable
+analytes).
+
+`kappa` controls **hydrology-modulated process variance**: the latent state is
+allowed to wander more on high-flow days, via $q_t = q_{\text{base}}\,
+e^{\kappa z_t}$ where $z_t$ is the standardised short-window hydrology feature.
+This is what makes the band balloon faster across gaps that span storms (and
+stay tight across quiet ones). `kappa = 0` recovers a stationary envelope; the
+default `0.5` makes a ~95th-percentile flow day carry about 3× the base process
+variance. It is a structural prior on volatility, not a fitted quantity.
 
 ```{r ou-scale, eval = FALSE}
 out_wide <- amspaf_daily(
@@ -146,7 +163,8 @@ out_wide <- amspaf_daily(
   interpolation   = "model",
   ndraws          = 50L,
   seed            = 42L,
-  ou_scale        = 2,              # double the bridge variance
+  ou_scale        = 2,              # double the marginal variance (global)
+  kappa           = 0.5,            # hydrology-modulated mid-gap widening
   require_temperature = FALSE
 )
 ```
@@ -217,19 +235,23 @@ ggplot(out, aes(date)) +
 
 ## Interpreting the width of the envelope
 
-**Narrow ribbon at a grab date**: the bridge is pinned to the observed
-concentration.  Remaining width comes from GAM coefficient uncertainty
-(S1–S3) and measurement error (S6–S7).
+**Narrow ribbon at a grab date**: the smoother is pinned to the observed
+concentration (to within the grab measurement width).  Remaining width comes
+from GAM coefficient uncertainty (S1–S3) and measurement error (S6–S7).
 
-**Wide ribbon mid-gap**: the OU bridge has spread away from the anchors.
-The width is controlled by the estimated $\gamma$ (residual-state marginal
-variance from the anchor series) and the gap length.  A site with
-infrequent, irregular sampling will show a wider envelope than one with
-fortnightly grabs.
+**Wide ribbon mid-gap**: the smoother posterior has spread away from the
+anchors.  The width grows with the gap length, the estimated $\gamma$
+(residual-state marginal variance), and — through `kappa` — the hydrology over
+the gap, so a gap spanning a storm balloons faster than a quiet one of equal
+length.  A site with infrequent, irregular sampling shows a wider envelope than
+one with fortnightly grabs.
 
-**Asymmetric ribbon**: the response of AmsPAF to concentration is
-nonlinear (SSD-based), so the ribbon can be skewed even when the underlying
-concentration draws are symmetric.
+**Asymmetric ribbon**: the AmsPAF response to concentration is nonlinear
+(SSD-based) and the impact is floored at zero, so the ribbon is skewed even
+though the underlying concentration draws are symmetric.  The *direction* of the
+skew is data-dependent: symmetric concentration draws map through the SSD
+curvature, which can make the AmsPAF band wider above *or* below the centre line
+depending on where on the SSD the site sits.
 
 **Envelope does not cover the centre line**: this should never happen in
 practice, but if your `ndraws` is very small (e.g., 5) and the interval is
@@ -242,21 +264,21 @@ wide (e.g., 0.99), quantile estimates can be noisy.  Increase `ndraws`.
 | `ndraws` | Number of Monte Carlo draws; more → smoother CI | 50–200 for exploratory work; 500+ for publication |
 | `interval` | Nominal coverage of the credible interval | 0.9 (default), 0.95, 0.80 |
 | `grab_cv` | Relative analytical uncertainty on grab concentrations | 0.10–0.20 for routine ICP-MS; 0.05 for reference standards |
-| `ou_scale` | Envelope inflation factor; > 1 widens mid-gap spread | 1 (default); try 2–4 for sparse sampling |
+| `ou_scale` | Global marginal-variance ($\gamma$) inflation; > 1 widens the whole envelope | 1 (default); try 2–4 for sparse sampling |
+| `kappa` | Hydrology-modulated mid-gap widening ($q_t = q_{\text{base}}e^{\kappa z_t}$) | 0.5 (default); 0 = stationary |
 | `seed` | RNG seed for reproducibility | Any integer |
 | `parallel` | Use `future.apply` for concurrent draws | `FALSE` (default); `TRUE` with a `future::plan()` |
 
 ## How the centre line is computed
 
-The `amspaf` column in `return = "summary"` is the **deterministic
-heuristic-blend point prediction**, which is identical to running
-`amspaf_daily()` without `ndraws`.  It is *not* the median of the draws.
-This means the centre line:
+The `amspaf` column in `return = "summary"` is the **deterministic smoother
+posterior mean** (the centre line), identical to running `amspaf_daily()`
+without `ndraws`.  It is *not* the median of the draws.  This means the centre
+line:
 
 * is computationally cheap (no randomness),
 * is exactly reproducible regardless of `ndraws` or `seed`,
-* is identical to the pre-uncertainty-propagation output, so adding `ndraws`
-  to an existing call does not change the point estimate.
+* so adding `ndraws` to an existing call does not change the point estimate.
 
 The lower and upper bounds are empirical quantiles of the stochastic draws.
 

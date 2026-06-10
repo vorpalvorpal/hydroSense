@@ -7,7 +7,7 @@
 .predict_daily_tox(
   fdm,
   tm_p = fdm$tm,
-  eps_paths = NULL,
+  residual_paths = NULL,
   co_split = fdm$co_split,
   wq_long = fdm$wq_long
 )
@@ -18,10 +18,10 @@
 \item{tm_p}{Target model to predict with (default: \code{fdm$tm}).  For draw
 mode, pass a GAM-perturbed copy from \code{\link[=.perturb_target_model]{.perturb_target_model()}}.}
 
-\item{eps_paths}{Named list of mean-zero OU bridge fluctuation paths, one
-numeric vector of length \code{length(fdm$qdates)} per analyte.  \code{NULL} (the
-default) means no fluctuation — output is byte-identical to the original
-point-mode path.}
+\item{residual_paths}{Named list of residual paths (impact \code{S} or WQ \code{d}),
+one numeric vector of length \code{length(fdm$qdates)} per analyte (\code{NA} outside
+the analyte's clipped grab span).  \code{NULL} (the default) uses the smoother
+posterior means — the deterministic centre line.}
 
 \item{co_split}{Per-date co-analyte lookup (default: \code{fdm$co_split}).
 Chunk D supplies a perturbed version for S7 draws.}
@@ -35,10 +35,10 @@ Tibble of model rows (\code{.date}, \code{value}, \code{detected}, \code{.measur
 }
 \description{
 Predicts normalised and raw concentrations for one draw (or for the
-deterministic point mode when \code{eps_paths = NULL}).  Always uses the
+deterministic centre line when \code{residual_paths = NULL}).  Always uses the
 precomputed static scaffolding from \code{fdm}; accepts an optionally-perturbed
-target model (\code{tm_p}) and OU bridge fluctuations (\code{eps_paths}) for draw
-mode.  Pass overrides to \code{co_split} and \code{wq_long} (from
+target model (\code{tm_p}) and a per-analyte residual path (\code{residual_paths}) for
+draw mode.  Pass overrides to \code{co_split} and \code{wq_long} (from
 \code{\link[=.perturb_co_split]{.perturb_co_split()}}) for S7 co-analyte measurement-error draws.
 }
 \keyword{internal}

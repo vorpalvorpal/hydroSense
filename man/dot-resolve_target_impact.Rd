@@ -4,7 +4,17 @@
 \alias{.resolve_target_impact}
 \title{Predict the site impact (and implied normalised concentration) at query dates}
 \usage{
-.resolve_target_impact(target_model, query, analytes = NULL, wq = NULL)
+.resolve_target_impact(
+  target_model,
+  query,
+  analytes = NULL,
+  wq = NULL,
+  residual_paths = NULL,
+  kappa = 0.5,
+  scale = 1,
+  ref_q = NULL,
+  static = NULL
+)
 }
 \arguments{
 \item{target_model}{A \code{target_model}.}
@@ -23,9 +33,10 @@ fitted WQ layer, the day's concentration is predicted as
 Tibble \verb{(date, analyte, ref_norm, impact, C_norm, impact_tier)}.
 }
 \description{
-For each query (date × analyte): \verb{I_hat = beta·f(hydro) + S_interp}, with
-\verb{beta·f(hydro)} from the fitted response (0 for bridge-tier analytes) and
-\code{S_interp} from \code{\link[=.interp_residual]{.interp_residual()}}.  Also returns \code{ref_norm} (from the
-reference model) and the implied \code{C_norm = max(ref_norm + I_hat, 0)}.
+For each query (date × analyte): \verb{I_hat = beta·f(hydro) + S}, with
+\verb{beta·f(hydro)} from the fitted response (0 for bridge-tier analytes) and the
+residual \code{S} from the state-space smoother (\code{residual_paths}, or the smoother
+posterior mean when \code{NULL}).  Also returns \code{ref_norm} (from the reference
+model) and the implied \code{C_norm = max(ref_norm + I_hat, 0)}.
 }
 \keyword{internal}

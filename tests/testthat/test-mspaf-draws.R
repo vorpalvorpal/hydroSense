@@ -228,3 +228,33 @@ test_that("cross-analyte alignment: draws-pipeline AmsPAF != mis-paired AmsPAF",
 
   expect_false(isTRUE(all.equal(d1_correct, d1_mispaired)))
 })
+
+
+## ── 6. Multi-sample blocks: each (sample, draw) computed independently ────────
+## Guards the batched per-(sample, draw) split in compute_amspaf_per_sample():
+## a sample's AmsPAF must not change when other samples share the call, and
+## draws within a sample must stay paired.
+
+test_that("multi-sample draws: each sample's AmsPAF matches computing it alone", {
+  dfA <- make_draws_chem(list(Cu = c(5, 50),  Zn = c(10, 10), Ni = c(0.001, 0.001)),
+                         sample_id = "A")
+  dfB <- make_draws_chem(list(Cu = c(1, 2),   Zn = c(20, 5),  Ni = c(0.10, 0.20)),
+                         sample_id = "B")
+
+  combined <- add_amspaf(dplyr::bind_rows(dfA, dfB), reference = NULL,
+                         conc_units = "ug/L", return = "draws")
+  onlyA <- add_amspaf(dfA, reference = NULL, conc_units = "ug/L", return = "draws")
+  onlyB <- add_amspaf(dfB, reference = NULL, conc_units = "ug/L", return = "draws")
+
+  pick <- function(x, sid) {
+    r <- dplyr::filter(x, .data$analyte == "AmsPAF", .data$sample_id == sid)
+    r$value[order(r$draw_id)]
+  }
+  expect_equal(pick(combined, "A"), pick(onlyA, "A"))
+  expect_equal(pick(combined, "B"), pick(onlyB, "B"))
+  # the two samples are genuinely different (guards against silent collapse)
+  expect_false(isTRUE(all.equal(pick(combined, "A"), pick(combined, "B"))))
+  # each sample has exactly its 2 draws
+  expect_equal(length(pick(combined, "A")), 2L)
+  expect_equal(length(pick(combined, "B")), 2L)
+})

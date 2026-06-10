@@ -1,32 +1,36 @@
 # leachatetools (development)
 
-## Daily AmsPAF with uncertainty quantification (issue #16)
+## Daily AmsPAF uncertainty via a state-space (Kalman) residual smoother (issue #16)
 
-`amspaf_daily()` now accepts `ndraws`, `seed`, `return`, `interval`, `central`,
-`grab_cv`, and `ou_scale` arguments to propagate seven sources of uncertainty
-through the daily AmsPAF time series.
+`amspaf_daily()` propagates uncertainty through the daily AmsPAF time series via
+`ndraws`, `seed`, `return`, `interval`, `central`, `grab_cv`, `ou_scale`, and
+`kappa`.  The latent residual impact state is modelled as a continuous-time
+AR(1)/Ornstein–Uhlenbeck process fitted by a **Kalman filter + smoother** (KFAS):
+the smoother posterior mean is the centre line and its posterior covariance gives
+coherent draws, so the centre line and the credible band come from **one** model.
+This replaces the earlier deterministic interpolation + bolted-on OU bridge.
 
-Seven uncertainty sources are propagated:
+Uncertainty sources:
 
-* **S1** Reference GAM posterior (Vp matrix, multivariate normal draws)
-* **S2** Impact GAM posterior (Vp matrix)
-* **S3** WQ-layer GAM posterior (Vp matrix)
-* **S4** OU bridge on normalised residual state S (between-grab extrapolation)
-* **S5** OU bridge on WQ score d (leading/trailing zones)
-* **S6** Anchor grab measurement error (lognormal, CV = `grab_cv`)
+* **S1–S3** GAM posteriors (Vp matrix) — reference, impact, WQ-layer fits
+* **S4/S5** State-space residual smoother for the impact residual *S* / WQ
+  residual *d*: posterior variance pinches at grabs, balloons mid-gap, and (via
+  `kappa`) balloons faster across gaps spanning high flow
+* **S6** Grab measurement error, entering as the smoother's observation noise
 * **S7** Co-analyte grab measurement error (coherent per-grab multipliers)
 
-The OU bridge uses method-of-moments parameter estimation and an exact Cholesky
-factorisation that converges to the Brownian bridge as θ → 0.  Cholesky factors
-are precomputed once per fit (`fit_once` architecture); each of the N draws
-requires only a matrix–vector product.
+Key properties: θ is fitted by 1-D MLE (γ by moments) with a Brownian/degenerate
+fallback ladder for sparse analytes; the daily grid is clipped per analyte to its
+grab span (no extrapolation beyond the grabs); residual draws are precomputed
+once per analyte (`simulateSSM`) — the single point where future cross-analyte /
+inter-site coupling would correlate the draws.  Requires the **KFAS** package.
 
 New return modes:
 
 * `return = "summary"` (default): one row per (date, site_id) with columns
   `amspaf`, `amspaf_lower`, `amspaf_upper`.  The centre line (`amspaf`) is the
-  deterministic heuristic-blend point prediction; bounds are empirical quantiles
-  of the stochastic draws.
+  deterministic smoother posterior mean; bounds are empirical quantiles of the
+  stochastic draws.
 * `return = "draws"`: one row per (date, site_id, draw_id) with `draw_id`
   running 1..N.
 
