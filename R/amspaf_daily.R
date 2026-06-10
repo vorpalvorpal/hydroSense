@@ -1028,6 +1028,18 @@ amspaf_daily <- function(
 
   modelled <- names(tm$models)
 
+  ## Reference norm over the daily grid — static across draws (ARA cancels it),
+  ## so resolve it ONCE here and reuse for the centre line and every draw,
+  ## rather than re-evaluating the reference GAM per draw.
+  ref_q <- tryCatch(
+    .resolve_ref_norm_instant(
+      tm$reference_model,
+      tibble::tibble(sample_id = as.character(qdates), datetime = qdates)
+    ) |>
+      dplyr::mutate(date = as.Date(.data$sample_id)),
+    error = function(e) NULL
+  )
+
   ## Per-date co-analyte lookup (static across draws; Chunk D may override).
   co <- daily_long[!daily_long$analyte %in% tox_analytes &
                      (is.na(daily_long$detected) | daily_long$detected), , drop = FALSE]
@@ -1163,6 +1175,7 @@ amspaf_daily <- function(
     smoothers    = smoothers,
     kappa        = kappa,
     ou_scale     = ou_scale,
+    ref_q        = ref_q,
     co_grab_map  = co_grab_map
   )
 }
@@ -1211,7 +1224,8 @@ amspaf_daily <- function(
   pred <- .resolve_target_impact(tm_p, tibble::tibble(date = fdm$qdates),
                                  fdm$modelled, wq = wq_long,
                                  residual_paths = residual_paths,
-                                 kappa = fdm$kappa, scale = fdm$ou_scale)
+                                 kappa = fdm$kappa, scale = fdm$ou_scale,
+                                 ref_q = fdm$ref_q)
   if (nrow(pred) == 0L) return(NULL)
 
   ## Reconstruct raw µg/L: C_raw = C_norm / normalisation_factor(co-analytes).

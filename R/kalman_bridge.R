@@ -124,19 +124,30 @@ NULL
   if (!is.null(r_vec)) r_vec <- rep_len(r_vec, length(keep))[keep]
   if (length(pos) == 0L) return(NULL)
 
+  ## Standardise the residual to unit marginal variance before filtering: KFAS
+  ## rejects covariances > 1e7, and high-concentration analytes can have a large
+  ## raw gamma. Build with gamma_std = 1; rescale outputs by `scale = sqrt(gamma)`
+  ## (stored as an attribute and applied in .kalman_smooth / .kalman_draw).
+  scale <- sqrt(gamma)
+  if (!is.finite(scale) || scale <= 0) return(NULL)
+  aS_std <- aS / scale
+
   phi <- exp(-theta)
-  q_base <- gamma * (1 - phi^2)
-  if (q_base <= 0) q_base <- gamma * sqrt(.Machine$double.eps)
+  q_base <- 1 - phi^2                    # gamma_std = 1
+  if (q_base <= 0) q_base <- sqrt(.Machine$double.eps)
   if (is.null(q_mult)) q_mult <- rep(1, n)
+  q_mult[!is.finite(q_mult)] <- 1
+  q_mult <- pmax(0, pmin(q_mult, 1e4))   # guard against pathological storm days
   Qvec <- q_base * q_mult
 
-  if (is.null(r_vec)) r_vec <- rep(max(gamma, 1) * 1e-6, length(pos))
-  r_vec <- rep_len(r_vec, length(pos))
-  Hvec <- rep(max(gamma, 1), n)        # arbitrary at NA days (ignored by KFAS)
+  if (is.null(r_vec)) r_vec <- rep(1e-6, length(pos))
+  else                r_vec <- rep_len(r_vec, length(pos)) / gamma   # to std units
+  r_vec[!is.finite(r_vec) | r_vec < 0] <- 1e-6
+  Hvec <- rep(1, n)                      # arbitrary at NA days (ignored by KFAS)
   Hvec[pos] <- r_vec
 
   y <- rep(NA_real_, n)
-  y[pos] <- aS
+  y[pos] <- aS_std
 
   ## NOTE: SSMcustom must be called *unqualified* inside the formula — KFAS's
   ## formula parser does not resolve the `KFAS::` form. It is imported via
@@ -144,9 +155,10 @@ NULL
   mod <- KFAS::SSModel(
     y ~ -1 + SSMcustom(
       Z = matrix(1), T = matrix(phi), R = matrix(1),
-      Q = array(Qvec, c(1, 1, n)), a1 = 0, P1 = matrix(gamma)),
+      Q = array(Qvec, c(1, 1, n)), a1 = 0, P1 = matrix(1)),
     H = array(Hvec, c(1, 1, n)))
-  attr(mod, "grid_dates") <- grid_dates
+  attr(mod, "grid_dates")  <- grid_dates
+  attr(mod, "resid_scale") <- scale      # un-standardise factor for outputs
   mod
 }
 
@@ -158,9 +170,10 @@ NULL
 #' @return list(mean, var), each length `length(grid_dates)`.
 #' @keywords internal
 .kalman_smooth <- function(model) {
+  sc   <- attr(model, "resid_scale") %||% 1
   out  <- KFAS::KFS(model, filtering = "state", smoothing = "state")
-  mean <- as.numeric(out$alphahat)
-  v    <- as.numeric(out$V)
+  mean <- as.numeric(out$alphahat) * sc            # un-standardise
+  v    <- as.numeric(out$V) * sc^2
   v[!is.finite(v) | v < 0] <- 0
   list(mean = mean, var = v)
 }
@@ -172,8 +185,9 @@ NULL
 #'   reproducibility.
 #' @keywords internal
 .kalman_draw <- function(model, nsim = 1L) {
+  sc <- attr(model, "resid_scale") %||% 1
   dr <- KFAS::simulateSSM(model, type = "states", nsim = nsim)
-  matrix(dr[, 1L, ], nrow = dim(dr)[1L], ncol = nsim)
+  matrix(dr[, 1L, ], nrow = dim(dr)[1L], ncol = nsim) * sc   # un-standardise
 }
 
 
@@ -228,6 +242,7 @@ NULL
   if (!is.null(z_hydro)) {
     z_grid <- z_hydro[match(grid, tgt)]
     z_grid[!is.finite(z_grid)] <- 0
+    z_grid <- pmax(-4, pmin(4, z_grid))    # cap so storm days can't blow up q
     q_mult <- exp(kappa * z_grid)
   }
 

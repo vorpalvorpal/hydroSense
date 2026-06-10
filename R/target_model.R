@@ -684,7 +684,7 @@ fit_target_model <- function(
 #' @keywords internal
 .resolve_target_impact <- function(target_model, query, analytes = NULL,
                                     wq = NULL, residual_paths = NULL,
-                                    kappa = 0.5, scale = 1) {
+                                    kappa = 0.5, scale = 1, ref_q = NULL) {
   qdates <- sort(unique(as.Date(query$date)))
   if (is.null(analytes)) analytes <- names(target_model$models)
   analytes <- intersect(analytes, names(target_model$models))
@@ -696,12 +696,16 @@ fit_target_model <- function(
     ))
   }
 
-  ## ref_norm at the query dates (synthetic per-date "samples" for the resolver)
-  ref_q <- .resolve_ref_norm_instant(
-    target_model$reference_model,
-    tibble::tibble(sample_id = as.character(qdates), datetime = qdates)
-  ) |>
-    dplyr::mutate(date = as.Date(.data$sample_id))
+  ## ref_norm at the query dates (synthetic per-date "samples" for the resolver).
+  ## Static across draws (ARA cancels it), so it can be precomputed once in
+  ## .fit_daily_target() and passed in via `ref_q`; otherwise compute it here.
+  if (is.null(ref_q)) {
+    ref_q <- .resolve_ref_norm_instant(
+      target_model$reference_model,
+      tibble::tibble(sample_id = as.character(qdates), datetime = qdates)
+    ) |>
+      dplyr::mutate(date = as.Date(.data$sample_id))
+  }
 
   ## WQ-layer PC scores at the query dates (sample_id == date string)
   pc_q <- NULL
