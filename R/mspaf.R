@@ -1069,7 +1069,7 @@ compute_amspaf_per_sample <- function(
   if (is.null(scan_paf)) return(NULL)
 
   lo_idx    <- max(1L, which(scan_paf >= 1e-9)[1L] - 1L)
-  hi_idx    <- min(length(scan_conc), tail(which(scan_paf <= 1 - 1e-9), 1L) + 1L)
+  hi_idx    <- min(length(scan_conc), utils::tail(which(scan_paf <= 1 - 1e-9), 1L) + 1L)
   log10_lo  <- log10(scan_conc[lo_idx])
   log10_hi  <- log10(scan_conc[hi_idx])
 
