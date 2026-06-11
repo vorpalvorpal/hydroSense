@@ -146,6 +146,12 @@
 #'   (default `1`).  Multiplies \eqn{\sigma^2} and \eqn{\gamma} (marginal
 #'   variance) without changing \eqn{\theta} (correlation length).  Use values
 #'   > 1 to widen the between-grab uncertainty bands.
+#' @param kappa Non-negative numeric (default `0.5`).  Hydrological modulation
+#'   exponent: the smoother's process variance is multiplied by
+#'   \eqn{\exp(\kappa \cdot z_h)} where \eqn{z_h} is the standardised daily
+#'   flow (capped at ±4 SD).  `kappa = 0` disables hydrological modulation;
+#'   larger values widen the credible band more aggressively across high-flow
+#'   gaps.  Requires a hydrology column in `df`.
 #' @param parallel Logical (default `FALSE`).  When `TRUE`, the per-draw loop
 #'   for each site is parallelised via [future.apply::future_lapply()], which
 #'   honours whatever [future::plan()] the caller has established.  Requires

@@ -22,7 +22,7 @@ fit_target_model(
 }
 \arguments{
 \item{target}{Long-format target chemistry. Required columns: \code{sample_id},
-\code{datetime}, \code{analyte}, \code{value}, \code{detected}. Toxicants must be in µg/L;
+\code{datetime}, \code{analyte}, \code{value}, \code{detected}. Toxicants must be in ug/L;
 supply via a \code{units.analyte} column or \code{conc_units}. Co-analyte rows
 (pH, DOC, hardness, temperature) should be present for normalisation.}
 
@@ -60,7 +60,7 @@ responses are \strong{partially pooled}: a single factor-smooth GAM
 (\code{bs = "fs"}) is fitted across all sufficiently-sampled analytes at one
 common AIC-selected window, shrinking each analyte's response toward a
 shared shape. This \emph{regularises} noisy, low-signal analytes (it does not
-add hydrological coverage — co-sampled analytes already share the same
+add hydrological coverage -- co-sampled analytes already share the same
 regimes), and falls back to independent fits if it fails or doesn't beat an
 analyte-intercept null. Set \code{pool = FALSE} to force independent per-analyte
 fits (appropriate only when all analytes are densely sampled).}
@@ -82,7 +82,7 @@ An object of class \code{target_model}:
 \description{
 Models the anthropogenic increment \code{I = C_norm - ref_norm} (the ARA
 "added risk", i.e. \code{ara_summary()}'s \code{C_excess}) at a target site as a
-function of hydrology and a persistent latent state — \strong{never} of
+function of hydrology and a persistent latent state -- \strong{never} of
 day-of-year.  Used by \code{\link[=amspaf_daily]{amspaf_daily()}} (\code{interpolation = "model"}) to fill
 the gaps between grab samples with a chemistry-grounded impact estimate
 instead of a forward-filled concentration.
@@ -108,7 +108,7 @@ pinches to the observed residual at each anchor and leans toward the
 hydrologically more similar bracketing anchor in between.
 
 This is a season-blind, hydrology-modulated variant of WRTDS-Kalman
-(Zhang & Hirsch 2019); \code{f(hydro)} follows concentration–discharge theory
+(Zhang & Hirsch 2019); \code{f(hydro)} follows concentration--discharge theory
 (Godsey, Kirchner & Clow 2009).
 }
 \examples{
@@ -120,8 +120,8 @@ tgt_model
 }
 }
 \references{
-Zhang Q, Hirsch RM (2019) Water Resources Research 55(11):9705–9723.
-Godsey SE, Kirchner JW, Clow DW (2009) Hydrological Processes 23:1844–1864.
+Zhang Q, Hirsch RM (2019) Water Resources Research 55(11):9705--9723.
+Godsey SE, Kirchner JW, Clow DW (2009) Hydrological Processes 23:1844--1864.
 }
 \seealso{
 \code{\link[=amspaf_daily]{amspaf_daily()}}, \code{\link[=fit_reference_model]{fit_reference_model()}}, \code{\link[=add_amspaf]{add_amspaf()}},

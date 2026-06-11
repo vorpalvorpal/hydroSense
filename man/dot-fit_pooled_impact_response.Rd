@@ -36,7 +36,7 @@ by near-zero ones and inflate the near-zero ones in turn.
 }
 \details{
 Pooling regularises noisy, low-SNR analytes by borrowing a response shape
-from co-varying ones — it does \strong{not} add hydrological coverage (co-sampled
+from co-varying ones -- it does \strong{not} add hydrological coverage (co-sampled
 analytes share the same regimes). Analytes with fewer than \code{min_obs_model}
 anchors, or with ~no impact variance (no shape to share), get a per-analyte
 flat bridge; if pooling fails or doesn't beat the no-shared-shape null

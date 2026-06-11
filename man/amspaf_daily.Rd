@@ -126,6 +126,13 @@ normalisation spread).  \code{NULL} (default) disables S6 and S7.}
 (default \code{1}).  Multiplies \eqn{\sigma^2} and \eqn{\gamma} (marginal
 variance) without changing \eqn{\theta} (correlation length).  Use values1 to widen the between-grab uncertainty bands.}
 
+\item{kappa}{Non-negative numeric (default \code{0.5}).  Hydrological modulation
+exponent: the smoother's process variance is multiplied by
+\eqn{\exp(\kappa \cdot z_h)} where \eqn{z_h} is the standardised daily
+flow (capped at ±4 SD).  \code{kappa = 0} disables hydrological modulation;
+larger values widen the credible band more aggressively across high-flow
+gaps.  Requires a hydrology column in \code{df}.}
+
 \item{parallel}{Logical (default \code{FALSE}).  When \code{TRUE}, the per-draw loop
 for each site is parallelised via \code{\link[future.apply:future_lapply]{future.apply::future_lapply()}}, which
 honours whatever \code{\link[future:plan]{future::plan()}} the caller has established.  Requires
