@@ -150,6 +150,10 @@
 ##
 ## ============================================================================
 
+## Session cache for SSD PAF spline closures. Keys are "method/analyte"
+## (for shipped tables) or "method/analyte/guideline_dir" (for runtime builds).
+.ssd_paf_lookup_env <- new.env(parent = emptyenv())
+
 ## Analytes excluded from msPAF regardless of SSD availability.
 ##
 ##   NO3-N: GVs from NZ document of uncertain provenance, not ANZG
@@ -1010,13 +1014,98 @@ compute_amspaf_per_sample <- function(
   tox
 }
 
+#' Resolve or build a spline-based PAF lookup closure for one analyte
+#'
+#' Returns a `stats::splinefun` closure that maps `log10(conc)` to PAF.
+#' Shipped tables (`NULL guideline_dir` + known method/analyte) are loaded
+#' from `inst/extdata/ssd_paf_lookup.qs2` and cached in the session.
+#' Runtime tables are built adaptively and likewise cached.
+#'
+#' @param analyte Analyte name string.
+#' @param method SSD method string (e.g. `"multi"`, `"anzecc"`).
+#' @param fit `fitdists` object or `NULL`.  Required for runtime builds.
+#' @param guideline_dir Path to ANZG XLSX folder, or `NULL` for shipped tables.
+#' @return A `splinefun` closure, or `NULL` if the lookup cannot be built.
+#' @keywords internal
+.ssd_paf_lookup <- function(analyte, method, fit, guideline_dir) {
+  key <- if (is.null(guideline_dir)) {
+    paste(method, analyte, sep = "/")
+  } else {
+    paste(method, analyte, guideline_dir, sep = "/")
+  }
+
+  cached <- tryCatch(get(key, envir = .ssd_paf_lookup_env, inherits = FALSE),
+                     error = function(e) NULL)
+  if (!is.null(cached)) return(cached)
+
+  if (is.null(guideline_dir)) {
+    shipped_path <- system.file("extdata", "ssd_paf_lookup.qs2",
+                                package = "leachatetools")
+    if (nzchar(shipped_path) && file.exists(shipped_path)) {
+      shipped_all <- tryCatch(qs2::qs_read(shipped_path), error = function(e) NULL)
+      if (!is.null(shipped_all) && key %in% names(shipped_all)) {
+        entry <- shipped_all[[key]]
+        lg    <- seq(entry$log10_lo, entry$log10_hi, length.out = entry$n)
+        spfun <- stats::splinefun(lg, entry$paf, method = "monoH.FC")
+        assign(key, spfun, envir = .ssd_paf_lookup_env)
+        return(spfun)
+      }
+    }
+    ## Fall through to runtime build if key is missing from the shipped table.
+  }
+
+  ## Runtime build path.
+  if (!inherits(fit, "fitdists")) return(NULL)
+
+  .align_hp <- function(f, cc) {
+    raw <- ssdtools::ssd_hp(f, conc = cc, ci = FALSE, proportion = TRUE)
+    raw <- raw[!duplicated(raw$conc), ]
+    raw$est[match(cc, raw$conc)]
+  }
+
+  ## Locate effective support via forward scan.
+  scan_conc <- 10^seq(log10(1e-6), log10(1e9), length.out = 4000L)
+  scan_paf  <- tryCatch(.align_hp(fit, scan_conc), error = function(e) NULL)
+  if (is.null(scan_paf)) return(NULL)
+
+  lo_idx    <- max(1L, which(scan_paf >= 1e-9)[1L] - 1L)
+  hi_idx    <- min(length(scan_conc), tail(which(scan_paf <= 1 - 1e-9), 1L) + 1L)
+  log10_lo  <- log10(scan_conc[lo_idx])
+  log10_hi  <- log10(scan_conc[hi_idx])
+
+  ## Adaptive knot doubling until max|err| < 1e-8 on 8 000 check points.
+  M <- 1025L
+  spfun <- tryCatch({
+    repeat {
+      lg  <- seq(log10_lo, log10_hi, length.out = M)
+      pg  <- .align_hp(fit, 10^lg)
+      f   <- stats::splinefun(lg, pg, method = "monoH.FC")
+
+      set.seed(99L)
+      q_check <- 10^stats::runif(8000L, log10_lo, log10_hi)
+      tr      <- .align_hp(fit, q_check)
+      max_err <- max(abs(pmin(pmax(f(log10(q_check)), 0), 1) - tr),
+                     na.rm = TRUE)
+      if (max_err < 1e-8) break
+      if (M >= 16384L) stop("accuracy budget not met")
+      M <- M * 2L
+    }
+    f
+  }, error = function(e) NULL)
+
+  if (is.null(spfun)) return(NULL)
+
+  assign(key, spfun, envir = .ssd_paf_lookup_env)
+  spfun
+}
+
 #' Vectorised SSD PAF lookup for one analyte
 #'
 #' Returns the proportion of species affected at each concentration in `conc`.
-#' Concentrations that are `NA` or `<= 0` map to `PAF = 0`.  When a fitted SSD
-#' object is available it is evaluated in a single [ssdtools::ssd_hp()] call
-#' over the positive concentrations; otherwise it falls back to a per-value
-#' [ssd_paf()] lookup (which re-resolves the model internally).
+#' Concentrations that are `NA`, `<= 0`, or non-finite map to `PAF = 0`.
+#' When a fitted SSD object is available it is evaluated via a spline lookup
+#' (fast path) or a single [ssdtools::ssd_hp()] call (exact fallback);
+#' otherwise it falls back to a per-value [ssd_paf()] lookup.
 #'
 #' @param fit Fitted SSD object (from the `fit` list-column) or `NULL`.
 #' @param conc Numeric vector of adjusted concentrations.
@@ -1027,12 +1116,11 @@ compute_amspaf_per_sample <- function(
 #' @keywords internal
 .ssd_paf_vec <- function(fit, conc, analyte, method, guideline_dir) {
   out <- numeric(length(conc))
-  pos <- which(!is.na(conc) & conc > 0)
-  if (length(pos) == 0L) return(out)
+  pos_idx <- which(!is.na(conc) & conc > 0 & is.finite(conc))
+  if (length(pos_idx) == 0L) return(out)
 
   if (is.null(fit)) {
-    ## Fallback: scalar ssd_paf() per positive concentration.
-    out[pos] <- vapply(conc[pos], function(c) {
+    out[pos_idx] <- vapply(conc[pos_idx], function(c) {
       paf_result <- tryCatch(
         ssd_paf(analyte, c, conc_units = "ug/L", method = method,
                 guideline_dir = guideline_dir, nboot = 0L),
@@ -1043,22 +1131,38 @@ compute_amspaf_per_sample <- function(
     return(out)
   }
 
-  ## ssdtools::ssd_hp() expands duplicated `conc` values into a cross-join
-  ## (e.g. 2 identical concentrations return 4 rows), so we cannot rely on the
-  ## result being one row per input.  Evaluate on the UNIQUE concentrations and
-  ## map back by value.  est is constant for a given conc (model-averaged), so
-  ## the first row per conc is authoritative.
-  uc <- unique(conc[pos])
-  res <- tryCatch(
-    ssdtools::ssd_hp(fit, conc = uc, ci = FALSE, proportion = TRUE),
-    error = function(e) NULL
-  )
-  if (is.null(res)) {
-    out[pos] <- NA_real_
-    return(out)
+  uc <- unique(conc[pos_idx])
+
+  ## For a non-shipped (runtime-built) table, skip the spline build when the
+  ## caller's unique concentration count is below the minimum knot threshold —
+  ## building a 1025-knot spline to evaluate 3 points is never a win.
+  use_lookup <- is.null(guideline_dir) || length(uc) >= 1025L
+
+  if (use_lookup) {
+    spfun <- .ssd_paf_lookup(analyte, method, fit, guideline_dir)
+  } else {
+    spfun <- NULL
   }
-  res <- res[!duplicated(res$conc), c("conc", "est"), drop = FALSE]
-  out[pos] <- res$est[match(conc[pos], res$conc)]
+
+  if (!is.null(spfun)) {
+    paf_uc      <- pmin(pmax(spfun(log10(uc)), 0), 1)
+    out[pos_idx] <- paf_uc[match(conc[pos_idx], uc)]
+  } else {
+    ## ssdtools::ssd_hp() expands duplicated `conc` values into a cross-join
+    ## (e.g. 2 identical concentrations return 4 rows), so we cannot rely on
+    ## the result being one row per input.  Evaluate on the UNIQUE
+    ## concentrations and map back by value.
+    res <- tryCatch(
+      ssdtools::ssd_hp(fit, conc = uc, ci = FALSE, proportion = TRUE),
+      error = function(e) NULL
+    )
+    if (is.null(res)) {
+      out[pos_idx] <- NA_real_
+      return(out)
+    }
+    res <- res[!duplicated(res$conc), c("conc", "est"), drop = FALSE]
+    out[pos_idx] <- res$est[match(conc[pos_idx], res$conc)]
+  }
   out
 }
 

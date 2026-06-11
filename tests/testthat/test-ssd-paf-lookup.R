@@ -104,8 +104,6 @@ clear_lookup_cache <- function() {
 
 describe(".ssd_paf_lookup accuracy vs ssd_hp()", {
   it("max|lookup(c) - ssd_hp(c)| < 1e-8 over 5000 random conc for Cu and NH3-N", {
-    skip("pending: #36 — .ssd_paf_lookup() not yet implemented")
-
     set.seed(42L)
     for (analyte in c("Cu", "NH3-N")) {
       fit <- get_fit(analyte)
@@ -124,17 +122,15 @@ describe(".ssd_paf_lookup accuracy vs ssd_hp()", {
       truth_vals  <- ssd_hp_truth(fit, cc)
 
       max_err <- max(abs(lookup_vals - truth_vals), na.rm = TRUE)
-      expect_lt(max_err, 1e-8,
-                info = paste("accuracy budget exceeded for analyte:", analyte,
-                             "max|err| =", max_err))
+      expect_true(max_err < 1e-8,
+                  info = paste("accuracy budget exceeded for analyte:", analyte,
+                               "max|err| =", max_err))
     }
   })
 })
 
 describe(".ssd_paf_lookup monotone & bounded", {
   it("lookup output is non-decreasing and in [0,1] for Cu over 1000 concentrations", {
-    skip("pending: #36 — .ssd_paf_lookup() not yet implemented")
-
     set.seed(7L)
     fit <- get_fit("Cu")
     cc  <- sort(10^stats::runif(1000L, -3, 5))
@@ -155,20 +151,18 @@ describe(".ssd_paf_lookup monotone & bounded", {
 
 describe(".ssd_paf_lookup clamping at grid boundaries", {
   it("clamps extreme / degenerate concentrations to [0, 1e-9] and [1-1e-9, 1]", {
-    skip("pending: #36 — .ssd_paf_lookup() not yet implemented")
-
     fit <- get_fit("Cu")
     f   <- leachatetools:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
 
     ## Well below grid lo (say, 1e-15 µg/L) → PAF near 0
     paf_lo <- pmin(pmax(f(log10(1e-15)), 0), 1)
-    expect_lte(paf_lo, 1e-9,
-               info = "conc far below grid lo should give PAF <= 1e-9")
+    expect_true(paf_lo <= 1e-9,
+                info = "conc far below grid lo should give PAF <= 1e-9")
 
     ## Well above grid hi (say, 1e12 µg/L) → PAF near 1
     paf_hi <- pmin(pmax(f(log10(1e12)), 0), 1)
-    expect_gte(paf_hi, 1 - 1e-9,
-               info = "conc far above grid hi should give PAF >= 1 - 1e-9")
+    expect_true(paf_hi >= 1 - 1e-9,
+                info = "conc far above grid hi should give PAF >= 1 - 1e-9")
 
     ## .ssd_paf_vec() handles degenerate inputs before calling the spline:
     ## conc = 0 → PAF 0; negative → PAF 0; NA → PAF 0; Inf → PAF 0
@@ -186,8 +180,6 @@ describe(".ssd_paf_lookup clamping at grid boundaries", {
 
 describe(".ssd_paf_vec breakeven exact-path fallback", {
   it("returns bit-exact ssd_hp() when n(unique pos conc) < table knot count (non-shipped path)", {
-    skip("pending: #36 — runtime breakeven logic in .ssd_paf_vec() not yet implemented")
-
     ## This spec tests that when a *runtime-built* (non-shipped) table is
     ## requested and the number of unique positive concentrations is below the
     ## breakeven threshold (table_n_knots), .ssd_paf_vec() falls back to direct
@@ -221,8 +213,6 @@ describe(".ssd_paf_vec breakeven exact-path fallback", {
 
 describe("add_amspaf draws-mode end-to-end with lookup", {
   it("returns finite AmsPAF in [0, 100] for 30 samples x 8 draws", {
-    skip("pending: #36 — .ssd_paf_lookup() fast-path not yet wired into add_amspaf()")
-
     ## We cannot easily force the exact lookup vs direct path, so we assert
     ## the weaker (but meaningful) property: the result is finite and within
     ## the valid AmsPAF range.  A tighter 1e-7 cross-run comparison is
@@ -235,8 +225,8 @@ describe("add_amspaf draws-mode end-to-end with lookup", {
     )
     amspaf_rows <- dplyr::filter(out, .data$analyte == "AmsPAF")
 
-    expect_gt(nrow(amspaf_rows), 0L,
-              info = "at least one AmsPAF row must be returned")
+    expect_true(nrow(amspaf_rows) > 0L,
+                info = "at least one AmsPAF row must be returned")
     expect_true(all(is.finite(amspaf_rows$value)),
                 info = "all AmsPAF values must be finite")
     expect_true(all(amspaf_rows$value >= 0),
@@ -251,8 +241,6 @@ describe("add_amspaf draws-mode end-to-end with lookup", {
 
 describe(".ssd_paf_lookup session cache", {
   it("returns the same closure object on a second call (no rebuild)", {
-    skip("pending: #36 — .ssd_paf_lookup_env session cache not yet implemented")
-
     clear_lookup_cache()
     fit <- get_fit("Cu")
 
@@ -268,11 +256,9 @@ describe(".ssd_paf_lookup session cache", {
 
 describe(".ssd_paf_vec NULL-fit fallback", {
   it("returns numeric[3] in [0,1] when fit is NULL, via scalar ssd_paf()", {
-    skip("pending: #36 — confirm NULL-fit fallback still works after lookup rewrite")
-
-    result <- withr::local_options(
+    result <- withr::with_options(
       list(leachatetools.suppress_ssd_messages = TRUE),
-      code = leachatetools:::.ssd_paf_vec(
+      leachatetools:::.ssd_paf_vec(
         fit           = NULL,
         conc          = c(1, 5, 10),
         analyte       = "Cu",
@@ -281,8 +267,8 @@ describe(".ssd_paf_vec NULL-fit fallback", {
       )
     )
 
-    expect_length(result, 3L,
-                  info = "NULL-fit fallback must return a vector of length 3")
+    expect_true(length(result) == 3L,
+                info = "NULL-fit fallback must return a vector of length 3")
     expect_true(is.numeric(result),
                 info = "NULL-fit fallback must return a numeric vector")
     expect_true(all(result >= 0 & result <= 1),
@@ -292,8 +278,6 @@ describe(".ssd_paf_vec NULL-fit fallback", {
 
 describe("drift guard: rebuilt table matches shipped table", {
   it("max|rebuilt - shipped paf| < 1e-6 for Cu and NH3-N on a dense grid", {
-    skip("pending: #36 — shipped inst/extdata/ssd_paf_lookup.qs2 not yet generated")
-
     shipped_path <- system.file(
       "extdata", "ssd_paf_lookup.qs2",
       package = "leachatetools"
@@ -335,17 +319,15 @@ describe("drift guard: rebuilt table matches shipped table", {
       shipped_paf_interp <- pmin(pmax(shipped_paf_interp, 0), 1)
 
       max_drift <- max(abs(rebuilt_paf - shipped_paf_interp), na.rm = TRUE)
-      expect_lt(max_drift, 1e-6,
-                info = paste("drift guard failed for analyte:", analyte,
-                             "max|rebuilt - shipped| =", max_drift))
+      expect_true(max_drift < 1e-6,
+                  info = paste("drift guard failed for analyte:", analyte,
+                               "max|rebuilt - shipped| =", max_drift))
     }
   })
 })
 
 describe("#30 equivalence preserved after #36 rewrite", {
   it("point-mode add_amspaf() on 2 samples matches a fresh reference call within 1e-9", {
-    skip("pending: #36 — confirm #30 equivalence still holds after lookup integration")
-
     ## Run add_amspaf() twice (not against a stored fixture, since the fixture
     ## tolerance was set under the old engine).  Both calls use the same inputs;
     ## numerical identity confirms the lookup rewrite is deterministic and
