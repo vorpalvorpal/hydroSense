@@ -14,7 +14,7 @@
 ## The critical asymmetry vs. the reference model: day-of-year may NEVER generate
 ## impact.  Site impacts are driven by management failure (a breach), not the
 ## calendar; rain enables an existing breach to escape but does not cause one.
-## So the impact model is season-blind — hydrology enters only as a *modulator*
+## So the impact model is season-blind -- hydrology enters only as a *modulator*
 ## of how an already-present impact expresses itself (first-flush mobilisation,
 ## sorption, antecedent memory), never as a generator.
 ##
@@ -27,12 +27,12 @@
 ## theory (Godsey, Kirchner & Clow 2009, Hydrol. Process. 23:1844-1864).
 ##
 ## Public surface
-## ──────────────
+## --------------
 ##   fit_target_model()      fit per-analyte impact-residual models
 ##   print.target_model()    S3 print method
 ##
 ## Internal
-## ────────
+## --------
 ##   .fit_impact_response()  season-blind GAM I ~ s(hydro_short) + s(hydro_long)
 ##   .resolve_target_impact() predict impact (+ implied C_norm) at query dates
 ##   .resolve_target_impact() combines ref + beta.f(hydro) + smoothed residual
@@ -46,7 +46,7 @@
 #'
 #' Models the anthropogenic increment `I = C_norm - ref_norm` (the ARA
 #' "added risk", i.e. `ara_summary()`'s `C_excess`) at a target site as a
-#' function of hydrology and a persistent latent state — **never** of
+#' function of hydrology and a persistent latent state -- **never** of
 #' day-of-year.  Used by [amspaf_daily()] (`interpolation = "model"`) to fill
 #' the gaps between grab samples with a chemistry-grounded impact estimate
 #' instead of a forward-filled concentration.
@@ -71,11 +71,11 @@
 #' hydrologically more similar bracketing anchor in between.
 #'
 #' This is a season-blind, hydrology-modulated variant of WRTDS-Kalman
-#' (Zhang & Hirsch 2019); `f(hydro)` follows concentration–discharge theory
+#' (Zhang & Hirsch 2019); `f(hydro)` follows concentration--discharge theory
 #' (Godsey, Kirchner & Clow 2009).
 #'
 #' @param target Long-format target chemistry. Required columns: `sample_id`,
-#'   `datetime`, `analyte`, `value`, `detected`. Toxicants must be in µg/L;
+#'   `datetime`, `analyte`, `value`, `detected`. Toxicants must be in ug/L;
 #'   supply via a `units.analyte` column or `conc_units`. Co-analyte rows
 #'   (pH, DOC, hardness, temperature) should be present for normalisation.
 #' @param reference_model A `reference_model` from [fit_reference_model()].
@@ -103,7 +103,7 @@
 #'   (`bs = "fs"`) is fitted across all sufficiently-sampled analytes at one
 #'   common AIC-selected window, shrinking each analyte's response toward a
 #'   shared shape. This *regularises* noisy, low-signal analytes (it does not
-#'   add hydrological coverage — co-sampled analytes already share the same
+#'   add hydrological coverage -- co-sampled analytes already share the same
 #'   regimes), and falls back to independent fits if it fails or doesn't beat an
 #'   analyte-intercept null. Set `pool = FALSE` to force independent per-analyte
 #'   fits (appropriate only when all analytes are densely sampled).
@@ -124,8 +124,8 @@
 #'   [ara_summary()]
 #'
 #' @references
-#' Zhang Q, Hirsch RM (2019) Water Resources Research 55(11):9705–9723.
-#' Godsey SE, Kirchner JW, Clow DW (2009) Hydrological Processes 23:1844–1864.
+#' Zhang Q, Hirsch RM (2019) Water Resources Research 55(11):9705--9723.
+#' Godsey SE, Kirchner JW, Clow DW (2009) Hydrological Processes 23:1844--1864.
 #'
 #' @examples
 #' \dontrun{
@@ -150,7 +150,7 @@ fit_target_model <- function(
     pool               = TRUE,
     eps                = 1e-9
 ) {
-  ## ── Validation ─────────────────────────────────────────────────────────────
+  ## -- Validation -------------------------------------------------------------
   checkmate::assert_data_frame(target)
   checkmate::assert_flag(pool)
   checkmate::assert_names(names(target),
@@ -169,7 +169,7 @@ fit_target_model <- function(
   }
   checkmate::assert_int(min_obs_model, lower = 4L)
 
-  ## ── Hydrology (default: reuse the reference model's series) ─────────────────
+  ## -- Hydrology (default: reuse the reference model's series) -----------------
   if (is.null(hydro)) {
     hydro      <- reference_model$hydro
     hydro_type <- reference_model$hydro_type
@@ -183,7 +183,7 @@ fit_target_model <- function(
                          value = as.numeric(.data$value))
   hydro <- hydro[order(hydro$date), ]
 
-  ## ── Units, optional impute-first, normalisation ────────────────────────────
+  ## -- Units, optional impute-first, normalisation ----------------------------
   meta <- .load_analyte_metadata(analyte_metadata)
   ssd_analytes <- meta$analyte[
     !is.na(meta$ssd_available) & meta$ssd_available == TRUE &
@@ -206,13 +206,13 @@ fit_target_model <- function(
     .data$value_norm > 0, .data$analyte %in% ssd_analytes
   )
 
-  ## ── Reference norm at each target sample (instant resolver) ────────────────
+  ## -- Reference norm at each target sample (instant resolver) ----------------
   ref_resolved <- .resolve_ref_norm_instant(
     reference_model,
     dplyr::distinct(target, .data$sample_id, .data$datetime)
   )
 
-  ## ── Per-sample impact: I = value_norm - ref_norm ───────────────────────────
+  ## -- Per-sample impact: I = value_norm - ref_norm ---------------------------
   obs_samples <- norm_det |>
     dplyr::select("sample_id", date = ".date", "analyte", "value_norm") |>
     dplyr::inner_join(
@@ -222,8 +222,8 @@ fit_target_model <- function(
     dplyr::mutate(I = .data$value_norm - .data$ref_norm) |>
     dplyr::filter(is.finite(.data$I))
 
-  ## WQ-layer predictor scores (issue #14 item B). The WQ→metal prediction is a
-  ## regression on the imputation model's chemistry PCA — not Bayesian (the
+  ## WQ-layer predictor scores (issue #14 item B). The WQ->metal prediction is a
+  ## regression on the imputation model's chemistry PCA -- not Bayesian (the
   ## cross-metal coupling only acts when sibling metals are observed). We reuse
   ## the PCA to predict each metal from water quality and interpolate only the
   ## residual `d`, which lets WQ-only days beat pure impact interpolation.
@@ -239,7 +239,7 @@ fit_target_model <- function(
   anchors_all <- obs_samples |>
     dplyr::summarise(I = mean(.data$I, na.rm = TRUE), .by = c("date", "analyte"))
 
-  ## ── Hydro response: pooled (factor-smooth shrinkage) or per-analyte ─────────
+  ## -- Hydro response: pooled (factor-smooth shrinkage) or per-analyte ---------
   target_analytes <- intersect(unique(anchors_all$analyte), ssd_analytes)
 
   if (pool && length(target_analytes) >= 2L) {
@@ -264,7 +264,7 @@ fit_target_model <- function(
     )
   }
 
-  ## ── WQ layer + residual d per analyte (only when a PCA is available) ────────
+  ## -- WQ layer + residual d per analyte (only when a PCA is available) --------
   models <- vector("list", length(target_analytes))
   names(models) <- target_analytes
   for (nm in target_analytes) {
@@ -295,7 +295,7 @@ fit_target_model <- function(
   )
 }
 
-#' Fit the WQ→metal layer and its residual `d` for one analyte
+#' Fit the WQ->metal layer and its residual `d` for one analyte
 #'
 #' A GAM of normalised concentration on the chemistry-PCA scores (the
 #' non-Bayesian WQ prediction), kept only if it beats an intercept-only null by
@@ -406,7 +406,7 @@ fit_target_model <- function(
 
   if (is.null(best)) return(flat(ws0, wl0))
 
-  ## Null (intercept-only) — the model must beat it to earn the "model" tier
+  ## Null (intercept-only) -- the model must beat it to earn the "model" tier
   null_fit <- tryCatch(
     mgcv::gam(I ~ 1, data = best$df, method = "REML"),
     error = function(e) NULL
@@ -448,7 +448,7 @@ fit_target_model <- function(
 #' by near-zero ones and inflate the near-zero ones in turn.
 #'
 #' Pooling regularises noisy, low-SNR analytes by borrowing a response shape
-#' from co-varying ones — it does **not** add hydrological coverage (co-sampled
+#' from co-varying ones -- it does **not** add hydrological coverage (co-sampled
 #' analytes share the same regimes). Analytes with fewer than `min_obs_model`
 #' anchors, or with ~no impact variance (no shape to share), get a per-analyte
 #' flat bridge; if pooling fails or doesn't beat the no-shared-shape null
@@ -501,7 +501,7 @@ fit_target_model <- function(
   ## window-independent (windows change only the hydro features), so the
   ## centre/scale are computed once.  Pooling the SHAPE on a common z-scale is
   ## what keeps a large-magnitude analyte (e.g. Cu) from being shrunk toward a
-  ## population dominated by near-zero analytes — and a near-zero analyte
+  ## population dominated by near-zero analytes -- and a near-zero analyte
   ## (e.g. Ni) from being inflated toward one carrying the big signal.  Without
   ## this, the shared `bs = "fs"` penalty (which shrinks each analyte's level,
   ## not just its wiggliness) cross-contaminates impact magnitudes across
@@ -538,7 +538,7 @@ fit_target_model <- function(
   fit_pool <- function(df_m) {
     nlev <- nlevels(df_m$analyte)
     k_h  <- max(3L, min(4L, floor(nrow(df_m) / nlev) - 1L))
-    ## Factor-smooth fits routinely emit benign convergence warnings — suppress
+    ## Factor-smooth fits routinely emit benign convergence warnings -- suppress
     ## them but keep the fit (only a hard error means "unusable").
     tryCatch(
       suppressWarnings(
@@ -656,7 +656,7 @@ fit_target_model <- function(
 
 #' Align a residual path (values on the smoother's clipped grid) to query dates
 #'
-#' Returns `NA` for query dates outside the analyte's clipped grab span — those
+#' Returns `NA` for query dates outside the analyte's clipped grab span -- those
 #' rows are dropped by [.resolve_target_impact()] (per-analyte clipping).
 #' @keywords internal
 .residual_on_qdates <- function(grid_dates, path, qdates) {
@@ -666,14 +666,14 @@ fit_target_model <- function(
 
 #' Predict the site impact (and implied normalised concentration) at query dates
 #'
-#' For each query (date × analyte): `I_hat = beta·f(hydro) + S`, with
-#' `beta·f(hydro)` from the fitted response (0 for bridge-tier analytes) and the
+#' For each query (date x analyte): `I_hat = beta*f(hydro) + S`, with
+#' `beta*f(hydro)` from the fitted response (0 for bridge-tier analytes) and the
 #' residual `S` from the state-space smoother (`residual_paths`, or the smoother
 #' posterior mean when `NULL`).  Also returns `ref_norm` (from the reference
 #' model) and the implied `C_norm = max(ref_norm + I_hat, 0)`.
 #'
 #' @param target_model A `target_model`.
-#' @param query Tibble with `date` (Date) — the days to predict.
+#' @param query Tibble with `date` (Date) -- the days to predict.
 #' @param analytes Character; analytes to predict (default: all modelled).
 #' @param wq Optional long-format water-quality data frame (`sample_id`,
 #'   `analyte`, `value`) giving each query day's WQ, with `sample_id` equal to
@@ -720,7 +720,7 @@ fit_target_model <- function(
     m  <- target_model$models[[nm]]
     sc <- static[[nm]]
 
-    ## ref_vec and beta.f(hydro) are static across draws — use the precomputed
+    ## ref_vec and beta.f(hydro) are static across draws -- use the precomputed
     ## context when supplied (and compute beta.f as lpmatrix %*% coef, which
     ## equals predict.gam() but avoids rebuilding the basis every draw).
     if (!is.null(sc)) {
@@ -803,7 +803,7 @@ print.target_model <- function(x, ...) {
   n_bridge <- n_an - n_model
 
   hr <- if (!is.null(x$hydro) && nrow(x$hydro) > 0L) {
-    sprintf("%s – %s", min(x$hydro$date), max(x$hydro$date))
+    sprintf("%s -- %s", min(x$hydro$date), max(x$hydro$date))
   } else "unknown"
 
   cat(sprintf(

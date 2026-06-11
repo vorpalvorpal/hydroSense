@@ -7,9 +7,9 @@
 .summarise_ara_coverage(pafs_long, ara_enabled)
 }
 \arguments{
-\item{ara_enabled}{Logical; whether the caller supplied a reference.}
+\item{pafs_long}{Flat per-analyte PAF breakdown (the \code{analyte_pafs} attribute).}
 
-\item{amspaf_df}{The assembled AmsPAF tibble (must carry \code{analyte_pafs}).}
+\item{ara_enabled}{Logical; whether the caller supplied a reference.}
 }
 \description{
 When ARA is enabled but some analytes had no matching reference value, those

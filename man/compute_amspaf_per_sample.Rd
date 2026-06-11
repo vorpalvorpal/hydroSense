@@ -46,7 +46,7 @@ across samples} rather than called once per (sample × analyte):
 \item one vectorised \code{\link[ssdtools:ssd_hp]{ssdtools::ssd_hp()}} call per analyte across every
 sample (\code{\link[=.amspaf_add_paf]{.amspaf_add_paf()}});
 \item CA/IA mixture combination via grouped reductions over
-(sample, draw\link{, MOA group}).
+(sample, draw, MOA group).
 }
 }
 \keyword{internal}

@@ -2,7 +2,7 @@
 % Please edit documentation in R/target_model.R
 \name{.fit_wq_layer}
 \alias{.fit_wq_layer}
-\title{Fit the WQ→metal layer and its residual \code{d} for one analyte}
+\title{Fit the WQ->metal layer and its residual \code{d} for one analyte}
 \usage{
 .fit_wq_layer(
   os_nm,

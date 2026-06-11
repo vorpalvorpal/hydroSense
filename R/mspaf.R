@@ -686,7 +686,7 @@ compute_ca_group_mspaf <- function(group_data) {
 #'   \item one vectorised [ssdtools::ssd_hp()] call per analyte across every
 #'     sample ([.amspaf_add_paf()]);
 #'   \item CA/IA mixture combination via grouped reductions over
-#'     (sample, draw[, MOA group]).
+#'     (sample, draw, MOA group).
 #' }
 #'
 #' @param sample_data Per-feature long-format df (may include co-analyte rows
@@ -1195,7 +1195,7 @@ compute_amspaf_per_sample <- function(
 #' many samples each such analyte affected, so the caller knows where the ARA
 #' adjustment did *not* apply.  No-op when ARA is disabled.
 #'
-#' @param amspaf_df The assembled AmsPAF tibble (must carry `analyte_pafs`).
+#' @param pafs_long Flat per-analyte PAF breakdown (the `analyte_pafs` attribute).
 #' @param ara_enabled Logical; whether the caller supplied a reference.
 #' @keywords internal
 .summarise_ara_coverage <- function(pafs_long, ara_enabled) {
