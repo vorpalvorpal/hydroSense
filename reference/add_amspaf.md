@@ -22,7 +22,10 @@ add_amspaf(
   tau = 90,
   tau_units = "day",
   window = 365,
-  window_units = "day"
+  window_units = "day",
+  return = c("summary", "draws"),
+  interval = 0.9,
+  central = c("median", "mean")
 )
 ```
 
@@ -132,20 +135,48 @@ add_amspaf(
 
   Look-back window length for chronic integration. Default `365` days.
 
+- return:
+
+  Output mode for draw-carrier input (see
+  [`summarise_draws()`](https://vorpalvorpal.github.io/leachatetools/reference/summarise_draws.md)).
+  `"summary"` (default) collapses posterior draws to a central estimate
+  plus a credible interval (`value`, `value_lower`, `value_upper`,
+  `n_draws`); `"draws"` returns the raw per-draw AmsPAF rows
+  (`draw_id 1..N`) for external risk models or further composition (e.g.
+  into
+  [`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md)).
+  For point (non-draw) input both modes return byte-identical output
+  with no interval columns.
+
+- interval:
+
+  Width of the credible interval when `return = "summary"`. Default
+  `0.90` (5th/95th percentile bounds).
+
+- central:
+
+  Central-tendency statistic when `return = "summary"`: `"median"`
+  (default) or `"mean"`.
+
 ## Value
 
 The input `df` with AmsPAF rows appended. Each AmsPAF row carries:
 `value` (AmsPAF as a percentage, 0–100+), `detected = TRUE`,
 `analyte = "AmsPAF"`, `n_analytes_used` (integer), `n_analytes_imputed`
 (integer, 0 if `imputed` column absent), `dominant_analyte` (character),
-`max_paf` (numeric), `analyte_pafs` (list column of per-analyte
-diagnostic tibbles, each with `analyte`, `C_adj`, `PAF`, `moa_group`,
-and `ref_source` — one of `"disabled"`, `"matched"`, `"unmatched"`
-recording how the ARA reference was resolved for that analyte).
+and `max_paf` (numeric).
 
-The result also carries an `"ara_summary"` attribute (a tibble) with
-per-(sample × analyte) ARA diagnostics. Retrieve it with
+The result carries two attributes (read them before further dplyr
+wrangling, which drops attributes): `"analyte_pafs"` — the per-analyte
+PAF breakdown as a flat tibble (`site_id`, `sample_id`, `draw_id` in
+draws mode, `analyte`, `C_adj`, `PAF`, `moa_group`, `ref_source`),
+retrieved with
+[`analyte_pafs()`](https://vorpalvorpal.github.io/leachatetools/reference/analyte_pafs.md);
+and `"ara_summary"` — per-(sample × analyte) ARA diagnostics, retrieved
+with
 [`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md).
+(`analyte_pafs` was formerly a per-row list-column; it is now a flat
+attribute — issue \#30.)
 
 Tier breaks are not provided by this package — AmsPAF is a continuous
 risk metric and the threshold at which a community is "impacted" depends

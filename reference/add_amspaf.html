@@ -70,7 +70,10 @@ detail.</p>
 <span>  tau <span class="op">=</span> <span class="fl">90</span>,</span>
 <span>  tau_units <span class="op">=</span> <span class="st">"day"</span>,</span>
 <span>  window <span class="op">=</span> <span class="fl">365</span>,</span>
-<span>  window_units <span class="op">=</span> <span class="st">"day"</span></span>
+<span>  window_units <span class="op">=</span> <span class="st">"day"</span>,</span>
+<span>  return <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"summary"</span>, <span class="st">"draws"</span><span class="op">)</span>,</span>
+<span>  interval <span class="op">=</span> <span class="fl">0.9</span>,</span>
+<span>  central <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"median"</span>, <span class="st">"mean"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -165,6 +168,26 @@ integration when <code>reference</code> is a <code>reference_model</code>.  Defa
 <dd><p>Look-back window length for chronic integration.
 Default <code>365</code> days.</p></dd>
 
+
+<dt id="arg-return">return<a class="anchor" aria-label="anchor" href="#arg-return"></a></dt>
+<dd><p>Output mode for draw-carrier input (see <code><a href="summarise_draws.html">summarise_draws()</a></code>).
+<code>"summary"</code> (default) collapses posterior draws to a central estimate plus
+a credible interval (<code>value</code>, <code>value_lower</code>, <code>value_upper</code>, <code>n_draws</code>);
+<code>"draws"</code> returns the raw per-draw AmsPAF rows (<code>draw_id 1..N</code>) for
+external risk models or further composition (e.g. into
+<code><a href="time_weighted_aggregate.html">time_weighted_aggregate()</a></code>).  For point (non-draw) input both modes
+return byte-identical output with no interval columns.</p></dd>
+
+
+<dt id="arg-interval">interval<a class="anchor" aria-label="anchor" href="#arg-interval"></a></dt>
+<dd><p>Width of the credible interval when <code>return = "summary"</code>.
+Default <code>0.90</code> (5th/95th percentile bounds).</p></dd>
+
+
+<dt id="arg-central">central<a class="anchor" aria-label="anchor" href="#arg-central"></a></dt>
+<dd><p>Central-tendency statistic when <code>return = "summary"</code>:
+<code>"median"</code> (default) or <code>"mean"</code>.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -172,13 +195,14 @@ Default <code>365</code> days.</p></dd>
 <code>value</code> (AmsPAF as a percentage, 0–100+), <code>detected = TRUE</code>,
 <code>analyte = "AmsPAF"</code>, <code>n_analytes_used</code> (integer),
 <code>n_analytes_imputed</code> (integer, 0 if <code>imputed</code> column absent),
-<code>dominant_analyte</code> (character), <code>max_paf</code> (numeric),
-<code>analyte_pafs</code> (list column of per-analyte diagnostic tibbles, each with
-<code>analyte</code>, <code>C_adj</code>, <code>PAF</code>, <code>moa_group</code>, and <code>ref_source</code> — one of
-<code>"disabled"</code>, <code>"matched"</code>, <code>"unmatched"</code> recording how the ARA reference
-was resolved for that analyte).</p>
-<p>The result also carries an <code>"ara_summary"</code> attribute (a tibble) with
-per-(sample × analyte) ARA diagnostics.  Retrieve it with <code><a href="ara_summary.html">ara_summary()</a></code>.</p>
+<code>dominant_analyte</code> (character), and <code>max_paf</code> (numeric).</p>
+<p>The result carries two attributes (read them before further dplyr wrangling,
+which drops attributes): <code>"analyte_pafs"</code> — the per-analyte PAF breakdown as
+a flat tibble (<code>site_id</code>, <code>sample_id</code>, <code>draw_id</code> in draws mode, <code>analyte</code>,
+<code>C_adj</code>, <code>PAF</code>, <code>moa_group</code>, <code>ref_source</code>), retrieved with <code><a href="analyte_pafs.html">analyte_pafs()</a></code>;
+and <code>"ara_summary"</code> — per-(sample × analyte) ARA diagnostics, retrieved with
+<code><a href="ara_summary.html">ara_summary()</a></code>. (<code>analyte_pafs</code> was formerly a per-row list-column; it is
+now a flat attribute — issue #30.)</p>
 <p>Tier breaks are not provided by this package — AmsPAF is a continuous
 risk metric and the threshold at which a community is "impacted"
 depends on the assessment context.  See

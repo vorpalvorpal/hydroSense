@@ -6,7 +6,7 @@ for each `site_id` group. Runs in three phases so the (relatively
 expensive) SSD evaluation is **batched across samples** rather than
 called once per (sample × analyte):
 
-1.  per-sample chemistry normalisation + ARA shift
+1.  chemistry normalisation + ARA shift, vectorised across all rows
     ([`.amspaf_adjust()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-amspaf_adjust.md));
 
 2.  one vectorised
@@ -14,8 +14,8 @@ called once per (sample × analyte):
     call per analyte across every sample
     ([`.amspaf_add_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-amspaf_add_paf.md));
 
-3.  per-sample CA/IA mixture combination
-    ([`.amspaf_combine()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-amspaf_combine.md)).
+3.  CA/IA mixture combination via grouped reductions over (sample, draw,
+    MOA group).
 
 ## Usage
 

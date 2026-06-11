@@ -4,6 +4,8 @@
 
 - [Interpreting chronic AmsPAF
   outputs](https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.md):
+- [Daily AmsPAF with uncertainty
+  quantification](https://vorpalvorpal.github.io/leachatetools/articles/daily-uncertainty.md):
 - [Imputing missing and below-detection
   chemistry](https://vorpalvorpal.github.io/leachatetools/articles/imputation.md):
 - [Detecting leachate with the Leachate Mixing Fraction

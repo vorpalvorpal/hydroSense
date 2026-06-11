@@ -9,14 +9,14 @@ the ARA adjustment did *not* apply. No-op when ARA is disabled.
 ## Usage
 
 ``` r
-.summarise_ara_coverage(amspaf_df, ara_enabled)
+.summarise_ara_coverage(pafs_long, ara_enabled)
 ```
 
 ## Arguments
 
-- amspaf_df:
+- pafs_long:
 
-  The assembled AmsPAF tibble (must carry `analyte_pafs`).
+  Flat per-analyte PAF breakdown (the `analyte_pafs` attribute).
 
 - ara_enabled:
 

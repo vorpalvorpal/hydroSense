@@ -70,7 +70,16 @@ analysis, visualisation, and downstream <code><a href="time_weighted_aggregate.h
 <span>  guideline_dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"leachatetools.guideline_dir"</span><span class="op">)</span>,</span>
 <span>  min_analytes <span class="op">=</span> <span class="fl">3L</span>,</span>
 <span>  conc_units <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  require_temperature <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  require_temperature <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  ndraws <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  return <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"summary"</span>, <span class="st">"draws"</span><span class="op">)</span>,</span>
+<span>  interval <span class="op">=</span> <span class="fl">0.9</span>,</span>
+<span>  central <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"median"</span>, <span class="st">"mean"</span><span class="op">)</span>,</span>
+<span>  grab_cv <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  ou_scale <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  kappa <span class="op">=</span> <span class="fl">0.5</span>,</span>
+<span>  parallel <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -170,11 +179,82 @@ AmsPAF to be computed. Default <code>3L</code>.</p></dd>
 sample with <code>NH3-N</code> must also carry a <code>temperature</code> value. Passed to
 <code><a href="add_amspaf.html">add_amspaf()</a></code>. Set <code>FALSE</code> for datasets without ammonia.</p></dd>
 
+
+<dt id="arg-ndraws">ndraws<a class="anchor" aria-label="anchor" href="#arg-ndraws"></a></dt>
+<dd><p>Positive integer or <code>NULL</code> (default). When non-<code>NULL</code>, runs
+the full OU/GAM uncertainty propagation for <code>ndraws</code> independent draws.
+Requires <code>interpolation = "model"</code>.</p></dd>
+
+
+<dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
+<dd><p>Integer or <code>NULL</code>. RNG seed for reproducibility of draws.</p></dd>
+
+
+<dt id="arg-return">return<a class="anchor" aria-label="anchor" href="#arg-return"></a></dt>
+<dd><p><code>"summary"</code> (default) or <code>"draws"</code>. <code>"summary"</code> collapses
+draws to a central estimate plus credible-interval bounds (<code>amspaf_lower</code>,
+<code>amspaf_upper</code>). <code>"draws"</code> returns one row per (site \(\times\) day
+\(\times\) draw) with a <code>draw_id</code> column.  Ignored in point mode
+(<code>ndraws = NULL</code>).</p></dd>
+
+
+<dt id="arg-interval">interval<a class="anchor" aria-label="anchor" href="#arg-interval"></a></dt>
+<dd><p>Credible interval width for <code>return = "summary"</code> (default
+<code>0.9</code>).  The lower bound is the <code>(1 - interval)/2</code> quantile, the upper
+is the <code>1 - (1 - interval)/2</code> quantile.</p></dd>
+
+
+<dt id="arg-central">central<a class="anchor" aria-label="anchor" href="#arg-central"></a></dt>
+<dd><p>Central tendency for <code>return = "summary"</code>.  <code>"median"</code>
+(default) or <code>"mean"</code>.</p></dd>
+
+
+<dt id="arg-grab-cv">grab_cv<a class="anchor" aria-label="anchor" href="#arg-grab-cv"></a></dt>
+<dd><p>Numeric scalar or named numeric vector of coefficients of
+variation for grab-sample measurement error.  A scalar applies the same
+CV to all analytes; a named vector (e.g. <code>c(Cu = 0.1, pH = 0.02)</code>)
+applies analyte-specific CVs.  Controls two uncertainty sources:
+S6 (anchor S-value spread at measured dates) and S7 (co-analyte
+normalisation spread).  <code>NULL</code> (default) disables S6 and S7.</p></dd>
+
+
+<dt id="arg-ou-scale">ou_scale<a class="anchor" aria-label="anchor" href="#arg-ou-scale"></a></dt>
+<dd><p>Positive numeric scale factor for the OU bridge envelope
+(default <code>1</code>).  Multiplies \(\sigma^2\) and \(\gamma\) (marginal
+variance) without changing \(\theta\) (correlation length).  Use values1 to widen the between-grab uncertainty bands.</p></dd>
+
+
+<dt id="arg-kappa">kappa<a class="anchor" aria-label="anchor" href="#arg-kappa"></a></dt>
+<dd><p>Non-negative numeric (default <code>0.5</code>).  Hydrological modulation
+exponent: the smoother's process variance is multiplied by
+\(\exp(\kappa \cdot z_h)\) where \(z_h\) is the standardised daily
+flow (capped at ±4 SD).  <code>kappa = 0</code> disables hydrological modulation;
+larger values widen the credible band more aggressively across high-flow
+gaps.  Requires a hydrology column in <code>df</code>.</p></dd>
+
+
+<dt id="arg-parallel">parallel<a class="anchor" aria-label="anchor" href="#arg-parallel"></a></dt>
+<dd><p>Logical (default <code>FALSE</code>).  When <code>TRUE</code>, the per-draw loop
+for each site is parallelised via <code><a href="https://future.apply.futureverse.org/reference/future_lapply.html" class="external-link">future.apply::future_lapply()</a></code>, which
+honours whatever <code><a href="https://future.futureverse.org/reference/plan.html" class="external-link">future::plan()</a></code> the caller has established.  Requires
+the <strong>future.apply</strong> package.  Set a parallel plan before calling, e.g.
+<code>future::plan(future::multisession, workers = 4)</code>.  In parallel mode the
+RNG stream for each draw is managed by <code>future.apply</code> (L'Ecuyer-CMRG),
+so draws will differ from sequential mode even with the same <code>seed</code>, but
+are themselves reproducible.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A tibble with one row per (site \(\times\) day) for days with
-sufficient analyte coverage:</p><dl><dt><code>date</code></dt>
+    <p><strong>Point mode</strong> (<code>ndraws = NULL</code>): a tibble with one row per (site
+\(\times\) day) for days with sufficient analyte coverage.</p>
+<p><strong>Draws mode</strong> (<code>ndraws &gt; 0</code>, <code>return = "summary"</code>): same schema plus two
+extra columns <code>amspaf_lower</code> and <code>amspaf_upper</code> (the credible interval
+bounds from collapsing the <code>ndraws</code> posterior draws).</p>
+<p><strong>Draws mode</strong> (<code>ndraws &gt; 0</code>, <code>return = "draws"</code>): one row per (site
+\(\times\) day \(\times\) draw), with an additional <code>draw_id</code>
+integer column.</p>
+<p>Common columns:</p><dl><dt><code>date</code></dt>
 <dd><p>Date of this daily estimate.</p></dd>
 
 <dt><code>site_id</code></dt>
@@ -198,15 +278,13 @@ sample on this day (not interpolated).</p></dd>
 
 <dt><code>days_since_last_sample</code></dt>
 <dd><p>Days since the most recent grab sample
-for any SSD-eligible analyte. Helps identify heavily interpolated
-regions.</p></dd>
-
-<dt><code>analyte_pafs</code></dt>
-<dd><p>List column of per-analyte diagnostic tibbles
-(same structure as from <code><a href="add_amspaf.html">add_amspaf()</a></code>).</p></dd>
+for any SSD-eligible analyte.</p></dd>
 
 
-</dl><p>An <code>"ara_summary"</code> attribute is attached; retrieve it with <code><a href="ara_summary.html">ara_summary()</a></code>.</p>
+</dl><p><code>"analyte_pafs"</code> (per-analyte PAF breakdown, re-keyed by date) and
+<code>"ara_summary"</code> attributes are attached; retrieve them with <code><a href="analyte_pafs.html">analyte_pafs()</a></code>
+and <code><a href="ara_summary.html">ara_summary()</a></code>. (<code>analyte_pafs</code> is now a flat attribute, not a
+list-column — issue #30.)</p>
     </div>
     <div class="section level2">
     <h2 id="interpolation">Interpolation<a class="anchor" aria-label="anchor" href="#interpolation"></a></h2>

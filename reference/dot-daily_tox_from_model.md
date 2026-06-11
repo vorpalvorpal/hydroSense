@@ -1,16 +1,12 @@
 # Model-based daily toxicant interpolation (season-blind impact model)
 
-Fits a
-[`fit_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_target_model.md)
-on the site's grab chemistry and the supplied `reference_model`,
-predicts each toxicant's normalised concentration
-`C_norm = ref_norm + impact` on every daily date, and reconstructs the
-raw µg/L concentration `C_raw = C_norm / factor` (the normalisation is
-multiplicative, so the factor is
-`normalise(1, co-analytes_of_the_day)`). Modelled-toxicant rows in
-`daily_long` are replaced with these estimates (in µg/L,
-`units.analyte = "ug/L"`); co-analytes and non-modelled toxicants are
-left untouched. On any failure the input is returned unchanged.
+Thin wrapper: calls
+[`.fit_daily_target()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-fit_daily_target.md)
+once then
+[`.predict_daily_tox()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-predict_daily_tox.md)
+once (point mode, no ε). Modelled-toxicant rows in `daily_long` are
+replaced; co-analytes and non-modelled toxicants are left untouched. On
+any failure the input is returned unchanged.
 
 ## Usage
 
@@ -61,3 +57,11 @@ left untouched. On any failure the input is returned unchanged.
 ## Value
 
 `daily_long` with modelled-toxicant rows replaced.
+
+## Details
+
+For draw-mode orchestration (Chunk E), call the two underlying helpers
+directly: fit once with
+[`.fit_daily_target()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-fit_daily_target.md),
+then loop N times over
+`.predict_daily_tox(fdm, perturbed_tm, eps_paths)`.

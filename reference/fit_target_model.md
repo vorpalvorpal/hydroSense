@@ -4,7 +4,7 @@ Models the anthropogenic increment `I = C_norm - ref_norm` (the ARA
 "added risk", i.e.
 [`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md)'s
 `C_excess`) at a target site as a function of hydrology and a persistent
-latent state — **never** of day-of-year. Used by
+latent state – **never** of day-of-year. Used by
 [`amspaf_daily()`](https://vorpalvorpal.github.io/leachatetools/reference/amspaf_daily.md)
 (`interpolation = "model"`) to fill the gaps between grab samples with a
 chemistry-grounded impact estimate instead of a forward-filled
@@ -35,7 +35,7 @@ fit_target_model(
 - target:
 
   Long-format target chemistry. Required columns: `sample_id`,
-  `datetime`, `analyte`, `value`, `detected`. Toxicants must be in µg/L;
+  `datetime`, `analyte`, `value`, `detected`. Toxicants must be in ug/L;
   supply via a `units.analyte` column or `conc_units`. Co-analyte rows
   (pH, DOC, hardness, temperature) should be present for normalisation.
 
@@ -96,7 +96,7 @@ fit_target_model(
   fitted across all sufficiently-sampled analytes at one common
   AIC-selected window, shrinking each analyte's response toward a shared
   shape. This *regularises* noisy, low-signal analytes (it does not add
-  hydrological coverage — co-sampled analytes already share the same
+  hydrological coverage – co-sampled analytes already share the same
   regimes), and falls back to independent fits if it fails or doesn't
   beat an analyte-intercept null. Set `pool = FALSE` to force
   independent per-analyte fits (appropriate only when all analytes are

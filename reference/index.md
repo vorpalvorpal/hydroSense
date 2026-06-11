@@ -86,6 +86,17 @@ background adjustment. Includes the static and temporal
   [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
   result
 
+- [`analyte_pafs()`](https://vorpalvorpal.github.io/leachatetools/reference/analyte_pafs.md)
+  : Per-analyte PAF breakdown from add_amspaf()
+
+- [`summarise_draws()`](https://vorpalvorpal.github.io/leachatetools/reference/summarise_draws.md)
+  : Summarise a draw-carrier frame to posterior median and credible
+  interval
+
+- [`draw_measurement_error()`](https://vorpalvorpal.github.io/leachatetools/reference/draw_measurement_error.md)
+  : Expand observed measurements into lognormal posterior-predictive
+  draws
+
 ## Water chemistry & normalisation
 
 Bioavailability and physicochemical adjustments that bring measured

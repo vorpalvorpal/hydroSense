@@ -10,7 +10,15 @@ observations are left unchanged.
 ## Usage
 
 ``` r
-impute_coanalytes(df, model, targets = NULL, min_obs = 10L)
+impute_coanalytes(
+  df,
+  model,
+  targets = NULL,
+  min_obs = 10L,
+  return = c("point", "draws"),
+  ndraws = NULL,
+  seed = NULL
+)
 ```
 
 ## Arguments
@@ -40,11 +48,36 @@ impute_coanalytes(df, model, targets = NULL, min_obs = 10L)
   Minimum number of quantified observations required to fit a GAM for a
   target. Targets with fewer observations are skipped. Default `10L`.
 
+- return:
+
+  `"point"` (default) for the posterior mean of the GAM prediction —
+  identical to pre-draws behaviour. `"draws"` for full
+  posterior-predictive draws: each missing co-analyte cell emits `N`
+  rows keyed by `draw_id 1..N`, reflecting both parameter uncertainty
+  (`beta ~ N(coef(gam), Vp)`) and residual Gaussian noise (`gam$sig2`).
+  Observed co-analyte cells keep `draw_id = NA`.
+
+- ndraws:
+
+  Number of draws to generate. Required when `return = "draws"` and `df`
+  contains no existing draws. When `df` already carries draws (from
+  [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)),
+  `N` is inferred from the existing draw domain; `ndraws` must be `NULL`
+  or equal to that count.
+
+- seed:
+
+  Optional integer seed passed to
+  [`set.seed()`](https://rdrr.io/r/base/Random.html) before the sampling
+  calls, for reproducibility.
+
 ## Value
 
 `df` with missing co-analyte rows filled in, tagged with
-`imputed = TRUE` and `imputed_kind = "missing"`. All other rows are
-unchanged.
+`imputed = TRUE` and `imputed_kind = "missing"`. In `"draws"` mode each
+imputed cell is replicated `N` times with `draw_id 1..N`; observed cells
+keep `draw_id = NA`. In `"point"` mode the output schema is unchanged
+from the pre-draws behaviour.
 
 ## Details
 
@@ -65,14 +98,17 @@ summary.
 ## See also
 
 [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md),
-[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
+[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md),
+[`summarise_draws()`](https://vorpalvorpal.github.io/leachatetools/reference/summarise_draws.md)
 
 ## Examples
 
 ``` r
 if (FALSE) { # \dontrun{
-# Deterministic GAM-based imputation of normalisation co-analytes
-# (pH, DOC, hardness, ...) from the measured analyte suite.
-impute_coanalytes(monitoring_long)
+# Deterministic GAM-based imputation (default, point mode)
+impute_coanalytes(monitoring_long, model)
+
+# Posterior-predictive draws when df already carries metals draws
+impute_coanalytes(metals_draws, model, return = "draws")
 } # }
 ```

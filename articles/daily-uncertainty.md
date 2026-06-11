@@ -1,0 +1,312 @@
+# Daily AmsPAF with uncertainty quantification
+
+[`amspaf_daily()`](https://vorpalvorpal.github.io/leachatetools/reference/amspaf_daily.md)
+can propagate uncertainty through the entire daily interpolation
+pipeline, producing a credible envelope around each daily AmsPAF
+estimate that **balloons between grab samples and pinches to near-zero
+width on sampled days**. This vignette explains the model, shows how to
+use it, and describes how to interpret the output.
+
+## Why a credible interval matters
+
+The daily AmsPAF series is constructed by interpolating sparse grab
+samples (typically fortnightly or monthly) onto a daily grid. Between
+grabs, concentrations are unknown: the impact model predicts a
+best-guess trajectory driven by hydrology, but that prediction carries
+genuine uncertainty. Without propagating this uncertainty the point
+estimate can create a false sense of precision — especially in the
+middle of long gaps between samples.
+
+The uncertainty comes from several sources:
+
+| Source | Symbol | Description |
+|----|----|----|
+| Reference GAM coefficients | S1 | Posterior spread of the reference model’s GAM fits (Bayesian posterior via Vp matrix) |
+| Impact GAM coefficients | S2 | Same for the target model’s impact-response GAMs |
+| WQ-layer GAM coefficients | S3 | Same for the water quality covariate GAMs |
+| State-space residual *S* | S4 | The latent residual impact *S* is a continuous-time AR(1)/Ornstein–Uhlenbeck process fitted by a Kalman smoother; the posterior variance pinches at grabs and balloons mid-gap |
+| State-space WQ residual *d* | S5 | Same for the WQ-tier residual *d* |
+| Anchor grab measurement error | S6 | Lognormal multiplicative error on the observed grab concentrations that anchor the bridge |
+| Co-analyte grab measurement error | S7 | Same for co-analytes (pH, DOC, hardness, …) that control bioavailability normalisations |
+
+S4 is the dominant source of uncertainty for long inter-sample gaps;
+S1–S3 matter most for long-range comparisons where the GAM extrapolates;
+S6–S7 contribute mostly at the anchor days themselves.
+
+## The state-space smoother in one paragraph
+
+The residual latent impact state *S* is modelled as a **continuous-time
+AR(1) / Ornstein–Uhlenbeck process** and fitted to the grab-sample
+anchors by a **Kalman filter + smoother** (via the **KFAS** package)
+over a daily grid. The posterior mean of the smoother *is* the centre
+line, and its posterior covariance gives coherent draws — so the centre
+line and the credible band come from **one** model. The band pinches at
+grabs (to the grab measurement width) and balloons mid-gap; longer gaps
+balloon more.
+
+Two parameters are estimated per analyte from the anchor residuals:
+
+- $`\hat\gamma`$ — the marginal (stationary) variance, the
+  well-identified moment: the sample variance of the anchor *S* values.
+- $`\hat\theta`$ — the mean-reversion rate (inverse correlation length),
+  fitted by 1-D maximum likelihood of the exact irregular-spacing OU
+  likelihood, bounded so the correlation length stays within
+  $`[0.5\times, 10\times]`$ the median anchor spacing.
+
+A **fallback ladder** keeps sparse series well-behaved: analytes with
+fewer than ~8 anchors pin $`\theta`$ at the long-correlation bound (≈ a
+Brownian bridge); fewer than two finite anchors, or an essentially
+constant series, are “degenerate” and add no uncertainty.
+
+**An honesty note on $`\theta`$.** With the ~12–30 grabs typical of
+routine monitoring, $`\theta`$ (the correlation length) is only weakly
+identified regardless of estimator — the likelihood in $`\theta`$ is
+flat because pinning the autocorrelation decay needs many lags. The
+smoother removes the bias of the old method-of-moments estimate and
+makes the band *coherent*, but it cannot manufacture information: the
+band is driven mainly by $`\hat\gamma`$, and sparse (“bridge-tier”)
+analytes degrade gracefully to a Brownian bridge.
+
+The daily grid is **clipped per analyte** to that analyte’s grab span:
+no prediction is produced before its first grab or after its last
+(extrapolating the management residual beyond the data is not
+attempted), so coverage can be ragged across analytes.
+
+## Getting started
+
+### Minimal example
+
+``` r
+
+library(leachatetools)
+
+demo   <- leachate_demo()
+target <- subset(demo, site_id == "downstream")
+ref_m  <- fit_reference_model(
+  subset(demo, site_id == "reference"),
+  hydro = demo_hydro()
+)
+
+# 50 stochastic draws; return the 90% credible interval summary
+out <- amspaf_daily(
+  target,
+  reference_model     = ref_m,
+  interpolation       = "model",
+  ndraws              = 50L,
+  seed                = 42L,
+  return              = "summary",
+  interval            = 0.9,
+  require_temperature = FALSE
+)
+
+head(out[, c("date", "amspaf", "amspaf_lower", "amspaf_upper")])
+```
+
+With `return = "summary"` (the default when `ndraws` is supplied) you
+get one row per day with three columns:
+
+- `amspaf` — deterministic centre-line (heuristic-blend point
+  prediction, identical to the output of a non-draws run with
+  `interpolation = "model"`)
+- `amspaf_lower` — lower bound of the credible interval
+- `amspaf_upper` — upper bound of the credible interval
+
+### Including measurement error (S6 + S7)
+
+Pass `grab_cv` to add lognormal grab-measurement error. A scalar applies
+the same CV to all analytes; a named vector sets analyte-specific CVs.
+
+``` r
+
+out_cv <- amspaf_daily(
+  target,
+  reference_model     = ref_m,
+  interpolation       = "model",
+  ndraws              = 50L,
+  seed                = 42L,
+  return              = "summary",
+  interval            = 0.9,
+  grab_cv             = 0.15,        # 15% relative analytical uncertainty
+  require_temperature = FALSE
+)
+```
+
+### Widening the envelope, and hydrology-driven width
+
+`ou_scale` multiplies the marginal variance $`\gamma`$ (leaving
+$`\theta`$, hence the correlation length, unchanged) — a global knob to
+inflate the envelope if the default calibration feels too narrow
+(infrequent grabs, highly variable analytes).
+
+`kappa` controls **hydrology-modulated process variance**: the latent
+state is allowed to wander more on high-flow days, via
+$`q_t = q_{\text{base}}\,
+e^{\kappa z_t}`$ where $`z_t`$ is the standardised short-window
+hydrology feature. This is what makes the band balloon faster across
+gaps that span storms (and stay tight across quiet ones). `kappa = 0`
+recovers a stationary envelope; the default `0.5` makes a
+~95th-percentile flow day carry about 3× the base process variance. It
+is a structural prior on volatility, not a fitted quantity.
+
+``` r
+
+out_wide <- amspaf_daily(
+  target,
+  reference_model = ref_m,
+  interpolation   = "model",
+  ndraws          = 50L,
+  seed            = 42L,
+  ou_scale        = 2,              # double the marginal variance (global)
+  kappa           = 0.5,            # hydrology-modulated mid-gap widening
+  require_temperature = FALSE
+)
+```
+
+### Getting raw draws
+
+With `return = "draws"` you get one row per (day × draw), allowing you
+to build custom summaries, correlate with other variables, or feed the
+draws into a downstream chronic aggregate.
+
+``` r
+
+draws <- amspaf_daily(
+  target,
+  reference_model = ref_m,
+  interpolation   = "model",
+  ndraws          = 50L,
+  seed            = 42L,
+  return          = "draws",
+  require_temperature = FALSE
+)
+# draws$draw_id runs from 1 to 50
+range(draws$draw_id)
+```
+
+### Speeding things up with parallel execution
+
+For large `ndraws` or multi-year grids, use `parallel = TRUE` with a
+`future` parallel plan. The **future.apply** package must be installed.
+
+``` r
+
+library(future)
+plan(multisession, workers = 4)
+
+out_par <- amspaf_daily(
+  target,
+  reference_model = ref_m,
+  interpolation   = "model",
+  ndraws          = 200L,
+  seed            = 42L,
+  parallel        = TRUE,
+  require_temperature = FALSE
+)
+
+plan(sequential)      # restore single-threaded execution
+```
+
+Note that parallel draws use an independent RNG stream (L’Ecuyer-CMRG
+via `future.apply`), so they will differ numerically from a sequential
+run with the same seed, but are themselves reproducible.
+
+## Plotting the credible envelope
+
+``` r
+
+library(ggplot2)
+
+ggplot(out, aes(date)) +
+  geom_ribbon(aes(ymin = amspaf_lower, ymax = amspaf_upper),
+              fill = "steelblue", alpha = 0.25) +
+  geom_line(aes(y = amspaf), colour = "steelblue", linewidth = 0.8) +
+  scale_y_continuous(labels = scales::label_percent(scale = 1)) +
+  labs(
+    title    = "Daily AmsPAF with 90% credible interval",
+    subtitle = "Ribbon balloons mid-gap, pinches at grab-sample dates",
+    x = NULL, y = "% species affected"
+  ) +
+  theme_minimal()
+```
+
+## Interpreting the width of the envelope
+
+**Narrow ribbon at a grab date**: the smoother is pinned to the observed
+concentration (to within the grab measurement width). Remaining width
+comes from GAM coefficient uncertainty (S1–S3) and measurement error
+(S6–S7).
+
+**Wide ribbon mid-gap**: the smoother posterior has spread away from the
+anchors. The width grows with the gap length, the estimated $`\gamma`$
+(residual-state marginal variance), and — through `kappa` — the
+hydrology over the gap, so a gap spanning a storm balloons faster than a
+quiet one of equal length. A site with infrequent, irregular sampling
+shows a wider envelope than one with fortnightly grabs.
+
+**Asymmetric ribbon**: the AmsPAF response to concentration is nonlinear
+(SSD-based) and the impact is floored at zero, so the ribbon is skewed
+even though the underlying concentration draws are symmetric. The
+*direction* of the skew is data-dependent: symmetric concentration draws
+map through the SSD curvature, which can make the AmsPAF band wider
+above *or* below the centre line depending on where on the SSD the site
+sits.
+
+**Envelope does not cover the centre line**: this should never happen in
+practice, but if your `ndraws` is very small (e.g., 5) and the interval
+is wide (e.g., 0.99), quantile estimates can be noisy. Increase
+`ndraws`.
+
+## Parameter interpretation table
+
+| Parameter | What it controls | Typical values |
+|----|----|----|
+| `ndraws` | Number of Monte Carlo draws; more → smoother CI | 50–200 for exploratory work; 500+ for publication |
+| `interval` | Nominal coverage of the credible interval | 0.9 (default), 0.95, 0.80 |
+| `grab_cv` | Relative analytical uncertainty on grab concentrations | 0.10–0.20 for routine ICP-MS; 0.05 for reference standards |
+| `ou_scale` | Global marginal-variance ($`\gamma`$) inflation; \> 1 widens the whole envelope | 1 (default); try 2–4 for sparse sampling |
+| `kappa` | Hydrology-modulated mid-gap widening ($`q_t = q_{\text{base}}e^{\kappa z_t}`$) | 0.5 (default); 0 = stationary |
+| `seed` | RNG seed for reproducibility | Any integer |
+| `parallel` | Use `future.apply` for concurrent draws | `FALSE` (default); `TRUE` with a [`future::plan()`](https://future.futureverse.org/reference/plan.html) |
+
+## How the centre line is computed
+
+The `amspaf` column in `return = "summary"` is the **deterministic
+smoother posterior mean** (the centre line), identical to running
+[`amspaf_daily()`](https://vorpalvorpal.github.io/leachatetools/reference/amspaf_daily.md)
+without `ndraws`. It is *not* the median of the draws. This means the
+centre line:
+
+- is computationally cheap (no randomness),
+- is exactly reproducible regardless of `ndraws` or `seed`,
+- so adding `ndraws` to an existing call does not change the point
+  estimate.
+
+The lower and upper bounds are empirical quantiles of the stochastic
+draws.
+
+## Connection to the chronic pipeline
+
+The `return = "draws"` output can be passed into
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md)
+to propagate daily uncertainty through to the chronic AmsPAF (via the
+draw-carrier contract). The chronic draws can then be summarised with
+[`summarise_draws()`](https://vorpalvorpal.github.io/leachatetools/reference/summarise_draws.md).
+
+``` r
+
+draws_daily  <- amspaf_daily(..., return = "draws")
+draws_amspaf <- dplyr::filter(draws_daily, FALSE)  # placeholder
+# See vignette("chronic-amspaf-interpretation") for the chronic pathway
+```
+
+See the *Uncertainty propagation* section of
+[`vignette("chronic-amspaf-interpretation")`](https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.md)
+for the end-to-end workflow.
+
+## See also
+
+- \[amspaf_daily()\] — full parameter reference
+- \[fit_reference_model()\] — fitting the reference/impact model
+- \[summarise_draws()\] — collapse draws to median + credible interval
+- [`vignette("chronic-amspaf-interpretation")`](https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.md)
+  — interpreting chronic AmsPAF

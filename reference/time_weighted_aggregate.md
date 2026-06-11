@@ -18,7 +18,10 @@ time_weighted_aggregate(
   window_units = NULL,
   summary = c("geom_mean", "arith_mean", "p90"),
   anchor_outside_window = TRUE,
-  eps = 1e-09
+  eps = 1e-09,
+  return = c("summary", "draws"),
+  interval = 0.9,
+  central = c("median", "mean")
 )
 ```
 
@@ -87,6 +90,28 @@ time_weighted_aggregate(
 
   Small positive guard added inside the log for geometric mean to avoid
   `log(0)`. Default `1e-9`.
+
+- return:
+
+  Output mode for draw-carrier input (see
+  [`summarise_draws()`](https://vorpalvorpal.github.io/leachatetools/reference/summarise_draws.md)).
+  `"summary"` (default) collapses posterior draws to a central estimate
+  plus a credible interval (`value`, `value_lower`, `value_upper`,
+  `n_draws`); `"draws"` returns the raw per-draw chronic rows
+  (`draw_id 1..N`). For point (non-draw) input both modes return
+  byte-identical output with no interval columns. Draws are paired
+  across time by `draw_id` (an index-pairing approximation that assumes
+  temporal independence; see the OU/Kalman smoothing roadmap item).
+
+- interval:
+
+  Width of the credible interval when `return = "summary"`. Default
+  `0.90` (5th/95th percentile bounds).
+
+- central:
+
+  Central-tendency statistic when `return = "summary"`: `"median"`
+  (default) or `"mean"`.
 
 ## Value
 

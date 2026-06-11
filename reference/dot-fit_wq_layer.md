@@ -1,4 +1,4 @@
-# Fit the WQ→metal layer and its residual `d` for one analyte
+# Fit the WQ-\>metal layer and its residual `d` for one analyte
 
 A GAM of normalised concentration on the chemistry-PCA scores (the
 non-Bayesian WQ prediction), kept only if it beats an intercept-only

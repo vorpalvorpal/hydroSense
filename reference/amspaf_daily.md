@@ -26,7 +26,16 @@ amspaf_daily(
   guideline_dir = getOption("leachatetools.guideline_dir"),
   min_analytes = 3L,
   conc_units = NULL,
-  require_temperature = TRUE
+  require_temperature = TRUE,
+  ndraws = NULL,
+  seed = NULL,
+  return = c("summary", "draws"),
+  interval = 0.9,
+  central = c("median", "mean"),
+  grab_cv = NULL,
+  ou_scale = 1,
+  kappa = 0.5,
+  parallel = FALSE
 )
 ```
 
@@ -136,10 +145,88 @@ amspaf_daily(
   [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md).
   Set `FALSE` for datasets without ammonia.
 
+- ndraws:
+
+  Positive integer or `NULL` (default). When non-`NULL`, runs the full
+  OU/GAM uncertainty propagation for `ndraws` independent draws.
+  Requires `interpolation = "model"`.
+
+- seed:
+
+  Integer or `NULL`. RNG seed for reproducibility of draws.
+
+- return:
+
+  `"summary"` (default) or `"draws"`. `"summary"` collapses draws to a
+  central estimate plus credible-interval bounds (`amspaf_lower`,
+  `amspaf_upper`). `"draws"` returns one row per (site \\\times\\ day
+  \\\times\\ draw) with a `draw_id` column. Ignored in point mode
+  (`ndraws = NULL`).
+
+- interval:
+
+  Credible interval width for `return = "summary"` (default `0.9`). The
+  lower bound is the `(1 - interval)/2` quantile, the upper is the
+  `1 - (1 - interval)/2` quantile.
+
+- central:
+
+  Central tendency for `return = "summary"`. `"median"` (default) or
+  `"mean"`.
+
+- grab_cv:
+
+  Numeric scalar or named numeric vector of coefficients of variation
+  for grab-sample measurement error. A scalar applies the same CV to all
+  analytes; a named vector (e.g. `c(Cu = 0.1, pH = 0.02)`) applies
+  analyte-specific CVs. Controls two uncertainty sources: S6 (anchor
+  S-value spread at measured dates) and S7 (co-analyte normalisation
+  spread). `NULL` (default) disables S6 and S7.
+
+- ou_scale:
+
+  Positive numeric scale factor for the OU bridge envelope (default
+  `1`). Multiplies \\\sigma^2\\ and \\\gamma\\ (marginal variance)
+  without changing \\\theta\\ (correlation length). Use values1 to widen
+  the between-grab uncertainty bands.
+
+- kappa:
+
+  Non-negative numeric (default `0.5`). Hydrological modulation
+  exponent: the smoother's process variance is multiplied by
+  \\\exp(\kappa \cdot z_h)\\ where \\z_h\\ is the standardised daily
+  flow (capped at ±4 SD). `kappa = 0` disables hydrological modulation;
+  larger values widen the credible band more aggressively across
+  high-flow gaps. Requires a hydrology column in `df`.
+
+- parallel:
+
+  Logical (default `FALSE`). When `TRUE`, the per-draw loop for each
+  site is parallelised via
+  [`future.apply::future_lapply()`](https://future.apply.futureverse.org/reference/future_lapply.html),
+  which honours whatever
+  [`future::plan()`](https://future.futureverse.org/reference/plan.html)
+  the caller has established. Requires the **future.apply** package. Set
+  a parallel plan before calling, e.g.
+  `future::plan(future::multisession, workers = 4)`. In parallel mode
+  the RNG stream for each draw is managed by `future.apply`
+  (L'Ecuyer-CMRG), so draws will differ from sequential mode even with
+  the same `seed`, but are themselves reproducible.
+
 ## Value
 
-A tibble with one row per (site \\\times\\ day) for days with sufficient
-analyte coverage:
+**Point mode** (`ndraws = NULL`): a tibble with one row per (site
+\\\times\\ day) for days with sufficient analyte coverage.
+
+**Draws mode** (`ndraws > 0`, `return = "summary"`): same schema plus
+two extra columns `amspaf_lower` and `amspaf_upper` (the credible
+interval bounds from collapsing the `ndraws` posterior draws).
+
+**Draws mode** (`ndraws > 0`, `return = "draws"`): one row per (site
+\\\times\\ day \\\times\\ draw), with an additional `draw_id` integer
+column.
+
+Common columns:
 
 - `date`:
 
@@ -173,15 +260,14 @@ analyte coverage:
 - `days_since_last_sample`:
 
   Days since the most recent grab sample for any SSD-eligible analyte.
-  Helps identify heavily interpolated regions.
 
-- `analyte_pafs`:
-
-  List column of per-analyte diagnostic tibbles (same structure as from
-  [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)).
-
-An `"ara_summary"` attribute is attached; retrieve it with
+`"analyte_pafs"` (per-analyte PAF breakdown, re-keyed by date) and
+`"ara_summary"` attributes are attached; retrieve them with
+[`analyte_pafs()`](https://vorpalvorpal.github.io/leachatetools/reference/analyte_pafs.md)
+and
 [`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md).
+(`analyte_pafs` is now a flat attribute, not a list-column — issue
+\#30.)
 
 ## Interpolation
 

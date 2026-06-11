@@ -203,6 +203,17 @@ background adjustment. Includes the static and temporal
   [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
   result
 
+- [`analyte_pafs()`](https://vorpalvorpal.github.io/leachatetools/reference/analyte_pafs.md)
+  : Per-analyte PAF breakdown from add_amspaf()
+
+- [`summarise_draws()`](https://vorpalvorpal.github.io/leachatetools/reference/summarise_draws.md)
+  : Summarise a draw-carrier frame to posterior median and credible
+  interval
+
+- [`draw_measurement_error()`](https://vorpalvorpal.github.io/leachatetools/reference/draw_measurement_error.md)
+  : Expand observed measurements into lognormal posterior-predictive
+  draws
+
 ## Water chemistry & normalisation
 
 Bioavailability and physicochemical adjustments that bring measured
@@ -237,6 +248,8 @@ Detection-frequency prescreening and chronic time-weighted averaging.
 
 - [Interpreting chronic AmsPAF
   outputs](https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.md):
+- [Daily AmsPAF with uncertainty
+  quantification](https://vorpalvorpal.github.io/leachatetools/articles/daily-uncertainty.md):
 - [Imputing missing and below-detection
   chemistry](https://vorpalvorpal.github.io/leachatetools/articles/imputation.md):
 - [Detecting leachate with the Leachate Mixing Fraction

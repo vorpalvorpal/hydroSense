@@ -1,16 +1,26 @@
 # Predict the site impact (and implied normalised concentration) at query dates
 
-For each query (date × analyte): `I_hat = beta·f(hydro) + S_interp`,
-with `beta·f(hydro)` from the fitted response (0 for bridge-tier
-analytes) and `S_interp` from
-[`.interp_residual()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-interp_residual.md).
-Also returns `ref_norm` (from the reference model) and the implied
+For each query (date x analyte): `I_hat = beta*f(hydro) + S`, with
+`beta*f(hydro)` from the fitted response (0 for bridge-tier analytes)
+and the residual `S` from the state-space smoother (`residual_paths`, or
+the smoother posterior mean when `NULL`). Also returns `ref_norm` (from
+the reference model) and the implied
 `C_norm = max(ref_norm + I_hat, 0)`.
 
 ## Usage
 
 ``` r
-.resolve_target_impact(target_model, query, analytes = NULL, wq = NULL)
+.resolve_target_impact(
+  target_model,
+  query,
+  analytes = NULL,
+  wq = NULL,
+  residual_paths = NULL,
+  kappa = 0.5,
+  scale = 1,
+  ref_q = NULL,
+  static = NULL
+)
 ```
 
 ## Arguments
@@ -21,7 +31,7 @@ Also returns `ref_norm` (from the reference model) and the implied
 
 - query:
 
-  Tibble with `date` (Date) — the days to predict.
+  Tibble with `date` (Date) – the days to predict.
 
 - analytes:
 

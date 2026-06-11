@@ -95,7 +95,7 @@ pooled analytes additionally carry <code>pooled = TRUE</code>, <code>analyte</co
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>Pooling regularises noisy, low-SNR analytes by borrowing a response shape
-from co-varying ones — it does <strong>not</strong> add hydrological coverage (co-sampled
+from co-varying ones – it does <strong>not</strong> add hydrological coverage (co-sampled
 analytes share the same regimes). Analytes with fewer than <code>min_obs_model</code>
 anchors, or with ~no impact variance (no shape to share), get a per-analyte
 flat bridge; if pooling fails or doesn't beat the no-shared-shape null

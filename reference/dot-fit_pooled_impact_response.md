@@ -39,7 +39,7 @@ and `pool_scale` (`sd_a`) for prediction.
 ## Details
 
 Pooling regularises noisy, low-SNR analytes by borrowing a response
-shape from co-varying ones — it does **not** add hydrological coverage
+shape from co-varying ones – it does **not** add hydrological coverage
 (co-sampled analytes share the same regimes). Analytes with fewer than
 `min_obs_model` anchors, or with ~no impact variance (no shape to
 share), get a per-analyte flat bridge; if pooling fails or doesn't beat

@@ -1,13 +1,13 @@
 # Vectorised SSD PAF lookup for one analyte
 
 Returns the proportion of species affected at each concentration in
-`conc`. Concentrations that are `NA` or `<= 0` map to `PAF = 0`. When a
-fitted SSD object is available it is evaluated in a single
+`conc`. Concentrations that are `NA`, `<= 0`, or non-finite map to
+`PAF = 0`. When a fitted SSD object is available it is evaluated via a
+spline lookup (fast path) or a single
 [`ssdtools::ssd_hp()`](https://bcgov.github.io/ssdtools/reference/ssd_hp.html)
-call over the positive concentrations; otherwise it falls back to a
-per-value
+call (exact fallback); otherwise it falls back to a per-value
 [`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md)
-lookup (which re-resolves the model internally).
+lookup.
 
 ## Usage
 
