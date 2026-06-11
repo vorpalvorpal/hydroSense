@@ -22,11 +22,11 @@ suppressMessages({
   devtools::load_all(".", quiet = TRUE)
 })
 
-CACHE_V3   <- "test data/bs01_v3_cache.rds"
-BASELINE   <- "dev/baseline_bs01_centreline.rds"
-DRAWS_ARA  <- "dev/bs01_kalman_draws_ara.rds"  # raw per-(day,draw) AmsPAF — LONG to build
-DRAWS_TOT  <- "dev/bs01_kalman_draws_tot.rds"  #   (the add_amspaf cost; see issue #30)
-CENTRE     <- "dev/bs01_kalman_centre.rds"     # deterministic centre lines — fast (point mode)
+CACHE_V3   <- "test data/bs01_v3_cache.qs2"
+BASELINE   <- "dev/baseline_bs01_centreline.qs2"
+DRAWS_ARA  <- "dev/bs01_kalman_draws_ara.qs2"  # raw per-(day,draw) AmsPAF — LONG to build
+DRAWS_TOT  <- "dev/bs01_kalman_draws_tot.qs2"  #   (the add_amspaf cost; see issue #30)
+CENTRE     <- "dev/bs01_kalman_centre.qs2"     # deterministic centre lines — fast (point mode)
 GUIDE      <- "guideline data"
 N_DRAWS    <- 20L   # raise once #30 makes draws cheap
 SEED       <- 42L
@@ -37,8 +37,8 @@ TOX_RSD    <- 0.15
 options(leachatetools.guideline_dir = GUIDE)
 
 stopifnot(file.exists(CACHE_V3), file.exists(BASELINE))
-cc   <- readRDS(CACHE_V3)
-base <- readRDS(BASELINE)
+cc   <- qs2::qs_read(CACHE_V3)
+base <- qs2::qs_read(BASELINE)
 da   <- cc$daily_args
 START <- da$start; END <- da$end
 
@@ -51,27 +51,27 @@ draws_run <- function(reference) suppressMessages(do.call(amspaf_daily, c(da, li
   reference = reference, ndraws = N_DRAWS, seed = SEED, return = "draws",
   grab_cv = TOX_RSD))))
 if (!file.exists(DRAWS_ARA)) {
-  cat("ARA draws (long) ...\n");   saveRDS(draws_run(da$reference_model), DRAWS_ARA); gc()
+  cat("ARA draws (long) ...\n");   qs2::qs_save(draws_run(da$reference_model), DRAWS_ARA); gc()
 }
 if (!file.exists(DRAWS_TOT)) {
-  cat("total draws (long) ...\n"); saveRDS(draws_run(NULL),               DRAWS_TOT); gc()
+  cat("total draws (long) ...\n"); qs2::qs_save(draws_run(NULL),               DRAWS_TOT); gc()
 }
 if (!file.exists(CENTRE)) {
   cat("deterministic centre lines (point mode, fast) ...\n")
   ctr <- function(reference)
     suppressMessages(do.call(amspaf_daily, c(da, list(reference = reference))))
-  saveRDS(list(ara   = ctr(da$reference_model)[, c("date", "amspaf")],
-               total = ctr(NULL)[,              c("date", "amspaf")]), CENTRE)
+  qs2::qs_save(list(ara   = ctr(da$reference_model)[, c("date", "amspaf")],
+                    total = ctr(NULL)[,              c("date", "amspaf")]), CENTRE)
 }
 
 ## Summarise the cached draws at INTERVAL (instant) and attach the deterministic
 ## centre — equivalent to amspaf_daily(return = "summary", interval = INTERVAL),
 ## but the interval is now a cheap post-hoc choice. (summarise_draws() would give
 ## the same lower/upper from this per-(day,draw) frame.)
-ctr_cache <- readRDS(CENTRE)
+ctr_cache <- qs2::qs_read(CENTRE)
 band <- function(draws_path, centre_df) {
   lo <- (1 - INTERVAL) / 2
-  q  <- readRDS(draws_path) |>
+  q  <- qs2::qs_read(draws_path) |>
     dplyr::group_by(.data$date) |>
     dplyr::summarise(
       amspaf_lower = stats::quantile(.data$amspaf, lo,     names = FALSE, na.rm = TRUE),

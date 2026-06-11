@@ -52,8 +52,8 @@ res <- purrr::pmap_dfr(grid, function(n_samples, n_draws, n_analytes) {
 print(res, n = Inf)
 
 dir.create("bench", showWarnings = FALSE)
-out <- file.path("bench", sprintf("results-%s.rds", label))
-saveRDS(res, out)
+out <- file.path("bench", sprintf("results-%s.qs2", label))
+qs2::qs_save(res, out)
 cat("WROTE", out, "\n")
 
 ## ── PAF lookup micro-benchmarks (issue #36) ──────────────────────────────────
@@ -124,6 +124,6 @@ cat("\nC. add_amspaf() 30s×8d×9a warm cache (lookup active):\n")
 print(e2e[, c("expression", "min", "median", "mem_alloc")])
 
 paf_bench <- list(cache = paf_cache, paf_vec = paf_vec, e2e = e2e)
-paf_out <- file.path("bench", sprintf("results-paf-lookup-%s.rds", label))
-saveRDS(paf_bench, paf_out)
+paf_out <- file.path("bench", sprintf("results-paf-lookup-%s.qs2", label))
+qs2::qs_save(paf_bench, paf_out)
 cat("WROTE", paf_out, "\n")

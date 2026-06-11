@@ -77,6 +77,6 @@ golden <- list(
   dr_ara    = normalise_out(run(dr_df, prep_ref)),
   inputs    = list(pt_df = pt_df, dr_df = dr_df, ref_df = ref_df, N = N)
 )
-saveRDS(golden, file.path(FIX, "amspaf_golden.rds"))
-cat("WROTE", file.path(FIX, "amspaf_golden.rds"),
+qs2::qs_save(golden, file.path(FIX, "amspaf_golden.qs2"))
+cat("WROTE", file.path(FIX, "amspaf_golden.qs2"),
     "- scalars rows:", nrow(golden$dr_ara$scalars), "\n")

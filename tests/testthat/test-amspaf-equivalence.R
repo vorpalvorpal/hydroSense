@@ -1,7 +1,7 @@
 ## Equivalence harness for issue #30 (vectorising compute_amspaf_per_sample()).
 ##
 ## Compares the CURRENT engine output against a golden snapshot taken from the
-## pre-change code (dev/gen_amspaf_golden.R -> fixtures/amspaf_golden.rds).
+## pre-change code (dev/gen_amspaf_golden.R -> fixtures/amspaf_golden.qs2).
 ## Acceptance gate for the rewrite: numeric AmsPAF/PAF/C_adj within relative
 ## 1e-9; integer/categorical fields (n_analytes_used, dominant_analyte,
 ## ref_source, moa_group, analyte set) exact; per-analyte breakdown and
@@ -14,7 +14,7 @@
 library(testthat)
 library(leachatetools)
 
-golden <- readRDS(test_path("fixtures", "amspaf_golden.rds"))
+golden <- qs2::qs_read(test_path("fixtures", "amspaf_golden.qs2"))
 
 ## Normalise an add_amspaf() output to (scalars, breakdown, ara_summary),
 ## matching dev/gen_amspaf_golden.R but preferring the new flat attribute.
