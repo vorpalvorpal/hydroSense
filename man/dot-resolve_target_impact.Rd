@@ -19,7 +19,7 @@
 \arguments{
 \item{target_model}{A \code{target_model}.}
 
-\item{query}{Tibble with \code{date} (Date) — the days to predict.}
+\item{query}{Tibble with \code{date} (Date) -- the days to predict.}
 
 \item{analytes}{Character; analytes to predict (default: all modelled).}
 
@@ -33,8 +33,8 @@ fitted WQ layer, the day's concentration is predicted as
 Tibble \verb{(date, analyte, ref_norm, impact, C_norm, impact_tier)}.
 }
 \description{
-For each query (date × analyte): \verb{I_hat = beta·f(hydro) + S}, with
-\verb{beta·f(hydro)} from the fitted response (0 for bridge-tier analytes) and the
+For each query (date x analyte): \code{I_hat = beta*f(hydro) + S}, with
+\code{beta*f(hydro)} from the fitted response (0 for bridge-tier analytes) and the
 residual \code{S} from the state-space smoother (\code{residual_paths}, or the smoother
 posterior mean when \code{NULL}).  Also returns \code{ref_norm} (from the reference
 model) and the implied \code{C_norm = max(ref_norm + I_hat, 0)}.

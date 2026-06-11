@@ -111,14 +111,15 @@ The input \code{df} with AmsPAF rows appended. Each AmsPAF row carries:
 \code{value} (AmsPAF as a percentage, 0–100+), \code{detected = TRUE},
 \code{analyte = "AmsPAF"}, \code{n_analytes_used} (integer),
 \code{n_analytes_imputed} (integer, 0 if \code{imputed} column absent),
-\code{dominant_analyte} (character), \code{max_paf} (numeric),
-\code{analyte_pafs} (list column of per-analyte diagnostic tibbles, each with
-\code{analyte}, \code{C_adj}, \code{PAF}, \code{moa_group}, and \code{ref_source} — one of
-\code{"disabled"}, \code{"matched"}, \code{"unmatched"} recording how the ARA reference
-was resolved for that analyte).
+\code{dominant_analyte} (character), and \code{max_paf} (numeric).
 
-The result also carries an \code{"ara_summary"} attribute (a tibble) with
-per-(sample × analyte) ARA diagnostics.  Retrieve it with \code{\link[=ara_summary]{ara_summary()}}.
+The result carries two attributes (read them before further dplyr wrangling,
+which drops attributes): \code{"analyte_pafs"} — the per-analyte PAF breakdown as
+a flat tibble (\code{site_id}, \code{sample_id}, \code{draw_id} in draws mode, \code{analyte},
+\code{C_adj}, \code{PAF}, \code{moa_group}, \code{ref_source}), retrieved with \code{\link[=analyte_pafs]{analyte_pafs()}};
+and \code{"ara_summary"} — per-(sample × analyte) ARA diagnostics, retrieved with
+\code{\link[=ara_summary]{ara_summary()}}. (\code{analyte_pafs} was formerly a per-row list-column; it is
+now a flat attribute — issue #30.)
 
 Tier breaks are not provided by this package — AmsPAF is a continuous
 risk metric and the threshold at which a community is "impacted"

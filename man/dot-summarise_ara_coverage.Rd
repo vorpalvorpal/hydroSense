@@ -4,10 +4,10 @@
 \alias{.summarise_ara_coverage}
 \title{Summarise analytes assessed without a reference match (ARA coverage)}
 \usage{
-.summarise_ara_coverage(amspaf_df, ara_enabled)
+.summarise_ara_coverage(pafs_long, ara_enabled)
 }
 \arguments{
-\item{amspaf_df}{The assembled AmsPAF tibble (must carry \code{analyte_pafs}).}
+\item{pafs_long}{Flat per-analyte PAF breakdown (the \code{analyte_pafs} attribute).}
 
 \item{ara_enabled}{Logical; whether the caller supplied a reference.}
 }

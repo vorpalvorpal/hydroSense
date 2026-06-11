@@ -22,9 +22,9 @@ Numeric vector the same length as \code{conc}, PAF as a proportion (0–1).
 }
 \description{
 Returns the proportion of species affected at each concentration in \code{conc}.
-Concentrations that are \code{NA} or \verb{<= 0} map to \code{PAF = 0}.  When a fitted SSD
-object is available it is evaluated in a single \code{\link[ssdtools:ssd_hp]{ssdtools::ssd_hp()}} call
-over the positive concentrations; otherwise it falls back to a per-value
-\code{\link[=ssd_paf]{ssd_paf()}} lookup (which re-resolves the model internally).
+Concentrations that are \code{NA}, \verb{<= 0}, or non-finite map to \code{PAF = 0}.
+When a fitted SSD object is available it is evaluated via a spline lookup
+(fast path) or a single \code{\link[ssdtools:ssd_hp]{ssdtools::ssd_hp()}} call (exact fallback);
+otherwise it falls back to a per-value \code{\link[=ssd_paf]{ssd_paf()}} lookup.
 }
 \keyword{internal}

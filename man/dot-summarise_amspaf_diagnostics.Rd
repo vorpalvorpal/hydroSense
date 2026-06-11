@@ -4,7 +4,7 @@
 \alias{.summarise_amspaf_diagnostics}
 \title{Summarise per-sample dropped-analyte tally and emit a single cli message}
 \usage{
-.summarise_amspaf_diagnostics(amspaf_df, min_analytes)
+.summarise_amspaf_diagnostics(drop_long, min_analytes = NULL)
 }
 \description{
 Summarise per-sample dropped-analyte tally and emit a single cli message

@@ -67,9 +67,11 @@ test_that("amspaf_daily returns required columns", {
   expect_s3_class(out, "data.frame")
   expected_cols <- c("date", "site_id", "amspaf", "n_analytes_used",
                      "dominant_analyte", "max_paf",
-                     "n_measured_analytes", "days_since_last_sample",
-                     "analyte_pafs")
+                     "n_measured_analytes", "days_since_last_sample")
   expect_true(all(expected_cols %in% names(out)))
+  ## analyte_pafs is now a flat attribute, not a list-column (issue #30).
+  expect_false("analyte_pafs" %in% names(out))
+  expect_false(is.null(attr(out, "analyte_pafs")))
 })
 
 test_that("amspaf_daily date column is Date class", {

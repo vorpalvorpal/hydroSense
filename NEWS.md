@@ -1,5 +1,20 @@
 # leachatetools (development)
 
+## AmsPAF engine vectorisation + `analyte_pafs` API change (issue #30)
+
+* `compute_amspaf_per_sample()` is vectorised across all (sample × draw) blocks
+  in one pass (normalisation/ARA with a wide co-analyte join and per-analyte
+  formula evaluation; CA/IA via grouped reductions) instead of a per-block
+  dplyr/purrr loop. Output is mathematically identical (verified by a before/after
+  equivalence harness across `add_amspaf()`, `time_weighted_aggregate()`, and
+  `amspaf_daily()`, point and draws modes). Removes the per-block overhead that
+  dominated draws-mode runtime; the residual cost is now `ssdtools::ssd_hp()`.
+* **API change (pre-v1):** the per-analyte PAF breakdown is no longer a per-row
+  `analyte_pafs` **list-column** — it is a flat tibble attribute, retrieved with
+  the new exported `analyte_pafs()` accessor (mirroring `ara_summary()`), keyed
+  by `(site_id, sample_id, draw_id, analyte)`. Affects `add_amspaf()` and
+  `amspaf_daily()` output schemas.
+
 ## Daily AmsPAF uncertainty via a state-space (Kalman) residual smoother (issue #16)
 
 `amspaf_daily()` propagates uncertainty through the daily AmsPAF time series via

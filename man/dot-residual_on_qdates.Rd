@@ -7,7 +7,7 @@
 .residual_on_qdates(grid_dates, path, qdates)
 }
 \description{
-Returns \code{NA} for query dates outside the analyte's clipped grab span — those
+Returns \code{NA} for query dates outside the analyte's clipped grab span -- those
 rows are dropped by \code{\link[=.resolve_target_impact]{.resolve_target_impact()}} (per-analyte clipping).
 }
 \keyword{internal}

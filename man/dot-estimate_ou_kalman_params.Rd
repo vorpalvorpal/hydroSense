@@ -24,7 +24,7 @@ list(theta, gamma, tier).
 sample variance of the anchor residuals, times \code{scale}. \code{theta} (the
 mean-reversion rate / inverse correlation length, weakly identified on sparse
 data) is fitted by 1-D MLE of the exact irregular-spacing OU likelihood,
-bounded so the correlation length stays in \link{0.5x, 10x} the median anchor
+bounded so the correlation length stays in the range 0.5x to 10x the median anchor
 spacing.
 }
 \details{

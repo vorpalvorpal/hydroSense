@@ -19,14 +19,14 @@ suppressMessages({
   devtools::load_all(".", quiet = TRUE)
 })
 
-CACHE_V3 <- "test data/bs01_v3_cache.rds"
-OUT_RDS  <- "dev/baseline_bs01_centreline.rds"
+CACHE_V3 <- "test data/bs01_v3_cache.qs2"
+OUT_QS2  <- "dev/baseline_bs01_centreline.qs2"
 GUIDE    <- "guideline data"   # SSD/guideline tables (amspaf_daily needs these)
 
 stopifnot(file.exists(CACHE_V3))
 options(leachatetools.guideline_dir = GUIDE)
 
-cc <- readRDS(CACHE_V3)
+cc <- qs2::qs_read(CACHE_V3)
 da <- cc$daily_args            # df, reference_model, temperature, start, end,
                                # interpolation = "model", require_temperature, min_analytes
 
@@ -82,8 +82,8 @@ baseline <- list(
                       "expect a difference (mostly mid-gap, ~0 at anchors),",
                       "but not a wild one.")
 )
-saveRDS(baseline, OUT_RDS)
-cat("WROTE", OUT_RDS, "\n")
+qs2::qs_save(baseline, OUT_QS2)
+cat("WROTE", OUT_QS2, "\n")
 cat(sprintf("  ARA   rows: %d  (amspaf range %.4g .. %.4g)\n",
             nrow(ara_now), min(ara_now$amspaf, na.rm = TRUE),
             max(ara_now$amspaf, na.rm = TRUE)))
