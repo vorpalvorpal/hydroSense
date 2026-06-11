@@ -79,6 +79,8 @@ reference:
       - fit_target_model
       - ara_summary
       - analyte_pafs
+      - summarise_draws
+      - draw_measurement_error
 
   - title: Water chemistry & normalisation
     desc: >
