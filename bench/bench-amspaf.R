@@ -55,3 +55,75 @@ dir.create("bench", showWarnings = FALSE)
 out <- file.path("bench", sprintf("results-%s.rds", label))
 saveRDS(res, out)
 cat("WROTE", out, "\n")
+
+## ── PAF lookup micro-benchmarks (issue #36) ──────────────────────────────────
+##
+## These measure the three performance-critical paths added by the SSD PAF
+## lookup table:
+##   A. .ssd_paf_lookup() cold vs warm cache (per-analyte spline build cost)
+##   B. .ssd_paf_vec() lookup vs direct ssd_hp() at various concentration counts
+##   C. add_amspaf() draws-mode end-to-end: #36 vs a reference call using the
+##      cold-cache path (approximates #30 baseline for PAF cost)
+
+cat("\n── PAF lookup micro-benchmarks ──\n")
+
+meta      <- leachatetools:::.load_analyte_metadata(NULL)
+ssd_params <- suppressMessages(
+  leachatetools:::derive_ssd_params(meta, method = "multi", guideline_dir = NULL)
+)
+cu_fit <- ssd_params$fit[[which(ssd_params$analyte == "Cu")]]
+
+## A. Cold vs warm cache for .ssd_paf_lookup()
+clear_lookup <- function() {
+  env <- leachatetools:::.ssd_paf_lookup_env
+  rm(list = ls(envir = env, all.names = TRUE), envir = env)
+}
+
+paf_cache <- bench::mark(
+  cold = { clear_lookup(); leachatetools:::.ssd_paf_lookup("Cu", "multi", cu_fit, NULL) },
+  warm = leachatetools:::.ssd_paf_lookup("Cu", "multi", cu_fit, NULL),
+  iterations = 5L, check = FALSE, filter_gc = FALSE
+)
+cat("\nA. .ssd_paf_lookup() cold vs warm cache (Cu/multi):\n")
+print(paf_cache[, c("expression", "min", "median", "mem_alloc")])
+
+## B. .ssd_paf_vec() lookup vs direct ssd_hp()
+## Simulate the exact fallback: pass a non-NULL guideline_dir with few (<1025)
+## unique concentrations to force the direct path, vs NULL guideline_dir for
+## the shipped-table lookup path.
+tmp_gdir <- tempdir()
+set.seed(36L)
+conc_large <- stats::runif(2000L, 0.1, 100)   # 2000 unique → lookup path eligible
+
+paf_vec <- bench::mark(
+  lookup_shipped = leachatetools:::.ssd_paf_vec(
+    cu_fit, conc_large, "Cu", "multi", NULL
+  ),
+  direct_ssd_hp = leachatetools:::.ssd_paf_vec(
+    cu_fit, conc_large[seq_len(3)], "Cu", "multi", tmp_gdir
+  ),
+  iterations = 10L, check = FALSE, filter_gc = FALSE
+)
+cat("\nB. .ssd_paf_vec() lookup vs direct ssd_hp() (Cu/multi):\n")
+print(paf_vec[, c("expression", "min", "median", "mem_alloc")])
+
+## C. End-to-end add_amspaf() draws mode: 30 samples × 8 draws, 9 analytes.
+## Run twice to show warm-cache performance; first call populates the lookup.
+df_large <- make_frame(30L, 8L, 9L)
+.warmup <- suppressMessages(
+  add_amspaf(df_large, reference = NULL, conc_units = "ug/L", return = "draws")
+)  # warm up the cache
+rm(.warmup)
+e2e <- bench::mark(
+  add_amspaf_lookup = suppressMessages(
+    add_amspaf(df_large, reference = NULL, conc_units = "ug/L", return = "draws")
+  ),
+  iterations = 3L, check = FALSE, filter_gc = FALSE
+)
+cat("\nC. add_amspaf() 30s×8d×9a warm cache (lookup active):\n")
+print(e2e[, c("expression", "min", "median", "mem_alloc")])
+
+paf_bench <- list(cache = paf_cache, paf_vec = paf_vec, e2e = e2e)
+paf_out <- file.path("bench", sprintf("results-paf-lookup-%s.rds", label))
+saveRDS(paf_bench, paf_out)
+cat("WROTE", paf_out, "\n")
