@@ -27,7 +27,11 @@ BASELINE   <- "dev/baseline_bs01_centreline.qs2"
 DRAWS_ARA  <- "dev/bs01_kalman_draws_ara.qs2"  # raw per-(day,draw) AmsPAF — LONG to build
 DRAWS_TOT  <- "dev/bs01_kalman_draws_tot.qs2"  #   (the add_amspaf cost; see issue #30)
 CENTRE     <- "dev/bs01_kalman_centre.qs2"     # deterministic centre lines — fast (point mode)
+CHRONIC_ARA <- "dev/bs01_kalman_chronic_ara.qs2" # chronic TWA of the daily draws (cached)
+CHRONIC_TOT <- "dev/bs01_kalman_chronic_tot.qs2"
 GUIDE      <- "guideline data"
+TAU        <- 90    # chronic TWA decay (days); half-life ~ tau*log(2) ~ 62 d
+WINDOW     <- 365   # chronic look-back window (days)
 N_DRAWS    <- 20L   # raise once #30 makes draws cheap
 SEED       <- 42L
 INTERVAL   <- 0.5   # 25-75% band. Change this freely: re-summarising the cached
@@ -82,6 +86,66 @@ band <- function(draws_path, centre_df) {
 new_ara <- band(DRAWS_ARA, ctr_cache$ara)
 new_tot <- band(DRAWS_TOT, ctr_cache$total)
 
+## ── Chronic (time-weighted) AmsPAF ───────────────────────────────────────────
+## The chronic step is a weighted ARITHMETIC mean of the daily AmsPAF (the only
+## linear summary for a bounded index — geom_mean would add a second Jensen gap
+## inside the chronic step). It is run PER DRAW (each draw is a coherent daily
+## path), then summarised. Because the aggregation is linear:
+##   * the chronic MEAN = time-average of the daily means → the decision endpoint
+##     E[chronic AmsPAF], and it is robust to the #23 temporal-pairing choice
+##     (correlation changes a sum's variance, never its expectation);
+##   * the chronic INTERVAL still inherits the #23 index-pairing approximation.
+## We plot the chronic mean as the centre line and overlay the DETERMINISTIC
+## chronic (TWA of the point-mode daily centre) as a dashed reference — the gap
+## between them is the residual nonlinearity bias, much smaller than daily
+## because time-averaging many days pulls the distribution back toward symmetry.
+chronic_summary <- function(draws_path, centre_df, cache_path) {
+  if (file.exists(cache_path)) return(qs2::qs_read(cache_path))
+  draws_df <- qs2::qs_read(draws_path)
+  site     <- draws_df$site_id[[1]]
+  to_long  <- function(d, val, id_prefix, with_draw)
+    dplyr::transmute(
+      d,
+      sample_id = paste0(id_prefix, .data$date),
+      site_id   = if ("site_id" %in% names(d)) .data$site_id else site,
+      datetime  = .data$date,
+      analyte   = "AmsPAF",
+      value     = {{ val }},
+      detected  = TRUE,
+      draw_id   = if (with_draw) .data$draw_id else NA_integer_
+    )
+  inp <- to_long(draws_df, .data$amspaf, "d", TRUE) |>
+    dplyr::filter(is.finite(.data$value))
+  focal <- sort(unique(inp$datetime))
+
+  ## draws → chronic mean (central = "mean") + credible band at INTERVAL
+  cw <- time_weighted_aggregate(
+    inp, focal_dates = focal, tau = TAU, tau_units = "d",
+    window = WINDOW, window_units = "d",
+    summary = "arith_mean", return = "summary",
+    interval = INTERVAL, central = "mean"
+  ) |>
+    dplyr::transmute(date = .data$focal_date, amspaf = .data$value,
+                     amspaf_lower = .data$value_lower,
+                     amspaf_upper = .data$value_upper)
+
+  ## deterministic daily centre → chronic (reference, no draws)
+  det <- to_long(centre_df, .data$amspaf, "c", FALSE) |>
+    dplyr::filter(is.finite(.data$value)) |>
+    dplyr::select(-"draw_id")
+  cd <- time_weighted_aggregate(
+    det, focal_dates = focal, tau = TAU, tau_units = "d",
+    window = WINDOW, window_units = "d", summary = "arith_mean"
+  ) |>
+    dplyr::transmute(date = .data$focal_date, amspaf_det = .data$value)
+
+  out <- dplyr::left_join(cw, cd, by = "date")
+  qs2::qs_save(out, cache_path)
+  out
+}
+chr_tot <- chronic_summary(DRAWS_TOT, ctr_cache$total, CHRONIC_TOT)
+chr_ara <- chronic_summary(DRAWS_ARA, ctr_cache$ara,   CHRONIC_ARA)
+
 ## ── Sampling-events completeness (per grab date) ─────────────────────────────
 tc <- cc$target_chem
 ev <- tc |>
@@ -123,24 +187,44 @@ pC <- new_band(new_tot, base$total,
 pD <- new_band(new_ara, base$ara,
                sprintf("D. New centre + %s — Added Risk (ARA)", ci_lab),
                "State-space smoother (blue) vs old centre (grey dashed)")
-pE <- ggplot(cc$lmf_ts, aes(datetime, lmf)) +
+
+## Chronic panels: green = chronic MEAN (E[chronic AmsPAF], the decision
+## endpoint); grey dashed = deterministic chronic (TWA of the point-mode centre).
+chronic_band <- function(d, ttl, sub) ggplot(d, aes(date)) +
+  geom_ribbon(aes(ymin = amspaf_lower, ymax = amspaf_upper),
+              fill = "seagreen", alpha = 0.22) +
+  geom_line(aes(y = amspaf_det), colour = "grey55", linetype = "21",
+            linewidth = 0.5) +
+  geom_line(aes(y = amspaf), colour = "seagreen4", linewidth = 0.7) +
+  xlim + labs(title = ttl, subtitle = sub, x = NULL, y = ylab) + thm
+
+chr_sub <- sprintf("Chronic mean (green) + %s vs deterministic chronic (grey dashed); tau=%gd, window=%gd",
+                   ci_lab, TAU, WINDOW)
+pE <- chronic_band(chr_tot,
+               "E. Chronic (time-weighted) AmsPAF — no ARA (total mixture)",
+               chr_sub)
+pF <- chronic_band(chr_ara,
+               "F. Chronic (time-weighted) AmsPAF — Added Risk (ARA)",
+               chr_sub)
+
+pG <- ggplot(cc$lmf_ts, aes(datetime, lmf)) +
   geom_line(colour = "grey60") + geom_point(size = 1, colour = "grey20") +
-  xlim + labs(title = "E. Leachate mixing fraction (grab samples)",
+  xlim + labs(title = "G. Leachate mixing fraction (grab samples)",
               x = NULL, y = "LMF (%)") + thm
-pF <- ggplot(ev, aes(date, y)) +
+pH <- ggplot(ev, aes(date, y)) +
   geom_hline(yintercept = 1, colour = "grey80", linewidth = 0.4) +
   geom_point(aes(alpha = alpha), shape = 21, fill = "black",
              colour = "grey30", size = 3, stroke = 0.4) +
   scale_alpha_identity() +
   xlim + scale_y_continuous(limits = c(0.8, 1.2), breaks = NULL) +
-  labs(title = "F. Sampling events (fill alpha = sampling completeness)",
+  labs(title = "H. Sampling events (fill alpha = sampling completeness)",
        subtitle = "Solid = full metals + WQ suite; faint = only one or two analytes",
        x = NULL, y = NULL) + thm
 
 g <- if (requireNamespace("patchwork", quietly = TRUE)) {
-  patchwork::wrap_plots(pA, pB, pC, pD, pE, pF, ncol = 1)
+  patchwork::wrap_plots(pA, pB, pC, pD, pE, pF, pG, pH, ncol = 1)
 } else {
-  gridExtra::grid.arrange(pA, pB, pC, pD, pE, pF, ncol = 1)
+  gridExtra::grid.arrange(pA, pB, pC, pD, pE, pF, pG, pH, ncol = 1)
 }
-ggsave("dev/bs01_kalman_compare.png", g, width = 10, height = 18, dpi = 120)
+ggsave("dev/bs01_kalman_compare.png", g, width = 10, height = 24, dpi = 120)
 cat("WROTE dev/bs01_kalman_compare.png\n")
