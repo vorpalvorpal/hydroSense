@@ -78,7 +78,7 @@ band <- function(draws_path, centre_df) {
   q  <- qs2::qs_read(draws_path) |>
     dplyr::group_by(.data$date) |>
     dplyr::summarise(
-      amspaf_mean  = mean(.data$amspaf, na.rm = TRUE),
+      amspaf_median = stats::median(.data$amspaf, na.rm = TRUE),
       amspaf_lower = stats::quantile(.data$amspaf, lo,     names = FALSE, na.rm = TRUE),
       amspaf_upper = stats::quantile(.data$amspaf, 1 - lo, names = FALSE, na.rm = TRUE),
       .groups = "drop")
@@ -125,7 +125,7 @@ chronic_summary <- function(draws_path, centre_df, cache_path) {
     inp, focal_dates = focal, tau = TAU, tau_units = "d",
     window = WINDOW, window_units = "d",
     summary = "arith_mean", return = "summary",
-    interval = INTERVAL, central = "mean"
+    interval = INTERVAL, central = "median"
   ) |>
     dplyr::transmute(date = .data$focal_date, amspaf = .data$value,
                      amspaf_lower = .data$value_lower,
@@ -164,18 +164,18 @@ xlim <- ggplot2::scale_x_date(limits = c(START, END))
 thm  <- ggplot2::theme_minimal(base_size = 10)
 ylab <- "% species affected"
 
-## Daily panels: blue = draw MEAN (E[AmsPAF]); grey dashed = deterministic
-## centre (point mode); band = credible interval. Showing both makes the
-## uncertainty-driven inflation of the mean directly visible.
+## Daily panels: blue = posterior MEDIAN (signal-tracking; the mean is
+## tail-dominated under the current uncertainty model — see issue #39); grey
+## dashed = deterministic centre (point mode); band = credible interval.
 new_band <- function(dnew, ttl, sub) ggplot(dnew, aes(date)) +
   geom_ribbon(aes(ymin = amspaf_lower, ymax = amspaf_upper),
               fill = "steelblue", alpha = 0.22) +
-  geom_line(aes(y = amspaf_det,  colour = "deterministic centre"),
+  geom_line(aes(y = amspaf_det,    colour = "deterministic centre"),
             linetype = "21", linewidth = 0.55) +
-  geom_line(aes(y = amspaf_mean, colour = "mean  E[AmsPAF]"),
+  geom_line(aes(y = amspaf_median, colour = "posterior median"),
             linewidth = 0.7) +
   scale_colour_manual(values = c("deterministic centre" = "grey35",
-                                 "mean  E[AmsPAF]" = "steelblue4"),
+                                 "posterior median" = "steelblue4"),
                       name = NULL) +
   xlim + labs(title = ttl, subtitle = sub, x = NULL, y = ylab) + thm +
   ggplot2::theme(legend.position = "top")
@@ -184,13 +184,14 @@ ci_lab <- sprintf("%g%% CI (%g-%g pct)", 100 * INTERVAL,
                   100 * (1 - INTERVAL) / 2, 100 * (1 - (1 - INTERVAL) / 2))
 pC <- new_band(new_tot,
                sprintf("C. Daily AmsPAF + %s — no ARA (total mixture)", ci_lab),
-               "Blue = mean E[AmsPAF]; grey dashed = deterministic centre")
+               "Blue = posterior median; grey dashed = deterministic centre")
 pD <- new_band(new_ara,
                sprintf("D. Daily AmsPAF + %s — Added Risk (ARA)", ci_lab),
-               "Blue = mean E[AmsPAF]; grey dashed = deterministic centre")
+               "Blue = posterior median; grey dashed = deterministic centre")
 
-## Chronic panels: green = chronic MEAN (E[chronic AmsPAF], the decision
-## endpoint); grey dashed = deterministic chronic (TWA of the point-mode centre).
+## Chronic panels: green = chronic MEDIAN (signal-tracking; the chronic mean is
+## tail-dominated under the current uncertainty model — see #39); grey dashed =
+## deterministic chronic (TWA of the point-mode centre).
 chronic_band <- function(d, ttl, sub) ggplot(d, aes(date)) +
   geom_ribbon(aes(ymin = amspaf_lower, ymax = amspaf_upper),
               fill = "seagreen", alpha = 0.22) +
@@ -199,7 +200,7 @@ chronic_band <- function(d, ttl, sub) ggplot(d, aes(date)) +
   geom_line(aes(y = amspaf), colour = "seagreen4", linewidth = 0.7) +
   xlim + labs(title = ttl, subtitle = sub, x = NULL, y = ylab) + thm
 
-chr_sub <- sprintf("Chronic mean (green) + %s vs deterministic chronic (grey dashed); tau=%gd, window=%gd",
+chr_sub <- sprintf("Chronic median (green) + %s vs deterministic chronic (grey dashed); tau=%gd, window=%gd",
                    ci_lab, TAU, WINDOW)
 pE <- chronic_band(chr_tot,
                "E. Chronic (time-weighted) AmsPAF — no ARA (total mixture)",
