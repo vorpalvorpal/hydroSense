@@ -78,10 +78,12 @@ band <- function(draws_path, centre_df) {
   q  <- qs2::qs_read(draws_path) |>
     dplyr::group_by(.data$date) |>
     dplyr::summarise(
+      amspaf_mean  = mean(.data$amspaf, na.rm = TRUE),
       amspaf_lower = stats::quantile(.data$amspaf, lo,     names = FALSE, na.rm = TRUE),
       amspaf_upper = stats::quantile(.data$amspaf, 1 - lo, names = FALSE, na.rm = TRUE),
       .groups = "drop")
-  dplyr::left_join(centre_df, q, by = "date")
+  ## centre_df carries the deterministic point-mode centre (renamed amspaf_det)
+  dplyr::left_join(dplyr::rename(centre_df, amspaf_det = "amspaf"), q, by = "date")
 }
 new_ara <- band(DRAWS_ARA, ctr_cache$ara)
 new_tot <- band(DRAWS_TOT, ctr_cache$total)
@@ -162,31 +164,30 @@ xlim <- ggplot2::scale_x_date(limits = c(START, END))
 thm  <- ggplot2::theme_minimal(base_size = 10)
 ylab <- "% species affected"
 
-old_line <- function(d, ttl, sub) ggplot(d, aes(date, amspaf)) +
-  geom_line(colour = "grey25", linewidth = 0.6) + xlim +
-  labs(title = ttl, subtitle = sub, x = NULL, y = ylab) + thm
-
-new_band <- function(dnew, dold, ttl, sub) ggplot() +
-  geom_ribbon(data = dnew, aes(date, ymin = amspaf_lower, ymax = amspaf_upper),
-              fill = "steelblue", alpha = 0.25) +
-  geom_line(data = dold, aes(date, amspaf), colour = "grey55",
-            linetype = "21", linewidth = 0.5) +
-  geom_line(data = dnew, aes(date, amspaf), colour = "steelblue4",
+## Daily panels: blue = draw MEAN (E[AmsPAF]); grey dashed = deterministic
+## centre (point mode); band = credible interval. Showing both makes the
+## uncertainty-driven inflation of the mean directly visible.
+new_band <- function(dnew, ttl, sub) ggplot(dnew, aes(date)) +
+  geom_ribbon(aes(ymin = amspaf_lower, ymax = amspaf_upper),
+              fill = "steelblue", alpha = 0.22) +
+  geom_line(aes(y = amspaf_det,  colour = "deterministic centre"),
+            linetype = "21", linewidth = 0.55) +
+  geom_line(aes(y = amspaf_mean, colour = "mean  E[AmsPAF]"),
             linewidth = 0.7) +
-  xlim + labs(title = ttl, subtitle = sub, x = NULL, y = ylab) + thm
+  scale_colour_manual(values = c("deterministic centre" = "grey35",
+                                 "mean  E[AmsPAF]" = "steelblue4"),
+                      name = NULL) +
+  xlim + labs(title = ttl, subtitle = sub, x = NULL, y = ylab) + thm +
+  ggplot2::theme(legend.position = "top")
 
-pA <- old_line(base$total, "A. Old centre line — no ARA (total mixture)",
-               "Pre-rework deterministic interpolation")
-pB <- old_line(base$ara,   "B. Old centre line — Added Risk (ARA)",
-               "Pre-rework deterministic interpolation")
 ci_lab <- sprintf("%g%% CI (%g-%g pct)", 100 * INTERVAL,
                   100 * (1 - INTERVAL) / 2, 100 * (1 - (1 - INTERVAL) / 2))
-pC <- new_band(new_tot, base$total,
-               sprintf("C. New centre + %s — no ARA", ci_lab),
-               "State-space smoother (blue) vs old centre (grey dashed)")
-pD <- new_band(new_ara, base$ara,
-               sprintf("D. New centre + %s — Added Risk (ARA)", ci_lab),
-               "State-space smoother (blue) vs old centre (grey dashed)")
+pC <- new_band(new_tot,
+               sprintf("C. Daily AmsPAF + %s — no ARA (total mixture)", ci_lab),
+               "Blue = mean E[AmsPAF]; grey dashed = deterministic centre")
+pD <- new_band(new_ara,
+               sprintf("D. Daily AmsPAF + %s — Added Risk (ARA)", ci_lab),
+               "Blue = mean E[AmsPAF]; grey dashed = deterministic centre")
 
 ## Chronic panels: green = chronic MEAN (E[chronic AmsPAF], the decision
 ## endpoint); grey dashed = deterministic chronic (TWA of the point-mode centre).
@@ -222,9 +223,9 @@ pH <- ggplot(ev, aes(date, y)) +
        x = NULL, y = NULL) + thm
 
 g <- if (requireNamespace("patchwork", quietly = TRUE)) {
-  patchwork::wrap_plots(pA, pB, pC, pD, pE, pF, pG, pH, ncol = 1)
+  patchwork::wrap_plots(pC, pD, pE, pF, pG, pH, ncol = 1)
 } else {
-  gridExtra::grid.arrange(pA, pB, pC, pD, pE, pF, pG, pH, ncol = 1)
+  gridExtra::grid.arrange(pC, pD, pE, pF, pG, pH, ncol = 1)
 }
-ggsave("dev/bs01_kalman_compare.png", g, width = 10, height = 24, dpi = 120)
+ggsave("dev/bs01_kalman_compare.png", g, width = 10, height = 19, dpi = 120)
 cat("WROTE dev/bs01_kalman_compare.png\n")
