@@ -378,7 +378,9 @@ amspaf_daily <- function(
           daily_long       = daily_long,
           ou_scale         = ou_scale,
           grab_cv          = grab_cv,
-          kappa            = kappa
+          kappa            = kappa,
+          method           = method,
+          guideline_dir    = guideline_dir
         )
 
         ## Diagnostics from forward-filled daily_long (counts grab dates,
@@ -517,7 +519,9 @@ amspaf_daily <- function(
           imputation_model = imputation_model,
           conc_units       = conc_units,
           meta             = meta,
-          tox_analytes     = tox_analytes
+          tox_analytes     = tox_analytes,
+          method           = method,
+          guideline_dir    = guideline_dir
         )
         impact_tiers <- attr(daily_long, "impact_tiers")
         diag <- .compute_daily_diag(daily_long, tox_analytes, site)
@@ -1021,7 +1025,8 @@ amspaf_daily <- function(
 #' @keywords internal
 .fit_daily_target <- function(site_rows, reference_model, imputation_model,
                                conc_units, meta, tox_analytes, daily_long,
-                               ou_scale = 1, grab_cv = NULL, kappa = 0.5) {
+                               ou_scale = 1, grab_cv = NULL, kappa = 0.5,
+                               method = "multi", guideline_dir = NULL) {
   qdates <- sort(unique(daily_long$.date))
 
   tm <- tryCatch(
@@ -1030,7 +1035,9 @@ amspaf_daily <- function(
       reference_model  = reference_model,
       imputation_model = imputation_model,
       conc_units       = conc_units,
-      analyte_metadata = meta
+      analyte_metadata = meta,
+      method           = method,
+      guideline_dir    = guideline_dir
     ),
     error = function(e) {
       cli::cli_warn(c(
@@ -1484,7 +1491,8 @@ amspaf_daily <- function(
 #' @keywords internal
 .daily_tox_from_model <- function(daily_long, site_rows, reference_model,
                                    imputation_model, conc_units, meta,
-                                   tox_analytes) {
+                                   tox_analytes, method = "multi",
+                                   guideline_dir = NULL) {
   fdm <- .fit_daily_target(
     site_rows        = site_rows,
     reference_model  = reference_model,
@@ -1492,7 +1500,9 @@ amspaf_daily <- function(
     conc_units       = conc_units,
     meta             = meta,
     tox_analytes     = tox_analytes,
-    daily_long       = daily_long
+    daily_long       = daily_long,
+    method           = method,
+    guideline_dir    = guideline_dir
   )
   if (is.null(fdm)) return(daily_long)
 

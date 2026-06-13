@@ -93,6 +93,15 @@
 #' @param conc_units Unit string for target chemistry when no `units.analyte`
 #'   column is present.
 #' @param analyte_metadata Analyte metadata, or `NULL` for the bundled CSV.
+#' @param method SSD method (`"multi"` or `"anzecc"`) used to derive each
+#'   analyte's HC5 transform scale when `analyte_c` is not supplied.
+#' @param guideline_dir Path to the ANZG guideline data folder (for the SSD
+#'   fits); falls back to `getOption("leachatetools.guideline_dir")`.
+#' @param analyte_c Optional named numeric vector of per-analyte transform
+#'   scales `c` (SSD HC5; issue #15). When `NULL` (default) it is computed from
+#'   the fitted SSDs. The impact residual is smoothed on the variance-stabilising
+#'   scale `g = asinh(I / c)`; an analyte with `NA`/absent `c` keeps the additive
+#'   model.
 #' @param api_windows_short,api_windows_long Candidate short/long antecedent
 #'   memory windows (days) for `f(hydro)`, selected by AIC.
 #' @param auto_select Logical; AIC window selection per analyte (default `TRUE`).
@@ -143,6 +152,9 @@ fit_target_model <- function(
     imputation_model   = NULL,
     conc_units         = NULL,
     analyte_metadata   = NULL,
+    method             = c("multi", "anzecc"),
+    guideline_dir      = getOption("leachatetools.guideline_dir"),
+    analyte_c          = NULL,
     api_windows_short  = c(3L, 7L, 14L),
     api_windows_long   = c(30L, 60L, 90L, 180L),
     auto_select        = TRUE,
@@ -190,6 +202,25 @@ fit_target_model <- function(
     !meta$analyte %in% .AMSPAF_EXCLUDED_ANALYTES
   ]
   target <- .convert_df_tox_to_ugL(target, ssd_analytes, conc_units, "target")
+
+  ## Per-analyte variance-stabilising scale c = SSD HC5 (issue #15). The impact
+  ## residual is smoothed on the g = asinh(I / c) scale so the process variance
+  ## is proportional to concentration; c is the additive->proportional crossover.
+  ## Computed once from the fitted SSDs (NA where an HC5 is unavailable -> that
+  ## analyte keeps the additive model). The caller may supply `analyte_c`
+  ## directly (e.g. amspaf_daily, which already derives the SSD params).
+  method <- match.arg(method)
+  if (is.null(analyte_c)) {
+    ssd_p <- suppressMessages(
+      derive_ssd_params(meta, method = method, guideline_dir = guideline_dir)
+    )
+    analyte_c <- stats::setNames(
+      vapply(ssd_p$fit, function(f) {
+        tryCatch(.analyte_c(f), error = function(e) NA_real_)
+      }, numeric(1L)),
+      ssd_p$analyte
+    )
+  }
 
   ## Impute-first only when the model can actually impute (has fitted groups).
   ## A PCA-only imputation_model still feeds the WQ layer below via its $pca.
@@ -239,6 +270,19 @@ fit_target_model <- function(
   anchors_all <- obs_samples |>
     dplyr::summarise(I = mean(.data$I, na.rm = TRUE), .by = c("date", "analyte"))
 
+  ## Variance-stabilising transform of the impact, per analyte (issue #15):
+  ## g = asinh(I / c). The smoother bridges `g`; analytes without an HC5 keep
+  ## g = I (additive). Same-day grabs are averaged in impact space first (the
+  ## anchor is the day's impact level), then transformed.
+  anchors_all <- anchors_all |>
+    dplyr::mutate(scale_c = unname(analyte_c[.data$analyte])) |>
+    dplyr::group_by(.data$analyte) |>
+    dplyr::mutate(g = {
+      cc <- dplyr::first(.data$scale_c)
+      if (is.na(cc)) .data$I else .g_transform(.data$I, cc)
+    }) |>
+    dplyr::ungroup()
+
   ## -- Hydro response: pooled (factor-smooth shrinkage) or per-analyte ---------
   target_analytes <- intersect(unique(anchors_all$analyte), ssd_analytes)
 
@@ -271,11 +315,13 @@ fit_target_model <- function(
     fit_res <- base_models[[nm]]
     fit_res$wq_fit <- NULL
     fit_res$d_anchors <- NULL
+    fit_res$scale_c <- unname(analyte_c[nm])    # transform scale (NA -> additive)
     if (length(pc_cols) > 0L) {
       os_nm <- dplyr::filter(obs_samples, .data$analyte == .env$nm)
       fit_res <- c(fit_res, .fit_wq_layer(
         os_nm, pc_cols, hydro, hydro_type,
-        fit_res$window_short, fit_res$window_long, min_obs_model
+        fit_res$window_short, fit_res$window_long, min_obs_model,
+        scale_c = fit_res$scale_c
       ))
     }
     models[[nm]] <- fit_res
@@ -306,25 +352,32 @@ fit_target_model <- function(
 #' @return List with `wq_fit` (gam or `NULL`) and `d_anchors` (or `NULL`).
 #' @keywords internal
 .fit_wq_layer <- function(os_nm, pc_cols, hydro, hydro_type,
-                           window_short, window_long, min_obs_model) {
+                           window_short, window_long, min_obs_model,
+                           scale_c = NA_real_) {
   os_nm <- os_nm[stats::complete.cases(os_nm[, pc_cols, drop = FALSE]), , drop = FALSE]
   if (nrow(os_nm) < min_obs_model) return(list(wq_fit = NULL, d_anchors = NULL))
 
+  ## Model the WQ->concentration prediction on the variance-stabilising scale
+  ## (issue #15): gvn = asinh(value_norm / c) (or value_norm when c is NA). The
+  ## residual `d` is then in g-space, like the impact residual `S`.
+  os_nm$gvn <- if (is.na(scale_c)) os_nm$value_norm else
+    .g_transform(os_nm$value_norm, scale_c)
+
   k_pc <- min(4L, nrow(os_nm) - 2L)
   form <- stats::as.formula(paste(
-    "value_norm ~", paste(sprintf("s(%s, k = %d)", pc_cols, k_pc), collapse = " + ")
+    "gvn ~", paste(sprintf("s(%s, k = %d)", pc_cols, k_pc), collapse = " + ")
   ))
   wq_gam <- tryCatch(mgcv::gam(form, data = os_nm, method = "REML"),
                      error = function(e) NULL, warning = function(w) NULL)
   if (is.null(wq_gam)) return(list(wq_fit = NULL, d_anchors = NULL))
 
-  null_gam <- tryCatch(mgcv::gam(value_norm ~ 1, data = os_nm, method = "REML"),
+  null_gam <- tryCatch(mgcv::gam(gvn ~ 1, data = os_nm, method = "REML"),
                        error = function(e) NULL)
   if (is.null(null_gam) || stats::AIC(wq_gam) >= stats::AIC(null_gam)) {
     return(list(wq_fit = NULL, d_anchors = NULL))
   }
 
-  os_nm$d <- os_nm$value_norm - as.numeric(stats::predict(wq_gam))
+  os_nm$d <- os_nm$gvn - as.numeric(stats::predict(wq_gam))
   d_anch <- os_nm |>
     dplyr::summarise(S = mean(.data$d, na.rm = TRUE), .by = "date") |>
     dplyr::arrange(.data$date)
@@ -362,7 +415,7 @@ fit_target_model <- function(
       window_long  = wl,
       tier         = "bridge",
       n_obs        = n_obs,
-      anchors      = dplyr::mutate(obs, S = .data$I)
+      anchors      = dplyr::mutate(obs, S = .data$g)
     )
   }
 
@@ -373,13 +426,13 @@ fit_target_model <- function(
   ## AIC window selection (season-blind: 2-smooth model on the two indices)
   fit_one <- function(ws, wl) {
     df_m <- tibble::tibble(
-      I           = obs$I,
+      g           = obs$g,    # variance-stabilised impact (issue #15)
       hydro_short = .compute_hydro_features(hydro, obs$date, ws, wl, hydro_type)$hydro_short,
       hydro_long  = .compute_hydro_features(hydro, obs$date, ws, wl, hydro_type)$hydro_long
     )
     k_h <- min(4L, n_obs - 2L)
     fit <- tryCatch(
-      mgcv::gam(I ~ s(hydro_short, k = k_h) + s(hydro_long, k = k_h),
+      mgcv::gam(g ~ s(hydro_short, k = k_h) + s(hydro_long, k = k_h),
                 data = df_m, method = "REML"),
       error = function(e) NULL, warning = function(w) NULL
     )
@@ -408,21 +461,22 @@ fit_target_model <- function(
 
   ## Null (intercept-only) -- the model must beat it to earn the "model" tier
   null_fit <- tryCatch(
-    mgcv::gam(I ~ 1, data = best$df, method = "REML"),
+    mgcv::gam(g ~ 1, data = best$df, method = "REML"),
     error = function(e) NULL
   )
   null_aic <- if (!is.null(null_fit)) stats::AIC(null_fit) else Inf
   if (best_aic >= null_aic) return(flat(best_ws, best_wl))
 
   ## Recompute anchors' hydro features at the chosen windows; store residual S
+  ## in the transformed (g) space (issue #15).
   feats <- .compute_hydro_features(hydro, obs$date, best_ws, best_wl, hydro_type)
   anchors <- obs
   anchors$hydro_short <- feats$hydro_short
   anchors$hydro_long  <- feats$hydro_long
-  fitted_I <- as.numeric(stats::predict(best$fit, newdata = dplyr::tibble(
+  fitted_g <- as.numeric(stats::predict(best$fit, newdata = dplyr::tibble(
     hydro_short = feats$hydro_short, hydro_long = feats$hydro_long
   )))
-  anchors$S <- anchors$I - fitted_I
+  anchors$S <- anchors$g - fitted_g
 
   list(
     impact_fit   = best$fit,
@@ -482,7 +536,7 @@ fit_target_model <- function(
     obs <- anchors_for(nm, ws, wl)
     list(
       impact_fit = NULL, window_short = ws, window_long = wl, tier = "bridge",
-      n_obs = nrow(obs), anchors = dplyr::mutate(obs, S = .data$I)
+      n_obs = nrow(obs), anchors = dplyr::mutate(obs, S = .data$g)
     )
   }
 
@@ -506,10 +560,11 @@ fit_target_model <- function(
   ## this, the shared `bs = "fs"` penalty (which shrinks each analyte's level,
   ## not just its wiggliness) cross-contaminates impact magnitudes across
   ## chemically unrelated analytes.
+  ## Standardise on the transformed scale g (issue #15), not raw impact I.
   zstats <- anchors_all |>
     dplyr::filter(.data$analyte %in% .env$poolable) |>
-    dplyr::summarise(mu = mean(.data$I, na.rm = TRUE),
-                     sd = stats::sd(.data$I, na.rm = TRUE), .by = "analyte")
+    dplyr::summarise(mu = mean(.data$g, na.rm = TRUE),
+                     sd = stats::sd(.data$g, na.rm = TRUE), .by = "analyte")
   ## Analytes with ~no impact variance carry no shape to share -> flat bridge.
   flat_nm  <- zstats$analyte[!is.finite(zstats$sd) | zstats$sd < eps]
   poolable <- setdiff(poolable, flat_nm)
@@ -531,7 +586,7 @@ fit_target_model <- function(
   build_df <- function(ws, wl) {
     purrr::map_dfr(poolable, function(nm) {
       o <- anchors_for(nm, ws, wl)
-      tibble::tibble(z = (o$I - zmu(nm)) / zsd(nm), hydro_short = o$hydro_short,
+      tibble::tibble(z = (o$g - zmu(nm)) / zsd(nm), hydro_short = o$hydro_short,
                      hydro_long = o$hydro_long, analyte = nm)
     }) |> dplyr::mutate(analyte = factor(.data$analyte))
   }
@@ -587,11 +642,11 @@ fit_target_model <- function(
                            analyte = factor(nm, levels = lev))
       ## De-standardise the shared shape back to this analyte's own magnitude.
       z_hat    <- as.numeric(stats::predict(best, newdata = nd))
-      fitted_I <- zmu(nm) + zsd(nm) * z_hat
+      fitted_g <- zmu(nm) + zsd(nm) * z_hat        # de-standardise in g-space
       out[[nm]] <- list(
         impact_fit = best, window_short = best_ws, window_long = best_wl,
         tier = "model", n_obs = nrow(obs),
-        anchors = dplyr::mutate(obs, S = .data$I - fitted_I),
+        anchors = dplyr::mutate(obs, S = .data$g - fitted_g),
         pooled = TRUE, analyte = nm, pool_levels = lev,
         pool_center = zmu(nm), pool_scale = zsd(nm)
       )
@@ -719,6 +774,7 @@ fit_target_model <- function(
     nm <- analytes[j]
     m  <- target_model$models[[nm]]
     sc <- static[[nm]]
+    c_a <- m$scale_c %||% NA_real_   # transform scale c (NA -> additive model)
 
     ## ref_vec and beta.f(hydro) are static across draws -- use the precomputed
     ## context when supplied (and compute beta.f as lpmatrix %*% coef, which
@@ -761,17 +817,23 @@ fit_target_model <- function(
       pc_lookup <- dplyr::left_join(
         tibble::tibble(sample_id = as.character(qdates)), pc_q, by = "sample_id"
       )
+      ## c_wq + rp live on the g scale (issue #15); invert to concentration.
       c_wq   <- as.numeric(stats::predict(m$wq_fit, newdata = pc_lookup))
-      c_norm <- pmax(c_wq + rp, 0)
+      g_c    <- c_wq + rp
+      c_norm <- pmax(if (is.na(c_a)) g_c else .g_inverse(g_c, c_a), 0)
       tier_vec <- rep("wq", length(qdates))
       bad <- !is.finite(c_norm) & !is.na(rp)       # within span but WQ missing
       if (any(bad)) {
-        c_norm[bad]  <- pmax(ref_vec[bad] + hp[bad], 0)
+        hp_imp <- if (is.na(c_a)) hp[bad] else .g_inverse(hp[bad], c_a)
+        c_norm[bad]  <- pmax(ref_vec[bad] + hp_imp, 0)
         tier_vec[bad] <- m$tier
       }
       impact <- c_norm - ref_vec
     } else {
-      impact   <- hp + rp
+      ## hp (beta.f(hydro)) + rp (smoothed residual) live on the g scale;
+      ## invert to recover the impact in concentration units (issue #15).
+      g_hat    <- hp + rp
+      impact   <- if (is.na(c_a)) g_hat else .g_inverse(g_hat, c_a)
       c_norm   <- pmax(ref_vec + impact, 0)
       tier_vec <- rep(m$tier, length(qdates))
     }

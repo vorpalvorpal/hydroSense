@@ -11,7 +11,8 @@
   hydro_type,
   window_short,
   window_long,
-  min_obs_model
+  min_obs_model,
+  scale_c = NA_real_
 )
 }
 \value{

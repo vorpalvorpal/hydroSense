@@ -203,13 +203,15 @@ test_that("D6: a positive residual path shifts C_raw upwards for that analyte", 
   )
   rows_base <- leachatetools:::.predict_daily_tox(fdm, residual_paths = NULL)
 
-  ## A large positive residual on the first modelled analyte (over its grid).
+  ## A positive residual on the first modelled analyte (over its grid). The
+  ## residual now lives on the g = asinh(I/c) scale (issue #15), so the
+  ## perturbation is g-space-scaled (+1, not +1000 which would overflow sinh).
   nm  <- fdm$modelled[[1L]]
   sm  <- fdm$smoothers[[nm]]
   rp  <- stats::setNames(lapply(fdm$modelled, function(a) {
     base <- leachatetools:::.residual_on_qdates(fdm$smoothers[[a]]$grid_dates,
                                                 fdm$smoothers[[a]]$mean, fdm$qdates)
-    if (a == nm) base + 1000 else base
+    if (a == nm) base + 1 else base
   }), fdm$modelled)
   rows_rp <- leachatetools:::.predict_daily_tox(fdm, residual_paths = rp)
 
