@@ -1,0 +1,212 @@
+## Behaviour specification for the variance-stabilising transform of the daily
+## impact residual (issue #15 — fixes the baseline over-dispersion of #39).
+##
+## Plan (issue #15 comments): smooth the ARA impact I = C_norm - ref_norm in a
+## variance-stabilising space g = asinh(I / c), with per-analyte scale c = HC5
+## (the SSD 5% hazard concentration). ref stays ONLY in the ARA difference; the
+## transform involves c (from the SSD) alone. asinh (not log(I+c)) because the
+## impact is signed (C < ref is real precipitation).
+##
+## New code (does not exist yet — every it() starts with skip(), so the suite is
+## PENDING until the implement skill lands it):
+##   R/transform.R (or R/target_model.R):
+##     .g_transform(I, c)   -> asinh(I / c)
+##     .g_inverse(g, c)     -> c * sinh(g)
+##     .analyte_c(fit)      -> ssdtools::ssd_hc(fit, proportion = 0.05)$est  (HC5)
+##   Wiring (R/target_model.R / R/amspaf_daily.R): anchors and the impact-GAM
+##   residual are built in g-space; reconstruction inverse-transforms back to I.
+##
+## Units: HC5 from the fitted SSD is in the SAME normalised concentration space
+## as C_norm / ref_norm (normalisation maps measured C onto the SSD scale), so
+## c and I share units and I/c is dimensionless.
+##
+## NOTE: the real-data baseline-tightening acceptance (NH3-N PAF q99 collapses
+## on B.S01 without breaking event coverage) is a Stage-4 dev validation
+## (dev/jan2024_investigation.R, dev/loo_coverage_bs01.R), not a unit test. The
+## wiring specs below assert the mathematical behaviour that validation relies on.
+
+library(testthat)
+library(leachatetools)
+
+PENDING <- "pending: #15 — asinh variance-stabilising transform"
+
+## ── Pure transform helpers ────────────────────────────────────────────────────
+
+describe(".g_transform() / .g_inverse()", {
+
+  it("round-trips: g_inverse(g_transform(I, c), c) == I for signed I", {
+    skip(PENDING)
+    c <- 12.5
+    I <- c(-5000, -100, -1, -1e-6, 0, 1e-6, 1, 100, 5000)
+    expect_equal(
+      leachatetools:::.g_inverse(leachatetools:::.g_transform(I, c), c),
+      I, tolerance = 1e-10
+    )
+  })
+
+  it("maps zero impact to zero in both directions", {
+    skip(PENDING)
+    expect_identical(leachatetools:::.g_transform(0, 7), 0)
+    expect_identical(leachatetools:::.g_inverse(0, 7), 0)
+  })
+
+  it("is sign-preserving and strictly increasing in I", {
+    skip(PENDING)
+    c <- 3
+    I <- sort(c(-1000, -10, -0.1, 0, 0.1, 10, 1000))
+    g <- leachatetools:::.g_transform(I, c)
+    expect_true(all(diff(g) > 0))                 # strictly increasing
+    expect_identical(sign(g), sign(I))            # sign preserved
+  })
+
+  it("is additive for |I| << c: g ~= I/c (slope 1/c at the origin)", {
+    skip(PENDING)
+    # asinh(x) -> x as x -> 0, so g_transform(I, c) -> I/c for |I| << c.
+    c <- 50
+    I <- c * c(-1e-3, -1e-4, 1e-4, 1e-3)
+    expect_equal(leachatetools:::.g_transform(I, c), I / c, tolerance = 1e-6)
+  })
+
+  it("is logarithmic for |I| >> c: g ~= sign(I)*log(2|I|/c)", {
+    skip(PENDING)
+    # asinh(x) ~ sign(x)*log(2|x|) for |x| >> 1, so g ~ sign(I)*log(2|I|/c).
+    c <- 4
+    I <- c(-1e7, 1e7)
+    expect_equal(leachatetools:::.g_transform(I, c),
+                 sign(I) * log(2 * abs(I) / c), tolerance = 1e-6)
+  })
+
+  it("propagates NA and maps +/-Inf to +/-Inf", {
+    skip(PENDING)
+    expect_identical(leachatetools:::.g_transform(NA_real_, 5), NA_real_)
+    expect_identical(leachatetools:::.g_inverse(NA_real_, 5), NA_real_)
+    expect_identical(leachatetools:::.g_transform(c(-Inf, Inf), 5), c(-Inf, Inf))
+  })
+
+  it("errors on a non-positive scale c", {
+    skip(PENDING)
+    expect_snapshot(leachatetools:::.g_transform(1, 0), error = TRUE)
+    expect_snapshot(leachatetools:::.g_transform(1, -3), error = TRUE)
+  })
+
+  it("is vectorised over I with a scalar c", {
+    skip(PENDING)
+    c <- 9
+    I <- runif(100, -200, 200)
+    g <- leachatetools:::.g_transform(I, c)
+    expect_length(g, 100L)
+    expect_equal(leachatetools:::.g_inverse(g, c), I, tolerance = 1e-10)
+  })
+})
+
+## ── Per-analyte scale c = HC5 ─────────────────────────────────────────────────
+
+describe(".analyte_c()", {
+
+  ## A real fitted SSD for the oracle (multi method, no guideline_dir).
+  get_fit <- function(analyte = "Cu") {
+    meta <- leachatetools:::.load_analyte_metadata(NULL)
+    sp   <- suppressMessages(
+      leachatetools:::derive_ssd_params(meta, method = "multi",
+                                        guideline_dir = NULL)
+    )
+    sp$fit[[which(sp$analyte == analyte)]]
+  }
+
+  it("returns the SSD 5% hazard concentration (HC5)", {
+    skip(PENDING)
+    fit <- get_fit("Cu")
+    # Oracle: same call the package uses for HC5 (R/paf.R).
+    hc5 <- ssdtools::ssd_hc(fit, proportion = 0.05, ci = FALSE)$est
+    expect_equal(leachatetools:::.analyte_c(fit), hc5, tolerance = 1e-8)
+  })
+
+  it("returns a single finite positive scale for a normal fit", {
+    skip(PENDING)
+    cc <- leachatetools:::.analyte_c(get_fit("Zn"))
+    expect_length(cc, 1L)
+    expect_true(is.finite(cc) && cc > 0)
+  })
+
+  it("errors or returns NA (never silently invalid) for a NULL / unusable fit", {
+    skip(PENDING)
+    # Exact degraded behaviour (error vs NA) is the implementer's per-plan
+    # choice; the invariant is that it never returns a non-positive scale that
+    # would break asinh(I / c).
+    out <- tryCatch(leachatetools:::.analyte_c(NULL),
+                    error = function(e) NA_real_)
+    expect_true(is.na(out) || (is.finite(out) && out > 0))
+  })
+})
+
+## ── Transform wiring into the smoother (the math the target-model uses) ────────
+## These exercise the existing residual smoother fed transformed anchors, which
+## is exactly what fit_target_model() will do internally once wired. They
+## specify: (1) anchor round-trip exactness (centre unchanged at grabs),
+## (2) geometric mid-gap interpolation, (3) baseline draw tightening because
+## gamma is re-estimated in the compressed g-space.
+
+describe("asinh transform wiring (daily impact smoother)", {
+
+  it("reproduces the measured impact at grab anchors (centre unchanged at grabs)", {
+    skip(PENDING)
+    dates <- as.Date("2021-01-01") + (seq_len(12) - 1L) * 30L
+    I     <- c(1, 2, 50, 3, 100, 2, 1, 40, 2, 3, 80, 1)
+    cc    <- 20
+    tdates <- seq(min(dates), max(dates), by = "day")
+    g  <- leachatetools:::.g_transform(I, cc)
+    sm <- leachatetools:::.residual_smoother(dates, g, tdates)
+    gi <- match(dates, sm$grid_dates)
+    I_hat <- leachatetools:::.g_inverse(sm$mean[gi], cc)
+    # smoother pins ~exactly at anchors (tiny anchor obs-noise), so the
+    # back-transformed deterministic centre recovers the measured impact.
+    expect_equal(I_hat, I, tolerance = 1e-2)
+  })
+
+  it("interpolates geometrically between anchors, well below the linear value", {
+    skip(PENDING)
+    dates  <- as.Date(c("2021-01-01", "2021-03-02"))   # 60-day gap
+    I      <- c(1, 1000)
+    cc     <- 10
+    tdates <- seq(min(dates), max(dates), by = "day")
+    g   <- leachatetools:::.g_transform(I, cc)
+    sm  <- leachatetools:::.residual_smoother(dates, g, tdates)
+    mid <- as.Date("2021-01-31")
+    gi  <- match(mid, sm$grid_dates)
+    I_mid      <- leachatetools:::.g_inverse(sm$mean[gi], cc)
+    linear_mid <- stats::approx(as.numeric(dates), I,
+                                xout = as.numeric(mid))$y   # ~500
+    # geometric (g-space) interpolation pulls the mid-gap impact far below the
+    # arithmetic midpoint.
+    expect_lt(I_mid, linear_mid / 2)
+  })
+
+  it("bounds the baseline draw spread at the c-scale, unlike the additive smoother", {
+    skip(PENDING)
+    withr::local_seed(42)
+    dates  <- as.Date("2021-01-01") + (seq_len(24) - 1L) * 30L
+    I      <- rep(2, length(dates)); I[c(10, 11)] <- 6000   # baseline + 1 event
+    cc     <- 100
+    tdates <- seq(min(dates), max(dates), by = "day")
+    base_day <- as.Date("2021-03-02")                       # a baseline day
+
+    # additive smoother: global gamma is inflated by the event spike
+    sm_add <- leachatetools:::.residual_smoother(dates, I, tdates)
+    dr_add <- leachatetools:::.kalman_draw(sm_add$model, 500L)
+    add_q99 <- stats::quantile(
+      dr_add[match(base_day, sm_add$grid_dates), ], 0.99, names = FALSE)
+
+    # g-space smoother: gamma re-estimated in the compressed space
+    g     <- leachatetools:::.g_transform(I, cc)
+    sm_g  <- leachatetools:::.residual_smoother(dates, g, tdates)
+    dr_g  <- leachatetools:::.g_inverse(
+      leachatetools:::.kalman_draw(sm_g$model, 500L), cc)
+    g_q99 <- stats::quantile(
+      dr_g[match(base_day, sm_g$grid_dates), ], 0.99, names = FALSE)
+
+    # the transform dramatically tightens the baseline upper tail ...
+    expect_lt(g_q99, add_q99 / 5)
+    # ... and keeps it near the c-scale rather than the event scale (6000).
+    expect_lt(g_q99, 10 * cc)
+  })
+})
