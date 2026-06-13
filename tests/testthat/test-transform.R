@@ -209,3 +209,99 @@ describe("asinh transform wiring (daily impact smoother)", {
     expect_lt(g_q99, 10 * cc)
   })
 })
+
+## ── Stage 2 integration: fit_target_model() uses the transform ────────────────
+## End-to-end wiring through the real fit_target_model() + .resolve_target_impact()
+## (heavy synthetic fits, so each it() builds its own model AFTER skip()).
+
+describe("fit_target_model() asinh wiring (issue #15)", {
+  make_chem <- function(site, dates, mult = 1, seed = 1) {
+    set.seed(seed)
+    analytes <- c("Cu", "Zn", "Ni", "pH", "DOC", "hardness", "Ca", "Mg")
+    purrr::map_dfr(dates, function(d) {
+      tibble::tibble(
+        sample_id = paste0(site, format(d, "%Y%m%d")), site_id = site,
+        datetime = d, analyte = analytes,
+        value = c(
+          exp(stats::rnorm(1, log(0.5), 0.3)) * mult,
+          exp(stats::rnorm(1, log(5), 0.4)) * mult,
+          exp(stats::rnorm(1, log(0.3), 0.3)) * mult,
+          stats::runif(1, 6.5, 8), stats::runif(1, 1, 5), stats::runif(1, 20, 60),
+          stats::runif(1, 4, 12), stats::runif(1, 2, 8)
+        ),
+        detected = TRUE
+      )
+    })
+  }
+  make_tm <- function() {
+    dates <- seq(as.Date("2021-01-01"), by = "2 weeks", length.out = 40)
+    hydro <- tibble::tibble(
+      date = seq(as.Date("2020-07-01"), by = "day", length.out = 700),
+      value = pmax(0, stats::rnorm(700, 2, 4))
+    )
+    ref <- make_chem("reference", dates, seed = 1)
+    tgt <- make_chem("target", dates, mult = 5, seed = 2)
+    rm <- suppressMessages(fit_reference_model(
+      ref, hydro = hydro, conc_units = "ug/L", min_obs_model = 10L,
+      api_windows_short = 7L, api_windows_long = 30L
+    ))
+    suppressMessages(fit_target_model(
+      tgt, rm, conc_units = "ug/L", min_obs_model = 10L,
+      api_windows_short = 7L, api_windows_long = 30L
+    ))
+  }
+
+  it("stores a finite positive per-analyte HC5 transform scale on each model", {
+    skip(PENDING)
+    tm <- make_tm()
+    sc <- vapply(tm$models, function(m) m$scale_c %||% NA_real_, numeric(1L))
+    expect_true(all(is.finite(sc) & sc > 0))
+    # Cu's stored scale matches the SSD HC5 oracle.
+    cu_fit <- {
+      meta <- leachatetools:::.load_analyte_metadata(NULL)
+      sp <- suppressMessages(leachatetools:::derive_ssd_params(
+        meta, method = "multi", guideline_dir = NULL))
+      sp$fit[[which(sp$analyte == "Cu")]]
+    }
+    expect_equal(unname(sc["Cu"]),
+                 ssdtools::ssd_hc(cu_fit, proportion = 0.05, ci = FALSE)$est,
+                 tolerance = 1e-6)
+  })
+
+  it("reconstructs the measured impact at grab anchors (end-to-end anchor-exact)", {
+    skip(PENDING)
+    tm <- make_tm()
+    nm <- "Zn"
+    anch <- tm$models[[nm]]$anchors
+    res <- leachatetools:::.resolve_target_impact(
+      tm, tibble::tibble(date = anch$date), analytes = nm)
+    j <- dplyr::inner_join(
+      dplyr::select(anch, date, I),
+      dplyr::select(res, date, impact), by = "date")
+    # transform round-trip is anchor-exact: reconstructed impact == measured I.
+    expect_equal(j$impact, j$I, tolerance = 1e-6)
+  })
+})
+
+## ── Stage 3: S6 grab measurement error mapped into g-space (delta method) ──────
+
+describe(".s6_var_to_g() (issue #15)", {
+  it("maps observation variance by the squared transform slope", {
+    skip(PENDING)
+    # delta method: Var_g = Var_I * g'(I)^2 = Var_I / (I^2 + c^2)
+    var_i <- 4; impact <- 30; cc <- 10
+    expect_equal(leachatetools:::.s6_var_to_g(var_i, impact, cc),
+                 var_i / (impact^2 + cc^2), tolerance = 1e-12)
+  })
+
+  it("turns multiplicative grab error into ~constant g-space noise at high impact", {
+    skip(PENDING)
+    # multiplicative measurement error var_I = (cv*I)^2 -> Var_g -> cv^2 as I>>c,
+    # and shrinks toward 0 as I->0 (so baseline anchors are not over-noised).
+    cv <- 0.15; cc <- 10
+    vg_hi <- leachatetools:::.s6_var_to_g((cv * 1e4)^2, 1e4, cc)
+    vg_lo <- leachatetools:::.s6_var_to_g((cv * 0.1)^2, 0.1, cc)
+    expect_equal(vg_hi, cv^2, tolerance = 1e-3)   # plateau at high impact
+    expect_lt(vg_lo, cv^2 / 100)                  # vanishes at baseline
+  })
+})
