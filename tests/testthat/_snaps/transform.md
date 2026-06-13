@@ -4,7 +4,7 @@
       leachatetools:::.g_transform(1, 0)
     Condition
       Error in `.assert_pos_scale()`:
-      ! `c` must be a single positive number.
+      ! `scale_c` must be a single positive number.
 
 ---
 
@@ -12,5 +12,5 @@
       leachatetools:::.g_transform(1, -3)
     Condition
       Error in `.assert_pos_scale()`:
-      ! `c` must be a single positive number.
+      ! `scale_c` must be a single positive number.
 
