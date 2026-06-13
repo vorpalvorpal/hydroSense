@@ -1151,9 +1151,20 @@ amspaf_daily <- function(
           } else NULL
         }, error = function(e) NULL)
         if (!is.null(c_norm_obs)) {
+          ## S6 is a concentration-space variance; the smoother now works on the
+          ## g = asinh(x/c) scale (issue #15), so map it via the delta method.
+          ## The transformed level x is the impact I (impact tier) or the
+          ## concentration (WQ tier); NA scale_c keeps the additive variance.
+          var_c <- (cv * c_norm_obs)^2
+          sc_a  <- m$scale_c %||% NA_real_
+          r_vec <- if (is.na(sc_a)) {
+            var_c
+          } else {
+            level <- if (!has_wq) anch$I else c_norm_obs
+            .s6_var_to_g(var_c, level, sc_a)
+          }
           sm_d <- .analyte_residual_smoother(m, tm, qdates, kappa = kappa,
-                                             scale = ou_scale,
-                                             r_vec = (cv * c_norm_obs)^2)
+                                             scale = ou_scale, r_vec = r_vec)
           if (!is.null(sm_d) && !is.null(sm_d$model)) draw_model <- sm_d$model
         }
       }

@@ -283,7 +283,6 @@ describe("fit_target_model() asinh wiring (issue #15)", {
 
 describe(".s6_var_to_g() (issue #15)", {
   it("maps observation variance by the squared transform slope", {
-    skip(PENDING)
     # delta method: Var_g = Var_I * g'(I)^2 = Var_I / (I^2 + c^2)
     var_i <- 4; impact <- 30; cc <- 10
     expect_equal(leachatetools:::.s6_var_to_g(var_i, impact, cc),
@@ -291,7 +290,6 @@ describe(".s6_var_to_g() (issue #15)", {
   })
 
   it("turns multiplicative grab error into ~constant g-space noise at high impact", {
-    skip(PENDING)
     # multiplicative measurement error var_I = (cv*I)^2 -> Var_g -> cv^2 as I>>c,
     # and shrinks toward 0 as I->0 (so baseline anchors are not over-noised).
     cv <- 0.15; cc <- 10
