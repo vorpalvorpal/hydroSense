@@ -325,7 +325,7 @@ describe(".coupled_residual_draws()", {
 
   it("returns a named list with the same structure as the independent res_draws", {
     ## res_draws is list(analyte = list(grid_dates, draws)); draws is [n_grid x nsim].
-    skip(PENDING)
+
     ## Build two synthetic KFAS models with aligned grids.
     mod_A <- make_kalman_model(n_days = 84L, seed = 71L)
     mod_B <- make_kalman_model(n_days = 84L, seed = 72L)
@@ -353,7 +353,7 @@ describe(".coupled_residual_draws()", {
   it("with cor_R = I, per-analyte draw distribution matches the independent path", {
     ## When the correlation is identity, the coupled and independent paths are
     ## statistically equivalent. Seeded; compare column-mean tracks sm$mean.
-    skip(PENDING)
+
     mod_A <- make_kalman_model(n_days = 84L, seed = 73L)
     sm_A  <- leachatetools:::.kalman_smooth(mod_A)
     smoothers <- list(
@@ -372,7 +372,7 @@ describe(".coupled_residual_draws()", {
   it("with positive cor_R, draws are positively correlated across analytes on shared days", {
     ## On dates in the union grid, draw_A[t, ] and draw_B[t, ] should be
     ## positively correlated (MC oracle, seeded, n=300 draws).
-    skip(PENDING)
+
     withr::local_seed(81L)
     mod_A <- make_kalman_model(n_days = 84L, seed = 74L)
     mod_B <- make_kalman_model(n_days = 84L, seed = 75L)
@@ -406,7 +406,7 @@ describe(".coupled_residual_draws()", {
   it("ragged non-overlapping analytes remain independent (no coupling across non-shared days)", {
     ## Analyte A covers Jan-Apr, analyte B covers Jul-Oct: no shared dates.
     ## Cross-correlation of draws on their respective (non-shared) dates is ~0.
-    skip(PENDING)
+
     withr::local_seed(91L)
     make_nonoverlap_model <- function(start_date, n_days, seed) {
       set.seed(seed)
@@ -450,7 +450,7 @@ describe(".coupled_residual_draws()", {
   })
 
   it("is reproducible given the same seed", {
-    skip(PENDING)
+
     mod_A <- make_kalman_model(n_days = 84L, seed = 78L)
     sm_A  <- leachatetools:::.kalman_smooth(mod_A)
     smoothers <- list(
@@ -467,7 +467,7 @@ describe(".coupled_residual_draws()", {
 
   it("falls back to independent path gracefully when n_couplable < 2", {
     ## Single analyte: coupling is a no-op (1x1 identity), should not error.
-    skip(PENDING)
+
     mod_A <- make_kalman_model(n_days = 84L, seed = 79L)
     sm_A  <- leachatetools:::.kalman_smooth(mod_A)
     smoothers <- list(
@@ -496,7 +496,7 @@ describe("coupling widens combined band; per-analyte marginals unchanged", {
     ## Set up two analytes with identical marginals but rho=0 vs rho=0.8.
     ## Combined sum variance: Var(A+B) = Var(A)+Var(B)+2*rho*sd(A)*sd(B).
     ## So coupled IQR of (A+B) > independent IQR of (A+B).
-    skip(PENDING)
+
     mod_A <- make_kalman_model(n_days = 84L, seed = 101L)
     mod_B <- make_kalman_model(n_days = 84L, seed = 102L)
     sm_A  <- leachatetools:::.kalman_smooth(mod_A)
@@ -536,7 +536,7 @@ describe("coupling widens combined band; per-analyte marginals unchanged", {
   it("per-analyte marginal IQR is unchanged between independent and coupled draws", {
     ## DK invariant: correlating eta+ leaves each per-analyte marginal unchanged.
     ## We verify this by checking that individual IQRs are close (within MC noise).
-    skip(PENDING)
+
     mod_A <- make_kalman_model(n_days = 84L, seed = 103L)
     mod_B <- make_kalman_model(n_days = 84L, seed = 104L)
     sm_A  <- leachatetools:::.kalman_smooth(mod_A)
@@ -569,7 +569,7 @@ describe("coupling widens combined band; per-analyte marginals unchanged", {
   it("the deterministic centre line is unchanged by coupling", {
     ## The centre line (smoother mean) does not come from the draw path at all;
     ## it is the KFS posterior mean. Verify it is identical.
-    skip(PENDING)
+
     mod_A <- make_kalman_model(n_days = 84L, seed = 105L)
     sm_A  <- leachatetools:::.kalman_smooth(mod_A)
     ## The setup object carries x_hat from the same KFS run.

@@ -160,6 +160,13 @@
 #'   RNG stream for each draw is managed by `future.apply` (L'Ecuyer-CMRG),
 #'   so draws will differ from sequential mode even with the same `seed`, but
 #'   are themselves reproducible.
+#' @param couple_residuals Logical (default `TRUE`).  When `TRUE` and >= 2
+#'   analytes have fitted residual smoothers, daily residual draws are
+#'   correlated across analytes using the empirical anchor-residual correlation
+#'   (see [.anchor_residual_cor()]).  This widens the combined AmsPAF interval
+#'   to reflect co-movement of co-toxicants on breach events while leaving
+#'   per-analyte marginals unchanged.  Set to `FALSE` to reproduce the pre-#32
+#'   independent-draw path exactly.
 #'
 #' @return
 #' **Point mode** (`ndraws = NULL`): a tibble with one row per (site
@@ -228,7 +235,8 @@ amspaf_daily <- function(
     grab_cv              = NULL,
     ou_scale             = 1,
     kappa                = 0.5,
-    parallel             = FALSE
+    parallel             = FALSE,
+    couple_residuals     = TRUE
 ) {
   ## --- Validate inputs -------------------------------------------------------
   checkmate::assert_data_frame(df)
@@ -250,6 +258,7 @@ amspaf_daily <- function(
     checkmate::assert_numeric(grab_cv, lower = 0, finite = TRUE, min.len = 1L)
   }
   checkmate::assert_flag(parallel)
+  checkmate::assert_flag(couple_residuals)
   if (parallel && !requireNamespace("future.apply", quietly = TRUE)) {
     cli::cli_abort(c(
       "{.arg parallel = TRUE} requires the {.pkg future.apply} package.",
@@ -419,22 +428,40 @@ amspaf_daily <- function(
           daily_long_exact
         }
 
+        ## Compute the cross-analyte empirical correlation once per site, from
+        ## the anchor residuals of the fitted target model.  Used by the coupled
+        ## draw path below.  Computed unconditionally here so that the seed block
+        ## that follows is the SINGLE chokepoint for all RNG state in draw mode.
+        cor_res <- .anchor_residual_cor(fdm$tm, fdm$modelled)
+
         ## Precompute coherent residual trajectories once per analyte — the
-        ## SINGLE innovation chokepoint (future cross-analyte / inter-site
-        ## coupling correlates the draws here). S4 (mid-gap residual spread) and
-        ## S6 (grab measurement error, via the draw model's observation noise)
-        ## both enter through these paths; theta/gamma are estimated once (the
-        ## per-draw GAM perturbation supplies the S1-S3 trend uncertainty).
+        ## SINGLE innovation chokepoint.  S4 (mid-gap residual spread) and S6
+        ## (grab measurement error, via the draw model's observation noise) both
+        ## enter through these paths; theta/gamma are estimated once (the per-
+        ## draw GAM perturbation supplies the S1-S3 trend uncertainty).
+        ##
+        ## Cross-analyte coupling (#32): when couple_residuals = TRUE and >= 2
+        ## analytes have fitted draw models, innovations are correlated via the
+        ## Cholesky of cor_res$R.  The DK identity guarantees each per-analyte
+        ## marginal is unchanged; only the joint distribution (combined AmsPAF
+        ## interval) widens to reflect co-movement of co-toxicants.
         if (!is.null(seed)) set.seed(as.integer(seed))
-        res_draws <- stats::setNames(lapply(fdm$modelled, function(nm) {
-          sm <- fdm$smoothers[[nm]]
-          if (is.null(sm) || length(sm$grid_dates) == 0L)
-            return(list(grid_dates = as.Date(character()), draws = NULL))
-          dr <- if (is.null(sm$draw_model))
-                  matrix(sm$mean, nrow = length(sm$grid_dates), ncol = ndraws)
-                else .kalman_draw(sm$draw_model, ndraws)
-          list(grid_dates = sm$grid_dates, draws = dr)
-        }), fdm$modelled)
+        n_couplable <- sum(vapply(fdm$smoothers[fdm$modelled],
+                                  function(s) !is.null(s$draw_model), logical(1L)))
+        res_draws <- if (couple_residuals && n_couplable >= 2L) {
+          .coupled_residual_draws(fdm$smoothers, fdm$modelled, ndraws,
+                                  cor_res$R, cor_res$analytes)
+        } else {
+          stats::setNames(lapply(fdm$modelled, function(nm) {
+            sm <- fdm$smoothers[[nm]]
+            if (is.null(sm) || length(sm$grid_dates) == 0L)
+              return(list(grid_dates = as.Date(character()), draws = NULL))
+            dr <- if (is.null(sm$draw_model))
+                    matrix(sm$mean, nrow = length(sm$grid_dates), ncol = ndraws)
+                  else .kalman_draw(sm$draw_model, ndraws)
+            list(grid_dates = sm$grid_dates, draws = dr)
+          }), fdm$modelled)
+        }
 
         ## N stochastic draw iterations (draw_id = 1..N).
         ## G2: .predict_daily_tox uses fdm$co_split (exact) for clean C_raw

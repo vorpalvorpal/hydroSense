@@ -8,7 +8,8 @@
 ## coupling seed in the draw chokepoint.
 ##
 ## Public surface (package-internal):
-##   .anchor_residual_cor   pairwise-complete Pearson R, ridge-shrunk + nearPD
+##   .anchor_residual_cor     pairwise-complete Pearson R, ridge-shrunk + nearPD
+##   .coupled_residual_draws  correlated DK draws via Cholesky of the empirical R
 
 #' @importFrom Matrix nearPD
 NULL
@@ -201,4 +202,192 @@ NULL
     analytes = analytes,
     lambda   = lambda
   )
+}
+
+
+## ── Stage 3: correlated residual draws via the DK identity ───────────────────
+
+#' Draw cross-analyte correlated Kalman residual trajectories
+#'
+#' Generates `ndraws` draws from each analyte's Durbin–Koopman simulation
+#' smoother, with innovations correlated **across analytes** according to the
+#' `[p × p]` correlation sub-matrix `cor_R`.  Each analyte's per-analyte
+#' marginal distribution is unchanged by the correlation (DK identity);
+#' only the *joint* distribution across analytes is affected.
+#'
+#' ## Statistical justification
+#'
+#' **DK identity** (Durbin & Koopman 2002, §4): the draw
+#' \deqn{\tilde{\alpha} = \hat{\alpha} + (\alpha^+ - L y^+)}
+#' guarantees each analyte's marginal distribution is unchanged when the
+#' process innovations \eqn{\eta^+} are correlated: the smoother gain `L` is
+#' precomputed on the actual data, and the correction \eqn{\alpha^+ - L y^+}
+#' has expectation zero.  Correlating \eqn{\eta^+} across analytes widens only
+#' the *joint* distribution (i.e. the combined AmsPAF interval).
+#'
+#' **Cholesky coupling**: `Z_raw %*% U_chol` (where `U_chol = chol(R)`, upper
+#' triangular) gives rows with covariance `R` when rows of `Z_raw` are iid
+#' \eqn{N(0, I_p)}.  The same `U_chol` is applied to both the process
+#' innovations and the initial-state draws so that the coupling is coherent
+#' along the entire trajectory.
+#'
+#' **Independent observation noise**: `eps_std` is drawn independently per
+#' analyte because measurement errors from separate grab analyses are
+#' uncorrelated even when the true concentrations co-move.
+#'
+#' **Ragged grids**: `match(grid_a, U)` slices the union-grid field to each
+#' analyte's own clipped grid.  Days where an analyte has no entry (outside its
+#' grab span) have no field element — no coupling on those days, which is
+#' correct.
+#'
+#' @param smoothers Named list by analyte.  Each element is a list with
+#'   `grid_dates` (Date vector), `mean` (numeric vector, KFS posterior mean),
+#'   and `draw_model` (KFAS model from [.build_kalman_model()], or `NULL` for
+#'   a degenerate / non-modelled analyte).
+#' @param modelled Character vector of analyte names to include in the output
+#'   (subset of `names(smoothers)`).
+#' @param ndraws Positive integer; number of draws to generate.
+#' @param cor_R `[p × p]` numeric positive-definite correlation matrix (no
+#'   dimnames required).  Typically the `$R` component from
+#'   [.anchor_residual_cor()].
+#' @param cor_analytes Character vector giving the analyte order for the rows
+#'   and columns of `cor_R`.  Defaults to `rownames(cor_R)` when `cor_R` has
+#'   dimnames; must be supplied explicitly otherwise.
+#' @param seed Integer or `NULL`.  When non-`NULL`, `set.seed(seed)` is called
+#'   at the start of the function so results are reproducible.  In
+#'   `amspaf_daily()`, the seed is set by the caller (via its own `seed`
+#'   argument) before this function is invoked, so `seed = NULL` is used there.
+#'
+#' @return Named list by analyte (same order as `modelled`).  Each element is
+#'   `list(grid_dates = <Date>, draws = <matrix [n_grid × ndraws]>)`.
+#'   Analytes with `draw_model = NULL` receive flat draws equal to their KFS
+#'   posterior mean (the degenerate path).  Analytes with empty `grid_dates`
+#'   receive `draws = NULL`.
+#'
+#' @references
+#'   Durbin J, Koopman SJ (2002). A simple and efficient simulation smoother
+#'   for state space time series analysis. *Biometrika* **89**(3), 603–616.
+#'   <https://doi.org/10.1093/biomet/89.3.603>
+#'
+#' @keywords internal
+.coupled_residual_draws <- function(smoothers, modelled, ndraws, cor_R,
+                                    cor_analytes = rownames(cor_R),
+                                    seed         = NULL) {
+  if (!is.null(seed)) set.seed(as.integer(seed))
+
+  ## ── 1. Identify couplable analytes ─────────────────────────────────────────
+
+  ## Couplable = in modelled AND has a non-NULL draw_model.
+  ## Analytes with draw_model = NULL use the degenerate flat path below.
+  couplable_nms <- names(Filter(
+    function(s) !is.null(s$draw_model),
+    smoothers[modelled]
+  ))
+  p <- length(couplable_nms)
+
+  ## ── 2. Extract the correlation sub-matrix for couplable analytes ────────────
+
+  idx       <- match(couplable_nms, cor_analytes)
+  cor_R_sub <- cor_R[idx, idx, drop = FALSE]
+
+  ## ── 3. Cholesky factor of cor_R_sub ────────────────────────────────────────
+
+  ## Upper triangular U s.t. t(U) %*% U = cor_R_sub.
+  ## Z_raw %*% U_chol gives rows with covariance cor_R_sub (Cholesky coupling).
+  U_chol <- chol(cor_R_sub)
+
+  ## ── 4. Union daily grid ─────────────────────────────────────────────────────
+
+  ## Build the union of all analytes' grid dates; used to index the correlated
+  ## field. Each analyte's own grid is a subset of this union (ragged grids).
+  U   <- sort(unique(do.call(c, lapply(modelled, function(nm) {
+    smoothers[[nm]]$grid_dates
+  }))))
+  n_U <- length(U)
+
+  ## ── 5. Precompute DK setup for each couplable analyte ──────────────────────
+
+  ## .kalman_sim_smoother_setup() extracts the gain matrix L, KFS mean x_hat,
+  ## and noise scaling vectors needed by .kalman_draw_coupled().
+  setups <- stats::setNames(
+    lapply(couplable_nms,
+           function(nm) .kalman_sim_smoother_setup(smoothers[[nm]]$draw_model)),
+    couplable_nms
+  )
+
+  ## ── 6. Draw the correlated field ────────────────────────────────────────────
+
+  ## Correlated process innovations: [n_U * ndraws rows × p analytes].
+  ## Each block of n_U rows (one per draw) has row-covariance cor_R_sub.
+  ## We draw the full union-grid × ndraws block at once and slice per-analyte
+  ## below using grid_a_idx.
+  n_rows  <- n_U * ndraws
+  Z_raw   <- matrix(stats::rnorm(n_rows * p), nrow = n_rows, ncol = p)
+  Z_cor   <- Z_raw %*% U_chol   # [n_rows × p], rows have cov = cor_R_sub
+
+  ## Correlated initial states (one per draw, all p analytes at once).
+  Z_a1_raw <- matrix(stats::rnorm(ndraws * p), nrow = ndraws, ncol = p)
+  Z_a1c    <- Z_a1_raw %*% U_chol   # [ndraws × p]
+
+  ## Observation noise is kept INDEPENDENT across analytes: measurement errors
+  ## from separate grab analyses are uncorrelated even when true concentrations
+  ## co-move (see §3 of the plan).  Drawn per-analyte inside the loop below.
+
+  ## ── 7. Per-analyte draw ─────────────────────────────────────────────────────
+
+  res_draws <- stats::setNames(lapply(modelled, function(nm) {
+    sm       <- smoothers[[nm]]
+    grid_a   <- sm$grid_dates
+
+    ## Degenerate / empty path.
+    if (is.null(sm) || length(grid_a) == 0L) {
+      return(list(grid_dates = as.Date(character()), draws = NULL))
+    }
+
+    ## No draw_model: flat draws equal to the KFS posterior mean.
+    if (is.null(sm$draw_model)) {
+      return(list(
+        grid_dates = grid_a,
+        draws      = matrix(sm$mean, nrow = length(grid_a), ncol = ndraws)
+      ))
+    }
+
+    ## Should not happen (couplable_nms = modelled with non-NULL draw_model),
+    ## but guard: fall back to independent .kalman_draw.
+    if (!nm %in% couplable_nms) {
+      return(list(
+        grid_dates = grid_a,
+        draws      = .kalman_draw(sm$draw_model, ndraws)
+      ))
+    }
+
+    a_col      <- match(nm, couplable_nms)   # column in Z_cor / Z_a1c
+    setup      <- setups[[nm]]
+    n_grid_a   <- length(grid_a)
+    m_a        <- length(setup$pos)
+
+    ## Indices of this analyte's grid dates in the union grid U.
+    ## Ragged grids: only union-grid rows that fall within analyte A's span
+    ## participate in the coupling field; days outside the span have no entry.
+    grid_a_idx <- match(grid_a, U)   # integer indices into U (length n_grid_a)
+
+    ## Row indices into Z_cor for each (draw, day) pair.
+    ## Z_cor row (k-1)*n_U + grid_a_idx[t] gives draw k, analyte-grid day t.
+    row_idx <- rep(grid_a_idx, ndraws) +
+               n_U * rep(seq_len(ndraws) - 1L, each = n_grid_a)
+
+    ## Extract this analyte's correlated process innovations: [n_grid_a × ndraws].
+    eta_std_a <- matrix(Z_cor[row_idx, a_col], nrow = n_grid_a, ncol = ndraws)
+
+    ## Correlated initial state for this analyte (one value per draw).
+    a1_z_a <- Z_a1c[, a_col]
+
+    ## Independent observation noise at the anchor positions.
+    eps_std_a <- matrix(stats::rnorm(m_a * ndraws), nrow = m_a, ncol = ndraws)
+
+    dr <- .kalman_draw_coupled(setup, eta_std_a, a1_z_a, eps_std_a)
+    list(grid_dates = grid_a, draws = dr)
+  }), modelled)
+
+  res_draws
 }

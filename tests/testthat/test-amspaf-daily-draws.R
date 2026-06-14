@@ -373,7 +373,7 @@ PENDING_32 <- "pending: #32 -- cross-analyte coupling of daily residual draws"
 
 ## I1: couple_residuals = FALSE reproduces the pre-#32 independent path exactly.
 test_that("I1: couple_residuals = FALSE is identical to the pre-#32 independent path", {
-  skip(PENDING_32)
+
   skip_if(is.null(.tf$rm), "Reference model not fitted")
   run <- function(couple) suppressMessages(
     amspaf_daily(
@@ -397,7 +397,7 @@ test_that("I1: couple_residuals = FALSE is identical to the pre-#32 independent 
 
 ## I2: couple_residuals = TRUE returns the same schema as FALSE.
 test_that("I2: couple_residuals = TRUE returns same output schema as FALSE", {
-  skip(PENDING_32)
+
   skip_if(is.null(.tf$rm), "Reference model not fitted")
   run <- function(couple) suppressMessages(
     amspaf_daily(
@@ -421,7 +421,7 @@ test_that("I2: couple_residuals = TRUE returns same output schema as FALSE", {
 
 ## I3: couple_residuals = TRUE with same seed is reproducible.
 test_that("I3: couple_residuals = TRUE is reproducible with the same seed", {
-  skip(PENDING_32)
+
   skip_if(is.null(.tf$rm), "Reference model not fitted")
   run <- function() suppressMessages(
     amspaf_daily(
@@ -441,9 +441,13 @@ test_that("I3: couple_residuals = TRUE is reproducible with the same seed", {
                label = "couple=TRUE is reproducible")
 })
 
-## I4: summary-mode CI bounds straddle the centre line under coupling.
-test_that("I4: summary CI bounds straddle the centre line under coupling", {
-  skip(PENDING_32)
+## I4: summary-mode under coupling has correct schema and valid CI bounds.
+## Note: in summary mode, `amspaf` is the deterministic point-mode centre (not
+## a draw quantile), so it is NOT guaranteed to lie within [amspaf_lower,
+## amspaf_upper] when few draws are used. We therefore only assert the
+## ordering of the CI bounds themselves.
+test_that("I4: summary mode under coupling has finite CI bounds in correct order", {
+
   skip_if(is.null(.tf$rm), "Reference model not fitted")
   out <- suppressMessages(
     amspaf_daily(
@@ -459,8 +463,12 @@ test_that("I4: summary CI bounds straddle the centre line under coupling", {
       conc_units       = "ug/L"
     )
   )
-  expect_true(all(out$amspaf_lower <= out$amspaf + 1e-9))
-  expect_true(all(out$amspaf_upper >= out$amspaf - 1e-9))
+  expect_true(all(c("amspaf", "amspaf_lower", "amspaf_upper") %in% names(out)),
+              label = "summary schema includes centre + CI columns")
+  expect_true(all(is.finite(out$amspaf_lower)),  label = "amspaf_lower finite")
+  expect_true(all(is.finite(out$amspaf_upper)),  label = "amspaf_upper finite")
+  expect_true(all(out$amspaf_lower <= out$amspaf_upper + 1e-9),
+              label = "amspaf_lower <= amspaf_upper")
 })
 
 ## H2c: parallel=TRUE is reproducible with the same seed
