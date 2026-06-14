@@ -21,6 +21,9 @@ fit_target_model(
   imputation_model = NULL,
   conc_units = NULL,
   analyte_metadata = NULL,
+  method = c("multi", "anzecc"),
+  guideline_dir = getOption("leachatetools.guideline_dir"),
+  analyte_c = NULL,
   api_windows_short = c(3L, 7L, 14L),
   api_windows_long = c(30L, 60L, 90L, 180L),
   auto_select = TRUE,
@@ -74,6 +77,24 @@ fit_target_model(
 - analyte_metadata:
 
   Analyte metadata, or `NULL` for the bundled CSV.
+
+- method:
+
+  SSD method (`"multi"` or `"anzecc"`) used to derive each analyte's HC5
+  transform scale when `analyte_c` is not supplied.
+
+- guideline_dir:
+
+  Path to the ANZG guideline data folder (for the SSD fits); falls back
+  to `getOption("leachatetools.guideline_dir")`.
+
+- analyte_c:
+
+  Optional named numeric vector of per-analyte transform scales `c` (SSD
+  HC5; issue \#15). When `NULL` (default) it is computed from the fitted
+  SSDs. The impact residual is smoothed on the variance-stabilising
+  scale `g = asinh(I / c)`; an analyte with `NA`/absent `c` keeps the
+  additive model.
 
 - api_windows_short, api_windows_long:
 

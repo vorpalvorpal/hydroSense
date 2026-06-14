@@ -79,7 +79,8 @@ analysis, visualisation, and downstream <code><a href="time_weighted_aggregate.h
 <span>  grab_cv <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  ou_scale <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  kappa <span class="op">=</span> <span class="fl">0.5</span>,</span>
-<span>  parallel <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>  parallel <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  couple_residuals <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -242,6 +243,16 @@ the <strong>future.apply</strong> package.  Set a parallel plan before calling, 
 RNG stream for each draw is managed by <code>future.apply</code> (L'Ecuyer-CMRG),
 so draws will differ from sequential mode even with the same <code>seed</code>, but
 are themselves reproducible.</p></dd>
+
+
+<dt id="arg-couple-residuals">couple_residuals<a class="anchor" aria-label="anchor" href="#arg-couple-residuals"></a></dt>
+<dd><p>Logical (default <code>TRUE</code>).  When <code>TRUE</code> and &gt;= 2
+analytes have fitted residual smoothers, daily residual draws are
+correlated across analytes using the empirical anchor-residual correlation
+(see <code><a href="dot-anchor_residual_cor.html">.anchor_residual_cor()</a></code>).  This widens the combined AmsPAF interval
+to reflect co-movement of co-toxicants on breach events while leaving
+per-analyte marginals unchanged.  Set to <code>FALSE</code> to reproduce the pre-#32
+independent-draw path exactly.</p></dd>
 
 </dl></div>
     <div class="section level2">

@@ -18,7 +18,9 @@ any failure the input is returned unchanged.
   imputation_model,
   conc_units,
   meta,
-  tox_analytes
+  tox_analytes,
+  method = "multi",
+  guideline_dir = NULL
 )
 ```
 

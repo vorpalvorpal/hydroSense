@@ -68,6 +68,9 @@ instead of a forward-filled concentration.</p>
 <span>  imputation_model <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  conc_units <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  analyte_metadata <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"multi"</span>, <span class="st">"anzecc"</span><span class="op">)</span>,</span>
+<span>  guideline_dir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"leachatetools.guideline_dir"</span><span class="op">)</span>,</span>
+<span>  analyte_c <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  api_windows_short <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">3L</span>, <span class="fl">7L</span>, <span class="fl">14L</span><span class="op">)</span>,</span>
 <span>  api_windows_long <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">30L</span>, <span class="fl">60L</span>, <span class="fl">90L</span>, <span class="fl">180L</span><span class="op">)</span>,</span>
 <span>  auto_select <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -119,6 +122,24 @@ column is present.</p></dd>
 
 <dt id="arg-analyte-metadata">analyte_metadata<a class="anchor" aria-label="anchor" href="#arg-analyte-metadata"></a></dt>
 <dd><p>Analyte metadata, or <code>NULL</code> for the bundled CSV.</p></dd>
+
+
+<dt id="arg-method">method<a class="anchor" aria-label="anchor" href="#arg-method"></a></dt>
+<dd><p>SSD method (<code>"multi"</code> or <code>"anzecc"</code>) used to derive each
+analyte's HC5 transform scale when <code>analyte_c</code> is not supplied.</p></dd>
+
+
+<dt id="arg-guideline-dir">guideline_dir<a class="anchor" aria-label="anchor" href="#arg-guideline-dir"></a></dt>
+<dd><p>Path to the ANZG guideline data folder (for the SSD
+fits); falls back to <code>getOption("leachatetools.guideline_dir")</code>.</p></dd>
+
+
+<dt id="arg-analyte-c">analyte_c<a class="anchor" aria-label="anchor" href="#arg-analyte-c"></a></dt>
+<dd><p>Optional named numeric vector of per-analyte transform
+scales <code>c</code> (SSD HC5; issue #15). When <code>NULL</code> (default) it is computed from
+the fitted SSDs. The impact residual is smoothed on the variance-stabilising
+scale <code>g = asinh(I / c)</code>; an analyte with <code>NA</code>/absent <code>c</code> keeps the additive
+model.</p></dd>
 
 
 <dt id="arg-api-windows-short-api-windows-long">api_windows_short, api_windows_long<a class="anchor" aria-label="anchor" href="#arg-api-windows-short-api-windows-long"></a></dt>

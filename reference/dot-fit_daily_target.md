@@ -23,7 +23,9 @@ perturbed target model and OU-sampled `eps_paths`) for draw mode.
   daily_long,
   ou_scale = 1,
   grab_cv = NULL,
-  kappa = 0.5
+  kappa = 0.5,
+  method = "multi",
+  guideline_dir = NULL
 )
 ```
 

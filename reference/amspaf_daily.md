@@ -35,7 +35,8 @@ amspaf_daily(
   grab_cv = NULL,
   ou_scale = 1,
   kappa = 0.5,
-  parallel = FALSE
+  parallel = FALSE,
+  couple_residuals = TRUE
 )
 ```
 
@@ -212,6 +213,17 @@ amspaf_daily(
   the RNG stream for each draw is managed by `future.apply`
   (L'Ecuyer-CMRG), so draws will differ from sequential mode even with
   the same `seed`, but are themselves reproducible.
+
+- couple_residuals:
+
+  Logical (default `TRUE`). When `TRUE` and \>= 2 analytes have fitted
+  residual smoothers, daily residual draws are correlated across
+  analytes using the empirical anchor-residual correlation (see
+  [`.anchor_residual_cor()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-anchor_residual_cor.md)).
+  This widens the combined AmsPAF interval to reflect co-movement of
+  co-toxicants on breach events while leaving per-analyte marginals
+  unchanged. Set to `FALSE` to reproduce the pre-#32 independent-draw
+  path exactly.
 
 ## Value
 

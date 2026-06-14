@@ -38,8 +38,11 @@
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-amspaf_add_paf.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-amspaf_adjust.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-amspaf_empty_row.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-analyte_c.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-analyte_residual_smoother.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-anchor_residual_cor.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-apply_normalisation.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-assert_pos_scale.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-assert_temperature_present.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-broadcast_draws.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-build_analyte_model_df.html</loc></url>
@@ -53,6 +56,7 @@
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-compute_hydro_features.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-compute_pca_scores.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-convert_df_tox_to_ugL.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-coupled_residual_draws.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-daily_tox_from_model.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-draw_domain.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-empty_daily_result.html</loc></url>
@@ -66,10 +70,14 @@
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-fit_pooled_impact_response.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-fit_ref_gam.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-fit_wq_layer.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-g_inverse.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-g_transform.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-hydro_pred.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-hydro_zscore.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-interpolate_analyte.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-kalman_draw.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-kalman_draw_coupled.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-kalman_sim_smoother_setup.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-kalman_smooth.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-log_transform_pca.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-loo_anchor_coverage.html</loc></url>
@@ -101,6 +109,7 @@
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-resolve_target_impact.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-resolve_to.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-route_groups.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-s6_var_to_g.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-select_api_windows.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-ssd_paf_lookup.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-ssd_paf_vec.html</loc></url>
