@@ -19,13 +19,15 @@
 ## double-count). The grid is clipped per analyte to [first_anchor, last_anchor].
 ##
 ## Public surface (package-internal):
-##   .estimate_ou_kalman_params  MoM gamma + 1-D MLE theta, with fallback ladder
-##   .build_kalman_model         KFAS SSModel on a grid (time-varying Q and H)
-##   .kalman_smooth              posterior mean + variance per grid day (KFS)
-##   .kalman_draw                simulateSSM state draws (matrix [n_grid x nsim])
-##   .residual_smoother          per-analyte convenience: clip, fit, smooth
-##   .loo_coverage_series        leave-one-anchor-out coverage of one S series
-##   .loo_anchor_coverage        per-analyte + pooled coverage over a target_model
+##   .estimate_ou_kalman_params    MoM gamma + 1-D MLE theta, with fallback ladder
+##   .build_kalman_model           KFAS SSModel on a grid (time-varying Q and H)
+##   .kalman_smooth                posterior mean + variance per grid day (KFS)
+##   .kalman_draw                  simulateSSM state draws (matrix [n_grid x nsim])
+##   .residual_smoother            per-analyte convenience: clip, fit, smooth
+##   .loo_coverage_series          leave-one-anchor-out coverage of one S series
+##   .loo_anchor_coverage          per-analyte + pooled coverage over a target_model
+##   .kalman_sim_smoother_setup    precompute DK gain matrix L for coupled draws (issue #32)
+##   .kalman_draw_coupled          DK draw from pre-supplied standard normals (issue #32)
 
 #' @importFrom KFAS SSModel SSMcustom KFS simulateSSM
 NULL
