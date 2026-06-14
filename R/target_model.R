@@ -97,6 +97,13 @@
 #'   analyte's HC5 transform scale when `analyte_c` is not supplied.
 #' @param guideline_dir Path to the ANZG guideline data folder (for the SSD
 #'   fits); falls back to `getOption("leachatetools.guideline_dir")`.
+#' @param transform `"pseudo_log"` (default) or `"additive"`. Controls the
+#'   variance-stabilising transform applied to the impact residual before
+#'   smoothing. `"pseudo_log"` uses `g = asinh(I / c)` with per-analyte scale
+#'   `c = HC5` (issue #15), which compresses the dynamic range and prevents
+#'   event spikes from inflating the baseline draw spread. `"additive"` keeps
+#'   `g = I` (pre-#15 behaviour): the smoother operates in the original additive
+#'   impact space. Ignored when `analyte_c` is supplied directly.
 #' @param analyte_c Optional named numeric vector of per-analyte transform
 #'   scales `c` (SSD HC5; issue #15). When `NULL` (default) it is computed from
 #'   the fitted SSDs. The impact residual is smoothed on the variance-stabilising
@@ -154,6 +161,7 @@ fit_target_model <- function(
     analyte_metadata   = NULL,
     method             = c("multi", "anzecc"),
     guideline_dir      = getOption("leachatetools.guideline_dir"),
+    transform          = c("pseudo_log", "additive"),
     analyte_c          = NULL,
     api_windows_short  = c(3L, 7L, 14L),
     api_windows_long   = c(30L, 60L, 90L, 180L),
@@ -209,17 +217,25 @@ fit_target_model <- function(
   ## Computed once from the fitted SSDs (NA where an HC5 is unavailable -> that
   ## analyte keeps the additive model). The caller may supply `analyte_c`
   ## directly (e.g. amspaf_daily, which already derives the SSD params).
-  method <- match.arg(method)
+  transform <- match.arg(transform)
+  method    <- match.arg(method)
   if (is.null(analyte_c)) {
-    ssd_p <- suppressMessages(
-      derive_ssd_params(meta, method = method, guideline_dir = guideline_dir)
-    )
-    analyte_c <- stats::setNames(
-      vapply(ssd_p$fit, function(f) {
-        tryCatch(.analyte_c(f), error = function(e) NA_real_)
-      }, numeric(1L)),
-      ssd_p$analyte
-    )
+    if (transform == "pseudo_log") {
+      ssd_p <- suppressMessages(
+        derive_ssd_params(meta, method = method, guideline_dir = guideline_dir)
+      )
+      analyte_c <- stats::setNames(
+        vapply(ssd_p$fit, function(f) {
+          tryCatch(.analyte_c(f), error = function(e) NA_real_)
+        }, numeric(1L)),
+        ssd_p$analyte
+      )
+    } else {
+      ## additive: g = I for every analyte. An empty named numeric means every
+      ## analyte_c[nm] lookup returns NA_real_, routing through the existing
+      ## additive branch (the pre-#15 model) throughout.
+      analyte_c <- numeric(0L)
+    }
   }
 
   ## Impute-first only when the model can actually impute (has fitted groups).

@@ -299,3 +299,88 @@ describe(".s6_var_to_g() (issue #15)", {
     expect_lt(vg_lo, cv^2 / 100)                  # vanishes at baseline
   })
 })
+
+## ── transform parameter: pseudo_log vs additive ──────────────────────────────
+## Reuses the make_tm() helper defined in the "fit_target_model() asinh wiring"
+## describe block above.  Here we rebuild it inline to keep each it() self-
+## contained (the fit is ~5 s on synthetic data).
+
+describe("fit_target_model() transform parameter", {
+  make_chem2 <- function(site, dates, mult = 1, seed = 1) {
+    set.seed(seed)
+    analytes <- c("Cu", "Zn", "Ni", "pH", "DOC", "hardness", "Ca", "Mg")
+    purrr::map_dfr(dates, function(d) {
+      tibble::tibble(
+        sample_id = paste0(site, format(d, "%Y%m%d")), site_id = site,
+        datetime = d, analyte = analytes,
+        value = c(
+          exp(stats::rnorm(1, log(0.5), 0.3)) * mult,
+          exp(stats::rnorm(1, log(5), 0.4)) * mult,
+          exp(stats::rnorm(1, log(0.3), 0.3)) * mult,
+          stats::runif(1, 6.5, 8), stats::runif(1, 1, 5), stats::runif(1, 20, 60),
+          stats::runif(1, 4, 12), stats::runif(1, 2, 8)
+        ),
+        detected = TRUE
+      )
+    })
+  }
+  make_tm2 <- function(transform = "pseudo_log") {
+    dates <- seq(as.Date("2021-01-01"), by = "2 weeks", length.out = 40)
+    hydro <- tibble::tibble(
+      date  = seq(as.Date("2020-07-01"), by = "day", length.out = 700),
+      value = pmax(0, stats::rnorm(700, 2, 4))
+    )
+    ref <- make_chem2("reference", dates, seed = 1)
+    tgt <- make_chem2("target", dates, mult = 5, seed = 2)
+    rm <- suppressMessages(fit_reference_model(
+      ref, hydro = hydro, conc_units = "ug/L", min_obs_model = 10L,
+      api_windows_short = 7L, api_windows_long = 30L
+    ))
+    suppressMessages(fit_target_model(
+      tgt, rm, conc_units = "ug/L", min_obs_model = 10L,
+      api_windows_short = 7L, api_windows_long = 30L,
+      transform = transform
+    ))
+  }
+
+  it("pseudo_log (default) stores finite positive scale_c on every model", {
+    tm <- make_tm2("pseudo_log")
+    sc <- vapply(tm$models, function(m) m$scale_c %||% NA_real_, numeric(1L))
+    expect_true(all(is.finite(sc) & sc > 0))
+  })
+
+  it("additive sets scale_c = NA on every model (pre-#15 additive path)", {
+    tm <- make_tm2("additive")
+    sc <- vapply(tm$models, function(m) m$scale_c %||% NA_real_, numeric(1L))
+    expect_true(all(is.na(sc)))
+  })
+
+  it("both transforms produce finite anchor reconstructions (end-to-end)", {
+    tm_pl <- make_tm2("pseudo_log")
+    tm_ad <- make_tm2("additive")
+    nm <- intersect(names(tm_pl$models), names(tm_ad$models))[[1L]]
+    anch_pl <- tm_pl$models[[nm]]$anchors
+    anch_ad <- tm_ad$models[[nm]]$anchors
+    res_pl <- leachatetools:::.resolve_target_impact(
+      tm_pl, tibble::tibble(date = anch_pl$date), analytes = nm)
+    res_ad <- leachatetools:::.resolve_target_impact(
+      tm_ad, tibble::tibble(date = anch_ad$date), analytes = nm)
+    expect_true(all(is.finite(res_pl$impact)))
+    expect_true(all(is.finite(res_ad$impact)))
+  })
+
+  it("the two transforms produce different centre-line predictions", {
+    # With high-impact synthetic data, pseudo_log compresses the g-space whereas
+    # additive does not.  The predicted impact should differ (not identical).
+    tm_pl <- make_tm2("pseudo_log")
+    tm_ad <- make_tm2("additive")
+    nm <- intersect(names(tm_pl$models), names(tm_ad$models))[[1L]]
+    dates <- seq(as.Date("2021-01-15"), by = "30 days", length.out = 5)
+    res_pl <- leachatetools:::.resolve_target_impact(
+      tm_pl, tibble::tibble(date = dates), analytes = nm)
+    res_ad <- leachatetools:::.resolve_target_impact(
+      tm_ad, tibble::tibble(date = dates), analytes = nm)
+    # They should differ for at least some interpolated dates
+    expect_false(isTRUE(all.equal(res_pl$impact, res_ad$impact)))
+  })
+})

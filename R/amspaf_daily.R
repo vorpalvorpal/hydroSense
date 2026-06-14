@@ -167,6 +167,12 @@
 #'   to reflect co-movement of co-toxicants on breach events while leaving
 #'   per-analyte marginals unchanged.  Set to `FALSE` to reproduce the pre-#32
 #'   independent-draw path exactly.
+#' @param transform `"pseudo_log"` (default) or `"additive"`.  Controls the
+#'   variance-stabilising transform for the daily impact residual smoother.
+#'   `"pseudo_log"` applies `g = asinh(I / c)` with per-analyte scale `c = HC5`
+#'   (issue #15); `"additive"` keeps `g = I` (pre-#15 behaviour, no HC5 scaling).
+#'   Forwarded to [fit_target_model()]; ignored unless
+#'   `interpolation = "model"`.
 #'
 #' @return
 #' **Point mode** (`ndraws = NULL`): a tibble with one row per (site
@@ -236,7 +242,8 @@ amspaf_daily <- function(
     ou_scale             = 1,
     kappa                = 0.5,
     parallel             = FALSE,
-    couple_residuals     = TRUE
+    couple_residuals     = TRUE,
+    transform            = c("pseudo_log", "additive")
 ) {
   ## --- Validate inputs -------------------------------------------------------
   checkmate::assert_data_frame(df)
@@ -259,6 +266,7 @@ amspaf_daily <- function(
   }
   checkmate::assert_flag(parallel)
   checkmate::assert_flag(couple_residuals)
+  transform <- match.arg(transform)
   if (parallel && !requireNamespace("future.apply", quietly = TRUE)) {
     cli::cli_abort(c(
       "{.arg parallel = TRUE} requires the {.pkg future.apply} package.",
@@ -389,7 +397,8 @@ amspaf_daily <- function(
           grab_cv          = grab_cv,
           kappa            = kappa,
           method           = method,
-          guideline_dir    = guideline_dir
+          guideline_dir    = guideline_dir,
+          transform        = transform
         )
 
         ## Diagnostics from forward-filled daily_long (counts grab dates,
@@ -548,7 +557,8 @@ amspaf_daily <- function(
           meta             = meta,
           tox_analytes     = tox_analytes,
           method           = method,
-          guideline_dir    = guideline_dir
+          guideline_dir    = guideline_dir,
+          transform        = transform
         )
         impact_tiers <- attr(daily_long, "impact_tiers")
         diag <- .compute_daily_diag(daily_long, tox_analytes, site)
@@ -1053,7 +1063,8 @@ amspaf_daily <- function(
 .fit_daily_target <- function(site_rows, reference_model, imputation_model,
                                conc_units, meta, tox_analytes, daily_long,
                                ou_scale = 1, grab_cv = NULL, kappa = 0.5,
-                               method = "multi", guideline_dir = NULL) {
+                               method = "multi", guideline_dir = NULL,
+                               transform = "pseudo_log") {
   qdates <- sort(unique(daily_long$.date))
 
   tm <- tryCatch(
@@ -1064,7 +1075,8 @@ amspaf_daily <- function(
       conc_units       = conc_units,
       analyte_metadata = meta,
       method           = method,
-      guideline_dir    = guideline_dir
+      guideline_dir    = guideline_dir,
+      transform        = transform
     ),
     error = function(e) {
       cli::cli_warn(c(
@@ -1530,7 +1542,7 @@ amspaf_daily <- function(
 .daily_tox_from_model <- function(daily_long, site_rows, reference_model,
                                    imputation_model, conc_units, meta,
                                    tox_analytes, method = "multi",
-                                   guideline_dir = NULL) {
+                                   guideline_dir = NULL, transform = "pseudo_log") {
   fdm <- .fit_daily_target(
     site_rows        = site_rows,
     reference_model  = reference_model,
@@ -1540,7 +1552,8 @@ amspaf_daily <- function(
     tox_analytes     = tox_analytes,
     daily_long       = daily_long,
     method           = method,
-    guideline_dir    = guideline_dir
+    guideline_dir    = guideline_dir,
+    transform        = transform
   )
   if (is.null(fdm)) return(daily_long)
 
