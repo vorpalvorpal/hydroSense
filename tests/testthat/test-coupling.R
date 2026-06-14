@@ -78,7 +78,6 @@ make_kalman_model <- function(n_days = 100L, seed = 10L) {
 describe(".anchor_residual_cor()", {
 
   it("returns a list with R, analytes, and lambda", {
-    skip(PENDING)
     tm <- make_fake_tm(rho = 0.8)
     out <- leachatetools:::.anchor_residual_cor(tm, c("A", "B"))
     expect_named(out, c("R", "analytes", "lambda"), ignore.order = TRUE)
@@ -88,7 +87,6 @@ describe(".anchor_residual_cor()", {
   })
 
   it("output R is symmetric and has unit diagonal", {
-    skip(PENDING)
     tm <- make_fake_tm(rho = 0.6, seed = 2L)
     R  <- leachatetools:::.anchor_residual_cor(tm, c("A", "B"))$R
     expect_equal(R, t(R), tolerance = 1e-12)
@@ -96,7 +94,6 @@ describe(".anchor_residual_cor()", {
   })
 
   it("output R is positive-definite (all eigenvalues > 0)", {
-    skip(PENDING)
     tm <- make_fake_tm(rho = 0.7, seed = 3L)
     R  <- leachatetools:::.anchor_residual_cor(tm, c("A", "B"))$R
     expect_true(all(eigen(R, symmetric = TRUE, only.values = TRUE)$values > 0))
@@ -105,7 +102,6 @@ describe(".anchor_residual_cor()", {
   it("recovers the sign of a strong positive correlation", {
     ## Schäfer-Strimmer shrinkage pulls magnitude toward 0 but preserves sign.
     ## n = 40 co-measured dates with rho = 0.9 -> ridge estimate clearly positive.
-    skip(PENDING)
     tm  <- make_fake_tm(rho = 0.9, n_anch = 40L, seed = 4L)
     R   <- leachatetools:::.anchor_residual_cor(tm, c("A", "B"))$R
     expect_gt(R[1L, 2L], 0)
@@ -113,7 +109,6 @@ describe(".anchor_residual_cor()", {
 
   it("ridge shrinkage pulls off-diagonals toward 0 relative to raw pairwise r", {
     ## R_ridge = (1-lambda)*R_hat + lambda*I -> |off-diag| <= |R_hat off-diag|
-    skip(PENDING)
     tm <- make_fake_tm(rho = 0.85, n_anch = 15L, seed = 5L)
     ## Compute raw pairwise estimate directly for comparison.
     anch_A <- tm$models$A$anchors
@@ -130,7 +125,6 @@ describe(".anchor_residual_cor()", {
 
   it("a pair with zero co-observed dates gets off-diagonal = 0, R still PD", {
     ## Analyte A measured Jan-Jun, analyte C measured Jul-Dec (no overlap).
-    skip(PENDING)
     set.seed(6L)
     dates_A <- as.Date("2021-01-01") + seq(0, by = 14, length.out = 12L)
     dates_C <- as.Date("2021-07-01") + seq(0, by = 14, length.out = 12L)
@@ -152,7 +146,6 @@ describe(".anchor_residual_cor()", {
   })
 
   it("a degenerate analyte (constant S) gets a unit row/col (forced independent)", {
-    skip(PENDING)
     set.seed(7L)
     dates <- as.Date("2021-01-01") + seq(0, by = 14, length.out = 15L)
     tm <- list(models = list(
@@ -176,7 +169,6 @@ describe(".anchor_residual_cor()", {
   })
 
   it("handles a single-analyte request (1x1 identity)", {
-    skip(PENDING)
     tm <- make_fake_tm()
     R  <- leachatetools:::.anchor_residual_cor(tm, "A")$R
     expect_equal(dim(R), c(1L, 1L))
@@ -191,7 +183,6 @@ describe(".anchor_residual_cor()", {
 describe(".kalman_sim_smoother_setup()", {
 
   it("returns the required list components with correct dimensions", {
-    skip(PENDING)
     mod   <- make_kalman_model()
     setup <- leachatetools:::.kalman_sim_smoother_setup(mod)
     expect_named(setup,
@@ -209,7 +200,6 @@ describe(".kalman_sim_smoother_setup()", {
     ## Durbin & Koopman (2002) Sec 4: the simulation smoother is linear in y,
     ## so L y_sim == KFS(y_sim) for any y_sim placed at the anchor positions.
     ## This verifies L was built correctly.
-    skip(PENDING)
     mod   <- make_kalman_model(seed = 11L)
     setup <- leachatetools:::.kalman_sim_smoother_setup(mod)
     ## Construct a synthetic y_sim (standard normal at anchor positions).
@@ -234,7 +224,6 @@ describe(".kalman_sim_smoother_setup()", {
 
   it("x_hat matches the KFS posterior mean from .kalman_smooth()", {
     ## The smoother setup extracts x_hat from the same KFS run. Verify.
-    skip(PENDING)
     mod    <- make_kalman_model(seed = 12L)
     setup  <- leachatetools:::.kalman_sim_smoother_setup(mod)
     sm     <- leachatetools:::.kalman_smooth(mod)
@@ -251,7 +240,6 @@ describe(".kalman_sim_smoother_setup()", {
 describe(".kalman_draw_coupled()", {
 
   it("returns a [n_grid x nsim] numeric matrix", {
-    skip(PENDING)
     mod   <- make_kalman_model(seed = 13L)
     setup <- leachatetools:::.kalman_sim_smoother_setup(mod)
     withr::local_seed(31L)
@@ -272,7 +260,6 @@ describe(".kalman_draw_coupled()", {
     ## produce the same distribution as .kalman_draw. After many draws, the
     ## column means of both should track x_hat well (MC oracle, seeded).
     ## DK identity: E[alpha_tilde] = alpha_hat by construction.
-    skip(PENDING)
     mod   <- make_kalman_model(n_days = 150L, seed = 14L)
     setup <- leachatetools:::.kalman_sim_smoother_setup(mod)
     sm    <- leachatetools:::.kalman_smooth(mod)
@@ -293,7 +280,6 @@ describe(".kalman_draw_coupled()", {
     ## Marginal distribution equivalence: when eta_std is iid N(0,1) the coupled
     ## draw has the same marginal as .kalman_draw(). Compare IQR at each grid
     ## point; they should be within MC noise (~same shape, same scale).
-    skip(PENDING)
     mod   <- make_kalman_model(n_days = 120L, seed = 15L)
     setup <- leachatetools:::.kalman_sim_smoother_setup(mod)
     n_grid <- setup$n_grid
@@ -316,7 +302,6 @@ describe(".kalman_draw_coupled()", {
   })
 
   it("is deterministic given fixed eta_std, a1_z, eps_std inputs (pure function)", {
-    skip(PENDING)
     mod   <- make_kalman_model(seed = 16L)
     setup <- leachatetools:::.kalman_sim_smoother_setup(mod)
     n_grid <- setup$n_grid
@@ -605,7 +590,6 @@ describe("coupling widens combined band; per-analyte marginals unchanged", {
 test_that("K11 (gap-fill): coupled draw mean tracks the KFS smoother mean", {
   ## Gap-fill: K5 tests .kalman_draw; this tests that .kalman_sim_smoother_setup
   ## + .kalman_draw_coupled gives the same guarantee when used with iid normals.
-  skip(PENDING)
   mod   <- make_kalman_model(n_days = 140L, seed = 111L)
   setup <- leachatetools:::.kalman_sim_smoother_setup(mod)
   sm    <- leachatetools:::.kalman_smooth(mod)

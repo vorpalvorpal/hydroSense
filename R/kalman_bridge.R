@@ -351,3 +351,161 @@ NULL
     mean_width = if (any(ok)) stats::weighted.mean(res$mean_width[ok], res$n[ok]) else NA_real_)
   dplyr::bind_rows(res, pooled)
 }
+
+
+## ── Durbin–Koopman simulation smoother (cross-analyte coupling) ───────────────
+
+#' Precompute the DK simulation smoother gain matrix for a KFAS model
+#'
+#' Builds the gain matrix `L` (n_grid × m, standardised units) such that
+#' `L %*% y_anch` recovers the KFS-smoothed state when `y_anch` is placed at
+#' the anchor positions. This relies on the linearity of the KFS smoother in
+#' `y` when `a1 = 0`: the smoother output is a linear function of the
+#' observations, so it can be precomputed column-by-column by running KFS on
+#' unit vectors (Durbin & Koopman 2002, Biometrika 89(3), §4).
+#'
+#' The returned `x_hat` is in **original (un-standardised) units** to match
+#' the output of [.kalman_smooth()].
+#'
+#' @param model A KFAS `SSModel` from [.build_kalman_model()].
+#' @return A list with components:
+#'   \describe{
+#'     \item{`L`}{`[n_grid × m]` gain matrix (standardised units).}
+#'     \item{`pos`}{Integer indices of anchor positions in the grid.}
+#'     \item{`x_hat`}{KFS posterior mean in un-standardised units (length n_grid).}
+#'     \item{`phi`}{Scalar AR(1) coefficient.}
+#'     \item{`q_sd_vec`}{Standardised process noise SD per grid day (length n_grid).}
+#'     \item{`h_sd_vec`}{Standardised observation noise SD at anchor positions (length m).}
+#'     \item{`resid_scale`}{Un-standardising factor (`sqrt(gamma)`).}
+#'     \item{`n_grid`}{Number of grid days.}
+#'   }
+#' @references Durbin J, Koopman SJ (2002). A simple and efficient simulation
+#'   smoother for state space time series analysis. *Biometrika* **89**(3),
+#'   603–616. <https://doi.org/10.1093/biomet/89.3.603>
+#' @keywords internal
+.kalman_sim_smoother_setup <- function(model) {
+  resid_scale <- attr(model, "resid_scale") %||% 1
+  grid_dates  <- attr(model, "grid_dates")
+  n_grid      <- length(grid_dates)
+
+  ## Anchor positions: grid rows where an observation exists.
+  pos <- which(!is.na(model$y[, 1L]))
+  m   <- length(pos)
+
+  ## KFS posterior mean in un-standardised units (matches .kalman_smooth output).
+  x_hat <- .kalman_smooth(model)$mean
+
+  ## Build L column-by-column by running KFS on unit observations at each anchor.
+  ## The KFS smoother is linear in the observation vector y when a1 = 0 and P1
+  ## is non-diffuse (both hold here). Linearity requires that ALL anchor positions
+  ## remain observed in every KFS run — switching from NA to 0 at the non-target
+  ## anchors keeps the update structure identical to the full-data run.
+  ## For column j: set y[pos[j]] = 1, y[pos[-j]] = 0, all others NA.
+  ## Then L[:,j] = KFS(y)$alphahat, giving L %*% y_anch = KFS(y_anch) exactly.
+  ## Reference: Durbin & Koopman (2002) §4, eq. (8)–(10).
+  L <- matrix(0, nrow = n_grid, ncol = m)
+  y_base <- rep(NA_real_, n_grid)
+  y_base[pos] <- 0                           # all anchors observed, value = 0
+  for (j in seq_len(m)) {
+    y_unit         <- y_base
+    y_unit[pos[j]] <- 1                      # unit impulse at anchor j
+    mod_unit           <- model
+    mod_unit$y[, 1L]   <- y_unit
+    out_j              <- KFAS::KFS(mod_unit, filtering = "state", smoothing = "state")
+    L[, j]             <- as.numeric(out_j$alphahat)   # standardised units
+  }
+
+  ## AR(1) coefficient (scalar, same every step by construction).
+  phi <- as.numeric(model$T[1L, 1L, 1L])
+
+  ## Standardised process noise SD per grid day (sqrt of Q diagonal).
+  q_sd_vec <- sqrt(pmax(0, as.numeric(model$Q[1L, 1L, ])))
+
+  ## Standardised observation noise SD at anchor positions only.
+  h_sd_vec <- sqrt(pmax(0, as.numeric(model$H[1L, 1L, pos])))
+
+  list(
+    L           = L,
+    pos         = pos,
+    x_hat       = x_hat,        # un-standardised; matches .kalman_smooth()$mean
+    phi         = phi,
+    q_sd_vec    = q_sd_vec,
+    h_sd_vec    = h_sd_vec,
+    resid_scale = resid_scale,
+    n_grid      = n_grid
+  )
+}
+
+
+#' Draw correlated residual trajectories via the DK simulation smoother
+#'
+#' Produces `nsim` draws from the Durbin–Koopman (2002) simulation smoother
+#' using **externally-supplied** standard-normal noise matrices. Because the
+#' noise is passed in by the caller (rather than drawn internally), the caller
+#' can correlate the innovations *across analytes* while keeping every
+#' per-analyte marginal distribution unchanged.
+#'
+#' The DK identity (Algorithm 1 of Durbin & Koopman 2002):
+#' \deqn{\tilde{\alpha} = \hat{\alpha} + (\alpha^+ - L y^+)}
+#' where \eqn{\alpha^+} is a prior simulation driven by the supplied innovations
+#' and \eqn{L y^+ = \hat{\alpha}^+} is the KFS smoother applied to the
+#' synthetic observations \eqn{y^+}.
+#'
+#' All arithmetic is performed in standardised units; the result is
+#' un-standardised by `setup$resid_scale` before returning.
+#'
+#' @param setup Return value of [.kalman_sim_smoother_setup()].
+#' @param eta_std `[n_grid × nsim]` matrix of iid N(0,1) process innovations.
+#' @param a1_z Length-`nsim` vector of N(0,1) initial-state noise.
+#' @param eps_std `[m × nsim]` matrix of iid N(0,1) observation noise
+#'   (one row per anchor position).
+#' @return Numeric matrix `[n_grid × nsim]` of residual draws in original
+#'   (un-standardised) units.
+#' @references Durbin J, Koopman SJ (2002). A simple and efficient simulation
+#'   smoother for state space time series analysis. *Biometrika* **89**(3),
+#'   603–616. <https://doi.org/10.1093/biomet/89.3.603>
+#' @keywords internal
+.kalman_draw_coupled <- function(setup, eta_std, a1_z, eps_std) {
+  n_grid      <- setup$n_grid
+  nsim        <- ncol(eta_std)
+  phi         <- setup$phi
+  q_sd_vec    <- setup$q_sd_vec
+  h_sd_vec    <- setup$h_sd_vec
+  pos         <- setup$pos
+  resid_scale <- setup$resid_scale
+
+  ## x_hat is stored in un-standardised units; convert to standardised for the
+  ## DK arithmetic (all intermediate quantities are in standardised units).
+  x_hat_std <- setup$x_hat / resid_scale
+
+  ## Step 1: simulate prior trajectory alpha+ via the state recursion.
+  ##   alpha+[1]   = a1_z[k]   (N(0,1) initial state; a1 = 0, P1 = 1 in std units)
+  ##   alpha+[t,k] = phi * alpha+[t-1,k] + q_sd_vec[t] * eta_std[t,k]
+  ## Vectorised over all nsim draws simultaneously (avoids an R loop).
+  ## Reference: Durbin & Koopman (2002) §3, eq. (5).
+  alpha_plus_mat <- matrix(0, nrow = n_grid, ncol = nsim)
+  alpha_plus_mat[1L, ] <- a1_z
+  for (t in seq(2L, n_grid)) {
+    alpha_plus_mat[t, ] <- phi * alpha_plus_mat[t - 1L, ] +
+      q_sd_vec[t] * eta_std[t, ]
+  }
+
+  ## Step 2: simulate prior observations y+ at anchor positions.
+  ##   y+[j, k] = alpha+[pos[j], k] + h_sd_vec[j] * eps_std[j, k]
+  ## Using sweep to apply per-anchor h_sd_vec scaling.
+  y_plus_mat <- alpha_plus_mat[pos, , drop = FALSE] +
+    sweep(eps_std, 1L, h_sd_vec, `*`)   # [m × nsim]
+
+  ## Step 3: apply the precomputed gain matrix L to get alpha_hat+.
+  ##   alpha_hat+[:,k] = L %*% y+[:,k]
+  ## One matrix multiply gives all nsim columns at once (O(n_grid * m * nsim)).
+  alpha_hat_plus_mat <- setup$L %*% y_plus_mat   # [n_grid × nsim]
+
+  ## Step 4: DK draw.
+  ##   alpha_tilde = x_hat + (alpha+ - alpha_hat+)
+  ## alpha_hat is broadcast as a column vector via recycling.
+  draws_std <- x_hat_std + alpha_plus_mat - alpha_hat_plus_mat
+
+  ## Un-standardise and return.
+  draws_std * resid_scale
+}
