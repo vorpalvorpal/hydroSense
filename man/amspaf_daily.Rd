@@ -29,7 +29,8 @@ amspaf_daily(
   grab_cv = NULL,
   ou_scale = 1,
   kappa = 0.5,
-  parallel = FALSE
+  parallel = FALSE,
+  couple_residuals = TRUE
 )
 }
 \arguments{
@@ -141,6 +142,14 @@ the \strong{future.apply} package.  Set a parallel plan before calling, e.g.
 RNG stream for each draw is managed by \code{future.apply} (L'Ecuyer-CMRG),
 so draws will differ from sequential mode even with the same \code{seed}, but
 are themselves reproducible.}
+
+\item{couple_residuals}{Logical (default \code{TRUE}).  When \code{TRUE} and >= 2
+analytes have fitted residual smoothers, daily residual draws are
+correlated across analytes using the empirical anchor-residual correlation
+(see \code{\link[=.anchor_residual_cor]{.anchor_residual_cor()}}).  This widens the combined AmsPAF interval
+to reflect co-movement of co-toxicants on breach events while leaving
+per-analyte marginals unchanged.  Set to \code{FALSE} to reproduce the pre-#32
+independent-draw path exactly.}
 }
 \value{
 \strong{Point mode} (\code{ndraws = NULL}): a tibble with one row per (site

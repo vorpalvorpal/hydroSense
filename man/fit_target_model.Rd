@@ -12,6 +12,9 @@ fit_target_model(
   imputation_model = NULL,
   conc_units = NULL,
   analyte_metadata = NULL,
+  method = c("multi", "anzecc"),
+  guideline_dir = getOption("leachatetools.guideline_dir"),
+  analyte_c = NULL,
   api_windows_short = c(3L, 7L, 14L),
   api_windows_long = c(30L, 60L, 90L, 180L),
   auto_select = TRUE,
@@ -46,6 +49,18 @@ is computed, adding more anchor days (tier 2). Requires \strong{brms}.}
 column is present.}
 
 \item{analyte_metadata}{Analyte metadata, or \code{NULL} for the bundled CSV.}
+
+\item{method}{SSD method (\code{"multi"} or \code{"anzecc"}) used to derive each
+analyte's HC5 transform scale when \code{analyte_c} is not supplied.}
+
+\item{guideline_dir}{Path to the ANZG guideline data folder (for the SSD
+fits); falls back to \code{getOption("leachatetools.guideline_dir")}.}
+
+\item{analyte_c}{Optional named numeric vector of per-analyte transform
+scales \code{c} (SSD HC5; issue #15). When \code{NULL} (default) it is computed from
+the fitted SSDs. The impact residual is smoothed on the variance-stabilising
+scale \code{g = asinh(I / c)}; an analyte with \code{NA}/absent \code{c} keeps the additive
+model.}
 
 \item{api_windows_short, api_windows_long}{Candidate short/long antecedent
 memory windows (days) for \code{f(hydro)}, selected by AIC.}

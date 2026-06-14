@@ -160,6 +160,19 @@
 #'   RNG stream for each draw is managed by `future.apply` (L'Ecuyer-CMRG),
 #'   so draws will differ from sequential mode even with the same `seed`, but
 #'   are themselves reproducible.
+#' @param couple_residuals Logical (default `TRUE`).  When `TRUE` and >= 2
+#'   analytes have fitted residual smoothers, daily residual draws are
+#'   correlated across analytes using the empirical anchor-residual correlation
+#'   (see [.anchor_residual_cor()]).  This widens the combined AmsPAF interval
+#'   to reflect co-movement of co-toxicants on breach events while leaving
+#'   per-analyte marginals unchanged.  Set to `FALSE` to reproduce the pre-#32
+#'   independent-draw path exactly.
+#' @param transform `"pseudo_log"` (default) or `"additive"`.  Controls the
+#'   variance-stabilising transform for the daily impact residual smoother.
+#'   `"pseudo_log"` applies `g = asinh(I / c)` with per-analyte scale `c = HC5`
+#'   (issue #15); `"additive"` keeps `g = I` (pre-#15 behaviour, no HC5 scaling).
+#'   Forwarded to [fit_target_model()]; ignored unless
+#'   `interpolation = "model"`.
 #'
 #' @return
 #' **Point mode** (`ndraws = NULL`): a tibble with one row per (site
@@ -228,7 +241,9 @@ amspaf_daily <- function(
     grab_cv              = NULL,
     ou_scale             = 1,
     kappa                = 0.5,
-    parallel             = FALSE
+    parallel             = FALSE,
+    couple_residuals     = TRUE,
+    transform            = c("pseudo_log", "additive")
 ) {
   ## --- Validate inputs -------------------------------------------------------
   checkmate::assert_data_frame(df)
@@ -250,6 +265,8 @@ amspaf_daily <- function(
     checkmate::assert_numeric(grab_cv, lower = 0, finite = TRUE, min.len = 1L)
   }
   checkmate::assert_flag(parallel)
+  checkmate::assert_flag(couple_residuals)
+  transform <- match.arg(transform)
   if (parallel && !requireNamespace("future.apply", quietly = TRUE)) {
     cli::cli_abort(c(
       "{.arg parallel = TRUE} requires the {.pkg future.apply} package.",
@@ -378,7 +395,10 @@ amspaf_daily <- function(
           daily_long       = daily_long,
           ou_scale         = ou_scale,
           grab_cv          = grab_cv,
-          kappa            = kappa
+          kappa            = kappa,
+          method           = method,
+          guideline_dir    = guideline_dir,
+          transform        = transform
         )
 
         ## Diagnostics from forward-filled daily_long (counts grab dates,
@@ -417,22 +437,40 @@ amspaf_daily <- function(
           daily_long_exact
         }
 
+        ## Compute the cross-analyte empirical correlation once per site, from
+        ## the anchor residuals of the fitted target model.  Used by the coupled
+        ## draw path below.  Computed unconditionally here so that the seed block
+        ## that follows is the SINGLE chokepoint for all RNG state in draw mode.
+        cor_res <- .anchor_residual_cor(fdm$tm, fdm$modelled)
+
         ## Precompute coherent residual trajectories once per analyte — the
-        ## SINGLE innovation chokepoint (future cross-analyte / inter-site
-        ## coupling correlates the draws here). S4 (mid-gap residual spread) and
-        ## S6 (grab measurement error, via the draw model's observation noise)
-        ## both enter through these paths; theta/gamma are estimated once (the
-        ## per-draw GAM perturbation supplies the S1-S3 trend uncertainty).
+        ## SINGLE innovation chokepoint.  S4 (mid-gap residual spread) and S6
+        ## (grab measurement error, via the draw model's observation noise) both
+        ## enter through these paths; theta/gamma are estimated once (the per-
+        ## draw GAM perturbation supplies the S1-S3 trend uncertainty).
+        ##
+        ## Cross-analyte coupling (#32): when couple_residuals = TRUE and >= 2
+        ## analytes have fitted draw models, innovations are correlated via the
+        ## Cholesky of cor_res$R.  The DK identity guarantees each per-analyte
+        ## marginal is unchanged; only the joint distribution (combined AmsPAF
+        ## interval) widens to reflect co-movement of co-toxicants.
         if (!is.null(seed)) set.seed(as.integer(seed))
-        res_draws <- stats::setNames(lapply(fdm$modelled, function(nm) {
-          sm <- fdm$smoothers[[nm]]
-          if (is.null(sm) || length(sm$grid_dates) == 0L)
-            return(list(grid_dates = as.Date(character()), draws = NULL))
-          dr <- if (is.null(sm$draw_model))
-                  matrix(sm$mean, nrow = length(sm$grid_dates), ncol = ndraws)
-                else .kalman_draw(sm$draw_model, ndraws)
-          list(grid_dates = sm$grid_dates, draws = dr)
-        }), fdm$modelled)
+        n_couplable <- sum(vapply(fdm$smoothers[fdm$modelled],
+                                  function(s) !is.null(s$draw_model), logical(1L)))
+        res_draws <- if (couple_residuals && n_couplable >= 2L) {
+          .coupled_residual_draws(fdm$smoothers, fdm$modelled, ndraws,
+                                  cor_res$R, cor_res$analytes)
+        } else {
+          stats::setNames(lapply(fdm$modelled, function(nm) {
+            sm <- fdm$smoothers[[nm]]
+            if (is.null(sm) || length(sm$grid_dates) == 0L)
+              return(list(grid_dates = as.Date(character()), draws = NULL))
+            dr <- if (is.null(sm$draw_model))
+                    matrix(sm$mean, nrow = length(sm$grid_dates), ncol = ndraws)
+                  else .kalman_draw(sm$draw_model, ndraws)
+            list(grid_dates = sm$grid_dates, draws = dr)
+          }), fdm$modelled)
+        }
 
         ## N stochastic draw iterations (draw_id = 1..N).
         ## G2: .predict_daily_tox uses fdm$co_split (exact) for clean C_raw
@@ -517,7 +555,10 @@ amspaf_daily <- function(
           imputation_model = imputation_model,
           conc_units       = conc_units,
           meta             = meta,
-          tox_analytes     = tox_analytes
+          tox_analytes     = tox_analytes,
+          method           = method,
+          guideline_dir    = guideline_dir,
+          transform        = transform
         )
         impact_tiers <- attr(daily_long, "impact_tiers")
         diag <- .compute_daily_diag(daily_long, tox_analytes, site)
@@ -1021,7 +1062,9 @@ amspaf_daily <- function(
 #' @keywords internal
 .fit_daily_target <- function(site_rows, reference_model, imputation_model,
                                conc_units, meta, tox_analytes, daily_long,
-                               ou_scale = 1, grab_cv = NULL, kappa = 0.5) {
+                               ou_scale = 1, grab_cv = NULL, kappa = 0.5,
+                               method = "multi", guideline_dir = NULL,
+                               transform = "pseudo_log") {
   qdates <- sort(unique(daily_long$.date))
 
   tm <- tryCatch(
@@ -1030,7 +1073,10 @@ amspaf_daily <- function(
       reference_model  = reference_model,
       imputation_model = imputation_model,
       conc_units       = conc_units,
-      analyte_metadata = meta
+      analyte_metadata = meta,
+      method           = method,
+      guideline_dir    = guideline_dir,
+      transform        = transform
     ),
     error = function(e) {
       cli::cli_warn(c(
@@ -1144,9 +1190,20 @@ amspaf_daily <- function(
           } else NULL
         }, error = function(e) NULL)
         if (!is.null(c_norm_obs)) {
+          ## S6 is a concentration-space variance; the smoother now works on the
+          ## g = asinh(x/c) scale (issue #15), so map it via the delta method.
+          ## The transformed level x is the impact I (impact tier) or the
+          ## concentration (WQ tier); NA scale_c keeps the additive variance.
+          var_c <- (cv * c_norm_obs)^2
+          sc_a  <- m$scale_c %||% NA_real_
+          r_vec <- if (is.na(sc_a)) {
+            var_c
+          } else {
+            level <- if (!has_wq) anch$I else c_norm_obs
+            .s6_var_to_g(var_c, level, sc_a)
+          }
           sm_d <- .analyte_residual_smoother(m, tm, qdates, kappa = kappa,
-                                             scale = ou_scale,
-                                             r_vec = (cv * c_norm_obs)^2)
+                                             scale = ou_scale, r_vec = r_vec)
           if (!is.null(sm_d) && !is.null(sm_d$model)) draw_model <- sm_d$model
         }
       }
@@ -1484,7 +1541,8 @@ amspaf_daily <- function(
 #' @keywords internal
 .daily_tox_from_model <- function(daily_long, site_rows, reference_model,
                                    imputation_model, conc_units, meta,
-                                   tox_analytes) {
+                                   tox_analytes, method = "multi",
+                                   guideline_dir = NULL, transform = "pseudo_log") {
   fdm <- .fit_daily_target(
     site_rows        = site_rows,
     reference_model  = reference_model,
@@ -1492,7 +1550,10 @@ amspaf_daily <- function(
     conc_units       = conc_units,
     meta             = meta,
     tox_analytes     = tox_analytes,
-    daily_long       = daily_long
+    daily_long       = daily_long,
+    method           = method,
+    guideline_dir    = guideline_dir,
+    transform        = transform
   )
   if (is.null(fdm)) return(daily_long)
 

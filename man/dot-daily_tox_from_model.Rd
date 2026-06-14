@@ -11,7 +11,9 @@
   imputation_model,
   conc_units,
   meta,
-  tox_analytes
+  tox_analytes,
+  method = "multi",
+  guideline_dir = NULL
 )
 }
 \arguments{

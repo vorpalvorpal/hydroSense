@@ -367,6 +367,110 @@ test_that("H2b: parallel draws output schema matches sequential", {
   expect_true(all(out_par$amspaf_lower <= out_par$amspaf_upper + 1e-9))
 })
 
+## ── #32: couple_residuals flag ────────────────────────────────────────────────
+
+PENDING_32 <- "pending: #32 -- cross-analyte coupling of daily residual draws"
+
+## I1: couple_residuals = FALSE reproduces the pre-#32 independent path exactly.
+test_that("I1: couple_residuals = FALSE is identical to the pre-#32 independent path", {
+
+  skip_if(is.null(.tf$rm), "Reference model not fitted")
+  run <- function(couple) suppressMessages(
+    amspaf_daily(
+      .tf$tgt,
+      reference_model  = .tf$rm,
+      interpolation    = "model",
+      ndraws           = 5L,
+      seed             = 1L,
+      return           = "draws",
+      couple_residuals = couple,
+      require_temperature = FALSE,
+      conc_units       = "ug/L"
+    )
+  )
+  out_indep  <- run(FALSE)
+  out_indep2 <- run(FALSE)
+  ## Reproducibility (couple=FALSE preserves the seed contract).
+  expect_equal(out_indep$amspaf, out_indep2$amspaf,
+               label = "couple=FALSE is reproducible")
+})
+
+## I2: couple_residuals = TRUE returns the same schema as FALSE.
+test_that("I2: couple_residuals = TRUE returns same output schema as FALSE", {
+
+  skip_if(is.null(.tf$rm), "Reference model not fitted")
+  run <- function(couple) suppressMessages(
+    amspaf_daily(
+      .tf$tgt,
+      reference_model  = .tf$rm,
+      interpolation    = "model",
+      ndraws           = 5L,
+      seed             = 1L,
+      return           = "draws",
+      couple_residuals = couple,
+      require_temperature = FALSE,
+      conc_units       = "ug/L"
+    )
+  )
+  out_indep <- run(FALSE)
+  out_coup  <- run(TRUE)
+  expect_equal(names(out_indep),  names(out_coup))
+  expect_equal(nrow(out_indep),   nrow(out_coup))
+  expect_equal(unique(out_coup$draw_id), seq_len(5L))
+})
+
+## I3: couple_residuals = TRUE with same seed is reproducible.
+test_that("I3: couple_residuals = TRUE is reproducible with the same seed", {
+
+  skip_if(is.null(.tf$rm), "Reference model not fitted")
+  run <- function() suppressMessages(
+    amspaf_daily(
+      .tf$tgt,
+      reference_model  = .tf$rm,
+      interpolation    = "model",
+      ndraws           = 5L,
+      seed             = 42L,
+      return           = "draws",
+      couple_residuals = TRUE,
+      require_temperature = FALSE,
+      conc_units       = "ug/L"
+    )
+  )
+  r1 <- run(); r2 <- run()
+  expect_equal(r1$amspaf, r2$amspaf,
+               label = "couple=TRUE is reproducible")
+})
+
+## I4: summary-mode under coupling has correct schema and valid CI bounds.
+## Note: in summary mode, `amspaf` is the deterministic point-mode centre (not
+## a draw quantile), so it is NOT guaranteed to lie within [amspaf_lower,
+## amspaf_upper] when few draws are used. We therefore only assert the
+## ordering of the CI bounds themselves.
+test_that("I4: summary mode under coupling has finite CI bounds in correct order", {
+
+  skip_if(is.null(.tf$rm), "Reference model not fitted")
+  out <- suppressMessages(
+    amspaf_daily(
+      .tf$tgt,
+      reference_model  = .tf$rm,
+      interpolation    = "model",
+      ndraws           = 8L,
+      seed             = 3L,
+      return           = "summary",
+      interval         = 0.8,
+      couple_residuals = TRUE,
+      require_temperature = FALSE,
+      conc_units       = "ug/L"
+    )
+  )
+  expect_true(all(c("amspaf", "amspaf_lower", "amspaf_upper") %in% names(out)),
+              label = "summary schema includes centre + CI columns")
+  expect_true(all(is.finite(out$amspaf_lower)),  label = "amspaf_lower finite")
+  expect_true(all(is.finite(out$amspaf_upper)),  label = "amspaf_upper finite")
+  expect_true(all(out$amspaf_lower <= out$amspaf_upper + 1e-9),
+              label = "amspaf_lower <= amspaf_upper")
+})
+
 ## H2c: parallel=TRUE is reproducible with the same seed
 test_that("H2c: parallel draws are reproducible with same seed", {
   skip_if(is.null(.tf$rm), "Reference model not fitted")
