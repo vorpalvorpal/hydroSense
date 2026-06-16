@@ -7,6 +7,12 @@
 ##   F4. seed makes draws reproducible
 ##   F5. Point mode (ndraws = NULL) unchanged — no regression
 ##   F6. Summary ordering: amspaf_lower <= amspaf <= amspaf_upper
+##   F7. Summary centre is the draws' own central tendency (issue #42): with
+##       return = "summary", `amspaf` equals the per-day draw median (central =
+##       "median") or mean (central = "mean"), so it is coherent with, and lies
+##       inside, its own credible band. The deterministic point estimate is a
+##       SEPARATE product obtained via ndraws = NULL (point mode), not bundled
+##       into the draw summary.
 
 library(testthat)
 library(leachatetools)
@@ -203,6 +209,48 @@ test_that("F6: summary CI bounds straddle the central estimate", {
               label = "lower bound <= central")
   expect_true(all(out$amspaf <= out$amspaf_upper + 1e-9),
               label = "central <= upper bound")
+})
+
+
+## ── F7: summary centre = the draws' own central tendency (issue #42) ──────
+## The summary `amspaf` must be a summary OF the draws, not a separately-built
+## deterministic smoother. We verify it equals the per-day median / mean of the
+## raw draws produced with the same seed, hence lies inside its own band.
+
+test_that("F7: summary amspaf equals the draw central tendency, lies in band", {
+  skip_if(is.null(.tf$rm), "Reference model not fitted")
+  common <- list(
+    .tf$tgt, reference_model = .tf$rm, interpolation = "model",
+    ndraws = 30L, seed = 11L, require_temperature = FALSE, conc_units = "ug/L"
+  )
+  draws <- suppressMessages(
+    do.call(amspaf_daily, c(common, list(return = "draws")))
+  )
+
+  ## median variant
+  sm_med <- suppressMessages(do.call(
+    amspaf_daily, c(common, list(return = "summary", central = "median"))
+  )) |> dplyr::arrange(.data$site_id, .data$date)
+  ref_med <- draws |>
+    dplyr::group_by(.data$date, .data$site_id) |>
+    dplyr::summarise(m = stats::median(.data$amspaf), .groups = "drop") |>
+    dplyr::arrange(.data$site_id, .data$date)
+  expect_equal(sm_med$amspaf, ref_med$m, tolerance = 1e-8,
+               label = "central='median' equals per-day draw median")
+  expect_true(all(sm_med$amspaf_lower <= sm_med$amspaf + 1e-9 &
+                    sm_med$amspaf <= sm_med$amspaf_upper + 1e-9),
+              label = "draw median lies within its own band")
+
+  ## mean variant
+  sm_mean <- suppressMessages(do.call(
+    amspaf_daily, c(common, list(return = "summary", central = "mean"))
+  )) |> dplyr::arrange(.data$site_id, .data$date)
+  ref_mean <- draws |>
+    dplyr::group_by(.data$date, .data$site_id) |>
+    dplyr::summarise(m = mean(.data$amspaf), .groups = "drop") |>
+    dplyr::arrange(.data$site_id, .data$date)
+  expect_equal(sm_mean$amspaf, ref_mean$m, tolerance = 1e-8,
+               label = "central='mean' equals per-day draw mean")
 })
 
 
@@ -441,12 +489,10 @@ test_that("I3: couple_residuals = TRUE is reproducible with the same seed", {
                label = "couple=TRUE is reproducible")
 })
 
-## I4: summary-mode under coupling has correct schema and valid CI bounds.
-## Note: in summary mode, `amspaf` is the deterministic point-mode centre (not
-## a draw quantile), so it is NOT guaranteed to lie within [amspaf_lower,
-## amspaf_upper] when few draws are used. We therefore only assert the
-## ordering of the CI bounds themselves.
-test_that("I4: summary mode under coupling has finite CI bounds in correct order", {
+## I4: summary-mode under coupling has correct schema and a band-coherent centre.
+## Since issue #42, summary `amspaf` is the draws' own central tendency (default
+## central = "median"), so it MUST lie within [amspaf_lower, amspaf_upper].
+test_that("I4: summary mode under coupling has centre within ordered CI bounds", {
 
   skip_if(is.null(.tf$rm), "Reference model not fitted")
   out <- suppressMessages(
@@ -469,6 +515,9 @@ test_that("I4: summary mode under coupling has finite CI bounds in correct order
   expect_true(all(is.finite(out$amspaf_upper)),  label = "amspaf_upper finite")
   expect_true(all(out$amspaf_lower <= out$amspaf_upper + 1e-9),
               label = "amspaf_lower <= amspaf_upper")
+  expect_true(all(out$amspaf_lower <= out$amspaf + 1e-9 &
+                    out$amspaf <= out$amspaf_upper + 1e-9),
+              label = "centre (draw median) lies within the band")
 })
 
 ## H2c: parallel=TRUE is reproducible with the same seed

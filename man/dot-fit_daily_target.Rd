@@ -16,7 +16,8 @@
   grab_cv = NULL,
   kappa = 0.5,
   method = "multi",
-  guideline_dir = NULL
+  guideline_dir = NULL,
+  transform = "pseudo_log"
 )
 }
 \arguments{

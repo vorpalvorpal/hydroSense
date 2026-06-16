@@ -1,4 +1,4 @@
-# .g_transform() / .g_inverse(): errors on a non-positive scale c
+# .g_transform() / .g_inverse() / errors on a non-positive scale c
 
     Code
       leachatetools:::.g_transform(1, 0)

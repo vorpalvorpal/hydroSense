@@ -37,7 +37,10 @@ SEED       <- 42L
 INTERVAL   <- 0.5   # 25-75% band. Change this freely: re-summarising the cached
                     # draws is INSTANT. Only deleting the DRAWS_* caches forces
                     # the long re-run.
-TOX_RSD    <- 0.15
+TOX_RSD    <- 0    # grab-sample measurement error: 0 until real lab uncertainty
+                   # is available. A fabricated CV (was 0.15) injects fake S6/S7
+                   # spread AND decouples the band's smoother from the centre's
+                   # (issue #42). Raise only when real per-sample uncertainty lands.
 options(leachatetools.guideline_dir = GUIDE)
 
 stopifnot(file.exists(CACHE_V3), file.exists(BASELINE))

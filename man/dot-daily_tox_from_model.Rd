@@ -13,7 +13,8 @@
   meta,
   tox_analytes,
   method = "multi",
-  guideline_dir = NULL
+  guideline_dir = NULL,
+  transform = "pseudo_log"
 )
 }
 \arguments{
