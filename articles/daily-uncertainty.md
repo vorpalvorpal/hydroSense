@@ -105,11 +105,14 @@ head(out[, c("date", "amspaf", "amspaf_lower", "amspaf_upper")])
 With `return = "summary"` (the default when `ndraws` is supplied) you
 get one row per day with three columns:
 
-- `amspaf` — deterministic centre-line (heuristic-blend point
-  prediction, identical to the output of a non-draws run with
-  `interpolation = "model"`)
+- `amspaf` — the draws’ own central tendency (`central = "median"` by
+  default, or `"mean"`), so it is a summary *of the same posterior* as
+  the band and always lies inside it
 - `amspaf_lower` — lower bound of the credible interval
 - `amspaf_upper` — upper bound of the credible interval
+
+This `amspaf` is **not** the deterministic point estimate — see [Two
+products: deterministic vs draws](#two-products) below.
 
 ### Including measurement error (S6 + S7)
 
@@ -268,21 +271,47 @@ is wide (e.g., 0.99), quantile estimates can be noisy. Increase
 | `seed` | RNG seed for reproducibility | Any integer |
 | `parallel` | Use `future.apply` for concurrent draws | `FALSE` (default); `TRUE` with a [`future::plan()`](https://future.futureverse.org/reference/plan.html) |
 
-## How the centre line is computed
+## Two products: deterministic vs draws
 
-The `amspaf` column in `return = "summary"` is the **deterministic
-smoother posterior mean** (the centre line), identical to running
 [`amspaf_daily()`](https://vorpalvorpal.github.io/leachatetools/reference/amspaf_daily.md)
-without `ndraws`. It is *not* the median of the draws. This means the
-centre line:
+gives you **one of two distinct products**, selected by `ndraws`. They
+answer different questions and are not expected to coincide.
 
-- is computationally cheap (no randomness),
-- is exactly reproducible regardless of `ndraws` or `seed`,
-- so adding `ndraws` to an existing call does not change the point
-  estimate.
+**Deterministic** (`ndraws = NULL`, the default). A single grabs-exact
+daily line: the residual smoother is pinned to the measured grab
+samples, so the curve threads the reported lab values.
 
-The lower and upper bounds are empirical quantiles of the stochastic
-draws.
+- *Pro* — fast, fully reproducible, the best single-number estimate; an
+  ideal sanity check against the draws.
+- *Con* — carries no uncertainty, and treats the grabs as exact (it
+  over-fits noisy lab values).
+
+**Draws** (`ndraws > 0`). A Monte-Carlo posterior that propagates trend
+(GAM), between-grab (OU bridge) and — when `grab_cv` is set — grab
+measurement uncertainty. `return = "summary"` reports the draws’ central
+tendency (`central`) plus a credible band; `return = "draws"` returns
+the raw per-draw paths.
+
+- *Pro* — honest uncertainty quantification; the summary `amspaf` is the
+  band’s own centre (it always lies inside
+  `[amspaf_lower, amspaf_upper]`).
+- *Con* — the central estimate now depends on `ndraws`/`seed`, and by
+  Jensen’s inequality on the bounded AmsPAF index it generally sits
+  *above* the deterministic line; adding `ndraws` therefore changes the
+  point estimate.
+
+A natural workflow is to compute the deterministic line (cheap) **and**
+the draws, then overlay them: the deterministic is your best guess, the
+band shows the uncertainty around it. If the deterministic strays well
+outside the band, that is a useful diagnostic, not a contradiction — the
+two summarise different posteriors.
+
+> **Grab measurement error (`grab_cv`).** Until per-sample lab
+> uncertainties are available, leave `grab_cv = NULL` (the default): a
+> fabricated CV injects measurement spread that is not real. When real
+> uncertainties land, the draws should use them (widening the band, and
+> pinching it toward the measurement width at grab dates), while the
+> deterministic line continues to thread the reported values.
 
 ## Connection to the chronic pipeline
 

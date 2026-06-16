@@ -25,7 +25,8 @@ perturbed target model and OU-sampled `eps_paths`) for draw mode.
   grab_cv = NULL,
   kappa = 0.5,
   method = "multi",
-  guideline_dir = NULL
+  guideline_dir = NULL,
+  transform = "pseudo_log"
 )
 ```
 

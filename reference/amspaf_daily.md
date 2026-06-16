@@ -36,7 +36,8 @@ amspaf_daily(
   ou_scale = 1,
   kappa = 0.5,
   parallel = FALSE,
-  couple_residuals = TRUE
+  couple_residuals = TRUE,
+  transform = c("pseudo_log", "additive")
 )
 ```
 
@@ -148,9 +149,12 @@ amspaf_daily(
 
 - ndraws:
 
-  Positive integer or `NULL` (default). When non-`NULL`, runs the full
-  OU/GAM uncertainty propagation for `ndraws` independent draws.
-  Requires `interpolation = "model"`.
+  Positive integer or `NULL` (default). `NULL` returns the
+  **deterministic** daily AmsPAF: the fast, grabs-exact point estimate
+  (the default and recommended best guess). When non-`NULL`, runs the
+  full OU/GAM uncertainty propagation for `ndraws` draws and returns a
+  **draws** product instead (see Details for the distinction). Requires
+  `interpolation = "model"`.
 
 - seed:
 
@@ -158,11 +162,12 @@ amspaf_daily(
 
 - return:
 
-  `"summary"` (default) or `"draws"`. `"summary"` collapses draws to a
-  central estimate plus credible-interval bounds (`amspaf_lower`,
-  `amspaf_upper`). `"draws"` returns one row per (site \\\times\\ day
-  \\\times\\ draw) with a `draw_id` column. Ignored in point mode
-  (`ndraws = NULL`).
+  `"summary"` (default) or `"draws"`; relevant only when `ndraws` is
+  supplied. `"summary"` collapses the draws to a central estimate
+  (`amspaf`, the draws' own central tendency — see `central`) plus
+  credible-interval bounds (`amspaf_lower`, `amspaf_upper`). `"draws"`
+  returns one row per (site \\\times\\ day \\\times\\ draw) with a
+  `draw_id` column. Ignored in point mode (`ndraws = NULL`).
 
 - interval:
 
@@ -172,8 +177,12 @@ amspaf_daily(
 
 - central:
 
-  Central tendency for `return = "summary"`. `"median"` (default) or
-  `"mean"`.
+  Central tendency for the `amspaf` column when `return = "summary"`:
+  `"median"` (default) or `"mean"` of the per-day draws. Because it is a
+  summary *of the draws*, `amspaf` is coherent with its band (the median
+  lies inside `[amspaf_lower, amspaf_upper]` by construction) and
+  depends on `ndraws`/`seed`. It is NOT the deterministic point estimate
+  — for that, call with `ndraws = NULL`.
 
 - grab_cv:
 
@@ -225,14 +234,26 @@ amspaf_daily(
   unchanged. Set to `FALSE` to reproduce the pre-#32 independent-draw
   path exactly.
 
+- transform:
+
+  `"pseudo_log"` (default) or `"additive"`. Controls the
+  variance-stabilising transform for the daily impact residual smoother.
+  `"pseudo_log"` applies `g = asinh(I / c)` with per-analyte scale
+  `c = HC5` (issue \#15); `"additive"` keeps `g = I` (pre-#15 behaviour,
+  no HC5 scaling). Forwarded to
+  [`fit_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_target_model.md);
+  ignored unless `interpolation = "model"`.
+
 ## Value
 
 **Point mode** (`ndraws = NULL`): a tibble with one row per (site
-\\\times\\ day) for days with sufficient analyte coverage.
+\\\times\\ day) for days with sufficient analyte coverage; `amspaf` is
+the deterministic daily estimate.
 
-**Draws mode** (`ndraws > 0`, `return = "summary"`): same schema plus
-two extra columns `amspaf_lower` and `amspaf_upper` (the credible
-interval bounds from collapsing the `ndraws` posterior draws).
+**Draws mode** (`ndraws > 0`, `return = "summary"`): same schema, where
+`amspaf` is the draws' central tendency (`central`), plus two extra
+columns `amspaf_lower` and `amspaf_upper` (the credible-interval bounds
+from the `ndraws` posterior draws).
 
 **Draws mode** (`ndraws > 0`, `return = "draws"`): one row per (site
 \\\times\\ day \\\times\\ draw), with an additional `draw_id` integer
@@ -250,7 +271,8 @@ Common columns:
 
 - `amspaf`:
 
-  Daily AmsPAF (percentage, 0–100+).
+  Daily AmsPAF (percentage, 0–100+). The deterministic point estimate in
+  point mode; the draws' central tendency in `return = "summary"`.
 
 - `n_analytes_used`:
 
@@ -280,6 +302,30 @@ and
 [`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md).
 (`analyte_pafs` is now a flat attribute, not a list-column — issue
 \#30.)
+
+## Details
+
+`amspaf_daily()` returns one of **two distinct products**, chosen by
+`ndraws`; they answer different questions and should not be expected to
+coincide:
+
+- **Deterministic** (`ndraws = NULL`, default). A single grabs-exact
+  daily line: the residual smoother is pinned to the measured grab
+  samples, so the curve threads the reported lab values. *Pro:* fast,
+  reproducible, the best single-number estimate; ideal as a sanity
+  check. *Con:* carries no uncertainty and over-fits noisy grabs.
+
+- **Draws** (`ndraws > 0`). A Monte-Carlo posterior propagating trend
+  (GAM) and between-grab (OU bridge) uncertainty, plus grab measurement
+  error when `grab_cv` is set. `return = "summary"` reports the central
+  tendency plus a credible band; `return = "draws"` returns per-draw
+  paths. *Pro:* honest uncertainty quantification. *Con:* the central
+  estimate is seed/`ndraws`-dependent and, by Jensen's inequality on the
+  bounded AmsPAF index, generally differs from the deterministic line.
+
+The summary centre is a summary *of the draws* (issue \#42), so it
+always lies within its own credible band; it is not the deterministic
+line overlaid on a band built from a different posterior.
 
 ## Interpolation
 

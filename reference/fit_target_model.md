@@ -23,6 +23,7 @@ fit_target_model(
   analyte_metadata = NULL,
   method = c("multi", "anzecc"),
   guideline_dir = getOption("leachatetools.guideline_dir"),
+  transform = c("pseudo_log", "additive"),
   analyte_c = NULL,
   api_windows_short = c(3L, 7L, 14L),
   api_windows_long = c(30L, 60L, 90L, 180L),
@@ -87,6 +88,17 @@ fit_target_model(
 
   Path to the ANZG guideline data folder (for the SSD fits); falls back
   to `getOption("leachatetools.guideline_dir")`.
+
+- transform:
+
+  `"pseudo_log"` (default) or `"additive"`. Controls the
+  variance-stabilising transform applied to the impact residual before
+  smoothing. `"pseudo_log"` uses `g = asinh(I / c)` with per-analyte
+  scale `c = HC5` (issue \#15), which compresses the dynamic range and
+  prevents event spikes from inflating the baseline draw spread.
+  `"additive"` keeps `g = I` (pre-#15 behaviour): the smoother operates
+  in the original additive impact space. Ignored when `analyte_c` is
+  supplied directly.
 
 - analyte_c:
 

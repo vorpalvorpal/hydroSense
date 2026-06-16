@@ -80,7 +80,8 @@ analysis, visualisation, and downstream <code><a href="time_weighted_aggregate.h
 <span>  ou_scale <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  kappa <span class="op">=</span> <span class="fl">0.5</span>,</span>
 <span>  parallel <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  couple_residuals <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  couple_residuals <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  transform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"pseudo_log"</span>, <span class="st">"additive"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -182,9 +183,12 @@ sample with <code>NH3-N</code> must also carry a <code>temperature</code> value.
 
 
 <dt id="arg-ndraws">ndraws<a class="anchor" aria-label="anchor" href="#arg-ndraws"></a></dt>
-<dd><p>Positive integer or <code>NULL</code> (default). When non-<code>NULL</code>, runs
-the full OU/GAM uncertainty propagation for <code>ndraws</code> independent draws.
-Requires <code>interpolation = "model"</code>.</p></dd>
+<dd><p>Positive integer or <code>NULL</code> (default). <code>NULL</code> returns the
+<strong>deterministic</strong> daily AmsPAF: the fast, grabs-exact point estimate (the
+default and recommended best guess).  When non-<code>NULL</code>, runs the full
+OU/GAM uncertainty propagation for <code>ndraws</code> draws and returns a <strong>draws</strong>
+product instead (see Details for the distinction).  Requires
+<code>interpolation = "model"</code>.</p></dd>
 
 
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
@@ -192,11 +196,12 @@ Requires <code>interpolation = "model"</code>.</p></dd>
 
 
 <dt id="arg-return">return<a class="anchor" aria-label="anchor" href="#arg-return"></a></dt>
-<dd><p><code>"summary"</code> (default) or <code>"draws"</code>. <code>"summary"</code> collapses
-draws to a central estimate plus credible-interval bounds (<code>amspaf_lower</code>,
-<code>amspaf_upper</code>). <code>"draws"</code> returns one row per (site \(\times\) day
-\(\times\) draw) with a <code>draw_id</code> column.  Ignored in point mode
-(<code>ndraws = NULL</code>).</p></dd>
+<dd><p><code>"summary"</code> (default) or <code>"draws"</code>; relevant only when
+<code>ndraws</code> is supplied.  <code>"summary"</code> collapses the draws to a central
+estimate (<code>amspaf</code>, the draws' own central tendency — see <code>central</code>) plus
+credible-interval bounds (<code>amspaf_lower</code>, <code>amspaf_upper</code>).  <code>"draws"</code>
+returns one row per (site \(\times\) day \(\times\) draw) with a
+<code>draw_id</code> column.  Ignored in point mode (<code>ndraws = NULL</code>).</p></dd>
 
 
 <dt id="arg-interval">interval<a class="anchor" aria-label="anchor" href="#arg-interval"></a></dt>
@@ -206,8 +211,12 @@ is the <code>1 - (1 - interval)/2</code> quantile.</p></dd>
 
 
 <dt id="arg-central">central<a class="anchor" aria-label="anchor" href="#arg-central"></a></dt>
-<dd><p>Central tendency for <code>return = "summary"</code>.  <code>"median"</code>
-(default) or <code>"mean"</code>.</p></dd>
+<dd><p>Central tendency for the <code>amspaf</code> column when
+<code>return = "summary"</code>: <code>"median"</code> (default) or <code>"mean"</code> of the per-day
+draws.  Because it is a summary <em>of the draws</em>, <code>amspaf</code> is coherent with
+its band (the median lies inside <code>[amspaf_lower, amspaf_upper]</code> by
+construction) and depends on <code>ndraws</code>/<code>seed</code>.  It is NOT the deterministic
+point estimate — for that, call with <code>ndraws = NULL</code>.</p></dd>
 
 
 <dt id="arg-grab-cv">grab_cv<a class="anchor" aria-label="anchor" href="#arg-grab-cv"></a></dt>
@@ -254,14 +263,25 @@ to reflect co-movement of co-toxicants on breach events while leaving
 per-analyte marginals unchanged.  Set to <code>FALSE</code> to reproduce the pre-#32
 independent-draw path exactly.</p></dd>
 
+
+<dt id="arg-transform">transform<a class="anchor" aria-label="anchor" href="#arg-transform"></a></dt>
+<dd><p><code>"pseudo_log"</code> (default) or <code>"additive"</code>.  Controls the
+variance-stabilising transform for the daily impact residual smoother.
+<code>"pseudo_log"</code> applies <code>g = asinh(I / c)</code> with per-analyte scale <code>c = HC5</code>
+(issue #15); <code>"additive"</code> keeps <code>g = I</code> (pre-#15 behaviour, no HC5 scaling).
+Forwarded to <code><a href="fit_target_model.html">fit_target_model()</a></code>; ignored unless
+<code>interpolation = "model"</code>.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p><strong>Point mode</strong> (<code>ndraws = NULL</code>): a tibble with one row per (site
-\(\times\) day) for days with sufficient analyte coverage.</p>
-<p><strong>Draws mode</strong> (<code>ndraws &gt; 0</code>, <code>return = "summary"</code>): same schema plus two
-extra columns <code>amspaf_lower</code> and <code>amspaf_upper</code> (the credible interval
-bounds from collapsing the <code>ndraws</code> posterior draws).</p>
+\(\times\) day) for days with sufficient analyte coverage; <code>amspaf</code> is
+the deterministic daily estimate.</p>
+<p><strong>Draws mode</strong> (<code>ndraws &gt; 0</code>, <code>return = "summary"</code>): same schema, where
+<code>amspaf</code> is the draws' central tendency (<code>central</code>), plus two extra columns
+<code>amspaf_lower</code> and <code>amspaf_upper</code> (the credible-interval bounds from the
+<code>ndraws</code> posterior draws).</p>
 <p><strong>Draws mode</strong> (<code>ndraws &gt; 0</code>, <code>return = "draws"</code>): one row per (site
 \(\times\) day \(\times\) draw), with an additional <code>draw_id</code>
 integer column.</p>
@@ -272,7 +292,9 @@ integer column.</p>
 <dd><p>Site identifier.</p></dd>
 
 <dt><code>amspaf</code></dt>
-<dd><p>Daily AmsPAF (percentage, 0–100+).</p></dd>
+<dd><p>Daily AmsPAF (percentage, 0–100+).  The deterministic
+point estimate in point mode; the draws' central tendency in
+<code>return = "summary"</code>.</p></dd>
 
 <dt><code>n_analytes_used</code></dt>
 <dd><p>SSD-eligible analytes contributing to AmsPAF.</p></dd>
@@ -296,6 +318,26 @@ for any SSD-eligible analyte.</p></dd>
 <code>"ara_summary"</code> attributes are attached; retrieve them with <code><a href="analyte_pafs.html">analyte_pafs()</a></code>
 and <code><a href="ara_summary.html">ara_summary()</a></code>. (<code>analyte_pafs</code> is now a flat attribute, not a
 list-column — issue #30.)</p>
+    </div>
+    <div class="section level2">
+    <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
+    <p><code>amspaf_daily()</code> returns one of <strong>two distinct products</strong>, chosen by
+<code>ndraws</code>; they answer different questions and should not be expected to
+coincide:</p><ul><li><p><strong>Deterministic</strong> (<code>ndraws = NULL</code>, default).  A single grabs-exact daily
+line: the residual smoother is pinned to the measured grab samples, so the
+curve threads the reported lab values.  <em>Pro:</em> fast, reproducible, the best
+single-number estimate; ideal as a sanity check.  <em>Con:</em> carries no
+uncertainty and over-fits noisy grabs.</p></li>
+<li><p><strong>Draws</strong> (<code>ndraws &gt; 0</code>).  A Monte-Carlo posterior propagating trend
+(GAM) and between-grab (OU bridge) uncertainty, plus grab measurement error
+when <code>grab_cv</code> is set.  <code>return = "summary"</code> reports the central tendency
+plus a credible band; <code>return = "draws"</code> returns per-draw paths.  <em>Pro:</em>
+honest uncertainty quantification.  <em>Con:</em> the central estimate is
+seed/<code>ndraws</code>-dependent and, by Jensen's inequality on the bounded AmsPAF
+index, generally differs from the deterministic line.</p></li>
+</ul><p>The summary centre is a summary <em>of the draws</em> (issue #42), so it always lies
+within its own credible band; it is not the deterministic line overlaid on a
+band built from a different posterior.</p>
     </div>
     <div class="section level2">
     <h2 id="interpolation">Interpolation<a class="anchor" aria-label="anchor" href="#interpolation"></a></h2>

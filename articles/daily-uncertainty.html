@@ -233,9 +233,10 @@ not attempted), so coverage can be ragged across analytes.</p>
 columns:</p>
 <ul>
 <li>
-<code>amspaf</code> — deterministic centre-line (heuristic-blend
-point prediction, identical to the output of a non-draws run with
-<code>interpolation = "model"</code>)</li>
+<code>amspaf</code> — the draws’ own central tendency
+(<code>central = "median"</code> by default, or <code>"mean"</code>), so
+it is a summary <em>of the same posterior</em> as the band and always
+lies inside it</li>
 <li>
 <code>amspaf_lower</code> — lower bound of the credible
 interval</li>
@@ -243,6 +244,9 @@ interval</li>
 <code>amspaf_upper</code> — upper bound of the credible
 interval</li>
 </ul>
+<p>This <code>amspaf</code> is <strong>not</strong> the deterministic
+point estimate — see <a href="#two-products">Two products: deterministic
+vs draws</a> below.</p>
 </div>
 <div class="section level3">
 <h3 id="including-measurement-error-s6-s7">Including measurement error (S6 + S7)<a class="anchor" aria-label="anchor" href="#including-measurement-error-s6-s7"></a>
@@ -447,22 +451,55 @@ inflation; &gt; 1 widens the whole envelope</td>
 </table>
 </div>
 <div class="section level2">
-<h2 id="how-the-centre-line-is-computed">How the centre line is computed<a class="anchor" aria-label="anchor" href="#how-the-centre-line-is-computed"></a>
+<h2 id="two-products">Two products: deterministic vs draws<a class="anchor" aria-label="anchor" href="#two-products"></a>
 </h2>
-<p>The <code>amspaf</code> column in <code>return = "summary"</code> is
-the <strong>deterministic smoother posterior mean</strong> (the centre
-line), identical to running <code><a href="../reference/amspaf_daily.html">amspaf_daily()</a></code> without
-<code>ndraws</code>. It is <em>not</em> the median of the draws. This
-means the centre line:</p>
+<p><code><a href="../reference/amspaf_daily.html">amspaf_daily()</a></code> gives you <strong>one of two distinct
+products</strong>, selected by <code>ndraws</code>. They answer
+different questions and are not expected to coincide.</p>
+<p><strong>Deterministic</strong> (<code>ndraws = NULL</code>, the
+default). A single grabs-exact daily line: the residual smoother is
+pinned to the measured grab samples, so the curve threads the reported
+lab values.</p>
 <ul>
-<li>is computationally cheap (no randomness),</li>
-<li>is exactly reproducible regardless of <code>ndraws</code> or
-<code>seed</code>,</li>
-<li>so adding <code>ndraws</code> to an existing call does not change
-the point estimate.</li>
+<li>
+<em>Pro</em> — fast, fully reproducible, the best single-number
+estimate; an ideal sanity check against the draws.</li>
+<li>
+<em>Con</em> — carries no uncertainty, and treats the grabs as exact
+(it over-fits noisy lab values).</li>
 </ul>
-<p>The lower and upper bounds are empirical quantiles of the stochastic
-draws.</p>
+<p><strong>Draws</strong> (<code>ndraws &gt; 0</code>). A Monte-Carlo
+posterior that propagates trend (GAM), between-grab (OU bridge) and —
+when <code>grab_cv</code> is set — grab measurement uncertainty.
+<code>return = "summary"</code> reports the draws’ central tendency
+(<code>central</code>) plus a credible band;
+<code>return = "draws"</code> returns the raw per-draw paths.</p>
+<ul>
+<li>
+<em>Pro</em> — honest uncertainty quantification; the summary
+<code>amspaf</code> is the band’s own centre (it always lies inside
+<code>[amspaf_lower, amspaf_upper]</code>).</li>
+<li>
+<em>Con</em> — the central estimate now depends on
+<code>ndraws</code>/<code>seed</code>, and by Jensen’s inequality on the
+bounded AmsPAF index it generally sits <em>above</em> the deterministic
+line; adding <code>ndraws</code> therefore changes the point
+estimate.</li>
+</ul>
+<p>A natural workflow is to compute the deterministic line (cheap)
+<strong>and</strong> the draws, then overlay them: the deterministic is
+your best guess, the band shows the uncertainty around it. If the
+deterministic strays well outside the band, that is a useful diagnostic,
+not a contradiction — the two summarise different posteriors.</p>
+<blockquote>
+<p><strong>Grab measurement error (<code>grab_cv</code>).</strong> Until
+per-sample lab uncertainties are available, leave
+<code>grab_cv = NULL</code> (the default): a fabricated CV injects
+measurement spread that is not real. When real uncertainties land, the
+draws should use them (widening the band, and pinching it toward the
+measurement width at grab dates), while the deterministic line continues
+to thread the reported values.</p>
+</blockquote>
 </div>
 <div class="section level2">
 <h2 id="connection-to-the-chronic-pipeline">Connection to the chronic pipeline<a class="anchor" aria-label="anchor" href="#connection-to-the-chronic-pipeline"></a>
