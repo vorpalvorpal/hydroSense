@@ -52,15 +52,31 @@ run_summary <- function(ndraws, seed = 1L, ...) {
     require_temperature = FALSE, conc_units = "ug/L", ...))
 }
 
-## ── I2: centre line is invariant to ndraws / seed ─────────────────────────────
+## ── I2: deterministic point estimate is stable; draw summary tracks draws ─
+## Since issue #42 the summary centre is the draws' OWN central tendency, so it
+## depends on ndraws/seed (it is no longer the deterministic line). The stable,
+## reproducible best guess is point mode (ndraws = NULL).
 
-test_that("I2: amspaf centre is identical across ndraws and seed", {
+test_that("I2: point-mode centre stable; summary centre is draw median", {
   skip_if(is.null(.kf$rm), "no reference model")
-  a <- run_summary(ndraws = 6L,  seed = 1L)
-  b <- run_summary(ndraws = 20L, seed = 7L)
-  m <- dplyr::inner_join(a[, c("date", "amspaf")], b[, c("date", "amspaf")],
-                         by = "date", suffix = c(".a", ".b"))
-  expect_equal(m$amspaf.a, m$amspaf.b, tolerance = 1e-8)
+  run_point <- function() suppressMessages(amspaf_daily(
+    .kf$tgt, reference_model = .kf$rm, interpolation = "model",
+    require_temperature = FALSE, conc_units = "ug/L"))
+
+  ## Point mode: the deterministic best guess — identical on repeat, seedless.
+  expect_equal(run_point()$amspaf, run_point()$amspaf, tolerance = 1e-8)
+
+  ## Summary centre = the per-day median of the same draws (coherent with band).
+  draws <- suppressMessages(amspaf_daily(
+    .kf$tgt, reference_model = .kf$rm, interpolation = "model",
+    ndraws = 20L, seed = 7L, return = "draws",
+    require_temperature = FALSE, conc_units = "ug/L"))
+  summ <- run_summary(ndraws = 20L, seed = 7L)
+  ref  <- draws |>
+    dplyr::group_by(.data$date) |>
+    dplyr::summarise(m = stats::median(.data$amspaf), .groups = "drop")
+  m <- dplyr::inner_join(summ[, c("date", "amspaf")], ref, by = "date")
+  expect_equal(m$amspaf, m$m, tolerance = 1e-8)
 })
 
 ## ── I3: pinch near grabs, balloon mid-gap ─────────────────────────────────────

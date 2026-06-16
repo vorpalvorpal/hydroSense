@@ -122,20 +122,28 @@
 #' @param require_temperature Logical (default `TRUE`). When `TRUE`, any daily
 #'   sample with `NH3-N` must also carry a `temperature` value. Passed to
 #'   [add_amspaf()]. Set `FALSE` for datasets without ammonia.
-#' @param ndraws Positive integer or `NULL` (default). When non-`NULL`, runs
-#'   the full OU/GAM uncertainty propagation for `ndraws` independent draws.
-#'   Requires `interpolation = "model"`.
+#' @param ndraws Positive integer or `NULL` (default). `NULL` returns the
+#'   **deterministic** daily AmsPAF: the fast, grabs-exact point estimate (the
+#'   default and recommended best guess).  When non-`NULL`, runs the full
+#'   OU/GAM uncertainty propagation for `ndraws` draws and returns a **draws**
+#'   product instead (see Details for the distinction).  Requires
+#'   `interpolation = "model"`.
 #' @param seed Integer or `NULL`. RNG seed for reproducibility of draws.
-#' @param return `"summary"` (default) or `"draws"`. `"summary"` collapses
-#'   draws to a central estimate plus credible-interval bounds (`amspaf_lower`,
-#'   `amspaf_upper`). `"draws"` returns one row per (site \eqn{\times} day
-#'   \eqn{\times} draw) with a `draw_id` column.  Ignored in point mode
-#'   (`ndraws = NULL`).
+#' @param return `"summary"` (default) or `"draws"`; relevant only when
+#'   `ndraws` is supplied.  `"summary"` collapses the draws to a central
+#'   estimate (`amspaf`, the draws' own central tendency — see `central`) plus
+#'   credible-interval bounds (`amspaf_lower`, `amspaf_upper`).  `"draws"`
+#'   returns one row per (site \eqn{\times} day \eqn{\times} draw) with a
+#'   `draw_id` column.  Ignored in point mode (`ndraws = NULL`).
 #' @param interval Credible interval width for `return = "summary"` (default
 #'   `0.9`).  The lower bound is the `(1 - interval)/2` quantile, the upper
 #'   is the `1 - (1 - interval)/2` quantile.
-#' @param central Central tendency for `return = "summary"`.  `"median"`
-#'   (default) or `"mean"`.
+#' @param central Central tendency for the `amspaf` column when
+#'   `return = "summary"`: `"median"` (default) or `"mean"` of the per-day
+#'   draws.  Because it is a summary *of the draws*, `amspaf` is coherent with
+#'   its band (the median lies inside `[amspaf_lower, amspaf_upper]` by
+#'   construction) and depends on `ndraws`/`seed`.  It is NOT the deterministic
+#'   point estimate — for that, call with `ndraws = NULL`.
 #' @param grab_cv Numeric scalar or named numeric vector of coefficients of
 #'   variation for grab-sample measurement error.  A scalar applies the same
 #'   CV to all analytes; a named vector (e.g. `c(Cu = 0.1, pH = 0.02)`)
@@ -174,13 +182,37 @@
 #'   Forwarded to [fit_target_model()]; ignored unless
 #'   `interpolation = "model"`.
 #'
+#' @details
+#' `amspaf_daily()` returns one of **two distinct products**, chosen by
+#' `ndraws`; they answer different questions and should not be expected to
+#' coincide:
+#'
+#' * **Deterministic** (`ndraws = NULL`, default).  A single grabs-exact daily
+#'   line: the residual smoother is pinned to the measured grab samples, so the
+#'   curve threads the reported lab values.  *Pro:* fast, reproducible, the best
+#'   single-number estimate; ideal as a sanity check.  *Con:* carries no
+#'   uncertainty and over-fits noisy grabs.
+#' * **Draws** (`ndraws > 0`).  A Monte-Carlo posterior propagating trend
+#'   (GAM) and between-grab (OU bridge) uncertainty, plus grab measurement error
+#'   when `grab_cv` is set.  `return = "summary"` reports the central tendency
+#'   plus a credible band; `return = "draws"` returns per-draw paths.  *Pro:*
+#'   honest uncertainty quantification.  *Con:* the central estimate is
+#'   seed/`ndraws`-dependent and, by Jensen's inequality on the bounded AmsPAF
+#'   index, generally differs from the deterministic line.
+#'
+#' The summary centre is a summary *of the draws* (issue #42), so it always lies
+#' within its own credible band; it is not the deterministic line overlaid on a
+#' band built from a different posterior.
+#'
 #' @return
 #' **Point mode** (`ndraws = NULL`): a tibble with one row per (site
-#'   \eqn{\times} day) for days with sufficient analyte coverage.
+#'   \eqn{\times} day) for days with sufficient analyte coverage; `amspaf` is
+#'   the deterministic daily estimate.
 #'
-#' **Draws mode** (`ndraws > 0`, `return = "summary"`): same schema plus two
-#'   extra columns `amspaf_lower` and `amspaf_upper` (the credible interval
-#'   bounds from collapsing the `ndraws` posterior draws).
+#' **Draws mode** (`ndraws > 0`, `return = "summary"`): same schema, where
+#'   `amspaf` is the draws' central tendency (`central`), plus two extra columns
+#'   `amspaf_lower` and `amspaf_upper` (the credible-interval bounds from the
+#'   `ndraws` posterior draws).
 #'
 #' **Draws mode** (`ndraws > 0`, `return = "draws"`): one row per (site
 #'   \eqn{\times} day \eqn{\times} draw), with an additional `draw_id`
@@ -190,7 +222,9 @@
 #'   \describe{
 #'     \item{`date`}{Date of this daily estimate.}
 #'     \item{`site_id`}{Site identifier.}
-#'     \item{`amspaf`}{Daily AmsPAF (percentage, 0--100+).}
+#'     \item{`amspaf`}{Daily AmsPAF (percentage, 0--100+).  The deterministic
+#'       point estimate in point mode; the draws' central tendency in
+#'       `return = "summary"`.}
 #'     \item{`n_analytes_used`}{SSD-eligible analytes contributing to AmsPAF.}
 #'     \item{`dominant_analyte`}{Analyte with the highest individual PAF.}
 #'     \item{`max_paf`}{PAF of the dominant analyte (proportion 0--1).}
@@ -379,7 +413,6 @@ amspaf_daily <- function(
 
     ## Step 1b: Model interpolation of toxicants (season-blind impact model).
     impact_tiers  <- NULL
-    daily_long_pt <- NULL   # point-mode frame; populated in draws mode only
 
     if (interpolation == "model") {
 
@@ -412,29 +445,24 @@ amspaf_daily <- function(
                    zero-width credible intervals."
           ))
           synth <- .build_synthetic_samples(daily_long, site)
-          return(list(synth = synth, synth_pt = synth, diag = diag,
+          return(list(synth = synth, diag = diag,
                       tiers = NULL, site = site))
         }
 
-        ## Deterministic prediction: used as the centre line (`amspaf`) in
-        ## return = "summary" and for impact_tiers / per-analyte diagnostics.
-        ## Kept in a *separate* point-mode synthetic frame so it passes through
-        ## add_amspaf as a normal (non-draw) sample — no draw_id column.
+        ## Deterministic prediction: supplies the per-analyte impact tier
+        ## ("model"/"bridge") attached to the ARA diagnostics.  Since issue #42
+        ## the summary centre line is the draws' own central tendency, so no
+        ## separate point-mode AmsPAF frame is built here (the deterministic
+        ## point estimate is its own product, via point mode / ndraws = NULL).
         pt_rows      <- .predict_daily_tox(fdm)
         impact_tiers <- if (!is.null(pt_rows)) attr(pt_rows, "impact_tiers") else NULL
 
-        ## Non-modelled + co-analyte rows (exact; shared by both frames).
+        ## Non-modelled + co-analyte rows (exact); shared by every draw's
+        ## reconstruction and the co-analyte perturbation path below.
         daily_long_exact <- daily_long[!daily_long$analyte %in% fdm$modelled, ,
                                         drop = FALSE]
         if (!"units.analyte" %in% names(daily_long_exact)) {
           daily_long_exact$units.analyte <- NA_character_
-        }
-
-        ## Point-mode frame (no draw_id): centre line + exact co-analytes.
-        daily_long_pt <- if (!is.null(pt_rows)) {
-          dplyr::bind_rows(daily_long_exact, pt_rows)
-        } else {
-          daily_long_exact
         }
 
         ## Compute the cross-analyte empirical correlation once per site, from
@@ -569,12 +597,9 @@ amspaf_daily <- function(
     }
 
     ## Step 4: Build synthetic long-format samples (no focal_date!).
-    synth    <- .build_synthetic_samples(daily_long, site)
-    synth_pt <- if (!is.null(daily_long_pt))
-                  .build_synthetic_samples(daily_long_pt, site)
-                else NULL
+    synth <- .build_synthetic_samples(daily_long, site)
 
-    list(synth = synth, synth_pt = synth_pt, diag = diag,
+    list(synth = synth, diag = diag,
          tiers = impact_tiers, site = site)
   })
 
@@ -659,74 +684,38 @@ amspaf_daily <- function(
         dplyr::arrange(.data$site_id, .data$date, .data$draw_id)
 
     } else {
-      ## return == "summary": centre line from a separate point-mode
-      ## add_amspaf call; CI quantiles from the stochastic draws.
-
-      ## --- CI from stochastic draws (1..N) ----------------------------------
-      lo_p <- (1 - interval) / 2
-      hi_p <- 1 - lo_p
-      ci_summary <- amspaf_dated |>
+      ## return == "summary": collapse the stochastic draws to a central
+      ## estimate plus a credible interval.  Since issue #42 the centre is the
+      ## draws' OWN central tendency (median or mean per `central`), so it is a
+      ## coherent summary of the same posterior as the band: the centre lies
+      ## within [amspaf_lower, amspaf_upper] by construction (the median is the
+      ## interval's own 50th percentile).  The deterministic point estimate is a
+      ## SEPARATE product, obtained via point mode (ndraws = NULL); it is the
+      ## grabs-exact best guess and is NOT bundled into the draw summary.
+      lo_p       <- (1 - interval) / 2
+      hi_p       <- 1 - lo_p
+      centre_fun <- if (central == "mean") base::mean else stats::median
+      result <- amspaf_dated |>
         dplyr::group_by(.data$date, .data$site_id) |>
         dplyr::summarise(
+          amspaf       = centre_fun(.data$value),
           amspaf_lower = stats::quantile(.data$value, lo_p, names = FALSE),
           amspaf_upper = stats::quantile(.data$value, hi_p, names = FALSE),
-          .groups      = "drop"
-        )
-
-      ## --- Centre line from point-mode synthetic frame ----------------------
-      all_synth_pt_list <- lapply(site_results, `[[`, "synth_pt")
-      all_synth_pt_list <- Filter(Negate(is.null), all_synth_pt_list)
-
-      if (length(all_synth_pt_list) == 0L) {
-        ## Fallback: use draw medians as centre (should not happen normally).
-        result <- amspaf_dated |>
-          dplyr::group_by(.data$date, .data$site_id) |>
-          dplyr::summarise(amspaf = stats::median(.data$value), .groups = "drop") |>
-          dplyr::left_join(ci_summary, by = c("date", "site_id")) |>
-          dplyr::left_join(all_diag,   by = c("date", "site_id")) |>
-          dplyr::select(
-            "date", "site_id", "amspaf", "amspaf_lower", "amspaf_upper",
-            "n_analytes_used", "dominant_analyte", "max_paf",
-            "n_measured_analytes", "days_since_last_sample"
-          ) |>
-          dplyr::arrange(.data$site_id, .data$date)
-      } else {
-        all_synth_pt <- dplyr::bind_rows(all_synth_pt_list)
-        ## id_date_map for pt frame (same structure, may differ from draws frame
-        ## only if draws frame has draw-bearing rows with different sample_ids,
-        ## which it does not — sample_ids are identical).
-        id_date_map_pt <- dplyr::distinct(
-          dplyr::select(all_synth_pt, "sample_id", "site_id", ".date")
-        )
-        all_synth_pt_clean <- dplyr::select(all_synth_pt, -".date")
-
-        amspaf_pt_out <- add_amspaf(
-          df                  = all_synth_pt_clean,
-          reference           = reference,
-          analyte_metadata    = analyte_metadata,
-          method              = method,
-          guideline_dir       = guideline_dir,
-          min_analytes        = min_analytes,
-          conc_units          = conc_units,
-          require_temperature = require_temperature,
-          return              = "summary"
-        )
-        amspaf_pt_rows <- dplyr::filter(amspaf_pt_out, .data$analyte == "AmsPAF")
-
-        centre <- amspaf_pt_rows |>
-          dplyr::left_join(id_date_map_pt, by = c("sample_id", "site_id")) |>
-          dplyr::rename(date = ".date", amspaf = "value")
-
-        result <- centre |>
-          dplyr::left_join(ci_summary, by = c("date", "site_id")) |>
-          dplyr::left_join(all_diag,   by = c("date", "site_id")) |>
-          dplyr::select(
-            "date", "site_id", "amspaf", "amspaf_lower", "amspaf_upper",
-            "n_analytes_used", "dominant_analyte", "max_paf",
-            "n_measured_analytes", "days_since_last_sample"
-          ) |>
-          dplyr::arrange(.data$site_id, .data$date)
-      }
+          ## Composition diagnostics (which analytes drive AmsPAF) vary only in
+          ## magnitude across draws, not membership; take them from one draw so
+          ## (dominant_analyte, max_paf) stay a coherent pair.
+          n_analytes_used  = dplyr::first(.data$n_analytes_used),
+          dominant_analyte = dplyr::first(.data$dominant_analyte),
+          max_paf          = dplyr::first(.data$max_paf),
+          .groups          = "drop"
+        ) |>
+        dplyr::left_join(all_diag, by = c("date", "site_id")) |>
+        dplyr::select(
+          "date", "site_id", "amspaf", "amspaf_lower", "amspaf_upper",
+          "n_analytes_used", "dominant_analyte", "max_paf",
+          "n_measured_analytes", "days_since_last_sample"
+        ) |>
+        dplyr::arrange(.data$site_id, .data$date)
     }
 
   } else {

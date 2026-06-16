@@ -30,7 +30,8 @@ amspaf_daily(
   ou_scale = 1,
   kappa = 0.5,
   parallel = FALSE,
-  couple_residuals = TRUE
+  couple_residuals = TRUE,
+  transform = c("pseudo_log", "additive")
 )
 }
 \arguments{
@@ -97,24 +98,32 @@ AmsPAF to be computed. Default \code{3L}.}
 sample with \code{NH3-N} must also carry a \code{temperature} value. Passed to
 \code{\link[=add_amspaf]{add_amspaf()}}. Set \code{FALSE} for datasets without ammonia.}
 
-\item{ndraws}{Positive integer or \code{NULL} (default). When non-\code{NULL}, runs
-the full OU/GAM uncertainty propagation for \code{ndraws} independent draws.
-Requires \code{interpolation = "model"}.}
+\item{ndraws}{Positive integer or \code{NULL} (default). \code{NULL} returns the
+\strong{deterministic} daily AmsPAF: the fast, grabs-exact point estimate (the
+default and recommended best guess).  When non-\code{NULL}, runs the full
+OU/GAM uncertainty propagation for \code{ndraws} draws and returns a \strong{draws}
+product instead (see Details for the distinction).  Requires
+\code{interpolation = "model"}.}
 
 \item{seed}{Integer or \code{NULL}. RNG seed for reproducibility of draws.}
 
-\item{return}{\code{"summary"} (default) or \code{"draws"}. \code{"summary"} collapses
-draws to a central estimate plus credible-interval bounds (\code{amspaf_lower},
-\code{amspaf_upper}). \code{"draws"} returns one row per (site \eqn{\times} day
-\eqn{\times} draw) with a \code{draw_id} column.  Ignored in point mode
-(\code{ndraws = NULL}).}
+\item{return}{\code{"summary"} (default) or \code{"draws"}; relevant only when
+\code{ndraws} is supplied.  \code{"summary"} collapses the draws to a central
+estimate (\code{amspaf}, the draws' own central tendency — see \code{central}) plus
+credible-interval bounds (\code{amspaf_lower}, \code{amspaf_upper}).  \code{"draws"}
+returns one row per (site \eqn{\times} day \eqn{\times} draw) with a
+\code{draw_id} column.  Ignored in point mode (\code{ndraws = NULL}).}
 
 \item{interval}{Credible interval width for \code{return = "summary"} (default
 \code{0.9}).  The lower bound is the \code{(1 - interval)/2} quantile, the upper
 is the \code{1 - (1 - interval)/2} quantile.}
 
-\item{central}{Central tendency for \code{return = "summary"}.  \code{"median"}
-(default) or \code{"mean"}.}
+\item{central}{Central tendency for the \code{amspaf} column when
+\code{return = "summary"}: \code{"median"} (default) or \code{"mean"} of the per-day
+draws.  Because it is a summary \emph{of the draws}, \code{amspaf} is coherent with
+its band (the median lies inside \verb{[amspaf_lower, amspaf_upper]} by
+construction) and depends on \code{ndraws}/\code{seed}.  It is NOT the deterministic
+point estimate — for that, call with \code{ndraws = NULL}.}
 
 \item{grab_cv}{Numeric scalar or named numeric vector of coefficients of
 variation for grab-sample measurement error.  A scalar applies the same
@@ -150,14 +159,23 @@ correlated across analytes using the empirical anchor-residual correlation
 to reflect co-movement of co-toxicants on breach events while leaving
 per-analyte marginals unchanged.  Set to \code{FALSE} to reproduce the pre-#32
 independent-draw path exactly.}
+
+\item{transform}{\code{"pseudo_log"} (default) or \code{"additive"}.  Controls the
+variance-stabilising transform for the daily impact residual smoother.
+\code{"pseudo_log"} applies \code{g = asinh(I / c)} with per-analyte scale \code{c = HC5}
+(issue #15); \code{"additive"} keeps \code{g = I} (pre-#15 behaviour, no HC5 scaling).
+Forwarded to \code{\link[=fit_target_model]{fit_target_model()}}; ignored unless
+\code{interpolation = "model"}.}
 }
 \value{
 \strong{Point mode} (\code{ndraws = NULL}): a tibble with one row per (site
-\eqn{\times} day) for days with sufficient analyte coverage.
+\eqn{\times} day) for days with sufficient analyte coverage; \code{amspaf} is
+the deterministic daily estimate.
 
-\strong{Draws mode} (\code{ndraws > 0}, \code{return = "summary"}): same schema plus two
-extra columns \code{amspaf_lower} and \code{amspaf_upper} (the credible interval
-bounds from collapsing the \code{ndraws} posterior draws).
+\strong{Draws mode} (\code{ndraws > 0}, \code{return = "summary"}): same schema, where
+\code{amspaf} is the draws' central tendency (\code{central}), plus two extra columns
+\code{amspaf_lower} and \code{amspaf_upper} (the credible-interval bounds from the
+\code{ndraws} posterior draws).
 
 \strong{Draws mode} (\code{ndraws > 0}, \code{return = "draws"}): one row per (site
 \eqn{\times} day \eqn{\times} draw), with an additional \code{draw_id}
@@ -167,7 +185,9 @@ Common columns:
 \describe{
 \item{\code{date}}{Date of this daily estimate.}
 \item{\code{site_id}}{Site identifier.}
-\item{\code{amspaf}}{Daily AmsPAF (percentage, 0--100+).}
+\item{\code{amspaf}}{Daily AmsPAF (percentage, 0--100+).  The deterministic
+point estimate in point mode; the draws' central tendency in
+\code{return = "summary"}.}
 \item{\code{n_analytes_used}}{SSD-eligible analytes contributing to AmsPAF.}
 \item{\code{dominant_analyte}}{Analyte with the highest individual PAF.}
 \item{\code{max_paf}}{PAF of the dominant analyte (proportion 0--1).}
@@ -186,6 +206,29 @@ Interpolates per-analyte grab chemistry onto a daily date grid and computes
 AmsPAF for every day within the requested date range.  The result is a tidy
 tibble with one row per (site \eqn{\times} day), suitable for trend
 analysis, visualisation, and downstream \code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}} calls.
+}
+\details{
+\code{amspaf_daily()} returns one of \strong{two distinct products}, chosen by
+\code{ndraws}; they answer different questions and should not be expected to
+coincide:
+\itemize{
+\item \strong{Deterministic} (\code{ndraws = NULL}, default).  A single grabs-exact daily
+line: the residual smoother is pinned to the measured grab samples, so the
+curve threads the reported lab values.  \emph{Pro:} fast, reproducible, the best
+single-number estimate; ideal as a sanity check.  \emph{Con:} carries no
+uncertainty and over-fits noisy grabs.
+\item \strong{Draws} (\code{ndraws > 0}).  A Monte-Carlo posterior propagating trend
+(GAM) and between-grab (OU bridge) uncertainty, plus grab measurement error
+when \code{grab_cv} is set.  \code{return = "summary"} reports the central tendency
+plus a credible band; \code{return = "draws"} returns per-draw paths.  \emph{Pro:}
+honest uncertainty quantification.  \emph{Con:} the central estimate is
+seed/\code{ndraws}-dependent and, by Jensen's inequality on the bounded AmsPAF
+index, generally differs from the deterministic line.
+}
+
+The summary centre is a summary \emph{of the draws} (issue #42), so it always lies
+within its own credible band; it is not the deterministic line overlaid on a
+band built from a different posterior.
 }
 \section{Interpolation}{
 
