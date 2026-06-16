@@ -77,13 +77,22 @@ make_kalman_model <- function(n_days = 100L, seed = 10L) {
 
 describe(".anchor_residual_cor()", {
 
-  it("returns a list with R, analytes, and lambda", {
+  it("returns a list with R, analytes, tau2, n_co, and nearpd_applied", {
+    ## Issue #43: the fixed ridge lambda is replaced by data-driven,
+    ## reliability-weighted Fisher-z shrinkage.  The return now reports the
+    ## estimated prior z-variance (tau2), the pairwise co-observation count
+    ## matrix (n_co), and whether the nearPD safety net had to fire.
     tm <- make_fake_tm(rho = 0.8)
     out <- leachatetools:::.anchor_residual_cor(tm, c("A", "B"))
-    expect_named(out, c("R", "analytes", "lambda"), ignore.order = TRUE)
+    expect_named(
+      out, c("R", "analytes", "tau2", "n_co", "nearpd_applied"),
+      ignore.order = TRUE
+    )
     expect_true(is.matrix(out$R))
     expect_equal(dim(out$R), c(2L, 2L))
-    expect_true(is.numeric(out$lambda) && length(out$lambda) == 1L)
+    expect_true(is.numeric(out$tau2) && length(out$tau2) == 1L)
+    expect_true(is.matrix(out$n_co) && all(dim(out$n_co) == c(2L, 2L)))
+    expect_true(is.logical(out$nearpd_applied) && length(out$nearpd_applied) == 1L)
   })
 
   it("output R is symmetric and has unit diagonal", {
@@ -107,8 +116,9 @@ describe(".anchor_residual_cor()", {
     expect_gt(R[1L, 2L], 0)
   })
 
-  it("ridge shrinkage pulls off-diagonals toward 0 relative to raw pairwise r", {
-    ## R_ridge = (1-lambda)*R_hat + lambda*I -> |off-diag| <= |R_hat off-diag|
+  it("reliability shrinkage never inflates: |off-diag| <= |raw pairwise r|", {
+    ## Fisher-z shrinkage toward 0 is monotone, so the shrunk correlation can
+    ## only move toward independence: |r_shrunk| <= |r_hat|.
     tm <- make_fake_tm(rho = 0.85, n_anch = 15L, seed = 5L)
     ## Compute raw pairwise estimate directly for comparison.
     anch_A <- tm$models$A$anchors
@@ -121,6 +131,95 @@ describe(".anchor_residual_cor()", {
     r_raw <- cor(S_wide$A, S_wide$B)
     R     <- leachatetools:::.anchor_residual_cor(tm, c("A", "B"))$R
     expect_lte(abs(R[1L, 2L]), abs(r_raw) + 1e-10)
+  })
+
+  it("a well-sampled strong pair survives close to raw, a low-n pair collapses to ~0", {
+    ## Issue #43 core behaviour.  Build a ragged 3-analyte panel:
+    ##   A,B  co-measured on 30 dates with a genuine rho ~ 0.7 (reliable).
+    ##   C    co-measured with A and B on only 3 dates, where C == A exactly
+    ##        (raw |r| ~ 1 but n = 3: a spurious, unreliable correlation).
+    ## The n-weighted estimator must KEEP the A-B pair (within ~0.15 of raw)
+    ## and SHRINK the spurious A-C / B-C pairs to ~0, before any projection.
+    set.seed(43L)
+    dates_main <- as.Date("2021-01-01") + seq(0, by = 14, length.out = 30L)
+    S_A <- stats::rnorm(30L)
+    S_B <- 0.7 * S_A + sqrt(1 - 0.7^2) * stats::rnorm(30L)
+    c_idx   <- c(1L, 5L, 9L)
+    dates_C <- dates_main[c_idx]
+    ## C tracks A almost exactly on its 3 dates -> spurious raw r ~ 1, n = 3.
+    S_C <- S_A[c_idx] + stats::rnorm(3L, 0, 1e-3)
+
+    mk <- function(d, s) {
+      list(anchors = data.frame(date = d, S = s, I = rep(0, length(s))),
+           d_anchors = NULL, wq_fit = NULL, tier = "mle", scale_c = NA_real_)
+    }
+    tm <- list(models = list(
+      A = mk(dates_main, S_A),
+      B = mk(dates_main, S_B),
+      C = mk(dates_C,    S_C)
+    ))
+
+    out <- leachatetools:::.anchor_residual_cor(tm, c("A", "B", "C"))
+    R   <- out$R
+
+    raw_AB <- cor(S_A, S_B)
+    ## Well-sampled strong pair retained close to raw.
+    expect_gt(R[1L, 2L], 0.4)
+    expect_lt(abs(R[1L, 2L] - raw_AB), 0.15)
+    ## Spurious low-n pairs shrunk to ~0.
+    expect_lt(abs(R[1L, 3L]), 0.05)
+    expect_lt(abs(R[2L, 3L]), 0.05)
+    ## Co-observation counts are reported and correct.
+    expect_equal(out$n_co[1L, 3L], 3)
+    expect_equal(out$n_co[2L, 3L], 3)
+    expect_equal(out$n_co[1L, 2L], 30)
+  })
+
+  it("a representative ragged panel is PD without the nearPD safety net firing", {
+    ## With spurious low-n pairs shrunk to 0 before projection, the matrix is
+    ## already positive-definite, so nearPD must not need to fire (acceptance
+    ## criterion: nearPD does not fire in the typical case).
+    set.seed(431L)
+    dates_main <- as.Date("2021-01-01") + seq(0, by = 14, length.out = 30L)
+    S_A <- stats::rnorm(30L)
+    S_B <- 0.7 * S_A + sqrt(1 - 0.7^2) * stats::rnorm(30L)
+    c_idx <- c(1L, 5L, 9L)
+    S_C   <- S_A[c_idx] + stats::rnorm(3L, 0, 1e-3)
+    mk <- function(d, s) {
+      list(anchors = data.frame(date = d, S = s, I = rep(0, length(s))),
+           d_anchors = NULL, wq_fit = NULL, tier = "mle", scale_c = NA_real_)
+    }
+    tm <- list(models = list(
+      A = mk(dates_main, S_A),
+      B = mk(dates_main, S_B),
+      C = mk(dates_main[c_idx], S_C)
+    ))
+    out <- leachatetools:::.anchor_residual_cor(tm, c("A", "B", "C"))
+    expect_false(out$nearpd_applied)
+    expect_true(all(eigen(out$R, symmetric = TRUE, only.values = TRUE)$values > 0))
+  })
+
+  it("a panel of only low-n pairs collapses to the identity (conservative)", {
+    ## When no pair is reliably estimated (all n <= 3), the estimator has no
+    ## signal: tau2 -> 0 and every off-diagonal shrinks to 0, recovering the
+    ## independent (identity) coupling rather than propagating noise.
+    set.seed(432L)
+    base <- as.Date("2021-01-01") + seq(0, by = 14, length.out = 9L)
+    ## Three analytes whose 3-date windows overlap pairwise on <= 3 dates.
+    tm <- list(models = list(
+      A = list(anchors = data.frame(date = base[1:3], S = stats::rnorm(3L),
+                                    I = rep(0, 3L)),
+               d_anchors = NULL, wq_fit = NULL, tier = "mle", scale_c = NA_real_),
+      B = list(anchors = data.frame(date = base[1:3], S = stats::rnorm(3L),
+                                    I = rep(0, 3L)),
+               d_anchors = NULL, wq_fit = NULL, tier = "mle", scale_c = NA_real_),
+      C = list(anchors = data.frame(date = base[1:3], S = stats::rnorm(3L),
+                                    I = rep(0, 3L)),
+               d_anchors = NULL, wq_fit = NULL, tier = "mle", scale_c = NA_real_)
+    ))
+    out <- leachatetools:::.anchor_residual_cor(tm, c("A", "B", "C"))
+    expect_equal(out$R, diag(3L), tolerance = 1e-10)
+    expect_false(out$nearpd_applied)
   })
 
   it("a pair with zero co-observed dates gets off-diagonal = 0, R still PD", {
