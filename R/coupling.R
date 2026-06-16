@@ -8,7 +8,8 @@
 ## coupling seed in the draw chokepoint.
 ##
 ## Public surface (package-internal):
-##   .anchor_residual_cor     pairwise-complete Pearson R, ridge-shrunk + nearPD
+##   .anchor_residual_cor     pairwise-complete Pearson R, reliability-weighted
+##                            Fisher-z shrinkage (EB tau2) + nearPD fallback
 ##   .coupled_residual_draws  correlated DK draws via Cholesky of the empirical R
 
 #' @importFrom Matrix nearPD
@@ -21,9 +22,10 @@ NULL
 #'
 #' For each analyte in `analytes`, the anchor residual column `S` (from
 #' `d_anchors` if available and >= 2 rows, otherwise `anchors`) is extracted and
-#' joined into a wide `[date × analyte]` matrix.  Pairwise Pearson correlation is
-#' computed, ridge-shrunk toward the identity, and the result is projected onto
-#' the positive-definite cone via [Matrix::nearPD()].
+#' joined into a wide `[date × analyte]` matrix.  Pairwise Pearson correlation
+#' is computed and shrunk toward 0 in Fisher-z space by a reliability weight
+#' driven by each pair's co-observation count, and the result is projected onto
+#' the positive-definite cone via [Matrix::nearPD()] only if still needed.
 #'
 #' ## Statistical choices
 #'
@@ -33,18 +35,37 @@ NULL
 #' rows).  Pairwise estimation uses every available co-measured date for each
 #' pair, maximising the information extracted from the sparse overlap.
 #'
-#' **Ridge shrinkage (fixed λ = 0.1)**: pulls low-*n* pairs toward independence
-#' (conservative when co-observed dates are sparse).  This is more appropriate
-#' here than analytic Schäfer–Strimmer shrinkage, which requires a
-#' complete-case matrix.  The shrinkage formula is
-#' `R_ridge = (1 - λ) * R_hat + λ * I`.
+#' **Reliability-weighted Fisher-z shrinkage**: a fixed ridge toward the
+#' identity damps every pair equally regardless of how well it is estimated,
+#' so a pair with n = 3 co-observed dates and a pair with n = 100 are
+#' shrunk by the same fraction.  Instead, each pairwise correlation `r` (from
+#' `n` co-observed dates) is Fisher-z transformed, `z = atanh(r)`, which has
+#' approximate sampling variance `v = 1 / (n - 3)` (Fisher 1915).  An
+#' empirical-Bayes (James–Stein-type) weight `w = tau2 / (tau2 + v)` shrinks
+#' `z` toward 0: `z_shrunk = w * z`, `r_shrunk = tanh(z_shrunk)`.  Low-*n*
+#' pairs have large `v`, hence small `w`, hence near-total shrinkage to
+#' independence; well-sampled pairs have small `v`, `w` near 1, and survive
+#' close to their raw estimate.  Pairs with `n < 4` have undefined/negative
+#' `v` and are set to `r_shrunk = 0` directly, killing spurious near-±1
+#' correlations from a handful of coincidentally aligned dates *before* the
+#' projection step below.  `tau2`, the prior variance of the true z across
+#' pairs, is estimated by reliability-weighted method of moments over the
+#' reliable pairs (`n >= 4`, both analytes non-degenerate):
+#' `tau2 = max(0, weighted.mean(z^2 - v, w = n - 3))`, following the
+#' data-driven shrinkage-intensity idea of Schäfer & Strimmer (2005) (their
+#' covariance-shrinkage estimator is adapted here to a per-pair, count-aware
+#' weight rather than a single global intensity, because the ragged anchor
+#' panel gives every pair a different effective sample size).  When no pair
+#' is reliable, `tau2 = 0`, every weight is 0, and the whole matrix collapses
+#' to the identity — the conservative, independence assumption.
 #'
 #' **`Matrix::nearPD`** (Higham 2002, alternating projection algorithm):
-#' Pairwise estimates with unequal *n* per pair can produce indefinite matrices.
-#' nearPD projects onto the nearest (in Frobenius norm) positive-definite
-#' correlation matrix.  Only applied when the minimum eigenvalue of `R_ridge`
-#' is <= 1e-8; in the typical case (ridge alone suffices) the result is returned
-#' directly without the projection step.
+#' shrinking toward 0 in z-space already removes the spurious low-*n*
+#' off-diagonals that previously made the pairwise matrix indefinite, so this
+#' safety net should rarely fire.  It is retained as a fallback: applied only
+#' when the minimum eigenvalue of the shrunk matrix is <= 1e-8, in which case
+#' it projects onto the nearest (Frobenius norm) positive-definite correlation
+#' matrix; otherwise the shrunk matrix is used directly.
 #'
 #' **Degenerate analytes** (constant `S` or < 2 finite observations): forced
 #' independent (identity row/col in `R_hat`) rather than propagating NA.
@@ -56,13 +77,32 @@ NULL
 #' @param analytes Character vector of analyte names (must be names of
 #'   `tm$models`).
 #'
-#' @return A named list with three elements:
-#'   - `R`        – a `[p × p]` positive-definite correlation matrix (numeric
-#'                  matrix, dimnames = `list(analytes, analytes)`).
-#'   - `analytes` – the `analytes` argument, preserved for downstream use.
-#'   - `lambda`   – the ridge hyperparameter (numeric scalar, currently 0.1).
+#' @return A named list with five elements:
+#'   - `R`              – a `[p × p]` positive-definite correlation matrix
+#'                         (numeric matrix, no dimnames).
+#'   - `analytes`        – the `analytes` argument, preserved for downstream
+#'                         use.
+#'   - `tau2`            – numeric scalar; the estimated prior variance of the
+#'                         true Fisher-z correlation across pairs (the EB
+#'                         shrinkage target; 0 when no pair is reliable).
+#'   - `n_co`            – `[p × p]` integer matrix of co-observation counts;
+#'                         `n_co[i, j]` is the number of dates with finite `S`
+#'                         for both analyte i and j (diagonal = per-analyte
+#'                         finite-S count).
+#'   - `nearpd_applied`  – logical scalar; `TRUE` iff the [Matrix::nearPD()]
+#'                         fallback fired.
 #'
 #' @references
+#'   Fisher, R. A. (1915). Frequency distribution of the values of the
+#'   correlation coefficient in samples from an indefinitely large
+#'   population. *Biometrika*, **10**(4), 507–521.
+#'   <https://doi.org/10.2307/2331838>
+#'
+#'   Schäfer, J., & Strimmer, K. (2005). A shrinkage approach to large-scale
+#'   covariance matrix estimation and implications for functional genomics.
+#'   *Statistical Applications in Genetics and Molecular Biology*, **4**(1),
+#'   Article 32. <https://doi.org/10.2202/1544-6115.1175>
+#'
 #'   Higham, N. J. (2002). Computing the nearest correlation matrix — a problem
 #'   from finance. *IMA Journal of Numerical Analysis*, **22**(3), 329–343.
 #'   <https://doi.org/10.1093/imanum/22.3.329>
@@ -76,10 +116,12 @@ NULL
   ## For each analyte pull the (date, S) data frame, using d_anchors when it
   ## has >= 2 rows, otherwise falling back to anchors.
   extract_anch <- function(nm) {
-    m    <- tm$models[[nm]]
-    da   <- m$d_anchors
+    m <- tm$models[[nm]]
+    da <- m$d_anchors
     anch <- if (!is.null(da) && nrow(da) >= 2L) da else m$anchors
-    if (is.null(anch) || nrow(anch) == 0L) return(NULL)
+    if (is.null(anch) || nrow(anch) == 0L) {
+      return(NULL)
+    }
     anch[, c("date", "S")]
   }
 
@@ -94,9 +136,13 @@ NULL
   ## (near-)constant S (sd == 0 up to machine precision).
   is_degenerate <- function(nm) {
     df <- anch_list[[nm]]
-    if (is.null(df)) return(TRUE)
-    s  <- df$S[is.finite(df$S)]
-    if (length(s) < 2L) return(TRUE)
+    if (is.null(df)) {
+      return(TRUE)
+    }
+    s <- df$S[is.finite(df$S)]
+    if (length(s) < 2L) {
+      return(TRUE)
+    }
     ## stats::var() returns NA for length-1; for length-0 this can't reach here.
     v <- stats::var(s)
     !is.finite(v) || v <= .Machine$double.eps
@@ -106,8 +152,14 @@ NULL
 
   ## Single-analyte shortcut — avoids the join entirely.
   if (p == 1L) {
-    R <- matrix(1, 1L, 1L, dimnames = list(analytes, analytes))
-    return(list(R = R, analytes = analytes, lambda = 0.1))
+    R <- matrix(1, 1L, 1L)
+    s <- anch_list[[analytes[1L]]]
+    n_finite <- if (is.null(s)) 0L else sum(is.finite(s$S))
+    n_co <- matrix(n_finite, 1L, 1L)
+    return(list(
+      R = R, analytes = analytes, tau2 = 0, n_co = n_co,
+      nearpd_applied = FALSE
+    ))
   }
 
   ## ── 3. Assemble wide matrix [date × analyte] ─────────────────────────────
@@ -117,7 +169,7 @@ NULL
   ## (they contribute only NA after the join, which is fine — the degenerate
   ## flag already controls the downstream handling).
   make_df <- function(nm) {
-    df  <- anch_list[[nm]]
+    df <- anch_list[[nm]]
     out <- data.frame(date = as.Date(character(0L)), S = numeric(0L))
     if (!is.null(df)) {
       out <- data.frame(date = as.Date(df$date), S = df$S)
@@ -159,48 +211,104 @@ NULL
   ## A degenerate analyte has no meaningful covariance with any partner;
   ## setting its row and column to 0 (and diagonal to 1) declares independence.
   for (nm in analytes[degen]) {
-    R_hat[nm, ]  <- 0
-    R_hat[, nm]  <- 0
+    R_hat[nm, ] <- 0
+    R_hat[, nm] <- 0
     R_hat[nm, nm] <- 1
   }
 
-  ## ── 6. Ridge shrinkage ───────────────────────────────────────────────────
+  ## ── 6. Co-observation counts ─────────────────────────────────────────────
 
-  ## λ = 0.1 is a fixed stability hyperparameter: pulls all off-diagonals
-  ## toward 0 by 10 %, guarding against spurious large correlations from
-  ## sparse co-measurement overlap.  Conservative choice preferred over
-  ## data-driven shrinkage (Schäfer–Strimmer) because that requires a
-  ## complete-case matrix, which may not exist for the ragged ARA panel.
-  lambda  <- 0.1
-  R_ridge <- (1 - lambda) * R_hat + lambda * diag(p)
+  ## n_co[i, j] = number of dates with finite S for BOTH analytes i and j;
+  ## diagonal = per-analyte finite-S count.  Vectorised via a 0/1 finite-mask
+  ## matrix: crossprod() gives the pairwise AND-count in one matrix product
+  ## (faster and more readable than nested loops over pairs).
+  finite_mask <- !is.na(S_mat)
+  storage.mode(finite_mask) <- "integer"
+  n_co <- crossprod(finite_mask)
+  dimnames(n_co) <- list(analytes, analytes)
 
-  ## Ensure dimnames are preserved.
-  dimnames(R_ridge) <- list(analytes, analytes)
+  ## ── 7. Reliability-weighted Fisher-z shrinkage ───────────────────────────
 
-  ## ── 7. Positive-definiteness guarantee ───────────────────────────────────
+  ## Fisher (1915): atanh(r) is approximately normal with variance
+  ## 1 / (n - 3) for n co-observed pairs.  Pairs with n < 4 have an
+  ## undefined/negative variance under this approximation and are treated as
+  ## wholly unreliable (shrunk to exactly 0) rather than fed into the
+  ## variance formula.
+  off <- upper.tri(R_hat)
+  n_off <- n_co[off]
+  r_off <- R_hat[off]
+  ## Clamp away from +-1 so atanh() does not return +-Inf for a (near-)
+  ## perfectly correlated low-n pair.
+  r_clamped <- pmax(pmin(r_off, 1 - 1e-7), -1 + 1e-7)
+  z_off <- atanh(r_clamped)
+  v_off <- ifelse(n_off >= 4L, 1 / (n_off - 3), NA_real_)
 
-  ## Pairwise estimates with unequal n per pair can be indefinite even after
-  ## ridge shrinkage.  nearPD (Higham 2002) finds the nearest PD correlation
-  ## matrix in the Frobenius norm.  Only invoke when strictly necessary to
-  ## avoid unnecessary rounding of a matrix that is already PD.
-  min_eig <- min(eigen(R_ridge, symmetric = TRUE, only.values = TRUE)$values)
+  ## Reliable = co-observed on >= 4 dates AND neither analyte degenerate
+  ## (degenerate pairs were already forced to r_hat = 0 in step 5; excluding
+  ## them from the tau2 estimate keeps that estimate driven by genuine signal
+  ## pairs only).
+  degen_pair <- outer(degen, degen, `|`)[off]
+  reliable <- n_off >= 4L & !degen_pair
 
-  R_pd <- if (min_eig <= 1e-8) {
-    as.matrix(Matrix::nearPD(R_ridge, corr = TRUE, keepDiag = TRUE)$mat)
+  ## tau2: empirical-Bayes prior variance of the true z across pairs,
+  ## method-of-moments (Schäfer & Strimmer 2005 data-driven shrinkage
+  ## intensity), reliability-weighted by (n - 3) so better-estimated pairs
+  ## contribute more to the pooled estimate.  z^2 - v is an unbiased estimate
+  ## of the true z^2 (since E[z^2] = true_z^2 + v); averaging recovers tau2.
+  ## max(0, .) keeps the EB variance non-negative; no reliable pairs => 0
+  ## (every weight collapses to 0 => identity matrix, the conservative case).
+  tau2 <- if (any(reliable)) {
+    max(0, stats::weighted.mean(
+      z_off[reliable]^2 - v_off[reliable],
+      w = n_off[reliable] - 3
+    ))
   } else {
-    R_ridge
+    0
+  }
+
+  ## Posterior (James-Stein-type) weight: signal variance over total
+  ## variance.  w -> 0 as v -> Inf (unreliable pair, n small); w -> 1 as
+  ## v -> 0 (highly reliable pair).  Unreliable pairs (n < 4) get w = 0
+  ## directly rather than via this formula (v is undefined there).
+  w_off <- ifelse(n_off >= 4L, tau2 / (tau2 + v_off), 0)
+  z_shrunk <- w_off * z_off
+  r_shrunk <- ifelse(n_off >= 4L, tanh(z_shrunk), 0)
+
+  ## Assemble the symmetric shrunk matrix with unit diagonal.  Degenerate
+  ## analytes' rows/cols are already 0 in r_off (forced in step 5, and
+  ## tanh(0) = 0 / w = 0 either way), so no extra re-masking is required.
+  R_shrunk <- diag(p)
+  R_shrunk[off] <- r_shrunk
+  R_shrunk[lower.tri(R_shrunk)] <- t(R_shrunk)[lower.tri(R_shrunk)]
+  dimnames(R_shrunk) <- list(analytes, analytes)
+
+  ## ── 8. Positive-definiteness guarantee ───────────────────────────────────
+
+  ## Shrinking spurious low-n correlations to 0 before projection already
+  ## removes most of the indefiniteness that pairwise estimation can produce,
+  ## so this safety net should now rarely fire.  nearPD (Higham 2002) finds
+  ## the nearest PD correlation matrix in the Frobenius norm when it does.
+  min_eig <- min(eigen(R_shrunk, symmetric = TRUE, only.values = TRUE)$values)
+  nearpd_applied <- min_eig <= 1e-8
+
+  R_pd <- if (nearpd_applied) {
+    as.matrix(Matrix::nearPD(R_shrunk, corr = TRUE, keepDiag = TRUE)$mat)
+  } else {
+    R_shrunk
   }
 
   ## Strip dimnames: downstream consumers use integer indexing; named diag()
   ## would cause expect_equal(diag(R), c(1,1)) to fail due to name mismatch.
   dimnames(R_pd) <- NULL
 
-  ## ── 8. Return ────────────────────────────────────────────────────────────
+  ## ── 9. Return ────────────────────────────────────────────────────────────
 
   list(
-    R        = R_pd,
-    analytes = analytes,
-    lambda   = lambda
+    R              = R_pd,
+    analytes       = analytes,
+    tau2           = tau2,
+    n_co           = n_co,
+    nearpd_applied = nearpd_applied
   )
 }
 
@@ -272,7 +380,7 @@ NULL
 #' @keywords internal
 .coupled_residual_draws <- function(smoothers, modelled, ndraws, cor_R,
                                     cor_analytes = rownames(cor_R),
-                                    seed         = NULL) {
+                                    seed = NULL) {
   if (!is.null(seed)) set.seed(as.integer(seed))
 
   ## ── 1. Identify couplable analytes ─────────────────────────────────────────
@@ -287,7 +395,7 @@ NULL
 
   ## ── 2. Extract the correlation sub-matrix for couplable analytes ────────────
 
-  idx       <- match(couplable_nms, cor_analytes)
+  idx <- match(couplable_nms, cor_analytes)
   cor_R_sub <- cor_R[idx, idx, drop = FALSE]
 
   ## ── 3. Cholesky factor of cor_R_sub ────────────────────────────────────────
@@ -300,7 +408,7 @@ NULL
 
   ## Build the union of all analytes' grid dates; used to index the correlated
   ## field. Each analyte's own grid is a subset of this union (ragged grids).
-  U   <- sort(unique(do.call(c, lapply(modelled, function(nm) {
+  U <- sort(unique(do.call(c, lapply(modelled, function(nm) {
     smoothers[[nm]]$grid_dates
   }))))
   n_U <- length(U)
@@ -310,8 +418,10 @@ NULL
   ## .kalman_sim_smoother_setup() extracts the gain matrix L, KFS mean x_hat,
   ## and noise scaling vectors needed by .kalman_draw_coupled().
   setups <- stats::setNames(
-    lapply(couplable_nms,
-           function(nm) .kalman_sim_smoother_setup(smoothers[[nm]]$draw_model)),
+    lapply(
+      couplable_nms,
+      function(nm) .kalman_sim_smoother_setup(smoothers[[nm]]$draw_model)
+    ),
     couplable_nms
   )
 
@@ -321,13 +431,13 @@ NULL
   ## Each block of n_U rows (one per draw) has row-covariance cor_R_sub.
   ## We draw the full union-grid × ndraws block at once and slice per-analyte
   ## below using grid_a_idx.
-  n_rows  <- n_U * ndraws
-  Z_raw   <- matrix(stats::rnorm(n_rows * p), nrow = n_rows, ncol = p)
-  Z_cor   <- Z_raw %*% U_chol   # [n_rows × p], rows have cov = cor_R_sub
+  n_rows <- n_U * ndraws
+  Z_raw <- matrix(stats::rnorm(n_rows * p), nrow = n_rows, ncol = p)
+  Z_cor <- Z_raw %*% U_chol # [n_rows × p], rows have cov = cor_R_sub
 
   ## Correlated initial states (one per draw, all p analytes at once).
   Z_a1_raw <- matrix(stats::rnorm(ndraws * p), nrow = ndraws, ncol = p)
-  Z_a1c    <- Z_a1_raw %*% U_chol   # [ndraws × p]
+  Z_a1c <- Z_a1_raw %*% U_chol # [ndraws × p]
 
   ## Observation noise is kept INDEPENDENT across analytes: measurement errors
   ## from separate grab analyses are uncorrelated even when true concentrations
@@ -336,8 +446,8 @@ NULL
   ## ── 7. Per-analyte draw ─────────────────────────────────────────────────────
 
   res_draws <- stats::setNames(lapply(modelled, function(nm) {
-    sm       <- smoothers[[nm]]
-    grid_a   <- sm$grid_dates
+    sm <- smoothers[[nm]]
+    grid_a <- sm$grid_dates
 
     ## Degenerate / empty path.
     if (is.null(sm) || length(grid_a) == 0L) {
@@ -361,20 +471,20 @@ NULL
       ))
     }
 
-    a_col      <- match(nm, couplable_nms)   # column in Z_cor / Z_a1c
-    setup      <- setups[[nm]]
-    n_grid_a   <- length(grid_a)
-    m_a        <- length(setup$pos)
+    a_col <- match(nm, couplable_nms) # column in Z_cor / Z_a1c
+    setup <- setups[[nm]]
+    n_grid_a <- length(grid_a)
+    m_a <- length(setup$pos)
 
     ## Indices of this analyte's grid dates in the union grid U.
     ## Ragged grids: only union-grid rows that fall within analyte A's span
     ## participate in the coupling field; days outside the span have no entry.
-    grid_a_idx <- match(grid_a, U)   # integer indices into U (length n_grid_a)
+    grid_a_idx <- match(grid_a, U) # integer indices into U (length n_grid_a)
 
     ## Row indices into Z_cor for each (draw, day) pair.
     ## Z_cor row (k-1)*n_U + grid_a_idx[t] gives draw k, analyte-grid day t.
     row_idx <- rep(grid_a_idx, ndraws) +
-               n_U * rep(seq_len(ndraws) - 1L, each = n_grid_a)
+      n_U * rep(seq_len(ndraws) - 1L, each = n_grid_a)
 
     ## Extract this analyte's correlated process innovations: [n_grid_a × ndraws].
     eta_std_a <- matrix(Z_cor[row_idx, a_col], nrow = n_grid_a, ncol = ndraws)
