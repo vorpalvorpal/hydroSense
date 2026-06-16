@@ -16,20 +16,30 @@ the same structure.}
 \code{tm$models}).}
 }
 \value{
-A named list with three elements:
+A named list with five elements:
 \itemize{
-\item \code{R}        – a \verb{[p × p]} positive-definite correlation matrix (numeric
-matrix, dimnames = \code{list(analytes, analytes)}).
-\item \code{analytes} – the \code{analytes} argument, preserved for downstream use.
-\item \code{lambda}   – the ridge hyperparameter (numeric scalar, currently 0.1).
+\item \code{R}              – a \verb{[p × p]} positive-definite correlation matrix
+(numeric matrix, no dimnames).
+\item \code{analytes}        – the \code{analytes} argument, preserved for downstream
+use.
+\item \code{tau2}            – numeric scalar; the estimated prior variance of the
+true Fisher-z correlation across pairs (the EB
+shrinkage target; 0 when no pair is reliable).
+\item \code{n_co}            – \verb{[p × p]} integer matrix of co-observation counts;
+\code{n_co[i, j]} is the number of dates with finite \code{S}
+for both analyte i and j (diagonal = per-analyte
+finite-S count).
+\item \code{nearpd_applied}  – logical scalar; \code{TRUE} iff the \code{\link[Matrix:nearPD]{Matrix::nearPD()}}
+fallback fired.
 }
 }
 \description{
 For each analyte in \code{analytes}, the anchor residual column \code{S} (from
 \code{d_anchors} if available and >= 2 rows, otherwise \code{anchors}) is extracted and
-joined into a wide \verb{[date × analyte]} matrix.  Pairwise Pearson correlation is
-computed, ridge-shrunk toward the identity, and the result is projected onto
-the positive-definite cone via \code{\link[Matrix:nearPD]{Matrix::nearPD()}}.
+joined into a wide \verb{[date × analyte]} matrix.  Pairwise Pearson correlation
+is computed and shrunk toward 0 in Fisher-z space by a reliability weight
+driven by each pair's co-observation count, and the result is projected onto
+the positive-definite cone via \code{\link[Matrix:nearPD]{Matrix::nearPD()}} only if still needed.
 }
 \details{
 \subsection{Statistical choices}{
@@ -40,24 +50,53 @@ NH3-N on 121 grabs, metals on 78–79, Al on 7; complete-case would be 0
 rows).  Pairwise estimation uses every available co-measured date for each
 pair, maximising the information extracted from the sparse overlap.
 
-\strong{Ridge shrinkage (fixed λ = 0.1)}: pulls low-\emph{n} pairs toward independence
-(conservative when co-observed dates are sparse).  This is more appropriate
-here than analytic Schäfer–Strimmer shrinkage, which requires a
-complete-case matrix.  The shrinkage formula is
-\verb{R_ridge = (1 - λ) * R_hat + λ * I}.
+\strong{Reliability-weighted Fisher-z shrinkage}: a fixed ridge toward the
+identity damps every pair equally regardless of how well it is estimated,
+so a pair with n = 3 co-observed dates and a pair with n = 100 are
+shrunk by the same fraction.  Instead, each pairwise correlation \code{r} (from
+\code{n} co-observed dates) is Fisher-z transformed, \code{z = atanh(r)}, which has
+approximate sampling variance \code{v = 1 / (n - 3)} (Fisher 1915).  An
+empirical-Bayes (James–Stein-type) weight \code{w = tau2 / (tau2 + v)} shrinks
+\code{z} toward 0: \code{z_shrunk = w * z}, \code{r_shrunk = tanh(z_shrunk)}.  Low-\emph{n}
+pairs have large \code{v}, hence small \code{w}, hence near-total shrinkage to
+independence; well-sampled pairs have small \code{v}, \code{w} near 1, and survive
+close to their raw estimate.  Pairs with \code{n < 4} have undefined/negative
+\code{v} and are set to \code{r_shrunk = 0} directly, killing spurious near-±1
+correlations from a handful of coincidentally aligned dates \emph{before} the
+projection step below.  \code{tau2}, the prior variance of the true z across
+pairs, is estimated by reliability-weighted method of moments over the
+reliable pairs (\code{n >= 4}, both analytes non-degenerate):
+\code{tau2 = max(0, weighted.mean(z^2 - v, w = n - 3))}, following the
+data-driven shrinkage-intensity idea of Schäfer & Strimmer (2005) (their
+covariance-shrinkage estimator is adapted here to a per-pair, count-aware
+weight rather than a single global intensity, because the ragged anchor
+panel gives every pair a different effective sample size).  When no pair
+is reliable, \code{tau2 = 0}, every weight is 0, and the whole matrix collapses
+to the identity — the conservative, independence assumption.
 
 \strong{\code{Matrix::nearPD}} (Higham 2002, alternating projection algorithm):
-Pairwise estimates with unequal \emph{n} per pair can produce indefinite matrices.
-nearPD projects onto the nearest (in Frobenius norm) positive-definite
-correlation matrix.  Only applied when the minimum eigenvalue of \code{R_ridge}
-is <= 1e-8; in the typical case (ridge alone suffices) the result is returned
-directly without the projection step.
+shrinking toward 0 in z-space already removes the spurious low-\emph{n}
+off-diagonals that previously made the pairwise matrix indefinite, so this
+safety net should rarely fire.  It is retained as a fallback: applied only
+when the minimum eigenvalue of the shrunk matrix is <= 1e-8, in which case
+it projects onto the nearest (Frobenius norm) positive-definite correlation
+matrix; otherwise the shrunk matrix is used directly.
 
 \strong{Degenerate analytes} (constant \code{S} or < 2 finite observations): forced
 independent (identity row/col in \code{R_hat}) rather than propagating NA.
 }
 }
 \references{
+Fisher, R. A. (1915). Frequency distribution of the values of the
+correlation coefficient in samples from an indefinitely large
+population. \emph{Biometrika}, \strong{10}(4), 507–521.
+\url{https://doi.org/10.2307/2331838}
+
+Schäfer, J., & Strimmer, K. (2005). A shrinkage approach to large-scale
+covariance matrix estimation and implications for functional genomics.
+\emph{Statistical Applications in Genetics and Molecular Biology}, \strong{4}(1),
+Article 32. \url{https://doi.org/10.2202/1544-6115.1175}
+
 Higham, N. J. (2002). Computing the nearest correlation matrix — a problem
 from finance. \emph{IMA Journal of Numerical Analysis}, \strong{22}(3), 329–343.
 \url{https://doi.org/10.1093/imanum/22.3.329}
