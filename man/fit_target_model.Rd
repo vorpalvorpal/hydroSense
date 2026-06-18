@@ -16,8 +16,8 @@ fit_target_model(
   guideline_dir = getOption("leachatetools.guideline_dir"),
   transform = c("pseudo_log", "additive"),
   analyte_c = NULL,
-  api_windows_short = c(3L, 7L, 14L),
-  api_windows_long = c(30L, 60L, 90L, 180L),
+  api_tau_bounds_short = c(1, 30),
+  api_tau_bounds_long = c(20, 365),
   auto_select = TRUE,
   min_obs_model = 12L,
   pool = TRUE,
@@ -71,10 +71,14 @@ the fitted SSDs. The impact residual is smoothed on the variance-stabilising
 scale \code{g = asinh(I / c)}; an analyte with \code{NA}/absent \code{c} keeps the additive
 model.}
 
-\item{api_windows_short, api_windows_long}{Candidate short/long antecedent
-memory windows (days) for \code{f(hydro)}, selected by AIC.}
+\item{api_tau_bounds_short, api_tau_bounds_long}{Length-2 numeric \code{c(lo, hi)}
+search ranges (days) for the short/long reservoir recession constants of
+\code{f(hydro)}, selected per analyte by profiled AIC (with a
+\code{tau_long >= 1.5*tau_short} separation).  A degenerate \code{c(x, x)} fixes that
+store's tau.  Defaults \code{c(1, 30)} and \code{c(20, 365)}.}
 
-\item{auto_select}{Logical; AIC window selection per analyte (default \code{TRUE}).}
+\item{auto_select}{Logical; profiled-AIC tau selection per analyte (default
+\code{TRUE}).  If \code{FALSE}, use the parsimonious defaults (tau 7 / 60 days).}
 
 \item{min_obs_model}{Integer; minimum impact anchors required to attempt the
 \code{f(hydro)} GAM. Below this, the analyte uses the bridge tier. Default \code{12L}.}
@@ -95,7 +99,7 @@ fits (appropriate only when all analytes are densely sampled).}
 An object of class \code{target_model}:
 \describe{
 \item{\verb{$models}}{Named per-analyte list: \code{impact_fit} (gam or \code{NULL}),
-\code{window_short}, \code{window_long}, \code{tier} (\code{"model"} or \code{"bridge"}),
+\code{tau_short}, \code{tau_long}, \code{tier} (\code{"model"} or \code{"bridge"}),
 \code{n_obs}, and \code{anchors} (tibble \code{date}, \code{I}, \code{S}, \code{hydro_short},
 \code{hydro_long}).}
 \item{\verb{$reference_model}}{The supplied reference model.}
@@ -137,8 +141,10 @@ This is a season-blind, hydrology-modulated variant of WRTDS-Kalman
 }
 \examples{
 \dontrun{
-ref_model <- fit_reference_model(reference_chem, latitude = -33.8,
-                                 longitude = 151.2, conc_units = "ug/L")
+ref_model <- fit_reference_model(reference_chem,
+  latitude = -33.8,
+  longitude = 151.2, conc_units = "ug/L"
+)
 tgt_model <- fit_target_model(target_chem, ref_model, conc_units = "ug/L")
 tgt_model
 }

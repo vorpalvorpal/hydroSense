@@ -37,14 +37,16 @@
         "i" = "Pass a companion {.arg {arg_name}_units} string, e.g. \\
                {.code {arg_name}_units = \"mg/L\"}.",
         "i" = "Or wrap directly: \\
-               {.code units::set_units({x[1L]}, \"{target_unit}\")}."),
+               {.code units::set_units({x[1L]}, \"{target_unit}\")}."
+      ),
       call = rlang::caller_env()
     )
   }
   as.numeric(
     units::set_units(
       units::set_units(x, units_str, mode = "standard"),
-      target_unit, mode = "standard"
+      target_unit,
+      mode = "standard"
     )
   )
 }
@@ -63,10 +65,14 @@
 #' @return `df` with SSD-eligible `value` rows converted to µg/L.
 #' @keywords internal
 .convert_df_tox_to_ugL <- function(df, ssd_analytes, conc_units = NULL,
-                                    call_arg = "df") {
-  if (nrow(df) == 0L) return(df)
+                                   call_arg = "df") {
+  if (nrow(df) == 0L) {
+    return(df)
+  }
   tox_mask <- df$analyte %in% ssd_analytes
-  if (!any(tox_mask)) return(df)
+  if (!any(tox_mask)) {
+    return(df)
+  }
 
   if ("units.analyte" %in% names(df)) {
     tox_df <- df[tox_mask, , drop = FALSE]
@@ -77,12 +83,14 @@
           cli::cli_abort(
             c("Missing {.field units.analyte} for an SSD-eligible analyte row.",
               "i" = "Every toxicant row must carry a non-empty \\
-                     {.field units.analyte} value.")
+                     {.field units.analyte} value."
+            )
           )
         }
         as.numeric(units::set_units(
           units::set_units(v, u, mode = "standard"),
-          "ug/L", mode = "standard"
+          "ug/L",
+          mode = "standard"
         ))
       }
     )
@@ -95,7 +103,8 @@
          {.arg conc_units} was not supplied.",
         "i" = "Add a {.field units.analyte} column (one unit string per row),",
         "i" = "or supply {.arg conc_units} to apply a uniform unit to all \\
-               SSD-eligible rows, e.g. {.code conc_units = \"mg/L\"}."),
+               SSD-eligible rows, e.g. {.code conc_units = \"mg/L\"}."
+      ),
       call = rlang::caller_env()
     )
   }
@@ -103,7 +112,8 @@
   df$value[tox_mask] <- as.numeric(
     units::set_units(
       units::set_units(df$value[tox_mask], conc_units, mode = "standard"),
-      "ug/L", mode = "standard"
+      "ug/L",
+      mode = "standard"
     )
   )
   df
@@ -124,7 +134,7 @@ utils::globalVariables(c(
   "coanalytes_required", "date", "doy", "fit_date", "floor_fired",
   "focal_date", "hydro_long", "hydro_short", "log_pred", "n_obs",
   "normalisation_formula", "null_aic", "rainfall_mm", "ref_norm",
-  "ref_source", "ref_tier", "value_norm", "window_long", "window_short",
+  "ref_source", "ref_tier", "tau_long", "tau_short", "value_norm",
   # amspaf_daily (amspaf_daily.R)
   ".measured", "amspaf", "days_since_last_sample", "n_measured_analytes",
   # target_model (target_model.R)

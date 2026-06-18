@@ -41,7 +41,7 @@ make_hydro <- function(n = 700, seed = 99) {
 fit_rm <- function(ref, hydro) {
   fit_reference_model(
     ref, hydro = hydro, conc_units = "ug/L", min_obs_model = 10L,
-    api_windows_short = c(7L), api_windows_long = c(30L)
+    api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30)
   )
 }
 
@@ -56,14 +56,14 @@ test_that("fit_target_model() returns a target_model with per-analyte models", {
   tgt   <- make_chem("target", dates, mult = 5, seed = 2)
 
   tm <- fit_target_model(tgt, rm, conc_units = "ug/L", min_obs_model = 8L,
-                         api_windows_short = c(7L), api_windows_long = c(30L))
+                         api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
 
   expect_s3_class(tm, "target_model")
   expect_true(length(tm$models) > 0L)
   expect_s3_class(tm$reference_model, "reference_model")
   # every analyte model has the expected slots
   m1 <- tm$models[[1L]]
-  expect_true(all(c("impact_fit", "window_short", "window_long", "tier",
+  expect_true(all(c("impact_fit", "tau_short", "tau_long", "tier",
                     "n_obs", "anchors") %in% names(m1)))
   expect_true(m1$tier %in% c("model", "bridge"))
   expect_true(all(c("date", "I", "S") %in% names(m1$anchors)))
@@ -83,7 +83,7 @@ test_that("print.target_model() runs and reports the season-blind tiers", {
   rm    <- fit_rm(make_chem("reference", dates), make_hydro())
   tm    <- fit_target_model(make_chem("target", dates, mult = 5, seed = 2),
                             rm, conc_units = "ug/L", min_obs_model = 8L,
-                            api_windows_short = c(7L), api_windows_long = c(30L))
+                            api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
   expect_output(print(tm), regexp = "target_model")
   expect_output(print(tm), regexp = "season-blind")
 })
@@ -101,10 +101,10 @@ test_that("clean site -> impact centred near zero; elevated site -> positive", {
 
   tm_clean <- fit_target_model(make_chem("target", dates, mult = 1, seed = 2),
                                rm, conc_units = "ug/L", min_obs_model = 8L,
-                               api_windows_short = c(7L), api_windows_long = c(30L))
+                               api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
   tm_hot   <- fit_target_model(make_chem("target", dates, mult = 20, seed = 2),
                                rm, conc_units = "ug/L", min_obs_model = 8L,
-                               api_windows_short = c(7L), api_windows_long = c(30L))
+                               api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
 
   cu_clean <- leachatetools:::.resolve_target_impact(tm_clean, q)
   cu_hot   <- leachatetools:::.resolve_target_impact(tm_hot,   q)
@@ -123,7 +123,7 @@ test_that("the impact model carries no day-of-year term (season-blind)", {
   rm    <- fit_rm(make_chem("reference", dates), make_hydro())
   tm    <- fit_target_model(make_chem("target", dates, mult = 10, seed = 2),
                             rm, conc_units = "ug/L", min_obs_model = 8L,
-                            api_windows_short = c(7L), api_windows_long = c(30L))
+                            api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
   for (m in tm$models) {
     if (m$tier == "model" && !is.null(m$impact_fit)) {
       terms_chr <- as.character(stats::formula(m$impact_fit))
@@ -147,7 +147,7 @@ test_that(".resolve_target_impact() returns C_norm = max(ref_norm + impact, 0)",
   rm    <- fit_rm(make_chem("reference", dates), make_hydro())
   tm    <- fit_target_model(make_chem("target", dates, mult = 10, seed = 2),
                             rm, conc_units = "ug/L", min_obs_model = 8L,
-                            api_windows_short = c(7L), api_windows_long = c(30L))
+                            api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
   res <- leachatetools:::.resolve_target_impact(
     tm, tibble::tibble(date = seq(as.Date("2021-02-01"),
                                   as.Date("2021-06-01"), by = "week"))
@@ -202,7 +202,7 @@ test_that("fit_target_model() fits a WQ layer when a PCA model is supplied", {
   tgt   <- make_wq_chem("target", dates, mult = 8, seed = 2)
   tm <- fit_target_model(tgt, rm, imputation_model = make_pca_model(tgt),
                          conc_units = "ug/L", min_obs_model = 10L,
-                         api_windows_short = c(7L), api_windows_long = c(30L))
+                         api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
   expect_false(is.null(tm$pca))
   expect_true(length(tm$pc_cols) > 0L)
   # At least one analyte earned a WQ layer
@@ -216,7 +216,7 @@ test_that("WQ-only PCA model does not trigger the (brms) impute-first warning", 
   expect_no_warning(
     fit_target_model(tgt, rm, imputation_model = make_pca_model(tgt),
                      conc_units = "ug/L", min_obs_model = 10L,
-                     api_windows_short = c(7L), api_windows_long = c(30L))
+                     api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
   )
 })
 
@@ -226,7 +226,7 @@ test_that(".resolve_target_impact() uses the 'wq' tier when wq is supplied", {
   tgt   <- make_wq_chem("target", dates, mult = 8, seed = 2)
   tm <- fit_target_model(tgt, rm, imputation_model = make_pca_model(tgt),
                          conc_units = "ug/L", min_obs_model = 10L,
-                         api_windows_short = c(7L), api_windows_long = c(30L))
+                         api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
 
   qdates <- as.Date(c("2021-04-07", "2021-04-14"))
   wq <- tibble::tibble(
@@ -250,7 +250,7 @@ test_that("without a wq argument the resolver falls back to the impact tiers", {
   tgt   <- make_wq_chem("target", dates, mult = 8, seed = 2)
   tm <- fit_target_model(tgt, rm, imputation_model = make_pca_model(tgt),
                          conc_units = "ug/L", min_obs_model = 10L,
-                         api_windows_short = c(7L), api_windows_long = c(30L))
+                         api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
   res <- leachatetools:::.resolve_target_impact(
     tm, tibble::tibble(date = as.Date("2021-04-07")), analytes = "Cu"  # no wq
   )
@@ -286,8 +286,8 @@ test_that("pool = TRUE produces a valid model and finite predictions", {
   rm    <- fit_rm(make_chem("reference", dates), make_hydro(800))
   tgt   <- make_chem("target", dates, mult = 10, seed = 2)
   tm <- fit_target_model(tgt, rm, conc_units = "ug/L", min_obs_model = 10L,
-                         pool = TRUE, api_windows_short = c(7L, 14L),
-                         api_windows_long = c(30L, 90L))
+                         pool = TRUE, api_tau_bounds_short = c(7, 14),
+                         api_tau_bounds_long = c(30, 90))
   expect_s3_class(tm, "target_model")
   res <- leachatetools:::.resolve_target_impact(
     tm, tibble::tibble(date = seq(as.Date("2021-03-01"), as.Date("2021-09-01"),
@@ -302,15 +302,15 @@ test_that("pool = TRUE fires the pooled 'model' tier on hydro-driven impact", {
   rm    <- fit_rm(make_chem("reference", dates), hydro)
   tgt   <- make_hydro_driven("target", dates, hydro, mult = 10, seed = 5)
   tm <- fit_target_model(tgt, rm, conc_units = "ug/L", min_obs_model = 10L,
-                         pool = TRUE, api_windows_short = c(7L, 14L),
-                         api_windows_long = c(30L, 90L))
+                         pool = TRUE, api_tau_bounds_short = c(7, 14),
+                         api_tau_bounds_long = c(30, 90))
   tiers <- vapply(tm$models, `[[`, character(1), "tier")
   # at least one analyte's response is pooled-modelled
   expect_true(any(tiers == "model"))
   pooled <- Filter(function(m) isTRUE(m$pooled), tm$models)
   expect_true(length(pooled) >= 1L)
   # pooled analytes share one common window (the hallmark of a single joint fit)
-  expect_equal(length(unique(vapply(pooled, `[[`, integer(1), "window_short"))), 1L)
+  expect_equal(length(unique(vapply(pooled, `[[`, numeric(1), "tau_short"))), 1L)
 })
 
 test_that("pool = TRUE with a single modelled analyte falls back gracefully", {
@@ -321,8 +321,8 @@ test_that("pool = TRUE with a single modelled analyte falls back gracefully", {
     dplyr::filter(!analyte %in% c("Zn", "Ni"))
   expect_no_error(
     fit_target_model(tgt, rm, conc_units = "ug/L", min_obs_model = 8L,
-                     pool = TRUE, api_windows_short = c(7L),
-                     api_windows_long = c(30L))
+                     pool = TRUE, api_tau_bounds_short = c(7, 7),
+                     api_tau_bounds_long = c(30, 30))
   )
 })
 
@@ -370,8 +370,8 @@ test_that("pool = TRUE preserves per-analyte magnitude (no cross-contamination)"
   tgt   <- make_multi_scale("target", dates, hydro, big_mult = 20, ni_mult = 1.1,
                             seed = 8)
   tm <- fit_target_model(tgt, rm, conc_units = "ug/L", min_obs_model = 10L,
-                         pool = TRUE, api_windows_short = c(7L, 14L),
-                         api_windows_long = c(30L, 90L))
+                         pool = TRUE, api_tau_bounds_short = c(7, 14),
+                         api_tau_bounds_long = c(30, 90))
   # Ni must actually be jointly pooled with the big siblings, else vacuous.
   expect_true(isTRUE(tm$models$Ni$pooled) && isTRUE(tm$models$Cu$pooled))
 
@@ -431,10 +431,10 @@ test_that("impute-first enriches reference & target anchors (brms smoke test)", 
   # fewer Cu anchors.
   rm_plain <- fit_reference_model(ref, hydro = hydro, conc_units = "ug/L",
                                   min_obs_model = 10L,
-                                  api_windows_short = c(7L), api_windows_long = c(30L))
+                                  api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
   rm_imp   <- fit_reference_model(ref, hydro = hydro, conc_units = "ug/L",
                                   imputation_model = im, min_obs_model = 10L,
-                                  api_windows_short = c(7L), api_windows_long = c(30L))
+                                  api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
   n_plain <- if (!is.null(rm_plain$models[["Cu"]])) rm_plain$models[["Cu"]]$n_obs else 0L
   n_imp   <- if (!is.null(rm_imp$models[["Cu"]]))   rm_imp$models[["Cu"]]$n_obs   else 0L
   expect_gte(n_imp, n_plain)
@@ -443,7 +443,7 @@ test_that("impute-first enriches reference & target anchors (brms smoke test)", 
   tm <- fit_target_model(dplyr::mutate(ref, site_id = "target"), rm_imp,
                          imputation_model = im, conc_units = "ug/L",
                          min_obs_model = 8L,
-                         api_windows_short = c(7L), api_windows_long = c(30L))
+                         api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
   expect_s3_class(tm, "target_model")
   expect_true(length(tm$models) > 0L)
 })

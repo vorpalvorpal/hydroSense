@@ -40,8 +40,8 @@ make_hydro_k <- function(n = 760L, seed = 99L) {
   ref   <- make_chem_k("reference", dates, seed = 1L)
   tgt   <- make_chem_k("target",    dates, mult = 5, seed = 2L)
   rm    <- fit_reference_model(ref, hydro = hydro, conc_units = "ug/L",
-                               min_obs_model = 10L, api_windows_short = 7L,
-                               api_windows_long = 30L)
+                               min_obs_model = 10L, api_tau_bounds_short = c(7, 7),
+                               api_tau_bounds_long = c(30, 30))
   list(rm = rm, tgt = tgt, dates = dates)
 })
 
@@ -103,8 +103,8 @@ test_that("I7: a short-sampled analyte's modelled rows are clipped to its span",
 
   tm <- suppressMessages(fit_target_model(tgt_clip, .kf$rm, conc_units = "ug/L",
                                           min_obs_model = 10L,
-                                          api_windows_short = 7L,
-                                          api_windows_long = 30L))
+                                          api_tau_bounds_short = c(7, 7),
+                                          api_tau_bounds_long = c(30, 30)))
   skip_if(!("Ni" %in% names(tm$models)), "Ni not modelled")
   q   <- tibble::tibble(date = seq(min(.kf$dates), max(.kf$dates), by = "day"))
   res <- leachatetools:::.resolve_target_impact(tm, q)
