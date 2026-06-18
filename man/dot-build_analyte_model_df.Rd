@@ -7,8 +7,8 @@
 .build_analyte_model_df(
   obs,
   hydro,
-  window_short,
-  window_long,
+  tau_short,
+  tau_long,
   hydro_type,
   eps = 1e-09
 )
@@ -18,7 +18,7 @@
 
 \item{hydro}{Daily hydro series.}
 
-\item{window_short, window_long}{Memory window lengths (days).}
+\item{tau_short, tau_long}{Reservoir memory constants (days).}
 
 \item{hydro_type}{Hydro type string.}
 

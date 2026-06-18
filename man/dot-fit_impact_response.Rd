@@ -8,20 +8,21 @@
   obs,
   hydro,
   hydro_type,
-  api_windows_short,
-  api_windows_long,
+  tau_bounds_short,
+  tau_bounds_long,
   auto_select,
   min_obs_model,
   eps
 )
 }
 \value{
-List with \code{impact_fit}, \code{window_short}, \code{window_long}, \code{tier},
+List with \code{impact_fit}, \code{tau_short}, \code{tau_long}, \code{tier},
 \code{n_obs}, \code{anchors} (\code{date}, \code{I}, \code{S}, \code{hydro_short}, \code{hydro_long}).
 }
 \description{
-Selects short/long antecedent windows by AIC, fits \code{I ~ s(hydro_short) + s(hydro_long)} (no seasonal term), and keeps it only if it beats the
-intercept-only null.  Stores the de-trended residual \code{S = I - fitted} as the
-bridge-interpolation state.
+Selects the short/long reservoir recession constants (tau) by profiled AIC,
+fits \code{I ~ s(hydro_short) + s(hydro_long)} (no seasonal term), and keeps it
+only if it beats the intercept-only null.  Stores the de-trended residual
+\code{S = I - fitted} as the bridge-interpolation state.
 }
 \keyword{internal}

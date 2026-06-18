@@ -2,26 +2,52 @@
 % Please edit documentation in R/reference_model.R
 \name{.compute_api}
 \alias{.compute_api}
-\title{Antecedent Precipitation Index (API) for rainfall}
+\title{Antecedent Precipitation Index (API) — exact recursive linear reservoir}
 \usage{
-.compute_api(hydro_values, hydro_dates, target_dates, window_days)
+.compute_api(hydro_values, hydro_dates, target_dates, tau)
 }
 \arguments{
-\item{hydro_values}{Numeric vector of daily rainfall values.}
+\item{hydro_values}{Numeric vector of daily rainfall values (\code{NA} is 0 input).}
 
 \item{hydro_dates}{Date vector matching \code{hydro_values}.}
 
 \item{target_dates}{Date vector; API is evaluated at each.}
 
-\item{window_days}{Integer memory length (days).}
+\item{tau}{Positive numeric; reservoir memory constant (days).  The weight
+for a gap of \code{dt} days is \code{exp(-dt / tau)}.}
 }
 \value{
 Numeric vector, same length as \code{target_dates}.
 }
 \description{
-Computes \verb{API(t) = sum_\{i=0\}^\{window\} P(t-i) * k^i} where the decay
-constant \code{k = exp(-1 / window_days)} — meaning rainfall \code{window_days} days
-ago carries weight \verb{1/e ≈ 0.37}.  Returns 0 for target dates with no hydro
-record in the preceding window.
+Implements the exact discrete solution of the single linear store
+\code{dS/dt = -S/tau + P(t)}:
+}
+\details{
+\if{html}{\out{<div class="sourceCode">}}\preformatted{S_t = k^\{dt\} * S_\{t-1\} + P_t,   k = exp(-1 / tau)
+}\if{html}{\out{</div>}}
+
+This is the convergent infinite-horizon form of the classical Antecedent
+Precipitation Index (Kohler & Linsley 1951), whose theoretical basis is the
+Maillet (1905) exponential recession.  Unlike a windowed sum it has no
+truncation horizon: all prior rainfall contributes with exponentially
+decaying weight \code{k^{dt}} set by the actual day gap \code{dt}, so irregular
+spacing is handled exactly.
+
+Algorithm: lay the rainfall onto a complete daily grid (\code{NA} and gap days
+contribute 0 input, so the store simply decays across them).  On a daily
+grid every step has \code{dt = 1}, so the reservoir reduces to the first-order
+linear recursion \verb{S_t = k * S_\{t-1\} + P_t}, evaluated in C by
+\code{\link[stats:filter]{stats::filter()}} (\code{method = "recursive"}).  This is an exact reorganisation
+of the per-event form \verb{S_t = k^\{dt\} * S_\{t-1\} + P_t} (\code{k^{dt}} is just \code{dt}
+unit steps with zero input between events), with none of the per-target
+re-summation the old windowed form required.  Target dates index straight
+into the grid; any falling before the first hydro day return 0 (empty
+reservoir).
+}
+\references{
+Maillet, E. (1905) \emph{Essais d'hydraulique souterraine et fluviale.} Hermann,
+Paris.  Kohler, M.A. & Linsley, R.K. (1951) \emph{Predicting the runoff from
+storm rainfall.} US Weather Bureau Research Paper 34.
 }
 \keyword{internal}

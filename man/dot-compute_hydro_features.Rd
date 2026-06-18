@@ -7,8 +7,8 @@
 .compute_hydro_features(
   hydro,
   target_dates,
-  window_short,
-  window_long,
+  tau_short,
+  tau_long,
   hydro_type = "rainfall"
 )
 }
@@ -17,7 +17,7 @@
 
 \item{target_dates}{Date vector.}
 
-\item{window_short, window_long}{Memory lengths (days).}
+\item{tau_short, tau_long}{Memory constants (days).}
 
 \item{hydro_type}{\code{"rainfall"}, \code{"stage"}, or \code{"discharge"}.}
 }
@@ -26,6 +26,6 @@ Tibble \verb{(date, hydro_short, hydro_long)}.
 }
 \description{
 Dispatches to \code{\link[=.compute_api]{.compute_api()}} for rainfall or \code{\link[=.compute_antecedent_mean]{.compute_antecedent_mean()}}
-for stage/discharge, at both the short and long window lengths.
+for stage/discharge, at both the short and long tau values.
 }
 \keyword{internal}

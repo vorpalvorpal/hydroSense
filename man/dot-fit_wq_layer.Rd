@@ -9,8 +9,8 @@
   pc_cols,
   hydro,
   hydro_type,
-  window_short,
-  window_long,
+  tau_short,
+  tau_long,
   min_obs_model,
   scale_c = NA_real_
 )

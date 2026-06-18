@@ -244,50 +244,53 @@
 #' @examples
 #' \donttest{
 #' demo <- leachate_demo()
-#' ds  <- subset(demo, site_id == "downstream")
+#' ds <- subset(demo, site_id == "downstream")
 #' out <- amspaf_daily(ds, require_temperature = FALSE)
-#' head(out[, c("date", "site_id", "amspaf", "n_measured_analytes",
-#'              "days_since_last_sample")])
+#' head(out[, c(
+#'   "date", "site_id", "amspaf", "n_measured_analytes",
+#'   "days_since_last_sample"
+#' )])
 #' }
 #' @export
 amspaf_daily <- function(
-    df,
-    temperature          = NULL,
-    reference            = NULL,
-    reference_model      = NULL,
-    imputation_model     = NULL,
-    start                = NULL,
-    end                  = NULL,
-    by                   = "day",
-    interpolation        = c("forward_fill", "linear", "model"),
-    leading_edge         = c("drop", "backfill"),
-    analyte_metadata     = NULL,
-    method               = c("multi", "anzecc"),
-    guideline_dir        = getOption("leachatetools.guideline_dir"),
-    min_analytes         = 3L,
-    conc_units           = NULL,
-    require_temperature  = TRUE,
-    ndraws               = NULL,
-    seed                 = NULL,
-    return               = c("summary", "draws"),
-    interval             = 0.9,
-    central              = c("median", "mean"),
-    grab_cv              = NULL,
-    ou_scale             = 1,
-    kappa                = 0.5,
-    parallel             = FALSE,
-    couple_residuals     = TRUE,
-    transform            = c("pseudo_log", "additive")
+  df,
+  temperature = NULL,
+  reference = NULL,
+  reference_model = NULL,
+  imputation_model = NULL,
+  start = NULL,
+  end = NULL,
+  by = "day",
+  interpolation = c("forward_fill", "linear", "model"),
+  leading_edge = c("drop", "backfill"),
+  analyte_metadata = NULL,
+  method = c("multi", "anzecc"),
+  guideline_dir = getOption("leachatetools.guideline_dir"),
+  min_analytes = 3L,
+  conc_units = NULL,
+  require_temperature = TRUE,
+  ndraws = NULL,
+  seed = NULL,
+  return = c("summary", "draws"),
+  interval = 0.9,
+  central = c("median", "mean"),
+  grab_cv = NULL,
+  ou_scale = 1,
+  kappa = 0.5,
+  parallel = FALSE,
+  couple_residuals = TRUE,
+  transform = c("pseudo_log", "additive")
 ) {
   ## --- Validate inputs -------------------------------------------------------
   checkmate::assert_data_frame(df)
   checkmate::assert_names(names(df),
-    must.include = c("sample_id", "site_id", "datetime", "analyte", "value"))
+    must.include = c("sample_id", "site_id", "datetime", "analyte", "value")
+  )
   interpolation <- match.arg(interpolation)
-  leading_edge  <- match.arg(leading_edge)
-  method        <- match.arg(method)
-  return        <- match.arg(return)
-  central       <- match.arg(central)
+  leading_edge <- match.arg(leading_edge)
+  method <- match.arg(method)
+  return <- match.arg(return)
+  central <- match.arg(central)
   checkmate::assert_flag(require_temperature)
   checkmate::assert_int(min_analytes, lower = 1L)
   checkmate::assert_string(by, min.chars = 1L)
@@ -311,13 +314,20 @@ amspaf_daily <- function(
   if (!is.null(seed) && !parallel) {
     ## Sequential mode: set a global seed and restore on exit.
     ## Parallel mode: future.apply manages per-draw seeds via future.seed.
-    old_seed <- if (exists(".Random.seed", envir = .GlobalEnv))
-                  get(".Random.seed", envir = .GlobalEnv) else NULL
+    old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) {
+      get(".Random.seed", envir = .GlobalEnv)
+    } else {
+      NULL
+    }
     set.seed(as.integer(seed))
-    on.exit({
-      if (!is.null(old_seed))
-        assign(".Random.seed", old_seed, envir = .GlobalEnv)
-    }, add = TRUE)
+    on.exit(
+      {
+        if (!is.null(old_seed)) {
+          assign(".Random.seed", old_seed, envir = .GlobalEnv)
+        }
+      },
+      add = TRUE
+    )
   }
 
   draws_mode <- !is.null(ndraws)
@@ -347,7 +357,8 @@ amspaf_daily <- function(
   if (!is.null(temperature)) {
     checkmate::assert_data_frame(temperature)
     checkmate::assert_names(names(temperature),
-      must.include = c("datetime", "value"))
+      must.include = c("datetime", "value")
+    )
   }
 
   ## Draw-bearing input chemistry is not supported (amspaf_daily generates its
@@ -370,16 +381,16 @@ amspaf_daily <- function(
 
   ## --- Determine date range --------------------------------------------------
   if (is.null(start)) start <- min(df$datetime, na.rm = TRUE)
-  if (is.null(end))   end   <- max(df$datetime, na.rm = TRUE)
-  start     <- as.Date(start)
-  end       <- as.Date(end)
+  if (is.null(end)) end <- max(df$datetime, na.rm = TRUE)
+  start <- as.Date(start)
+  end <- as.Date(end)
   all_dates <- seq(start, end, by = by)
 
   ## --- Load analyte metadata once (needed for log-space decisions) -----------
   meta <- .load_analyte_metadata(analyte_metadata)
 
   tox_analytes <- meta$analyte[!is.na(meta$ssd_available) &
-                                meta$ssd_available == TRUE]
+    meta$ssd_available == TRUE]
 
   ## --- Per-site processing ---------------------------------------------------
   sites <- unique(df$site_id)
@@ -404,7 +415,9 @@ amspaf_daily <- function(
       tox_analytes  = tox_analytes
     )
 
-    if (nrow(daily_long) == 0L) return(NULL)
+    if (nrow(daily_long) == 0L) {
+      return(NULL)
+    }
 
     ## Step 2: Fill temperature from external series on non-grab days.
     if (!is.null(temperature)) {
@@ -412,10 +425,9 @@ amspaf_daily <- function(
     }
 
     ## Step 1b: Model interpolation of toxicants (season-blind impact model).
-    impact_tiers  <- NULL
+    impact_tiers <- NULL
 
     if (interpolation == "model") {
-
       if (draws_mode) {
         ## ── Draws mode: fit once, iterate N draws ─────────────────────────────
         fdm <- .fit_daily_target(
@@ -445,8 +457,10 @@ amspaf_daily <- function(
                    zero-width credible intervals."
           ))
           synth <- .build_synthetic_samples(daily_long, site)
-          return(list(synth = synth, diag = diag,
-                      tiers = NULL, site = site))
+          return(list(
+            synth = synth, diag = diag,
+            tiers = NULL, site = site
+          ))
         }
 
         ## Deterministic prediction: supplies the per-analyte impact tier
@@ -454,13 +468,14 @@ amspaf_daily <- function(
         ## the summary centre line is the draws' own central tendency, so no
         ## separate point-mode AmsPAF frame is built here (the deterministic
         ## point estimate is its own product, via point mode / ndraws = NULL).
-        pt_rows      <- .predict_daily_tox(fdm)
+        pt_rows <- .predict_daily_tox(fdm)
         impact_tiers <- if (!is.null(pt_rows)) attr(pt_rows, "impact_tiers") else NULL
 
         ## Non-modelled + co-analyte rows (exact); shared by every draw's
         ## reconstruction and the co-analyte perturbation path below.
         daily_long_exact <- daily_long[!daily_long$analyte %in% fdm$modelled, ,
-                                        drop = FALSE]
+          drop = FALSE
+        ]
         if (!"units.analyte" %in% names(daily_long_exact)) {
           daily_long_exact$units.analyte <- NA_character_
         }
@@ -483,19 +498,26 @@ amspaf_daily <- function(
         ## marginal is unchanged; only the joint distribution (combined AmsPAF
         ## interval) widens to reflect co-movement of co-toxicants.
         if (!is.null(seed)) set.seed(as.integer(seed))
-        n_couplable <- sum(vapply(fdm$smoothers[fdm$modelled],
-                                  function(s) !is.null(s$draw_model), logical(1L)))
+        n_couplable <- sum(vapply(
+          fdm$smoothers[fdm$modelled],
+          function(s) !is.null(s$draw_model), logical(1L)
+        ))
         res_draws <- if (couple_residuals && n_couplable >= 2L) {
-          .coupled_residual_draws(fdm$smoothers, fdm$modelled, ndraws,
-                                  cor_res$R, cor_res$analytes)
+          .coupled_residual_draws(
+            fdm$smoothers, fdm$modelled, ndraws,
+            cor_res$R, cor_res$analytes
+          )
         } else {
           stats::setNames(lapply(fdm$modelled, function(nm) {
             sm <- fdm$smoothers[[nm]]
-            if (is.null(sm) || length(sm$grid_dates) == 0L)
+            if (is.null(sm) || length(sm$grid_dates) == 0L) {
               return(list(grid_dates = as.Date(character()), draws = NULL))
-            dr <- if (is.null(sm$draw_model))
-                    matrix(sm$mean, nrow = length(sm$grid_dates), ncol = ndraws)
-                  else .kalman_draw(sm$draw_model, ndraws)
+            }
+            dr <- if (is.null(sm$draw_model)) {
+              matrix(sm$mean, nrow = length(sm$grid_dates), ncol = ndraws)
+            } else {
+              .kalman_draw(sm$draw_model, ndraws)
+            }
             list(grid_dates = sm$grid_dates, draws = dr)
           }), fdm$modelled)
         }
@@ -508,36 +530,42 @@ amspaf_daily <- function(
         ## H2: the draw loop is a closure so it can run sequentially (lapply) or
         ## in parallel (future.apply::future_lapply).
         .draw_fn <- local({
-          .fdm              <- fdm
-          .perturb_ref      <- perturb_ref
-          .grab_cv          <- grab_cv
+          .fdm <- fdm
+          .perturb_ref <- perturb_ref
+          .grab_cv <- grab_cv
           .daily_long_exact <- daily_long_exact
-          .res_draws        <- res_draws
+          .res_draws <- res_draws
           function(d_idx) {
             tm_p <- .perturb_target_model(.fdm$tm, perturb_reference = .perturb_ref)
             ## Residual path for this draw (S impact / d WQ), per analyte.
             residual_paths <- stats::setNames(lapply(.fdm$modelled, function(nm) {
               rd <- .res_draws[[nm]]
-              if (is.null(rd$draws)) return(rep(NA_real_, length(.fdm$qdates)))
+              if (is.null(rd$draws)) {
+                return(rep(NA_real_, length(.fdm$qdates)))
+              }
               .residual_on_qdates(rd$grid_dates, rd$draws[, d_idx], .fdm$qdates)
             }), .fdm$modelled)
             ## S7: perturbed wq_long shifts WQ-layer scores; co_split stays exact.
-            co_p_wq <- if (!is.null(.grab_cv))
-                         .perturb_co_split(.fdm, .grab_cv)
-                       else list(co_split = .fdm$co_split, wq_long = .fdm$wq_long)
+            co_p_wq <- if (!is.null(.grab_cv)) {
+              .perturb_co_split(.fdm, .grab_cv)
+            } else {
+              list(co_split = .fdm$co_split, wq_long = .fdm$wq_long)
+            }
             mr_d <- .predict_daily_tox(
               .fdm,
               tm_p           = tm_p,
               residual_paths = residual_paths,
-              co_split       = .fdm$co_split,    # exact → clean C_raw
-              wq_long        = co_p_wq$wq_long   # perturbed when S7 active
+              co_split       = .fdm$co_split, # exact → clean C_raw
+              wq_long        = co_p_wq$wq_long # perturbed when S7 active
             )
             if (!is.null(mr_d)) mr_d$draw_id <- as.integer(d_idx)
             list(
               tox_rows = mr_d,
-              co_rows  = if (!is.null(.grab_cv))
-                           .co_draw_rows(.daily_long_exact, co_p_wq$co_split, d_idx)
-                         else NULL
+              co_rows = if (!is.null(.grab_cv)) {
+                .co_draw_rows(.daily_long_exact, co_p_wq$co_split, d_idx)
+              } else {
+                NULL
+              }
             )
           }
         })
@@ -552,9 +580,11 @@ amspaf_daily <- function(
         }
 
         tox_draw_rows <- lapply(draw_results, `[[`, "tox_rows")
-        co_draw_rows  <- if (!is.null(grab_cv))
-                           lapply(draw_results, `[[`, "co_rows")
-                         else NULL
+        co_draw_rows <- if (!is.null(grab_cv)) {
+          lapply(draw_results, `[[`, "co_rows")
+        } else {
+          NULL
+        }
 
         tox_draw_long <- dplyr::bind_rows(Filter(Negate(is.null), tox_draw_rows))
 
@@ -564,7 +594,8 @@ amspaf_daily <- function(
           ## draw_id 1..N); non-modelled tox rows stay exact (broadcast by
           ## add_amspaf to all draws).
           non_mod_tox <- daily_long_exact[
-            daily_long_exact$analyte %in% tox_analytes, , drop = FALSE
+            daily_long_exact$analyte %in% tox_analytes, ,
+            drop = FALSE
           ]
           co_draws_all <- dplyr::bind_rows(Filter(Negate(is.null), co_draw_rows))
           daily_long <- dplyr::bind_rows(non_mod_tox, co_draws_all, tox_draw_long)
@@ -573,10 +604,9 @@ amspaf_daily <- function(
           ## → broadcast to all stochastic draws by add_amspaf).
           daily_long <- dplyr::bind_rows(daily_long_exact, tox_draw_long)
         }
-
       } else {
         ## ── Point mode: thin wrapper ──────────────────────────────────────────
-        daily_long   <- .daily_tox_from_model(
+        daily_long <- .daily_tox_from_model(
           daily_long       = daily_long,
           site_rows        = site_rows,
           reference_model  = reference_model,
@@ -591,7 +621,6 @@ amspaf_daily <- function(
         impact_tiers <- attr(daily_long, "impact_tiers")
         diag <- .compute_daily_diag(daily_long, tox_analytes, site)
       }
-
     } else {
       diag <- .compute_daily_diag(daily_long, tox_analytes, site)
     }
@@ -599,8 +628,10 @@ amspaf_daily <- function(
     ## Step 4: Build synthetic long-format samples (no focal_date!).
     synth <- .build_synthetic_samples(daily_long, site)
 
-    list(synth = synth, diag = diag,
-         tiers = impact_tiers, site = site)
+    list(
+      synth = synth, diag = diag,
+      tiers = impact_tiers, site = site
+    )
   })
 
   site_results <- Filter(Negate(is.null), site_results)
@@ -611,7 +642,7 @@ amspaf_daily <- function(
   }
 
   all_synth <- dplyr::bind_rows(lapply(site_results, `[[`, "synth"))
-  all_diag  <- dplyr::bind_rows(lapply(site_results, `[[`, "diag"))
+  all_diag <- dplyr::bind_rows(lapply(site_results, `[[`, "diag"))
 
   ## Build sample_id -> date lookup before passing to add_amspaf() (add_amspaf
   ## may rearrange rows but sample_id is stable throughout).
@@ -642,7 +673,9 @@ amspaf_daily <- function(
   ## Attach the target model's per-analyte impact tier ("model" / "bridge") to
   ## the ARA diagnostics.
   all_tiers <- dplyr::bind_rows(lapply(site_results, function(z) {
-    if (is.null(z$tiers) || nrow(z$tiers) == 0L) return(NULL)
+    if (is.null(z$tiers) || nrow(z$tiers) == 0L) {
+      return(NULL)
+    }
     dplyr::mutate(z$tiers, site_id = z$site)
   }))
   if (!is.null(ara_summ) && nrow(all_tiers) > 0L) {
@@ -682,7 +715,6 @@ amspaf_daily <- function(
           "n_measured_analytes", "days_since_last_sample"
         ) |>
         dplyr::arrange(.data$site_id, .data$date, .data$draw_id)
-
     } else {
       ## return == "summary": collapse the stochastic draws to a central
       ## estimate plus a credible interval.  Since issue #42 the centre is the
@@ -692,22 +724,22 @@ amspaf_daily <- function(
       ## interval's own 50th percentile).  The deterministic point estimate is a
       ## SEPARATE product, obtained via point mode (ndraws = NULL); it is the
       ## grabs-exact best guess and is NOT bundled into the draw summary.
-      lo_p       <- (1 - interval) / 2
-      hi_p       <- 1 - lo_p
+      lo_p <- (1 - interval) / 2
+      hi_p <- 1 - lo_p
       centre_fun <- if (central == "mean") base::mean else stats::median
       result <- amspaf_dated |>
         dplyr::group_by(.data$date, .data$site_id) |>
         dplyr::summarise(
-          amspaf       = centre_fun(.data$value),
+          amspaf = centre_fun(.data$value),
           amspaf_lower = stats::quantile(.data$value, lo_p, names = FALSE),
           amspaf_upper = stats::quantile(.data$value, hi_p, names = FALSE),
           ## Composition diagnostics (which analytes drive AmsPAF) vary only in
           ## magnitude across draws, not membership; take them from one draw so
           ## (dominant_analyte, max_paf) stay a coherent pair.
-          n_analytes_used  = dplyr::first(.data$n_analytes_used),
+          n_analytes_used = dplyr::first(.data$n_analytes_used),
           dominant_analyte = dplyr::first(.data$dominant_analyte),
-          max_paf          = dplyr::first(.data$max_paf),
-          .groups          = "drop"
+          max_paf = dplyr::first(.data$max_paf),
+          .groups = "drop"
         ) |>
         dplyr::left_join(all_diag, by = c("date", "site_id")) |>
         dplyr::select(
@@ -717,7 +749,6 @@ amspaf_daily <- function(
         ) |>
         dplyr::arrange(.data$site_id, .data$date)
     }
-
   } else {
     ## Point mode: unchanged output schema.
     result <- amspaf_dated |>
@@ -743,7 +774,7 @@ amspaf_daily <- function(
       dplyr::select(-dplyr::any_of("sample_id"))
   }
   attr(result, "analyte_pafs") <- apafs
-  attr(result, "ara_summary")  <- ara_summ
+  attr(result, "ara_summary") <- ara_summ
   result
 }
 
@@ -767,11 +798,15 @@ amspaf_daily <- function(
 #'   `.measured`, and any pass-through columns (`units.analyte`, etc.).
 #' @keywords internal
 .build_daily_chem <- function(site_rows, dates, interpolation, leading_edge,
-                               tox_analytes) {
-  analytes     <- unique(site_rows$analyte)
-  passthru_cols <- intersect(names(site_rows),
-                              c("units.analyte", "valence.analyte",
-                                "atomic_mass.analyte"))
+                              tox_analytes) {
+  analytes <- unique(site_rows$analyte)
+  passthru_cols <- intersect(
+    names(site_rows),
+    c(
+      "units.analyte", "valence.analyte",
+      "atomic_mass.analyte"
+    )
+  )
 
   rows_per_analyte <- lapply(analytes, function(a) {
     a_rows <- dplyr::filter(site_rows, .data$analyte == .env$a) |>
@@ -792,7 +827,9 @@ amspaf_daily <- function(
       log_space     = a %in% tox_analytes
     )
 
-    if (nrow(interp) == 0L) return(NULL)
+    if (nrow(interp) == 0L) {
+      return(NULL)
+    }
 
     interp$analyte <- a
     ## Propagate ancillary columns from the last observed row.
@@ -815,8 +852,8 @@ amspaf_daily <- function(
 #'
 #' @keywords internal
 .interpolate_analyte <- function(obs_dates, obs_values, obs_detected,
-                                  target_dates, interpolation, leading_edge,
-                                  log_space = FALSE) {
+                                 target_dates, interpolation, leading_edge,
+                                 log_space = FALSE) {
   if (length(obs_dates) == 0L) {
     return(tibble::tibble(
       .date     = as.Date(character()),
@@ -827,15 +864,15 @@ amspaf_daily <- function(
   }
 
   ## De-duplicate by date: take the first occurrence per date.
-  uniq_mask  <- !duplicated(obs_dates)
-  obs_d      <- obs_dates[uniq_mask]
-  obs_v      <- obs_values[uniq_mask]
-  obs_det    <- obs_detected[uniq_mask]
+  uniq_mask <- !duplicated(obs_dates)
+  obs_d <- obs_dates[uniq_mask]
+  obs_v <- obs_values[uniq_mask]
+  obs_det <- obs_detected[uniq_mask]
 
   ## Sort ascending.
-  ord     <- order(obs_d)
-  obs_d   <- obs_d[ord]
-  obs_v   <- obs_v[ord]
+  ord <- order(obs_d)
+  obs_d <- obs_d[ord]
+  obs_v <- obs_v[ord]
   obs_det <- obs_det[ord]
 
   ## Work in log-space for toxicants (floor at machine epsilon to avoid log(0)).
@@ -845,9 +882,9 @@ amspaf_daily <- function(
     obs_v_work <- obs_v
   }
 
-  n   <- length(target_dates)
-  out_val  <- numeric(n)
-  out_det  <- logical(n)
+  n <- length(target_dates)
+  out_val <- numeric(n)
+  out_det <- logical(n)
   out_meas <- logical(n)
   out_keep <- logical(n)
 
@@ -857,15 +894,15 @@ amspaf_daily <- function(
   prev_idx <- findInterval(as.numeric(target_dates), as.numeric(obs_d))
 
   for (i in seq_len(n)) {
-    d   <- target_dates[i]
+    d <- target_dates[i]
     pid <- prev_idx[i]
 
     exact_match <- pid > 0L && obs_d[pid] == d
 
     if (exact_match) {
-      raw        <- obs_v_work[pid]
-      out_val[i]  <- if (log_space) exp(raw) else raw
-      out_det[i]  <- obs_det[pid]
+      raw <- obs_v_work[pid]
+      out_val[i] <- if (log_space) exp(raw) else raw
+      out_det[i] <- obs_det[pid]
       out_meas[i] <- TRUE
       out_keep[i] <- TRUE
       next
@@ -874,9 +911,9 @@ amspaf_daily <- function(
     if (pid == 0L) {
       ## Before the first observation.
       if (leading_edge == "backfill") {
-        raw        <- obs_v_work[1L]
-        out_val[i]  <- if (log_space) exp(raw) else raw
-        out_det[i]  <- obs_det[1L]
+        raw <- obs_v_work[1L]
+        out_val[i] <- if (log_space) exp(raw) else raw
+        out_det[i] <- obs_det[1L]
         out_meas[i] <- FALSE
         out_keep[i] <- TRUE
       }
@@ -885,23 +922,23 @@ amspaf_daily <- function(
     }
 
     ## We have a previous observation but no exact match.
-    nid <- pid + 1L  ## index of the next observation (may be out-of-bounds)
+    nid <- pid + 1L ## index of the next observation (may be out-of-bounds)
 
     if (interpolation == "forward_fill" || nid > length(obs_d)) {
       ## Forward-fill, or past the last observation: carry forward.
-      raw        <- obs_v_work[pid]
-      out_val[i]  <- if (log_space) exp(raw) else raw
-      out_det[i]  <- obs_det[pid]
+      raw <- obs_v_work[pid]
+      out_val[i] <- if (log_space) exp(raw) else raw
+      out_det[i] <- obs_det[pid]
       out_meas[i] <- FALSE
       out_keep[i] <- TRUE
     } else {
       ## Linear / log-linear interpolation between pid and nid.
       frac <- as.numeric(d - obs_d[pid]) /
-              as.numeric(obs_d[nid] - obs_d[pid])
-      raw  <- obs_v_work[pid] + frac * (obs_v_work[nid] - obs_v_work[pid])
-      out_val[i]  <- if (log_space) exp(raw) else raw
+        as.numeric(obs_d[nid] - obs_d[pid])
+      raw <- obs_v_work[pid] + frac * (obs_v_work[nid] - obs_v_work[pid])
+      out_val[i] <- if (log_space) exp(raw) else raw
       ## A gap between detected/BDL passes detected only if both anchors are.
-      out_det[i]  <- obs_det[pid] && obs_det[nid]
+      out_det[i] <- obs_det[pid] && obs_det[nid]
       out_meas[i] <- FALSE
       out_keep[i] <- TRUE
     }
@@ -944,7 +981,7 @@ amspaf_daily <- function(
   ## Remove existing interpolated temperature rows that the external series
   ## will replace (do not disturb grab-measured rows).
   no_existing_grab <- !(ext$.date %in% grab_temp_dates)
-  new_rows         <- ext[no_existing_grab, , drop = FALSE]
+  new_rows <- ext[no_existing_grab, , drop = FALSE]
 
   ## Drop any interpolated temp rows for those dates before adding new ones.
   daily_long <- dplyr::filter(
@@ -975,9 +1012,9 @@ amspaf_daily <- function(
 
   if (length(daily_dates) == 0L) {
     return(tibble::tibble(
-      date                  = as.Date(character()),
-      site_id               = character(),
-      n_measured_analytes   = integer(),
+      date = as.Date(character()),
+      site_id = character(),
+      n_measured_analytes = integer(),
       days_since_last_sample = integer()
     ))
   }
@@ -987,16 +1024,16 @@ amspaf_daily <- function(
 
   purrr::map_dfr(daily_dates, function(d) {
     n_meas <- sum(tox_rows$.date == d & tox_rows$.measured, na.rm = TRUE)
-    prev   <- grab_dates[grab_dates <= d]
+    prev <- grab_dates[grab_dates <= d]
     days_since <- if (length(prev) > 0L) {
       as.integer(d - max(prev))
     } else {
       NA_integer_
     }
     tibble::tibble(
-      date                  = d,
-      site_id               = site,
-      n_measured_analytes   = as.integer(n_meas),
+      date = d,
+      site_id = site,
+      n_measured_analytes = as.integer(n_meas),
       days_since_last_sample = days_since
     )
   })
@@ -1025,10 +1062,12 @@ amspaf_daily <- function(
 
   daily_long |>
     dplyr::mutate(
-      sample_id = paste0("daily_", format(.data$.date, "%Y-%m-%d"),
-                         "_", .env$site),
-      site_id   = .env$site,
-      datetime  = .data$.date
+      sample_id = paste0(
+        "daily_", format(.data$.date, "%Y-%m-%d"),
+        "_", .env$site
+      ),
+      site_id = .env$site,
+      datetime = .data$.date
     ) |>
     dplyr::select(-".measured")
 }
@@ -1050,10 +1089,10 @@ amspaf_daily <- function(
 #' @return A named list (`fdm`) or `NULL` on model failure.
 #' @keywords internal
 .fit_daily_target <- function(site_rows, reference_model, imputation_model,
-                               conc_units, meta, tox_analytes, daily_long,
-                               ou_scale = 1, grab_cv = NULL, kappa = 0.5,
-                               method = "multi", guideline_dir = NULL,
-                               transform = "pseudo_log") {
+                              conc_units, meta, tox_analytes, daily_long,
+                              ou_scale = 1, grab_cv = NULL, kappa = 0.5,
+                              method = "multi", guideline_dir = NULL,
+                              transform = "pseudo_log") {
   qdates <- sort(unique(daily_long$.date))
 
   tm <- tryCatch(
@@ -1075,7 +1114,9 @@ amspaf_daily <- function(
       NULL
     }
   )
-  if (is.null(tm) || length(tm$models) == 0L) return(NULL)
+  if (is.null(tm) || length(tm$models) == 0L) {
+    return(NULL)
+  }
 
   modelled <- names(tm$models)
 
@@ -1093,7 +1134,7 @@ amspaf_daily <- function(
 
   ## Per-date co-analyte lookup (static across draws; Chunk D may override).
   co <- daily_long[!daily_long$analyte %in% tox_analytes &
-                     (is.na(daily_long$detected) | daily_long$detected), , drop = FALSE]
+    (is.na(daily_long$detected) | daily_long$detected), , drop = FALSE]
   co_split <- split(
     data.frame(analyte = co$analyte, value = co$value, stringsAsFactors = FALSE),
     as.character(co$.date)
@@ -1101,9 +1142,13 @@ amspaf_daily <- function(
 
   ## WQ layer data for analytes with a fitted WQ→metal response.
   wq_long <- if (!is.null(tm$pca)) {
-    tibble::tibble(sample_id = as.character(co$.date),
-                   analyte = co$analyte, value = co$value)
-  } else NULL
+    tibble::tibble(
+      sample_id = as.character(co$.date),
+      analyte = co$analyte, value = co$value
+    )
+  } else {
+    NULL
+  }
 
   ## Normalisation formula lookup (one parsed formula per modelled analyte).
   meta_norm <- meta |>
@@ -1112,16 +1157,23 @@ amspaf_daily <- function(
     lapply(modelled, function(a) {
       row <- meta_norm[meta_norm$analyte == a, , drop = FALSE]
       list(
-        parsed = if (nrow(row)) .parse_normalisation_formula(
-                   row$normalisation_formula %||% "") else NULL
+        parsed = if (nrow(row)) {
+          .parse_normalisation_formula(
+            row$normalisation_formula %||% ""
+          )
+        } else {
+          NULL
+        }
       )
     }), modelled
   )
 
   ## Measured (grab) dates — used to set .measured flags on synthetic rows.
-  sr_mod <- site_rows[site_rows$analyte %in% modelled &
-                        (is.na(site_rows$detected) | site_rows$detected), ,
-                      drop = FALSE]
+  sr_mod <- site_rows[
+    site_rows$analyte %in% modelled &
+      (is.na(site_rows$detected) | site_rows$detected), ,
+    drop = FALSE
+  ]
   measured_key <- paste(sr_mod$analyte, as.Date(sr_mod$datetime))
 
   ## State-space residual smoother: build once per analyte over qdates.
@@ -1131,26 +1183,40 @@ amspaf_daily <- function(
   ## the S6 grab measurement error as observation noise r_i. Hydrology modulates
   ## the process variance (q_mult) inside .analyte_residual_smoother().
   get_cv <- function(nm) {
-    if (is.null(grab_cv))        return(NA_real_)
-    if (length(grab_cv) == 1L)   return(as.numeric(grab_cv))
-    if (nm %in% names(grab_cv))  return(as.numeric(grab_cv[[nm]]))
+    if (is.null(grab_cv)) {
+      return(NA_real_)
+    }
+    if (length(grab_cv) == 1L) {
+      return(as.numeric(grab_cv))
+    }
+    if (nm %in% names(grab_cv)) {
+      return(as.numeric(grab_cv[[nm]]))
+    }
     NA_real_
   }
 
   smoothers <- stats::setNames(
     lapply(modelled, function(nm) {
-      m      <- tm$models[[nm]]
+      m <- tm$models[[nm]]
       has_wq <- !is.null(m$wq_fit) && !is.null(m$d_anchors) &&
-                  nrow(m$d_anchors) >= 2L
-      anch   <- if (has_wq) m$d_anchors else m$anchors
-      empty  <- list(grid_dates = as.Date(character()), mean = numeric(0),
-                     draw_model = NULL)
-      if (is.null(anch) || nrow(anch) < 1L) return(empty)
+        nrow(m$d_anchors) >= 2L
+      anch <- if (has_wq) m$d_anchors else m$anchors
+      empty <- list(
+        grid_dates = as.Date(character()), mean = numeric(0),
+        draw_model = NULL
+      )
+      if (is.null(anch) || nrow(anch) < 1L) {
+        return(empty)
+      }
 
       ## Centre smoother (r -> 0): posterior mean = deterministic centre line.
-      sm_c <- .analyte_residual_smoother(m, tm, qdates, kappa = kappa,
-                                         scale = ou_scale, r_vec = NULL)
-      if (is.null(sm_c)) return(empty)
+      sm_c <- .analyte_residual_smoother(m, tm, qdates,
+        kappa = kappa,
+        scale = ou_scale, r_vec = NULL
+      )
+      if (is.null(sm_c)) {
+        return(empty)
+      }
 
       ## Draw model: add S6 grab measurement error as observation noise r_i,
       ## scaled by C_norm_obs at the anchors (model: C_norm = ref + I;
@@ -1158,41 +1224,55 @@ amspaf_daily <- function(
       draw_model <- sm_c$model
       cv <- get_cv(nm)
       if (!is.na(cv) && cv > 0 && !is.null(sm_c$model)) {
-        c_norm_obs <- tryCatch({
-          if (!has_wq) {
-            ref_q   <- .resolve_ref_norm_instant(
-              tm$reference_model,
-              tibble::tibble(sample_id = as.character(anch$date),
-                             datetime = anch$date))
-            ref_lkp <- stats::setNames(
-              ref_q$ref_norm[ref_q$analyte == nm],
-              ref_q$sample_id[ref_q$analyte == nm])
-            rv <- as.numeric(ref_lkp[as.character(anch$date)]); rv[is.na(rv)] <- 0
-            pmax(anch$I + rv, 0)
-          } else if (!is.null(tm$pca) && !is.null(wq_long)) {
-            pc_anch <- .compute_pca_scores(wq_long, tm$pca)
-            nd_anch <- dplyr::left_join(
-              tibble::tibble(sample_id = as.character(anch$date)),
-              pc_anch, by = "sample_id")
-            pmax(as.numeric(stats::predict(m$wq_fit, newdata = nd_anch)) +
-                   anch$S, 0)
-          } else NULL
-        }, error = function(e) NULL)
+        c_norm_obs <- tryCatch(
+          {
+            if (!has_wq) {
+              ref_q <- .resolve_ref_norm_instant(
+                tm$reference_model,
+                tibble::tibble(
+                  sample_id = as.character(anch$date),
+                  datetime = anch$date
+                )
+              )
+              ref_lkp <- stats::setNames(
+                ref_q$ref_norm[ref_q$analyte == nm],
+                ref_q$sample_id[ref_q$analyte == nm]
+              )
+              rv <- as.numeric(ref_lkp[as.character(anch$date)])
+              rv[is.na(rv)] <- 0
+              pmax(anch$I + rv, 0)
+            } else if (!is.null(tm$pca) && !is.null(wq_long)) {
+              pc_anch <- .compute_pca_scores(wq_long, tm$pca)
+              nd_anch <- dplyr::left_join(
+                tibble::tibble(sample_id = as.character(anch$date)),
+                pc_anch,
+                by = "sample_id"
+              )
+              pmax(as.numeric(stats::predict(m$wq_fit, newdata = nd_anch)) +
+                anch$S, 0)
+            } else {
+              NULL
+            }
+          },
+          error = function(e) NULL
+        )
         if (!is.null(c_norm_obs)) {
           ## S6 is a concentration-space variance; the smoother now works on the
           ## g = asinh(x/c) scale (issue #15), so map it via the delta method.
           ## The transformed level x is the impact I (impact tier) or the
           ## concentration (WQ tier); NA scale_c keeps the additive variance.
           var_c <- (cv * c_norm_obs)^2
-          sc_a  <- m$scale_c %||% NA_real_
+          sc_a <- m$scale_c %||% NA_real_
           r_vec <- if (is.na(sc_a)) {
             var_c
           } else {
             level <- if (!has_wq) anch$I else c_norm_obs
             .s6_var_to_g(var_c, level, sc_a)
           }
-          sm_d <- .analyte_residual_smoother(m, tm, qdates, kappa = kappa,
-                                             scale = ou_scale, r_vec = r_vec)
+          sm_d <- .analyte_residual_smoother(m, tm, qdates,
+            kappa = kappa,
+            scale = ou_scale, r_vec = r_vec
+          )
           if (!is.null(sm_d) && !is.null(sm_d$model)) draw_model <- sm_d$model
         }
       }
@@ -1218,13 +1298,15 @@ amspaf_daily <- function(
         if (length(gd) == 0L) {
           return(stats::setNames(rep(NA_character_, length(qdates)), as.character(qdates)))
         }
-        idx <- findInterval(qdates, gd)   # 0 = before first grab
+        idx <- findInterval(qdates, gd) # 0 = before first grab
         src <- ifelse(idx == 0L, NA_character_, as.character(gd[pmax(idx, 1L)]))
         stats::setNames(src, as.character(qdates))
       }),
       co_analytes_nm
     )
-  } else NULL
+  } else {
+    NULL
+  }
 
   ## Static per-analyte context reused across draws (the per-draw speed path):
   ##  - hydro features + ref vector (constant across draws),
@@ -1238,30 +1320,43 @@ amspaf_daily <- function(
   }), as.character(qdates))
 
   static <- stats::setNames(lapply(modelled, function(nm) {
-    m     <- tm$models[[nm]]
-    feats <- .compute_hydro_features(tm$hydro, qdates, m$window_short,
-                                     m$window_long, tm$hydro_type)
-    ref_lk  <- stats::setNames(ref_q$ref_norm[ref_q$analyte == nm],
-                               as.character(ref_q$date[ref_q$analyte == nm]))
-    ref_vec <- as.numeric(ref_lk[as.character(qdates)]); ref_vec[is.na(ref_vec)] <- 0
+    m <- tm$models[[nm]]
+    feats <- .compute_hydro_features(
+      tm$hydro, qdates, m$tau_short,
+      m$tau_long, tm$hydro_type
+    )
+    ref_lk <- stats::setNames(
+      ref_q$ref_norm[ref_q$analyte == nm],
+      as.character(ref_q$date[ref_q$analyte == nm])
+    )
+    ref_vec <- as.numeric(ref_lk[as.character(qdates)])
+    ref_vec[is.na(ref_vec)] <- 0
     lp <- NULL
     if (m$tier == "model" && !is.null(m$impact_fit)) {
-      nd <- dplyr::tibble(hydro_short = feats$hydro_short,
-                          hydro_long  = feats$hydro_long)
+      nd <- dplyr::tibble(
+        hydro_short = feats$hydro_short,
+        hydro_long = feats$hydro_long
+      )
       if (isTRUE(m$pooled)) nd$analyte <- factor(m$analyte, levels = m$pool_levels)
       lp <- tryCatch(stats::predict(m$impact_fit, newdata = nd, type = "lpmatrix"),
-                     error = function(e) NULL)
+        error = function(e) NULL
+      )
     }
     parsed <- fac_lookup[[nm]]$parsed
-    fac <- if (is.null(parsed)) rep(1, length(qdates)) else
+    fac <- if (is.null(parsed)) {
+      rep(1, length(qdates))
+    } else {
       vapply(seq_along(qdates), function(i) {
         f <- .apply_normalisation(parsed, 1, co_by_date[[i]])
         if (is.na(f) || f <= 0) NA_real_ else f
       }, numeric(1L))
+    }
     names(fac) <- as.character(qdates)
-    list(hydro_short = feats$hydro_short, hydro_long = feats$hydro_long,
-         ref_vec = ref_vec, lp = lp, pooled = isTRUE(m$pooled),
-         pool_center = m$pool_center, pool_scale = m$pool_scale, fac = fac)
+    list(
+      hydro_short = feats$hydro_short, hydro_long = feats$hydro_long,
+      ref_vec = ref_vec, lp = lp, pooled = isTRUE(m$pooled),
+      pool_center = m$pool_center, pool_scale = m$pool_scale, fac = fac
+    )
   }), modelled)
 
   ## Flat (analyte date) -> factor lookup for vectorised C_raw reconstruction.
@@ -1313,28 +1408,33 @@ amspaf_daily <- function(
 #'   `NULL` if prediction produced no finite rows.
 #' @keywords internal
 .predict_daily_tox <- function(fdm,
-                                tm_p           = fdm$tm,
-                                residual_paths = NULL,
-                                co_split       = fdm$co_split,
-                                wq_long        = fdm$wq_long) {
+                               tm_p = fdm$tm,
+                               residual_paths = NULL,
+                               co_split = fdm$co_split,
+                               wq_long = fdm$wq_long) {
   ## Residual paths (S for impact tier, d for WQ tier) on qdates, NA outside the
   ## per-analyte clipped grab span. NULL -> deterministic centre line (smoother
   ## posterior means from the fit-once scaffold).
   if (is.null(residual_paths)) {
     residual_paths <- stats::setNames(lapply(fdm$modelled, function(nm) {
       sm <- fdm$smoothers[[nm]]
-      if (is.null(sm) || length(sm$grid_dates) == 0L)
+      if (is.null(sm) || length(sm$grid_dates) == 0L) {
         return(rep(NA_real_, length(fdm$qdates)))
+      }
       .residual_on_qdates(sm$grid_dates, sm$mean, fdm$qdates)
     }), fdm$modelled)
   }
 
   pred <- .resolve_target_impact(tm_p, tibble::tibble(date = fdm$qdates),
-                                 fdm$modelled, wq = wq_long,
-                                 residual_paths = residual_paths,
-                                 kappa = fdm$kappa, scale = fdm$ou_scale,
-                                 ref_q = fdm$ref_q, static = fdm$static)
-  if (nrow(pred) == 0L) return(NULL)
+    fdm$modelled,
+    wq = wq_long,
+    residual_paths = residual_paths,
+    kappa = fdm$kappa, scale = fdm$ou_scale,
+    ref_q = fdm$ref_q, static = fdm$static
+  )
+  if (nrow(pred) == 0L) {
+    return(NULL)
+  }
 
   ## Reconstruct raw µg/L: C_raw = C_norm / normalisation_factor(co-analytes).
   ## co_split is exact in this reconstruction (S7 enters via the synthetic
@@ -1347,21 +1447,30 @@ amspaf_daily <- function(
   } else {
     co_vec_for <- function(d) {
       cd <- co_split[[as.character(d)]]
-      if (is.null(cd)) return(numeric(0))
+      if (is.null(cd)) {
+        return(numeric(0))
+      }
       stats::setNames(cd$value, cd$analyte)
     }
     pred$C_raw <- vapply(seq_len(nrow(pred)), function(i) {
-      a      <- pred$analyte[i]; d <- pred$date[i]
+      a <- pred$analyte[i]
+      d <- pred$date[i]
       parsed <- fdm$fac_lookup[[a]]$parsed
-      if (is.null(parsed)) return(pred$C_norm[i])
+      if (is.null(parsed)) {
+        return(pred$C_norm[i])
+      }
       factor <- .apply_normalisation(parsed, 1, co_vec_for(d))
-      if (is.na(factor) || factor <= 0) return(NA_real_)
+      if (is.na(factor) || factor <= 0) {
+        return(NA_real_)
+      }
       pred$C_norm[i] / factor
     }, numeric(1L))
   }
 
   pred_ok <- pred[is.finite(pred$C_raw), , drop = FALSE]
-  if (nrow(pred_ok) == 0L) return(NULL)
+  if (nrow(pred_ok) == 0L) {
+    return(NULL)
+  }
 
   model_rows <- tibble::tibble(
     .date         = pred_ok$date,
@@ -1398,13 +1507,17 @@ amspaf_daily <- function(
 #' @keywords internal
 .perturb_co_split <- function(fdm, grab_cv_co) {
   if (is.null(fdm$co_grab_map) || is.null(grab_cv_co) ||
-      (length(grab_cv_co) == 1L && is.na(grab_cv_co))) {
+    (length(grab_cv_co) == 1L && is.na(grab_cv_co))) {
     return(list(co_split = fdm$co_split, wq_long = fdm$wq_long))
   }
 
   get_cv_co <- function(a) {
-    if (length(grab_cv_co) == 1L) return(as.numeric(grab_cv_co))
-    if (a %in% names(grab_cv_co)) return(as.numeric(grab_cv_co[[a]]))
+    if (length(grab_cv_co) == 1L) {
+      return(as.numeric(grab_cv_co))
+    }
+    if (a %in% names(grab_cv_co)) {
+      return(as.numeric(grab_cv_co[[a]]))
+    }
     return(NA_real_)
   }
 
@@ -1436,13 +1549,13 @@ amspaf_daily <- function(
   co_split_d <- lapply(names(fdm$co_split), function(d) {
     co_day <- fdm$co_split[[d]]
     for (i in seq_len(nrow(co_day))) {
-      a    <- co_day$analyte[i]
-      cgm  <- fdm$co_grab_map[[a]]
+      a <- co_day$analyte[i]
+      cgm <- fdm$co_grab_map[[a]]
       if (is.null(cgm)) next
       src_d <- cgm[d]
       if (is.na(src_d)) next
       key <- paste(a, src_d, sep = "::")
-      m   <- mults[[key]]
+      m <- mults[[key]]
       if (!is.null(m) && is.finite(m) && m > 0) co_day$value[i] <- co_day$value[i] * m
     }
     co_day
@@ -1453,13 +1566,19 @@ amspaf_daily <- function(
   wq_long_d <- if (!is.null(fdm$wq_long)) {
     rows <- lapply(names(co_split_d), function(d) {
       co_d <- co_split_d[[d]]
-      if (nrow(co_d) == 0L) return(NULL)
-      data.frame(sample_id = d, analyte = co_d$analyte, value = co_d$value,
-                 stringsAsFactors = FALSE)
+      if (nrow(co_d) == 0L) {
+        return(NULL)
+      }
+      data.frame(
+        sample_id = d, analyte = co_d$analyte, value = co_d$value,
+        stringsAsFactors = FALSE
+      )
     })
     rows <- Filter(Negate(is.null), rows)
     if (length(rows) > 0L) tibble::as_tibble(do.call(rbind, rows)) else NULL
-  } else NULL
+  } else {
+    NULL
+  }
 
   list(co_split = co_split_d, wq_long = wq_long_d)
 }
@@ -1488,7 +1607,9 @@ amspaf_daily <- function(
   pert_tbl <- dplyr::bind_rows(
     lapply(names(co_pert_split), function(d) {
       cd <- co_pert_split[[d]]
-      if (is.null(cd) || nrow(cd) == 0L) return(NULL)
+      if (is.null(cd) || nrow(cd) == 0L) {
+        return(NULL)
+      }
       tibble::tibble(.date_chr = d, analyte = cd$analyte, .new_val = cd$value)
     })
   )
@@ -1497,10 +1618,10 @@ amspaf_daily <- function(
   if (nrow(pert_tbl) > 0L) {
     result$.date_chr <- as.character(result$.date)
     result <- dplyr::left_join(result, pert_tbl, by = c(".date_chr", "analyte"))
-    idx_replace        <- !is.na(result$.new_val)
+    idx_replace <- !is.na(result$.new_val)
     result$value[idx_replace] <- result$.new_val[idx_replace]
     result$.date_chr <- NULL
-    result$.new_val  <- NULL
+    result$.new_val <- NULL
   }
 
   result$draw_id <- as.integer(draw_id)
@@ -1529,9 +1650,9 @@ amspaf_daily <- function(
 #' @return `daily_long` with modelled-toxicant rows replaced.
 #' @keywords internal
 .daily_tox_from_model <- function(daily_long, site_rows, reference_model,
-                                   imputation_model, conc_units, meta,
-                                   tox_analytes, method = "multi",
-                                   guideline_dir = NULL, transform = "pseudo_log") {
+                                  imputation_model, conc_units, meta,
+                                  tox_analytes, method = "multi",
+                                  guideline_dir = NULL, transform = "pseudo_log") {
   fdm <- .fit_daily_target(
     site_rows        = site_rows,
     reference_model  = reference_model,
@@ -1544,10 +1665,14 @@ amspaf_daily <- function(
     guideline_dir    = guideline_dir,
     transform        = transform
   )
-  if (is.null(fdm)) return(daily_long)
+  if (is.null(fdm)) {
+    return(daily_long)
+  }
 
   model_rows <- .predict_daily_tox(fdm)
-  if (is.null(model_rows)) return(daily_long)
+  if (is.null(model_rows)) {
+    return(daily_long)
+  }
 
   modelled <- fdm$modelled
   keep <- dplyr::filter(daily_long, !.data$analyte %in% .env$modelled)
@@ -1578,13 +1703,15 @@ amspaf_daily <- function(
   if (mode == "summary") {
     base$amspaf_lower <- numeric()
     base$amspaf_upper <- numeric()
-    base <- dplyr::select(base,
+    base <- dplyr::select(
+      base,
       "date", "site_id", "amspaf", "amspaf_lower", "amspaf_upper",
       dplyr::everything()
     )
   } else if (mode == "draws") {
     base$draw_id <- integer()
-    base <- dplyr::select(base,
+    base <- dplyr::select(
+      base,
       "date", "site_id", "draw_id", "amspaf", dplyr::everything()
     )
   }

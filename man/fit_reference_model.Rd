@@ -15,8 +15,8 @@ fit_reference_model(
   imputation_model = NULL,
   match_window_days = 5L,
   match_hydro_tol = NULL,
-  api_windows_short = c(3L, 7L, 14L),
-  api_windows_long = c(30L, 60L, 90L, 180L),
+  api_tau_bounds_short = c(1, 30),
+  api_tau_bounds_long = c(20, 365),
   auto_select = TRUE,
   min_obs_model = 20L,
   summary = "geom_mean",
@@ -60,15 +60,16 @@ only).}
 \item{match_hydro_tol}{Numeric; tier-1 hydro tolerance (default \code{NULL} →
 \verb{0.5 × IQR} of the reference event-API series).}
 
-\item{api_windows_short}{Integer vector of candidate short-memory window
-lengths in days (default \code{c(3L, 7L, 14L)}).}
+\item{api_tau_bounds_short}{Length-2 numeric \code{c(lo, hi)} search range (days)
+for the short-store recession constant \code{tau_short} (default \code{c(1, 30)}).
+A degenerate \code{c(x, x)} fixes \code{tau_short = x}.}
 
-\item{api_windows_long}{Integer vector of candidate long-memory window
-lengths in days (default \code{c(30L, 60L, 90L, 180L)}).}
+\item{api_tau_bounds_long}{Length-2 numeric \code{c(lo, hi)} search range (days)
+for the long-store recession constant \code{tau_long} (default \code{c(20, 365)}).}
 
-\item{auto_select}{Logical; if \code{TRUE} (default), select window lengths per
-analyte by AIC.  If \code{FALSE}, use \code{api_windows_short[1]} and
-\code{api_windows_long[1]} for all analytes without CV.}
+\item{auto_select}{Logical; if \code{TRUE} (default), select \code{tau_short},
+\code{tau_long} per analyte by profiled AIC.  If \code{FALSE}, use the parsimonious
+defaults (\code{tau_short = 7}, \code{tau_long = 60}) for all analytes.}
 
 \item{min_obs_model}{Integer; minimum detected observations required to
 attempt tier-2 modelling (default \code{20L}).  Analytes below this fall
@@ -79,8 +80,9 @@ directly to tier 3.}
 \code{"p95"}.}
 
 \item{silo_start, silo_end}{Start/end dates for SILO auto-fetch.  Default
-\code{NULL}: derived from the reference chemistry date range (padded by 365
-days on the left for the maximum API window).}
+\code{NULL}: derived from the reference chemistry date range, padded on the left
+by \verb{5 × max(api_tau_bounds_long)} days so the recursive reservoir has
+enough burn-in (≈5τ) to converge before the first observation.}
 
 \item{silo_api_key}{Passed to \code{\link[=get_silo_rainfall]{get_silo_rainfall()}} when \code{hydro = NULL}.}
 
@@ -90,7 +92,7 @@ days on the left for the maximum API window).}
 An object of class \code{reference_model}:
 \describe{
 \item{\verb{$models}}{Named list (one per analyte) carrying \code{gamm_fit},
-\code{window_short}, \code{window_long}, \code{best_aic}, \code{null_aic}, \code{tier},
+\code{tau_short}, \code{tau_long}, \code{best_aic}, \code{null_aic}, \code{tier},
 \code{n_obs}, \code{static_ref}, and \code{obs} (normalised observations with
 hydro features — used for tier-1 matching).}
 \item{\verb{$hydro}}{Daily hydro series used for index computation.}
@@ -123,11 +125,14 @@ a downstream target in the same sub-catchment.
 time-close but hydrologically-mismatched grabs (e.g. a dry-weather
 reference next to a wet-event target).
 \item \strong{Tier 2 — GAM prediction.} A per-analyte \code{mgcv::gam} with
-\code{s(doy, bs="cc") + s(hydro_short) + s(hydro_long)}.  Window lengths are
-auto-selected by AIC over the \verb{api_windows_short × api_windows_long}
-candidate grid.  The analyte falls back to tier 3 if the best model has
-higher AIC than the null (intercept-only) model, or if fewer than
-\code{min_obs_model} detected observations are available.
+\code{s(doy, bs="cc") + s(hydro_short) + s(hydro_long)}.  The reservoir
+recession constants \code{tau_short}, \code{tau_long} are selected per analyte by
+profiled AIC over the \code{api_tau_bounds_short}/\code{api_tau_bounds_long}
+ranges (continuous, with a \code{tau_long >= 1.5*tau_short} separation and a
+ΔAIC ≥ 2 adoption gate over a parsimonious default).  The analyte falls
+back to tier 3 if the best model has higher AIC than the null
+(intercept-only) model, or if fewer than \code{min_obs_model} detected
+observations are available.
 \item \strong{Tier 3 — static fallback.} Geometric mean of all normalised
 reference observations (identical to \code{\link[=prepare_reference]{prepare_reference()}} with
 \code{summary = "geom_mean"}).
@@ -159,7 +164,7 @@ ref_model
 # Or supply your own gauge record
 ref_model2 <- fit_reference_model(
   reference  = ref,
-  hydro      = my_stage_df,  # data.frame(date, value)
+  hydro      = my_stage_df, # data.frame(date, value)
   hydro_type = "stage",
   conc_units = "ug/L"
 )

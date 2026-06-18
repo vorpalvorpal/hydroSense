@@ -240,11 +240,11 @@ describe("fit_target_model() asinh wiring (issue #15)", {
     tgt <- make_chem("target", dates, mult = 5, seed = 2)
     rm <- suppressMessages(fit_reference_model(
       ref, hydro = hydro, conc_units = "ug/L", min_obs_model = 10L,
-      api_windows_short = 7L, api_windows_long = 30L
+      api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30)
     ))
     suppressMessages(fit_target_model(
       tgt, rm, conc_units = "ug/L", min_obs_model = 10L,
-      api_windows_short = 7L, api_windows_long = 30L
+      api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30)
     ))
   }
 
@@ -334,11 +334,11 @@ describe("fit_target_model() transform parameter", {
     tgt <- make_chem2("target", dates, mult = 5, seed = 2)
     rm <- suppressMessages(fit_reference_model(
       ref, hydro = hydro, conc_units = "ug/L", min_obs_model = 10L,
-      api_windows_short = 7L, api_windows_long = 30L
+      api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30)
     ))
     suppressMessages(fit_target_model(
       tgt, rm, conc_units = "ug/L", min_obs_model = 10L,
-      api_windows_short = 7L, api_windows_long = 30L,
+      api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30),
       transform = transform
     ))
   }

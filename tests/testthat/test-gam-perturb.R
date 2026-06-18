@@ -80,11 +80,11 @@ make_mock_target_model <- function(gam_fit) {
 make_mock_reference_model <- function(gam_fit) {
   models <- list(
     Cu = list(gamm_fit = gam_fit, tier = "model", n_obs = 25L,
-              static_ref = 0, window_short = 7L, window_long = 90L,
+              static_ref = 0, tau_short = 7, tau_long = 90,
               best_aic = 0, null_aic = 10,
               obs = data.frame()),
     pH = list(gamm_fit = NULL, tier = "static", n_obs = 5L,
-              static_ref = 7.5, window_short = 7L, window_long = 90L,
+              static_ref = 7.5, tau_short = 7, tau_long = 90,
               best_aic = NA, null_aic = NA,
               obs = data.frame())
   )

@@ -13,3 +13,10 @@
 ^HANDOVER\.md$
 ^LICENSE\.md$
 ^\.git$
+^guideline data$
+^test data$
+^dev$
+^bench$
+^references$
+^CLAUDE\.md$
+^\.claude$
