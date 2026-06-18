@@ -1203,6 +1203,7 @@ amspaf_daily <- function(
       anch <- if (has_wq) m$d_anchors else m$anchors
       empty <- list(
         grid_dates = as.Date(character()), mean = numeric(0),
+        var = numeric(0), anchor_dates = as.Date(character()),
         draw_model = NULL
       )
       if (is.null(anch) || nrow(anch) < 1L) {
@@ -1277,7 +1278,10 @@ amspaf_daily <- function(
         }
       }
 
-      list(grid_dates = sm_c$grid_dates, mean = sm_c$mean, draw_model = draw_model)
+      ## var + anchor_dates are carried so the #50 bracket can locate in-gap
+      ## days (where the informative envelope freezes the residual at its mean).
+      list(grid_dates = sm_c$grid_dates, mean = sm_c$mean, var = sm_c$var,
+           anchor_dates = as.Date(anch$date), draw_model = draw_model)
     }),
     modelled
   )

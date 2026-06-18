@@ -24,6 +24,7 @@
 ##   .kalman_smooth                posterior mean + variance per grid day (KFS)
 ##   .kalman_draw                  simulateSSM state draws (matrix [n_grid x nsim])
 ##   .residual_smoother            per-analyte convenience: clip, fit, smooth
+##   .residual_gap_mask            flag in-gap grid days (issue #50 bracket)
 ##   .loo_coverage_series          leave-one-anchor-out coverage of one S series
 ##   .loo_anchor_coverage          per-analyte + pooled coverage over a target_model
 ##   .kalman_sim_smoother_setup    precompute DK gain matrix L for coupled draws (issue #32)
@@ -258,6 +259,55 @@ NULL
   sm <- .kalman_smooth(model)
   list(grid_dates = grid, params = params, model = model,
        mean = sm$mean, var = sm$var)
+}
+
+
+## ── Gap mask for the informative/ignorable bracket (issue #50) ────────────────
+
+#' Flag grid days where the residual posterior variance has ballooned in a gap
+#'
+#' The simulation-smoother posterior variance is small at (and near) the grab
+#' anchors and inflates between them, peaking in the middle of long gaps
+#' (Brownian-bridge shape). A grid day counts as "in-gap" when its variance has
+#' risen meaningfully above the at-anchor floor — i.e. more than a fraction
+#' `tol` of the way from that floor to the series' peak variance. This is the
+#' set of days on which the informative envelope (residual frozen at its
+#' posterior mean) may differ from the ignorable envelope (residual drawn);
+#' everywhere else the two coincide. Observation days, a densely-sampled series
+#' with no real gaps, and a degenerate (zero-variance) series all return `FALSE`
+#' throughout.
+#'
+#' The floor is taken at the anchor positions (the grab days carry only the
+#' tiny observation-noise variance); using a *relative* threshold against the
+#' floor-to-peak range makes the test scale-free, so it collapses to "no gaps"
+#' automatically when sampling is dense.
+#'
+#' @param sm A smoother list with `grid_dates` and `var` (e.g. from
+#'   [.residual_smoother()] or the per-analyte scaffold).
+#' @param anchor_dates Grab/anchor dates; used to locate the at-anchor floor.
+#' @param tol Fraction of the floor-to-peak variance range above the floor at
+#'   which a day is declared in-gap (default 0.05).
+#' @return Logical vector along `sm$grid_dates`; `logical(0)` for an empty grid.
+#' @keywords internal
+.residual_gap_mask <- function(sm, anchor_dates, tol = 0.05) {
+  v <- sm$var
+  n <- length(v)
+  if (n == 0L) return(logical(0))
+  v[!is.finite(v)] <- 0
+
+  pos <- match(as.Date(anchor_dates), as.Date(sm$grid_dates))
+  pos <- pos[!is.na(pos)]
+  floor_v <- if (length(pos)) stats::median(v[pos]) else min(v)
+  peak_v  <- max(v)
+  rng <- peak_v - floor_v
+
+  ## No meaningful spread (dense sampling, or degenerate zero-variance) -> the
+  ## residual is pinned everywhere and the bracket collapses: nothing in-gap.
+  if (!is.finite(rng) ||
+        rng <= sqrt(.Machine$double.eps) * (1 + abs(floor_v))) {
+    return(rep(FALSE, n))
+  }
+  (v - floor_v) > tol * rng
 }
 
 
