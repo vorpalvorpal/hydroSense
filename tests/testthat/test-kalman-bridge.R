@@ -208,3 +208,68 @@ test_that("K10: scale multiplies gamma (wider var) without changing theta", {
   expect_equal(p2$theta, p1$theta, tolerance = 1e-8)
   expect_equal(p2$gamma, 4 * p1$gamma, tolerance = 1e-6)
 })
+
+
+## ── K11: residual gap mask (issue #50) ────────────────────────────────────────
+## .residual_gap_mask(sm, anchor_dates, tol) -> logical along sm$grid_dates.
+## A grid day is "in-gap" when the smoother posterior variance has ballooned
+## meaningfully above the at-anchor floor (the floor carries only the tiny
+## observation-noise variance). Anchor days are never in-gap; deep mid-gap days
+## are; a densely-sampled (no-gap) or degenerate series is FALSE everywhere.
+
+describe(".residual_gap_mask()", {
+  build_sm <- function(s, r = 1e-6) {
+    p <- leachatetools:::.estimate_ou_kalman_params(s$anchor_dates, s$anchor_S)
+    m <- leachatetools:::.build_kalman_model(
+      s$target_dates, s$anchor_dates, s$anchor_S, p$theta, p$gamma,
+      r_vec = rep(r, length(s$anchor_S)))
+    sm <- leachatetools:::.kalman_smooth(m)
+    list(grid_dates = s$target_dates, mean = sm$mean, var = sm$var)
+  }
+
+  it("flags anchor days FALSE and deep mid-gap days TRUE", {
+    s  <- sim_ou(anchor_every = 28L, seed = 21L)   # long 28-day gaps
+    sm <- build_sm(s)
+    mask <- leachatetools:::.residual_gap_mask(sm, s$anchor_dates)
+    expect_type(mask, "logical")
+    expect_length(mask, length(sm$grid_dates))
+
+    anc_pos <- match(s$anchor_dates, sm$grid_dates)
+    expect_false(any(mask[anc_pos]))               # observation days never in-gap
+
+    mid_pos <- anc_pos[2L] + 14L                   # centre of a 28-day gap
+    expect_true(mask[mid_pos])                     # ballooned -> in-gap
+  })
+
+  it("returns all FALSE for a densely-sampled (no-gap) series", {
+    s  <- sim_ou(anchor_every = 1L, seed = 22L)    # every grid day is an anchor
+    sm <- build_sm(s)
+    mask <- leachatetools:::.residual_gap_mask(sm, s$anchor_dates)
+    expect_false(any(mask))
+  })
+
+  it("returns logical(0) for an empty smoother grid", {
+    sm <- list(grid_dates = as.Date(character()), mean = numeric(0),
+               var = numeric(0))
+    mask <- leachatetools:::.residual_gap_mask(sm, as.Date(character()))
+    expect_length(mask, 0L)
+  })
+
+  it("returns all FALSE for a degenerate (zero-variance) smoother", {
+    grid <- as.Date("2021-01-01") + 0:100
+    sm <- list(grid_dates = grid, mean = rep(5, length(grid)),
+               var = rep(0, length(grid)))
+    mask <- leachatetools:::.residual_gap_mask(sm, grid[c(1L, 50L, 101L)])
+    expect_false(any(mask))
+  })
+
+  it("mask coverage grows monotonically with gap length", {
+    short <- build_sm(sim_ou(anchor_every = 14L, seed = 23L))
+    long  <- build_sm(sim_ou(anchor_every = 28L, seed = 23L))
+    f_short <- mean(leachatetools:::.residual_gap_mask(
+      short, sim_ou(anchor_every = 14L, seed = 23L)$anchor_dates))
+    f_long <- mean(leachatetools:::.residual_gap_mask(
+      long, sim_ou(anchor_every = 28L, seed = 23L)$anchor_dates))
+    expect_gt(f_long, f_short)
+  })
+})
