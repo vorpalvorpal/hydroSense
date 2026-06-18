@@ -1,5 +1,19 @@
 # leachatetools (development)
 
+## Free recession constant in the rainfall API (issue #49)
+
+* The Antecedent Precipitation Index is now an **exact recursive linear
+  reservoir** (`S_t = k^dt * S_{t-1} + P_t`, `k = exp(-1/tau)`; Maillet 1905,
+  Kohler & Linsley 1951) with no truncation horizon, evaluated in C via
+  `stats::filter()`. The recession constant `tau` is selected per analyte by
+  profiled GAM AIC (golden-section, with a `tau_long >= 1.5*tau_short`
+  separation and a delta-AIC >= 2 adoption gate over a parsimonious default).
+* **Breaking:** `fit_reference_model()` and `fit_target_model()` arguments
+  `api_windows_short`/`api_windows_long` are replaced by
+  `api_tau_bounds_short`/`api_tau_bounds_long` (length-2 `c(lo, hi)` day
+  ranges; defaults `c(1, 30)` and `c(20, 365)`). Per-analyte model fields
+  `window_short`/`window_long` are renamed `tau_short`/`tau_long`.
+
 ## AmsPAF engine vectorisation + `analyte_pafs` API change (issue #30)
 
 * `compute_amspaf_per_sample()` is vectorised across all (sample × draw) blocks

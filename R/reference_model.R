@@ -468,7 +468,7 @@
 #' @param silo_start,silo_end Start/end dates for SILO auto-fetch.  Default
 #'   `NULL`: derived from the reference chemistry date range, padded on the left
 #'   by `5 × max(api_tau_bounds_long)` days so the recursive reservoir has
-#'   enough burn-in (≈5τ) to converge before the first observation.
+#'   enough burn-in (≈5\u03c4) to converge before the first observation.
 #' @param silo_api_key Passed to [get_silo_rainfall()] when `hydro = NULL`.
 #' @param eps Small positive guard for log transform (default `1e-9`).
 #'
@@ -575,7 +575,7 @@ fit_reference_model <- function(
     s_start <- if (!is.null(silo_start)) {
       as.Date(silo_start)
     } else {
-      # ~5τ burn-in so the recursive reservoir converges before obs start.
+      # ~5\u03c4 burn-in so the recursive reservoir converges before obs start.
       min(ref_dates, na.rm = TRUE) - 5 * max(api_tau_bounds_long)
     }
     s_end <- if (!is.null(silo_end)) {
@@ -819,7 +819,7 @@ print.reference_model <- function(x, ...) {
     detail <- vapply(model_nms, function(nm) {
       m <- x$models[[nm]]
       sprintf(
-        "%s (τ=%.0f/%.0fd, n=%d)", nm, m$tau_short, m$tau_long, m$n_obs
+        "%s (\u03c4=%.0f/%.0fd, n=%d)", nm, m$tau_short, m$tau_long, m$n_obs
       )
     }, character(1L))
     cat(sprintf("  tier-2 (%d):  %s\n", n_model, paste(detail, collapse = ", ")))

@@ -945,7 +945,7 @@ print.target_model <- function(x, ...) {
     nms <- names(Filter(function(m) m$tier == "model", x$models))
     detail <- vapply(nms, function(nm) {
       m <- x$models[[nm]]
-      sprintf("%s (τ=%.0f/%.0fd, n=%d)", nm, m$tau_short, m$tau_long, m$n_obs)
+      sprintf("%s (\u03c4=%.0f/%.0fd, n=%d)", nm, m$tau_short, m$tau_long, m$n_obs)
     }, character(1L))
     cat(sprintf("  hydro-response (%d):  %s\n", n_model, paste(detail, collapse = ", ")))
   }
