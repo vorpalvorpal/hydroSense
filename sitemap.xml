@@ -34,7 +34,7 @@
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-METAL_ANALYTES.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-PCA_NO_LOG_VARS.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-WQ_BLOCK_CANDIDATES.html</loc></url>
-<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-aic_for_windows.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-aic_for_tau.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-amspaf_add_paf.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-amspaf_adjust.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-amspaf_empty_row.html</loc></url>
@@ -88,6 +88,7 @@
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-no3_class.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-no3_weights.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-normalise_ref_observations.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-optimise_tau_pair.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-parse_normalisation_formula.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-perturb_co_split.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-perturb_gam.html</loc></url>
@@ -110,7 +111,7 @@
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-resolve_to.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-route_groups.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-s6_var_to_g.html</loc></url>
-<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-select_api_windows.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-select_api_tau.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-ssd_paf_lookup.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-ssd_paf_vec.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-summarise_amspaf_diagnostics.html</loc></url>

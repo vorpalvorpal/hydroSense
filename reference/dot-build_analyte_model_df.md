@@ -9,8 +9,8 @@ Computes hydro features at the observation dates and assembles
 .build_analyte_model_df(
   obs,
   hydro,
-  window_short,
-  window_long,
+  tau_short,
+  tau_long,
   hydro_type,
   eps = 1e-09
 )
@@ -26,9 +26,9 @@ Computes hydro features at the observation dates and assembles
 
   Daily hydro series.
 
-- window_short, window_long:
+- tau_short, tau_long:
 
-  Memory window lengths (days).
+  Reservoir memory constants (days).
 
 - hydro_type:
 

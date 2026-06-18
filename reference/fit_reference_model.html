@@ -65,8 +65,8 @@ rather than a static time-average.</p>
 <span>  imputation_model <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  match_window_days <span class="op">=</span> <span class="fl">5L</span>,</span>
 <span>  match_hydro_tol <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  api_windows_short <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">3L</span>, <span class="fl">7L</span>, <span class="fl">14L</span><span class="op">)</span>,</span>
-<span>  api_windows_long <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">30L</span>, <span class="fl">60L</span>, <span class="fl">90L</span>, <span class="fl">180L</span><span class="op">)</span>,</span>
+<span>  api_tau_bounds_short <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">30</span><span class="op">)</span>,</span>
+<span>  api_tau_bounds_long <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">20</span>, <span class="fl">365</span><span class="op">)</span>,</span>
 <span>  auto_select <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  min_obs_model <span class="op">=</span> <span class="fl">20L</span>,</span>
 <span>  summary <span class="op">=</span> <span class="st">"geom_mean"</span>,</span>
@@ -132,20 +132,21 @@ only).</p></dd>
 <code>0.5 × IQR</code> of the reference event-API series).</p></dd>
 
 
-<dt id="arg-api-windows-short">api_windows_short<a class="anchor" aria-label="anchor" href="#arg-api-windows-short"></a></dt>
-<dd><p>Integer vector of candidate short-memory window
-lengths in days (default <code>c(3L, 7L, 14L)</code>).</p></dd>
+<dt id="arg-api-tau-bounds-short">api_tau_bounds_short<a class="anchor" aria-label="anchor" href="#arg-api-tau-bounds-short"></a></dt>
+<dd><p>Length-2 numeric <code>c(lo, hi)</code> search range (days)
+for the short-store recession constant <code>tau_short</code> (default <code>c(1, 30)</code>).
+A degenerate <code>c(x, x)</code> fixes <code>tau_short = x</code>.</p></dd>
 
 
-<dt id="arg-api-windows-long">api_windows_long<a class="anchor" aria-label="anchor" href="#arg-api-windows-long"></a></dt>
-<dd><p>Integer vector of candidate long-memory window
-lengths in days (default <code>c(30L, 60L, 90L, 180L)</code>).</p></dd>
+<dt id="arg-api-tau-bounds-long">api_tau_bounds_long<a class="anchor" aria-label="anchor" href="#arg-api-tau-bounds-long"></a></dt>
+<dd><p>Length-2 numeric <code>c(lo, hi)</code> search range (days)
+for the long-store recession constant <code>tau_long</code> (default <code>c(20, 365)</code>).</p></dd>
 
 
 <dt id="arg-auto-select">auto_select<a class="anchor" aria-label="anchor" href="#arg-auto-select"></a></dt>
-<dd><p>Logical; if <code>TRUE</code> (default), select window lengths per
-analyte by AIC.  If <code>FALSE</code>, use <code>api_windows_short[1]</code> and
-<code>api_windows_long[1]</code> for all analytes without CV.</p></dd>
+<dd><p>Logical; if <code>TRUE</code> (default), select <code>tau_short</code>,
+<code>tau_long</code> per analyte by profiled AIC.  If <code>FALSE</code>, use the parsimonious
+defaults (<code>tau_short = 7</code>, <code>tau_long = 60</code>) for all analytes.</p></dd>
 
 
 <dt id="arg-min-obs-model">min_obs_model<a class="anchor" aria-label="anchor" href="#arg-min-obs-model"></a></dt>
@@ -162,8 +163,9 @@ directly to tier 3.</p></dd>
 
 <dt id="arg-silo-start-silo-end">silo_start, silo_end<a class="anchor" aria-label="anchor" href="#arg-silo-start-silo-end"></a></dt>
 <dd><p>Start/end dates for SILO auto-fetch.  Default
-<code>NULL</code>: derived from the reference chemistry date range (padded by 365
-days on the left for the maximum API window).</p></dd>
+<code>NULL</code>: derived from the reference chemistry date range, padded on the left
+by <code>5 × max(api_tau_bounds_long)</code> days so the recursive reservoir has
+enough burn-in (≈5τ) to converge before the first observation.</p></dd>
 
 
 <dt id="arg-silo-api-key">silo_api_key<a class="anchor" aria-label="anchor" href="#arg-silo-api-key"></a></dt>
@@ -178,7 +180,7 @@ days on the left for the maximum API window).</p></dd>
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>An object of class <code>reference_model</code>:</p><dl><dt><code>$models</code></dt>
 <dd><p>Named list (one per analyte) carrying <code>gamm_fit</code>,
-<code>window_short</code>, <code>window_long</code>, <code>best_aic</code>, <code>null_aic</code>, <code>tier</code>,
+<code>tau_short</code>, <code>tau_long</code>, <code>best_aic</code>, <code>null_aic</code>, <code>tier</code>,
 <code>n_obs</code>, <code>static_ref</code>, and <code>obs</code> (normalised observations with
 hydro features — used for tier-1 matching).</p></dd>
 
@@ -216,11 +218,14 @@ a downstream target in the same sub-catchment.</p>
 time-close but hydrologically-mismatched grabs (e.g. a dry-weather
 reference next to a wet-event target).</p></li>
 <li><p><strong>Tier 2 — GAM prediction.</strong> A per-analyte <code><a href="https://rdrr.io/pkg/mgcv/man/gam.html" class="external-link">mgcv::gam</a></code> with
-<code>s(doy, bs="cc") + s(hydro_short) + s(hydro_long)</code>.  Window lengths are
-auto-selected by AIC over the <code>api_windows_short × api_windows_long</code>
-candidate grid.  The analyte falls back to tier 3 if the best model has
-higher AIC than the null (intercept-only) model, or if fewer than
-<code>min_obs_model</code> detected observations are available.</p></li>
+<code>s(doy, bs="cc") + s(hydro_short) + s(hydro_long)</code>.  The reservoir
+recession constants <code>tau_short</code>, <code>tau_long</code> are selected per analyte by
+profiled AIC over the <code>api_tau_bounds_short</code>/<code>api_tau_bounds_long</code>
+ranges (continuous, with a <code>tau_long &gt;= 1.5*tau_short</code> separation and a
+ΔAIC ≥ 2 adoption gate over a parsimonious default).  The analyte falls
+back to tier 3 if the best model has higher AIC than the null
+(intercept-only) model, or if fewer than <code>min_obs_model</code> detected
+observations are available.</p></li>
 <li><p><strong>Tier 3 — static fallback.</strong> Geometric mean of all normalised
 reference observations (identical to <code><a href="prepare_reference.html">prepare_reference()</a></code> with
 <code>summary = "geom_mean"</code>).</p></li>
@@ -254,7 +259,7 @@ fetched automatically via <code><a href="get_silo_rainfall.html">get_silo_rainfa
 <span class="r-in"><span><span class="co"># Or supply your own gauge record</span></span></span>
 <span class="r-in"><span><span class="va">ref_model2</span> <span class="op">&lt;-</span> <span class="fu">fit_reference_model</span><span class="op">(</span></span></span>
 <span class="r-in"><span>  reference  <span class="op">=</span> <span class="va">ref</span>,</span></span>
-<span class="r-in"><span>  hydro      <span class="op">=</span> <span class="va">my_stage_df</span>,  <span class="co"># data.frame(date, value)</span></span></span>
+<span class="r-in"><span>  hydro      <span class="op">=</span> <span class="va">my_stage_df</span>, <span class="co"># data.frame(date, value)</span></span></span>
 <span class="r-in"><span>  hydro_type <span class="op">=</span> <span class="st">"stage"</span>,</span></span>
 <span class="r-in"><span>  conc_units <span class="op">=</span> <span class="st">"ug/L"</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>

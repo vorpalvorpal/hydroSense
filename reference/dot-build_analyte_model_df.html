@@ -51,8 +51,8 @@
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">.build_analyte_model_df</span><span class="op">(</span></span>
 <span>  <span class="va">obs</span>,</span>
 <span>  <span class="va">hydro</span>,</span>
-<span>  <span class="va">window_short</span>,</span>
-<span>  <span class="va">window_long</span>,</span>
+<span>  <span class="va">tau_short</span>,</span>
+<span>  <span class="va">tau_long</span>,</span>
 <span>  <span class="va">hydro_type</span>,</span>
 <span>  eps <span class="op">=</span> <span class="fl">1e-09</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -70,8 +70,8 @@
 <dd><p>Daily hydro series.</p></dd>
 
 
-<dt id="arg-window-short-window-long">window_short, window_long<a class="anchor" aria-label="anchor" href="#arg-window-short-window-long"></a></dt>
-<dd><p>Memory window lengths (days).</p></dd>
+<dt id="arg-tau-short-tau-long">tau_short, tau_long<a class="anchor" aria-label="anchor" href="#arg-tau-short-tau-long"></a></dt>
+<dd><p>Reservoir memory constants (days).</p></dd>
 
 
 <dt id="arg-hydro-type">hydro_type<a class="anchor" aria-label="anchor" href="#arg-hydro-type"></a></dt>

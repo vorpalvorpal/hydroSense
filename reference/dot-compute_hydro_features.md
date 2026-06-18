@@ -4,7 +4,7 @@ Dispatches to
 [`.compute_api()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-compute_api.md)
 for rainfall or
 [`.compute_antecedent_mean()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-compute_antecedent_mean.md)
-for stage/discharge, at both the short and long window lengths.
+for stage/discharge, at both the short and long tau values.
 
 ## Usage
 
@@ -12,8 +12,8 @@ for stage/discharge, at both the short and long window lengths.
 .compute_hydro_features(
   hydro,
   target_dates,
-  window_short,
-  window_long,
+  tau_short,
+  tau_long,
   hydro_type = "rainfall"
 )
 ```
@@ -28,9 +28,9 @@ for stage/discharge, at both the short and long window lengths.
 
   Date vector.
 
-- window_short, window_long:
+- tau_short, tau_long:
 
-  Memory lengths (days).
+  Memory constants (days).
 
 - hydro_type:
 

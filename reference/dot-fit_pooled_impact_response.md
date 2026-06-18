@@ -20,8 +20,8 @@ the near-zero ones in turn.
   target_analytes,
   hydro,
   hydro_type,
-  api_windows_short,
-  api_windows_long,
+  tau_bounds_short,
+  tau_bounds_long,
   auto_select,
   min_obs_model,
   eps

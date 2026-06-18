@@ -25,8 +25,8 @@ fit_target_model(
   guideline_dir = getOption("leachatetools.guideline_dir"),
   transform = c("pseudo_log", "additive"),
   analyte_c = NULL,
-  api_windows_short = c(3L, 7L, 14L),
-  api_windows_long = c(30L, 60L, 90L, 180L),
+  api_tau_bounds_short = c(1, 30),
+  api_tau_bounds_long = c(20, 365),
   auto_select = TRUE,
   min_obs_model = 12L,
   pool = TRUE,
@@ -108,14 +108,18 @@ fit_target_model(
   scale `g = asinh(I / c)`; an analyte with `NA`/absent `c` keeps the
   additive model.
 
-- api_windows_short, api_windows_long:
+- api_tau_bounds_short, api_tau_bounds_long:
 
-  Candidate short/long antecedent memory windows (days) for `f(hydro)`,
-  selected by AIC.
+  Length-2 numeric `c(lo, hi)` search ranges (days) for the short/long
+  reservoir recession constants of `f(hydro)`, selected per analyte by
+  profiled AIC (with a `tau_long >= 1.5*tau_short` separation). A
+  degenerate `c(x, x)` fixes that store's tau. Defaults `c(1, 30)` and
+  `c(20, 365)`.
 
 - auto_select:
 
-  Logical; AIC window selection per analyte (default `TRUE`).
+  Logical; profiled-AIC tau selection per analyte (default `TRUE`). If
+  `FALSE`, use the parsimonious defaults (tau 7 / 60 days).
 
 - min_obs_model:
 
@@ -145,9 +149,9 @@ An object of class `target_model`:
 
 - `$models`:
 
-  Named per-analyte list: `impact_fit` (gam or `NULL`), `window_short`,
-  `window_long`, `tier` (`"model"` or `"bridge"`), `n_obs`, and
-  `anchors` (tibble `date`, `I`, `S`, `hydro_short`, `hydro_long`).
+  Named per-analyte list: `impact_fit` (gam or `NULL`), `tau_short`,
+  `tau_long`, `tier` (`"model"` or `"bridge"`), `n_obs`, and `anchors`
+  (tibble `date`, `I`, `S`, `hydro_short`, `hydro_long`).
 
 - `$reference_model`:
 
@@ -202,8 +206,10 @@ Godsey SE, Kirchner JW, Clow DW (2009) Hydrological Processes
 
 ``` r
 if (FALSE) { # \dontrun{
-ref_model <- fit_reference_model(reference_chem, latitude = -33.8,
-                                 longitude = 151.2, conc_units = "ug/L")
+ref_model <- fit_reference_model(reference_chem,
+  latitude = -33.8,
+  longitude = 151.2, conc_units = "ug/L"
+)
 tgt_model <- fit_target_model(target_chem, ref_model, conc_units = "ug/L")
 tgt_model
 } # }

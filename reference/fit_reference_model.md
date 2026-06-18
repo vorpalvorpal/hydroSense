@@ -20,8 +20,8 @@ fit_reference_model(
   imputation_model = NULL,
   match_window_days = 5L,
   match_hydro_tol = NULL,
-  api_windows_short = c(3L, 7L, 14L),
-  api_windows_long = c(30L, 60L, 90L, 180L),
+  api_tau_bounds_short = c(1, 30),
+  api_tau_bounds_long = c(20, 365),
   auto_select = TRUE,
   min_obs_model = 20L,
   summary = "geom_mean",
@@ -86,21 +86,22 @@ fit_reference_model(
   Numeric; tier-1 hydro tolerance (default `NULL` → `0.5 × IQR` of the
   reference event-API series).
 
-- api_windows_short:
+- api_tau_bounds_short:
 
-  Integer vector of candidate short-memory window lengths in days
-  (default `c(3L, 7L, 14L)`).
+  Length-2 numeric `c(lo, hi)` search range (days) for the short-store
+  recession constant `tau_short` (default `c(1, 30)`). A degenerate
+  `c(x, x)` fixes `tau_short = x`.
 
-- api_windows_long:
+- api_tau_bounds_long:
 
-  Integer vector of candidate long-memory window lengths in days
-  (default `c(30L, 60L, 90L, 180L)`).
+  Length-2 numeric `c(lo, hi)` search range (days) for the long-store
+  recession constant `tau_long` (default `c(20, 365)`).
 
 - auto_select:
 
-  Logical; if `TRUE` (default), select window lengths per analyte by
-  AIC. If `FALSE`, use `api_windows_short[1]` and `api_windows_long[1]`
-  for all analytes without CV.
+  Logical; if `TRUE` (default), select `tau_short`, `tau_long` per
+  analyte by profiled AIC. If `FALSE`, use the parsimonious defaults
+  (`tau_short = 7`, `tau_long = 60`) for all analytes.
 
 - min_obs_model:
 
@@ -116,8 +117,9 @@ fit_reference_model(
 - silo_start, silo_end:
 
   Start/end dates for SILO auto-fetch. Default `NULL`: derived from the
-  reference chemistry date range (padded by 365 days on the left for the
-  maximum API window).
+  reference chemistry date range, padded on the left by
+  `5 × max(api_tau_bounds_long)` days so the recursive reservoir has
+  enough burn-in (≈5τ) to converge before the first observation.
 
 - silo_api_key:
 
@@ -135,10 +137,10 @@ An object of class `reference_model`:
 
 - `$models`:
 
-  Named list (one per analyte) carrying `gamm_fit`, `window_short`,
-  `window_long`, `best_aic`, `null_aic`, `tier`, `n_obs`, `static_ref`,
-  and `obs` (normalised observations with hydro features — used for
-  tier-1 matching).
+  Named list (one per analyte) carrying `gamm_fit`, `tau_short`,
+  `tau_long`, `best_aic`, `null_aic`, `tier`, `n_obs`, `static_ref`, and
+  `obs` (normalised observations with hydro features — used for tier-1
+  matching).
 
 - `$hydro`:
 
@@ -182,10 +184,13 @@ paired with a downstream target in the same sub-catchment.
 
 2.  **Tier 2 — GAM prediction.** A per-analyte
     [`mgcv::gam`](https://rdrr.io/pkg/mgcv/man/gam.html) with
-    `s(doy, bs="cc") + s(hydro_short) + s(hydro_long)`. Window lengths
-    are auto-selected by AIC over the
-    `api_windows_short × api_windows_long` candidate grid. The analyte
-    falls back to tier 3 if the best model has higher AIC than the null
+    `s(doy, bs="cc") + s(hydro_short) + s(hydro_long)`. The reservoir
+    recession constants `tau_short`, `tau_long` are selected per analyte
+    by profiled AIC over the
+    `api_tau_bounds_short`/`api_tau_bounds_long` ranges (continuous,
+    with a `tau_long >= 1.5*tau_short` separation and a ΔAIC ≥ 2
+    adoption gate over a parsimonious default). The analyte falls back
+    to tier 3 if the best model has higher AIC than the null
     (intercept-only) model, or if fewer than `min_obs_model` detected
     observations are available.
 
@@ -230,7 +235,7 @@ ref_model
 # Or supply your own gauge record
 ref_model2 <- fit_reference_model(
   reference  = ref,
-  hydro      = my_stage_df,  # data.frame(date, value)
+  hydro      = my_stage_df, # data.frame(date, value)
   hydro_type = "stage",
   conc_units = "ug/L"
 )
