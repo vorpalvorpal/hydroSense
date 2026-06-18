@@ -130,20 +130,23 @@
 #'   `interpolation = "model"`.
 #' @param seed Integer or `NULL`. RNG seed for reproducibility of draws.
 #' @param return `"summary"` (default) or `"draws"`; relevant only when
-#'   `ndraws` is supplied.  `"summary"` collapses the draws to a central
-#'   estimate (`amspaf`, the draws' own central tendency — see `central`) plus
-#'   credible-interval bounds (`amspaf_lower`, `amspaf_upper`).  `"draws"`
+#'   `ndraws` is supplied.  `"summary"` collapses the draws to per-envelope
+#'   central estimates (`median_*`, the draws' own central tendency — see
+#'   `central`) plus credible-interval bounds (`lo_*`, `hi_*`) for the chosen
+#'   `gap_uncertainty`, alongside the `deterministic` centre line.  `"draws"`
 #'   returns one row per (site \eqn{\times} day \eqn{\times} draw) with a
-#'   `draw_id` column.  Ignored in point mode (`ndraws = NULL`).
+#'   `draw_id` column and the per-draw envelope value(s).  See *Value*.  Ignored
+#'   in point mode (`ndraws = NULL`).
 #' @param interval Credible interval width for `return = "summary"` (default
 #'   `0.9`).  The lower bound is the `(1 - interval)/2` quantile, the upper
 #'   is the `1 - (1 - interval)/2` quantile.
-#' @param central Central tendency for the `amspaf` column when
+#' @param central Central tendency for the `median_*` envelope columns when
 #'   `return = "summary"`: `"median"` (default) or `"mean"` of the per-day
-#'   draws.  Because it is a summary *of the draws*, `amspaf` is coherent with
-#'   its band (the median lies inside `[amspaf_lower, amspaf_upper]` by
-#'   construction) and depends on `ndraws`/`seed`.  It is NOT the deterministic
-#'   point estimate — for that, call with `ndraws = NULL`.
+#'   draws.  Because it is a summary *of the draws*, each `median_*` is coherent
+#'   with its band (it lies inside `[lo_*, hi_*]` by construction) and depends on
+#'   `ndraws`/`seed`.  It is NOT the deterministic point estimate, which is
+#'   reported separately in the `deterministic` column (and is the sole estimate
+#'   when called with `ndraws = NULL`).
 #' @param grab_cv Numeric scalar or named numeric vector of coefficients of
 #'   variation for grab-sample measurement error.  A scalar applies the same
 #'   CV to all analytes; a named vector (e.g. `c(Cu = 0.1, pH = 0.02)`)
@@ -175,6 +178,19 @@
 #'   to reflect co-movement of co-toxicants on breach events while leaving
 #'   per-analyte marginals unchanged.  Set to `FALSE` to reproduce the pre-#32
 #'   independent-draw path exactly.
+#' @param gap_uncertainty One of `"bracket"` (default), `"ignorable"`, or
+#'   `"informative"`; relevant only in draws mode.  In observation gaps the
+#'   latent residual reverts to its marginal variance, widening the band — the
+#'   honest posterior **only under ignorable (MAR) missingness**.  Field
+#'   sampling is often **informative (MNAR)**: gaps exist *because* the system
+#'   was judged quiescent, so that band over-states gap uncertainty.  The model
+#'   cannot identify the mechanism from grabs, so the default **brackets** both:
+#'   the *ignorable* (upper) envelope keeps the simulation-smoother draw; the
+#'   *informative* (lower) envelope freezes the residual at its posterior mean on
+#'   in-gap days (the fully-informative extreme — gaps perfectly predictable).
+#'   The two are nested and coincide at observation days.  `"ignorable"` /
+#'   `"informative"` return only that envelope.  See *Interpreting gap
+#'   uncertainty* below.  Reference: Rubin (1976) \doi{10.1093/biomet/63.3.581}.
 #' @param transform `"pseudo_log"` (default) or `"additive"`.  Controls the
 #'   variance-stabilising transform for the daily impact residual smoother.
 #'   `"pseudo_log"` applies `g = asinh(I / c)` with per-analyte scale `c = HC5`
@@ -204,27 +220,42 @@
 #' within its own credible band; it is not the deterministic line overlaid on a
 #' band built from a different posterior.
 #'
+#' @section Interpreting gap uncertainty:
+#' In draws mode the width of the band across an observation gap is the honest
+#' posterior **only under ignorable (MAR) missingness**.  Where you have
+#' external grounds that a gap was quiescent (informative/MNAR sampling), the
+#' ignorable band over-states uncertainty there.  The `"bracket"` output gives
+#' both extremes: read the **informative** (lower) envelope where you vouch the
+#' gap was quiet, the **ignorable** (upper) envelope otherwise.  The
+#' `precautionary_lo`/`precautionary_hi` columns are the composite
+#' `[lo_informative, hi_ignorable]` — a **decision bound, not a calibrated
+#' credible interval** (its coverage exceeds nominal and is undefined).  Applied
+#' blanket, the informative envelope under-covers genuinely eventful gaps, so use
+#' it per-gap; automatic per-gap conditioning on a continuous proxy is future
+#' work (#18).  The `deterministic` line is **not** a safe blanket alternative —
+#' it under-states risk by Jensen's inequality (#39/#42).
+#'
 #' @return
 #' **Point mode** (`ndraws = NULL`): a tibble with one row per (site
 #'   \eqn{\times} day) for days with sufficient analyte coverage; `amspaf` is
 #'   the deterministic daily estimate.
 #'
-#' **Draws mode** (`ndraws > 0`, `return = "summary"`): same schema, where
-#'   `amspaf` is the draws' central tendency (`central`), plus two extra columns
-#'   `amspaf_lower` and `amspaf_upper` (the credible-interval bounds from the
-#'   `ndraws` posterior draws).
+#' **Draws mode** (`ndraws > 0`, `return = "summary"`): one row per (site
+#'   \eqn{\times} day) with the `deterministic` centre line and the envelope
+#'   columns for the chosen `gap_uncertainty`: `median_*`, `lo_*`, `hi_*` per
+#'   envelope (`informative` and/or `ignorable`, the central tendency per
+#'   `central` and the `interval` credible bounds), plus
+#'   `precautionary_lo`/`precautionary_hi` in `"bracket"` mode.
 #'
 #' **Draws mode** (`ndraws > 0`, `return = "draws"`): one row per (site
-#'   \eqn{\times} day \eqn{\times} draw), with an additional `draw_id`
-#'   integer column.
+#'   \eqn{\times} day \eqn{\times} draw), with a `draw_id` integer column and the
+#'   per-draw AmsPAF value(s) `amspaf_ignorable` and/or `amspaf_informative` for
+#'   the chosen `gap_uncertainty`.
 #'
 #' Common columns:
 #'   \describe{
 #'     \item{`date`}{Date of this daily estimate.}
 #'     \item{`site_id`}{Site identifier.}
-#'     \item{`amspaf`}{Daily AmsPAF (percentage, 0--100+).  The deterministic
-#'       point estimate in point mode; the draws' central tendency in
-#'       `return = "summary"`.}
 #'     \item{`n_analytes_used`}{SSD-eligible analytes contributing to AmsPAF.}
 #'     \item{`dominant_analyte`}{Analyte with the highest individual PAF.}
 #'     \item{`max_paf`}{PAF of the dominant analyte (proportion 0--1).}
@@ -279,6 +310,7 @@ amspaf_daily <- function(
   kappa = 0.5,
   parallel = FALSE,
   couple_residuals = TRUE,
+  gap_uncertainty = c("bracket", "ignorable", "informative"),
   transform = c("pseudo_log", "additive")
 ) {
   ## --- Validate inputs -------------------------------------------------------
@@ -303,6 +335,7 @@ amspaf_daily <- function(
   }
   checkmate::assert_flag(parallel)
   checkmate::assert_flag(couple_residuals)
+  gap_uncertainty <- match.arg(gap_uncertainty)
   transform <- match.arg(transform)
   if (parallel && !requireNamespace("future.apply", quietly = TRUE)) {
     cli::cli_abort(c(
@@ -351,6 +384,27 @@ amspaf_daily <- function(
       "i" = "Draws-mode uncertainty propagation uses the season-blind target \\
              model to generate chemistry traces; supply a {.arg reference_model} \\
              and set {.code interpolation = \"model\"}."
+    ))
+  }
+
+  ## #50: with rainfall hydrology there is no continuous in-stream state signal,
+  ## so the smoother treats observation gaps as ignorable (MAR) and the residual
+  ## reverts to its marginal variance there. Warn that the intervals over-state
+  ## uncertainty in any gap the analyst knows was quiescent (informative/MNAR),
+  ## without steering them to the deterministic line (which under-states risk by
+  ## Jensen, #39/#42). Silent in point mode and for stage/discharge hydrology.
+  if (draws_mode && inherits(reference_model, "reference_model") &&
+    identical(reference_model$hydro_type, "rainfall")) {
+    cli::cli_warn(c(
+      "Daily gap uncertainty is treated as {.emph ignorable} (MAR) for \\
+       rainfall hydrology.",
+      "i" = "The residual reverts to its marginal variance across gaps, so the \\
+             intervals {.emph over-state} uncertainty in any gap you know was \\
+             quiescent. The {.field informative} envelope brackets the opposite \\
+             (fully-informative) extreme; read the two together and choose \\
+             per gap.",
+      "i" = "This is not a reason to prefer the {.field deterministic} line: it \\
+             {.emph under-states} risk by Jensen's inequality (#39/#42)."
     ))
   }
 
@@ -426,6 +480,10 @@ amspaf_daily <- function(
 
     ## Step 1b: Model interpolation of toxicants (season-blind impact model).
     impact_tiers <- NULL
+    ## #50 bracket: parallel synthetic frames for the informative envelope and
+    ## the deterministic centre line (NULL unless built in draws mode).
+    synth_inf <- NULL
+    synth_det <- NULL
 
     if (interpolation == "model") {
       if (draws_mode) {
@@ -457,9 +515,10 @@ amspaf_daily <- function(
                    zero-width credible intervals."
           ))
           synth <- .build_synthetic_samples(daily_long, site)
+          ## No model -> the bracket collapses: all three frames coincide.
           return(list(
-            synth = synth, diag = diag,
-            tiers = NULL, site = site
+            synth = synth, synth_inf = synth, synth_det = synth,
+            diag = diag, tiers = NULL, site = site
           ))
         }
 
@@ -522,6 +581,38 @@ amspaf_daily <- function(
           }), fdm$modelled)
         }
 
+        ## #50 informative envelope: per analyte, the gap mask (where the
+        ## residual variance has ballooned) and the posterior mean, aligned to
+        ## each draw's own grid. On in-gap days the informative path replaces the
+        ## simulation-smoother draw by this mean (freezing the residual at its
+        ## posterior expectation -> the fully-informative extreme); off-gap the
+        ## draw is retained, so observed-day uncertainty (incl. S6 grab error) is
+        ## preserved. Built once here so the per-draw closure stays RNG-neutral.
+        want_inf <- gap_uncertainty %in% c("bracket", "informative")
+        res_frozen <- if (!want_inf) {
+          NULL
+        } else {
+          stats::setNames(lapply(fdm$modelled, function(nm) {
+            sm <- fdm$smoothers[[nm]]
+            rd <- res_draws[[nm]]
+            if (is.null(rd$draws) || is.null(sm) ||
+              length(sm$grid_dates) == 0L) {
+              return(NULL)
+            }
+            mask <- .residual_gap_mask(
+              list(grid_dates = sm$grid_dates, var = sm$var),
+              sm$anchor_dates
+            )
+            ## Align mask + mean to the draw grid (defensive: identical here).
+            mask_lut <- stats::setNames(mask, as.character(sm$grid_dates))
+            mean_lut <- stats::setNames(sm$mean, as.character(sm$grid_dates))
+            gd <- as.character(rd$grid_dates)
+            m_rd <- mask_lut[gd]
+            m_rd[is.na(m_rd)] <- FALSE
+            list(mask = as.logical(m_rd), mean = as.numeric(mean_lut[gd]))
+          }), fdm$modelled)
+        }
+
         ## N stochastic draw iterations (draw_id = 1..N).
         ## G2: .predict_daily_tox uses fdm$co_split (exact) for clean C_raw
         ## reconstruction; S7 co-analyte perturbations enter add_amspaf's
@@ -535,6 +626,8 @@ amspaf_daily <- function(
           .grab_cv <- grab_cv
           .daily_long_exact <- daily_long_exact
           .res_draws <- res_draws
+          .res_frozen <- res_frozen
+          .want_inf <- want_inf
           function(d_idx) {
             tm_p <- .perturb_target_model(.fdm$tm, perturb_reference = .perturb_ref)
             ## Residual path for this draw (S impact / d WQ), per analyte.
@@ -559,8 +652,38 @@ amspaf_daily <- function(
               wq_long        = co_p_wq$wq_long # perturbed when S7 active
             )
             if (!is.null(mr_d)) mr_d$draw_id <- as.integer(d_idx)
+
+            ## Informative envelope: same perturbations (tm_p, wq), residual
+            ## frozen at its posterior mean on in-gap days. Deterministic given
+            ## the already-drawn quantities -> consumes no RNG (preserves the
+            ## ignorable draws exactly).
+            mr_d_inf <- NULL
+            if (.want_inf) {
+              residual_paths_inf <- stats::setNames(lapply(.fdm$modelled, function(nm) {
+                rd <- .res_draws[[nm]]
+                if (is.null(rd$draws)) {
+                  return(rep(NA_real_, length(.fdm$qdates)))
+                }
+                col <- rd$draws[, d_idx]
+                fr <- .res_frozen[[nm]]
+                if (!is.null(fr) && any(fr$mask)) {
+                  col[fr$mask] <- fr$mean[fr$mask]
+                }
+                .residual_on_qdates(rd$grid_dates, col, .fdm$qdates)
+              }), .fdm$modelled)
+              mr_d_inf <- .predict_daily_tox(
+                .fdm,
+                tm_p           = tm_p,
+                residual_paths = residual_paths_inf,
+                co_split       = .fdm$co_split,
+                wq_long        = co_p_wq$wq_long
+              )
+              if (!is.null(mr_d_inf)) mr_d_inf$draw_id <- as.integer(d_idx)
+            }
+
             list(
               tox_rows = mr_d,
+              tox_rows_inf = mr_d_inf,
               co_rows = if (!is.null(.grab_cv)) {
                 .co_draw_rows(.daily_long_exact, co_p_wq$co_split, d_idx)
               } else {
@@ -588,21 +711,46 @@ amspaf_daily <- function(
 
         tox_draw_long <- dplyr::bind_rows(Filter(Negate(is.null), tox_draw_rows))
 
-        ## Assemble draws-mode daily_long.
-        if (!is.null(co_draw_rows)) {
-          ## S7 active: co-analytes become draw-bearing (one perturbed copy per
-          ## draw_id 1..N); non-modelled tox rows stay exact (broadcast by
-          ## add_amspaf to all draws).
-          non_mod_tox <- daily_long_exact[
-            daily_long_exact$analyte %in% tox_analytes, ,
-            drop = FALSE
-          ]
-          co_draws_all <- dplyr::bind_rows(Filter(Negate(is.null), co_draw_rows))
-          daily_long <- dplyr::bind_rows(non_mod_tox, co_draws_all, tox_draw_long)
+        ## Assemble a draws-mode daily_long from a set of modelled-tox draw rows,
+        ## reusing the (shared) exact co-analyte / non-modelled context. The
+        ## ignorable and informative envelopes differ ONLY in their modelled-tox
+        ## rows, so they share this assembler exactly.
+        non_mod_tox <- daily_long_exact[
+          daily_long_exact$analyte %in% tox_analytes, ,
+          drop = FALSE
+        ]
+        co_draws_all <- if (!is.null(co_draw_rows)) {
+          dplyr::bind_rows(Filter(Negate(is.null), co_draw_rows))
         } else {
-          ## S7 inactive: co-analytes + non-modelled tox are exact (draw_id = NA
-          ## → broadcast to all stochastic draws by add_amspaf).
-          daily_long <- dplyr::bind_rows(daily_long_exact, tox_draw_long)
+          NULL
+        }
+        assemble_daily <- function(tox_long) {
+          if (!is.null(co_draws_all)) {
+            ## S7 active: co-analytes are draw-bearing; non-modelled tox exact.
+            dplyr::bind_rows(non_mod_tox, co_draws_all, tox_long)
+          } else {
+            ## S7 inactive: co-analytes + non-modelled tox exact (draw_id = NA →
+            ## broadcast to all stochastic draws by add_amspaf).
+            dplyr::bind_rows(daily_long_exact, tox_long)
+          }
+        }
+        daily_long <- assemble_daily(tox_draw_long)
+
+        ## #50 informative envelope frame (same draws, residual frozen in gaps).
+        if (want_inf) {
+          tox_inf_rows <- lapply(draw_results, `[[`, "tox_rows_inf")
+          tox_inf_long <- dplyr::bind_rows(Filter(Negate(is.null), tox_inf_rows))
+          synth_inf <- .build_synthetic_samples(
+            assemble_daily(tox_inf_long), site
+          )
+        }
+
+        ## #50 deterministic centre frame: posterior-mean residual, unperturbed
+        ## reference — identical to point mode (.daily_tox_from_model reuses the
+        ## same fit + .predict_daily_tox(fdm)), so the column matches ndraws=NULL.
+        if (!is.null(pt_rows)) {
+          daily_det <- dplyr::bind_rows(daily_long_exact, pt_rows)
+          synth_det <- .build_synthetic_samples(daily_det, site)
         }
       } else {
         ## ── Point mode: thin wrapper ──────────────────────────────────────────
@@ -629,8 +777,8 @@ amspaf_daily <- function(
     synth <- .build_synthetic_samples(daily_long, site)
 
     list(
-      synth = synth, diag = diag,
-      tiers = impact_tiers, site = site
+      synth = synth, synth_inf = synth_inf, synth_det = synth_det,
+      diag = diag, tiers = impact_tiers, site = site
     )
   })
 
@@ -638,7 +786,7 @@ amspaf_daily <- function(
   if (length(site_results) == 0L) {
     cli::cli_warn("No daily chemistry could be built. Returning empty tibble.")
     empty_mode <- if (!draws_mode) "point" else if (return == "draws") "draws" else "summary"
-    return(.empty_daily_result(empty_mode))
+    return(.empty_daily_result(empty_mode, gap_uncertainty))
   }
 
   all_synth <- dplyr::bind_rows(lapply(site_results, `[[`, "synth"))
@@ -694,7 +842,7 @@ amspaf_daily <- function(
        Check {.arg min_analytes} ({min_analytes}) and data coverage."
     )
     empty_mode <- if (!draws_mode) "point" else if (return == "draws") "draws" else "summary"
-    result <- .empty_daily_result(empty_mode)
+    result <- .empty_daily_result(empty_mode, gap_uncertainty)
     attr(result, "ara_summary") <- ara_summ
     return(result)
   }
@@ -704,46 +852,102 @@ amspaf_daily <- function(
     dplyr::rename(date = ".date")
 
   if (draws_mode) {
+    ## #50 bracket. The primary pass (amspaf_dated) is the IGNORABLE envelope —
+    ## byte-identical to the pre-#50 behaviour. The informative envelope and the
+    ## deterministic centre are additive secondary add_amspaf passes over the
+    ## frozen-residual / posterior-mean synthetic frames (all share the same
+    ## seeded draws, so they are deterministic given the primary pass).
+    want_inf <- gap_uncertainty %in% c("bracket", "informative")
+
+    run_pass <- function(col, ret) {
+      s <- dplyr::bind_rows(lapply(site_results, `[[`, col))
+      if (is.null(s) || nrow(s) == 0L) {
+        return(NULL)
+      }
+      out <- add_amspaf(
+        df                  = dplyr::select(s, -".date"),
+        reference           = reference,
+        analyte_metadata    = analyte_metadata,
+        method              = method,
+        guideline_dir       = guideline_dir,
+        min_analytes        = min_analytes,
+        conc_units          = conc_units,
+        require_temperature = require_temperature,
+        return              = ret
+      )
+      rows <- dplyr::filter(out, .data$analyte == "AmsPAF")
+      if (nrow(rows) == 0L) {
+        return(NULL)
+      }
+      rows |>
+        dplyr::left_join(id_date_map, by = c("sample_id", "site_id")) |>
+        dplyr::rename(date = ".date")
+    }
+
+    ig_draws <- amspaf_dated |>
+      dplyr::select(
+        "date", "site_id", "draw_id",
+        amspaf_ignorable = "value",
+        "n_analytes_used", "dominant_analyte", "max_paf"
+      )
+    inf_dated <- if (want_inf) run_pass("synth_inf", "draws") else NULL
+    draws_wide <- ig_draws
+    if (!is.null(inf_dated)) {
+      draws_wide <- dplyr::full_join(
+        draws_wide,
+        dplyr::select(inf_dated, "date", "site_id", "draw_id",
+          amspaf_informative = "value"
+        ),
+        by = c("date", "site_id", "draw_id")
+      )
+    }
+    ## Informative requested but unproducible -> collapse onto ignorable.
+    if (want_inf && !"amspaf_informative" %in% names(draws_wide)) {
+      draws_wide$amspaf_informative <- draws_wide$amspaf_ignorable
+    }
+
     if (return == "draws") {
-      ## One row per (date, site, draw_id), draw_id = 1..N.
-      result <- amspaf_dated |>
-        dplyr::rename(amspaf = "value") |>
+      keep <- .bracket_draw_cols(gap_uncertainty)
+      result <- draws_wide |>
         dplyr::left_join(all_diag, by = c("date", "site_id")) |>
         dplyr::select(
-          "date", "site_id", "draw_id", "amspaf",
+          "date", "site_id", "draw_id", dplyr::all_of(keep),
           "n_analytes_used", "dominant_analyte", "max_paf",
           "n_measured_analytes", "days_since_last_sample"
         ) |>
         dplyr::arrange(.data$site_id, .data$date, .data$draw_id)
     } else {
-      ## return == "summary": collapse the stochastic draws to a central
-      ## estimate plus a credible interval.  Since issue #42 the centre is the
-      ## draws' OWN central tendency (median or mean per `central`), so it is a
-      ## coherent summary of the same posterior as the band: the centre lies
-      ## within [amspaf_lower, amspaf_upper] by construction (the median is the
-      ## interval's own 50th percentile).  The deterministic point estimate is a
-      ## SEPARATE product, obtained via point mode (ndraws = NULL); it is the
-      ## grabs-exact best guess and is NOT bundled into the draw summary.
-      lo_p <- (1 - interval) / 2
-      hi_p <- 1 - lo_p
-      centre_fun <- if (central == "mean") base::mean else stats::median
-      result <- amspaf_dated |>
+      ## Envelope summary (median + CI per #42), the deterministic centre line,
+      ## and the composition diagnostics (envelope-invariant; from one draw).
+      env_summ <- .summarise_bracket(
+        draws_wide,
+        interval = interval, central = central,
+        gap_uncertainty = gap_uncertainty
+      )
+      det_dated <- run_pass("synth_det", "summary")
+      det_col <- if (!is.null(det_dated)) {
+        dplyr::select(det_dated, "date", "site_id", deterministic = "value")
+      } else {
+        tibble::tibble(
+          date = env_summ$date, site_id = env_summ$site_id,
+          deterministic = NA_real_
+        )
+      }
+      comp <- amspaf_dated |>
         dplyr::group_by(.data$date, .data$site_id) |>
         dplyr::summarise(
-          amspaf = centre_fun(.data$value),
-          amspaf_lower = stats::quantile(.data$value, lo_p, names = FALSE),
-          amspaf_upper = stats::quantile(.data$value, hi_p, names = FALSE),
-          ## Composition diagnostics (which analytes drive AmsPAF) vary only in
-          ## magnitude across draws, not membership; take them from one draw so
-          ## (dominant_analyte, max_paf) stay a coherent pair.
           n_analytes_used = dplyr::first(.data$n_analytes_used),
           dominant_analyte = dplyr::first(.data$dominant_analyte),
           max_paf = dplyr::first(.data$max_paf),
           .groups = "drop"
-        ) |>
+        )
+      result <- env_summ |>
+        dplyr::left_join(det_col, by = c("date", "site_id")) |>
+        dplyr::left_join(comp, by = c("date", "site_id")) |>
         dplyr::left_join(all_diag, by = c("date", "site_id")) |>
         dplyr::select(
-          "date", "site_id", "amspaf", "amspaf_lower", "amspaf_upper",
+          "date", "site_id", "deterministic",
+          dplyr::all_of(.bracket_summary_cols(gap_uncertainty)),
           "n_analytes_used", "dominant_analyte", "max_paf",
           "n_measured_analytes", "days_since_last_sample"
         ) |>
@@ -1280,8 +1484,10 @@ amspaf_daily <- function(
 
       ## var + anchor_dates are carried so the #50 bracket can locate in-gap
       ## days (where the informative envelope freezes the residual at its mean).
-      list(grid_dates = sm_c$grid_dates, mean = sm_c$mean, var = sm_c$var,
-           anchor_dates = as.Date(anch$date), draw_model = draw_model)
+      list(
+        grid_dates = sm_c$grid_dates, mean = sm_c$mean, var = sm_c$var,
+        anchor_dates = as.Date(anch$date), draw_model = draw_model
+      )
     }),
     modelled
   )
@@ -1690,13 +1896,14 @@ amspaf_daily <- function(
 #' Empty tibble matching the amspaf_daily() return schema
 #' @param mode One of `"point"`, `"summary"`, or `"draws"` — governs which
 #'   extra columns are included.
+#' @param gap_uncertainty Bracket mode (`"bracket"`/`"ignorable"`/
+#'   `"informative"`); governs the envelope columns in draws/summary mode.
+#'   Ignored for point mode.
 #' @keywords internal
-.empty_daily_result <- function(mode = c("point", "summary", "draws")) {
+.empty_daily_result <- function(mode = c("point", "summary", "draws"),
+                                gap_uncertainty = "bracket") {
   mode <- match.arg(mode)
-  base <- tibble::tibble(
-    date                   = as.Date(character()),
-    site_id                = character(),
-    amspaf                 = numeric(),
+  diag <- tibble::tibble(
     n_analytes_used        = integer(),
     dominant_analyte       = character(),
     max_paf                = numeric(),
@@ -1704,20 +1911,40 @@ amspaf_daily <- function(
     days_since_last_sample = integer(),
     analyte_pafs           = list()
   )
-  if (mode == "summary") {
-    base$amspaf_lower <- numeric()
-    base$amspaf_upper <- numeric()
-    base <- dplyr::select(
-      base,
-      "date", "site_id", "amspaf", "amspaf_lower", "amspaf_upper",
-      dplyr::everything()
-    )
-  } else if (mode == "draws") {
-    base$draw_id <- integer()
-    base <- dplyr::select(
-      base,
-      "date", "site_id", "draw_id", "amspaf", dplyr::everything()
-    )
+  if (mode == "point") {
+    return(dplyr::bind_cols(
+      tibble::tibble(
+        date = as.Date(character()), site_id = character(),
+        amspaf = numeric()
+      ),
+      diag
+    ))
   }
-  base
+  if (mode == "draws") {
+    env <- stats::setNames(
+      rep(list(numeric()), length(.bracket_draw_cols(gap_uncertainty))),
+      .bracket_draw_cols(gap_uncertainty)
+    )
+    return(dplyr::bind_cols(
+      tibble::tibble(
+        date = as.Date(character()), site_id = character(),
+        draw_id = integer()
+      ),
+      tibble::as_tibble(env),
+      diag
+    ))
+  }
+  ## summary
+  env <- stats::setNames(
+    rep(list(numeric()), length(.bracket_summary_cols(gap_uncertainty))),
+    .bracket_summary_cols(gap_uncertainty)
+  )
+  dplyr::bind_cols(
+    tibble::tibble(
+      date = as.Date(character()), site_id = character(),
+      deterministic = numeric()
+    ),
+    tibble::as_tibble(env),
+    diag
+  )
 }
