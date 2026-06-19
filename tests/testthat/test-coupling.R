@@ -2,7 +2,7 @@
 ## (issue #32).
 ##
 ## Plan (issue #32 comments): correlate per-analyte Kalman residual draws at the
-## single innovation chokepoint so the combined AmsPAF interval reflects positive
+## single innovation chokepoint so the combined msPAF interval reflects positive
 ## co-movement of co-toxicants. Three components:
 ##
 ##   R/coupling.R (new):
@@ -587,7 +587,7 @@ describe(".coupled_residual_draws()", {
 ## ── Stage 4: combined-band widening invariant ─────────────────────────────────
 ##
 ## The following tests verify the headline statistical guarantee on synthetic
-## multi-analyte data without needing the full amspaf_daily() pipeline.
+## multi-analyte data without needing the full mspaf_daily() pipeline.
 
 describe("coupling widens combined band; per-analyte marginals unchanged", {
 

@@ -1,17 +1,17 @@
 #!/usr/bin/env Rscript
-# Generate golden snapshots of the CURRENT add_amspaf / amspaf_daily output, for
+# Generate golden snapshots of the CURRENT add_mspaf / mspaf_daily output, for
 # the issue #30 equivalence harness. Run ONCE on the pre-change code; the saved
 # fixture is the reference the vectorised engine must reproduce (numeric rel 1e-9,
 # categorical/integer exact). Self-contained: bundled SSD data, no DB/guideline_dir.
 #
-#   Rscript dev/gen_amspaf_golden.R
+#   Rscript dev/gen_mspaf_golden.R
 suppressMessages(devtools::load_all(".", quiet = TRUE))
 set.seed(30L)
 
 FIX <- "tests/testthat/fixtures"
 dir.create(FIX, showWarnings = FALSE, recursive = TRUE)
 
-## ── add_amspaf input: multi-sample, with edge cases ──────────────────────────
+## ── add_mspaf input: multi-sample, with edge cases ──────────────────────────
 co <- c(pH = 7.5, DOC = 2.0, Ca = 6.0, Mg = 4.0, hardness = 30.0)
 mk_sample <- function(sid, cu, zn, ni, drop_doc = FALSE, cu_bdl = FALSE) {
   an <- c("Cu", "Zn", "Ni", names(co))
@@ -51,7 +51,7 @@ ref_df <- dplyr::bind_rows(
 ) |> dplyr::mutate(site_id = "ref")
 
 normalise_out <- function(out) {
-  rows <- dplyr::filter(out, .data$analyte == "AmsPAF")
+  rows <- dplyr::filter(out, .data$analyte == "msPAF")
   scal_cols <- intersect(c("sample_id", "draw_id", "value", "n_analytes_used",
                            "n_analytes_imputed", "dominant_analyte", "max_paf"),
                          names(rows))
@@ -67,7 +67,7 @@ normalise_out <- function(out) {
 
 prep_ref <- suppressMessages(prepare_reference(ref_df, conc_units = "ug/L"))
 run <- function(df, reference) suppressMessages(
-  add_amspaf(df, reference = reference, conc_units = "ug/L",
+  add_mspaf(df, reference = reference, conc_units = "ug/L",
              return = if ("draw_id" %in% names(df)) "draws" else "summary"))
 
 golden <- list(
@@ -77,6 +77,6 @@ golden <- list(
   dr_ara    = normalise_out(run(dr_df, prep_ref)),
   inputs    = list(pt_df = pt_df, dr_df = dr_df, ref_df = ref_df, N = N)
 )
-qs2::qs_save(golden, file.path(FIX, "amspaf_golden.qs2"))
-cat("WROTE", file.path(FIX, "amspaf_golden.qs2"),
+qs2::qs_save(golden, file.path(FIX, "mspaf_golden.qs2"))
+cat("WROTE", file.path(FIX, "mspaf_golden.qs2"),
     "- scalars rows:", nrow(golden$dr_ara$scalars), "\n")

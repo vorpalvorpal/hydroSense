@@ -52,11 +52,11 @@ the reference), and a sample at low pH/temperature \strong{downward}.
 }
 \section{Do not double-correct}{
 
-\code{\link[=add_amspaf]{add_amspaf()}} applies this same correction \strong{automatically} from the
+\code{\link[=add_mspaf]{add_mspaf()}} applies this same correction \strong{automatically} from the
 metadata \code{normalisation_formula} (it reads the per-sample \code{pH} and
 \code{temperature} columns). Use this helper only for the manual \code{\link[=ssd_paf]{ssd_paf()}}
 path. Do \strong{not} pre-correct with this helper and then pass the result to
-\code{\link[=add_amspaf]{add_amspaf()}}, or ammonia will be corrected twice.
+\code{\link[=add_mspaf]{add_mspaf()}}, or ammonia will be corrected twice.
 }
 
 \examples{

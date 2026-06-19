@@ -64,7 +64,7 @@ as independent of imputation error (cross-source index-pairing) and
 independent across analytes within a sample.
 
 \strong{Call order:} \code{impute_chemistry()} → \code{impute_coanalytes()} →
-\code{draw_measurement_error()} → \code{add_amspaf()}.  Imputation establishes the
+\code{draw_measurement_error()} → \code{add_mspaf()}.  Imputation establishes the
 draw count N; this function reuses it.
 }
 \seealso{

@@ -9,7 +9,7 @@
 #' Analytes listed in `coanalytes_required` in the bundled metadata (e.g. pH,
 #' DOC, Ca, Mg, hardness, temperature) are **automatically protected** from
 #' exclusion regardless of detection frequency, because they are needed for
-#' chemistry normalisation in [add_amspaf()].  Additional analytes can be
+#' chemistry normalisation in [add_mspaf()].  Additional analytes can be
 #' protected via the `protect` argument (typical use: pass the
 #' `required_vars` you intend to use in [fit_imputation_model()] here so
 #' those vars survive prescreen).  Protected analytes that fall below the

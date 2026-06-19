@@ -111,7 +111,7 @@ An object of class \code{target_model}:
 Models the anthropogenic increment \code{I = C_norm - ref_norm} (the ARA
 "added risk", i.e. \code{ara_summary()}'s \code{C_excess}) at a target site as a
 function of hydrology and a persistent latent state -- \strong{never} of
-day-of-year.  Used by \code{\link[=amspaf_daily]{amspaf_daily()}} (\code{interpolation = "model"}) to fill
+day-of-year.  Used by \code{\link[=mspaf_daily]{mspaf_daily()}} (\code{interpolation = "model"}) to fill
 the gaps between grab samples with a chemistry-grounded impact estimate
 instead of a forward-filled concentration.
 }
@@ -154,6 +154,6 @@ Zhang Q, Hirsch RM (2019) Water Resources Research 55(11):9705--9723.
 Godsey SE, Kirchner JW, Clow DW (2009) Hydrological Processes 23:1844--1864.
 }
 \seealso{
-\code{\link[=amspaf_daily]{amspaf_daily()}}, \code{\link[=fit_reference_model]{fit_reference_model()}}, \code{\link[=add_amspaf]{add_amspaf()}},
+\code{\link[=mspaf_daily]{mspaf_daily()}}, \code{\link[=fit_reference_model]{fit_reference_model()}}, \code{\link[=add_mspaf]{add_mspaf()}},
 \code{\link[=ara_summary]{ara_summary()}}
 }

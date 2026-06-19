@@ -5,7 +5,7 @@
 ## than constant. A single homoscedastic additive variance over-disperses the
 ## baseline: estimated from anchor residuals spanning baseline-to-event, it
 ## applies the same absolute spread at trace levels as at peaks, which the
-## convex SSD then magnifies into a spuriously high baseline AmsPAF (issue #39,
+## convex SSD then magnifies into a spuriously high baseline msPAF (issue #39,
 ## diagnosed on B.S01). Environmental concentrations carry multiplicative
 ## (lognormal) error (Helsel & Hirsch, Statistical Methods in Water Resources,
 ## USGS TWRI 4-A3), so a variance-stabilising transform is the principled fix.

@@ -10,7 +10,7 @@
 ## ──────────────
 ##   fit_reference_model()   fit per-analyte temporal models; returns reference_model
 ##   get_silo_rainfall()     fetch SILO daily rainfall (in watertemp.R)
-##   ara_summary()           accessor for per-cell ARA diagnostics on add_amspaf() output
+##   ara_summary()           accessor for per-cell ARA diagnostics on add_mspaf() output
 ##
 ## Internal
 ## ────────
@@ -385,7 +385,7 @@
 #' Fit a temporal reference model for contemporaneous ARA background subtraction
 #'
 #' Fits per-analyte temporal models on reference-site chemistry so that
-#' [add_amspaf()] can subtract a *contemporaneous* background (what the
+#' [add_mspaf()] can subtract a *contemporaneous* background (what the
 #' reference site would have shown at the same moment as the target sample)
 #' rather than a static time-average.
 #'
@@ -487,7 +487,7 @@
 #'     \item{`$fit_date`}{Date the model was fitted.}
 #'   }
 #'
-#' @seealso [add_amspaf()], [get_silo_rainfall()], [prepare_reference()],
+#' @seealso [add_mspaf()], [get_silo_rainfall()], [prepare_reference()],
 #'   [ara_summary()]
 #'
 #' @examples
@@ -615,7 +615,7 @@ fit_reference_model <- function(
   meta <- .load_analyte_metadata(analyte_metadata)
   ssd_analytes <- meta$analyte[
     !is.na(meta$ssd_available) & meta$ssd_available == TRUE &
-      !meta$analyte %in% .AMSPAF_EXCLUDED_ANALYTES
+      !meta$analyte %in% .MSPAF_EXCLUDED_ANALYTES
   ]
   reference <- .convert_df_tox_to_ugL(reference, ssd_analytes, conc_units, "reference")
 
@@ -1009,11 +1009,11 @@ print.reference_model <- function(x, ...) {
 #'
 #' Dispatches to [.resolve_ref_norm_instant()] or [.resolve_ref_norm_chronic()]
 #' depending on whether `df` contains a `focal_date` column.  Returns a tibble
-#' `(sample_id, analyte, ref_norm, ref_tier)` that [add_amspaf()] uses instead
+#' `(sample_id, analyte, ref_norm, ref_tier)` that [add_mspaf()] uses instead
 #' of the static `(analyte, ref_norm)` table produced by [prepare_reference()].
 #'
 #' @param ref_model A `reference_model` object.
-#' @param df Target chemistry data frame (as passed to [add_amspaf()]).
+#' @param df Target chemistry data frame (as passed to [add_mspaf()]).
 #' @param tau_days Exponential-decay parameter for chronic integration.
 #' @param window_days Window length for chronic integration.
 #' @return Tibble `(sample_id, analyte, ref_norm, ref_tier)`.
@@ -1032,18 +1032,18 @@ print.reference_model <- function(x, ...) {
 ## ara_summary() accessor
 ## ============================================================================
 
-#' Retrieve per-cell ARA diagnostics from an `add_amspaf()` result
+#' Retrieve per-cell ARA diagnostics from an `add_mspaf()` result
 #'
-#' After calling [add_amspaf()] with a `reference_model` (or any reference),
+#' After calling [add_mspaf()] with a `reference_model` (or any reference),
 #' this accessor returns a tibble describing what happened in the ARA
 #' subtraction for every (sample × analyte) that was assessed.  This is the
 #' primary tool for auditing the "reference higher than target" case (floored
 #' to zero) and for understanding which tier was used per cell.
 #'
-#' The attribute is stored by [add_amspaf()] and is dropped by most dplyr
+#' The attribute is stored by [add_mspaf()] and is dropped by most dplyr
 #' verbs, so read the summary before further wrangling.
 #'
-#' @param x A data frame returned by [add_amspaf()].
+#' @param x A data frame returned by [add_mspaf()].
 #' @return A tibble with columns:
 #'   \describe{
 #'     \item{`sample_id`}{Sample identifier.}
@@ -1061,42 +1061,42 @@ print.reference_model <- function(x, ...) {
 #'   }
 #'   Returns `NULL` (with a message) if the attribute is absent.
 #'
-#' @seealso [add_amspaf()], [fit_reference_model()]
+#' @seealso [add_mspaf()], [fit_reference_model()]
 #' @export
 ara_summary <- function(x) {
   s <- attr(x, "ara_summary")
   if (is.null(s)) {
     cli::cli_inform("No {.field ara_summary} attribute found. \\
                     Call {.fn ara_summary} on the direct output of \\
-                    {.fn add_amspaf} before any further wrangling.")
+                    {.fn add_mspaf} before any further wrangling.")
     return(NULL)
   }
   s
 }
 
-#' Per-analyte PAF breakdown from add_amspaf()
+#' Per-analyte PAF breakdown from add_mspaf()
 #'
-#' After calling [add_amspaf()], this accessor returns the per-analyte
-#' contribution breakdown behind each AmsPAF value: the ARA-adjusted
+#' After calling [add_mspaf()], this accessor returns the per-analyte
+#' contribution breakdown behind each msPAF value: the ARA-adjusted
 #' concentration, single-substance PAF, MOA group and reference source for every
 #' assessed (sample × draw × analyte). It replaces the former `analyte_pafs`
 #' list-column with a flat, tidy frame (filter/join directly).
 #'
-#' The attribute is stored by [add_amspaf()] and is dropped by most dplyr verbs,
+#' The attribute is stored by [add_mspaf()] and is dropped by most dplyr verbs,
 #' so read it before further wrangling.
 #'
-#' @param x A data frame returned by [add_amspaf()].
+#' @param x A data frame returned by [add_mspaf()].
 #' @return A tibble with columns `site_id`, `sample_id`, `draw_id` (draws mode
 #'   only), `analyte`, `C_adj`, `PAF`, `moa_group`, `ref_source`. Returns `NULL`
 #'   (with a message) if the attribute is absent.
-#' @seealso [add_amspaf()], [ara_summary()]
+#' @seealso [add_mspaf()], [ara_summary()]
 #' @export
 analyte_pafs <- function(x) {
   s <- attr(x, "analyte_pafs")
   if (is.null(s)) {
     cli::cli_inform("No {.field analyte_pafs} attribute found. \\
                     Call {.fn analyte_pafs} on the direct output of \\
-                    {.fn add_amspaf} before any further wrangling.")
+                    {.fn add_mspaf} before any further wrangling.")
     return(NULL)
   }
   s

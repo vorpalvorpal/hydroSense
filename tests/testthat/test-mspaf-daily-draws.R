@@ -1,4 +1,4 @@
-## Tests for amspaf_daily() draws mode (issue #16, Chunk E).
+## Tests for mspaf_daily() draws mode (issue #16, Chunk E).
 ##
 ## Properties tested:
 ##   F1. ndraws without interpolation = "model" aborts with informative error
@@ -6,9 +6,9 @@
 ##   F3. return = "summary" adds lo_ignorable / hi_ignorable columns
 ##   F4. seed makes draws reproducible
 ##   F5. Point mode (ndraws = NULL) unchanged — no regression
-##   F6. Summary ordering: lo_ignorable <= amspaf <= hi_ignorable
+##   F6. Summary ordering: lo_ignorable <= mspaf <= hi_ignorable
 ##   F7. Summary centre is the draws' own central tendency (issue #42): with
-##       return = "summary", `amspaf` equals the per-day draw median (central =
+##       return = "summary", `mspaf` equals the per-day draw median (central =
 ##       "median") or mean (central = "mean"), so it is coherent with, and lies
 ##       inside, its own credible band. The deterministic point estimate is a
 ##       SEPARATE product obtained via ndraws = NULL (point mode), not bundled
@@ -82,7 +82,7 @@ test_that("F1: ndraws with forward_fill interpolation aborts", {
     length.out = 10L
   ), seed = 2L)
   expect_error(
-    amspaf_daily(df,
+    mspaf_daily(df,
       ndraws = 3L, interpolation = "forward_fill",
       require_temperature = FALSE
     ),
@@ -98,7 +98,7 @@ test_that("F2: draws output has ndraws rows per unique (date, site_id)", {
   skip_if(is.null(.tf$rm), "Reference model not fitted")
   n <- 5L
   out <- .smw(
-    amspaf_daily(
+    mspaf_daily(
       .tf$tgt,
       reference_model = .tf$rm,
       interpolation = "model",
@@ -127,7 +127,7 @@ test_that("F2: draws output has ndraws rows per unique (date, site_id)", {
 test_that("F3: summary output has lo_ignorable and hi_ignorable columns", {
   skip_if(is.null(.tf$rm), "Reference model not fitted")
   out <- .smw(
-    amspaf_daily(
+    mspaf_daily(
       .tf$tgt,
       reference_model = .tf$rm,
       interpolation = "model",
@@ -162,7 +162,7 @@ test_that("F4: same seed gives identical draws output", {
   skip_if(is.null(.tf$rm), "Reference model not fitted")
   run <- function() {
     .smw(
-      amspaf_daily(
+      mspaf_daily(
         .tf$tgt,
         reference_model = .tf$rm,
         interpolation = "model",
@@ -176,8 +176,8 @@ test_that("F4: same seed gives identical draws output", {
   }
   out1 <- run()
   out2 <- run()
-  expect_equal(out1$amspaf_ignorable, out2$amspaf_ignorable,
-    label = "same seed produces identical amspaf draws"
+  expect_equal(out1$mspaf_ignorable, out2$mspaf_ignorable,
+    label = "same seed produces identical mspaf draws"
   )
 })
 
@@ -187,7 +187,7 @@ test_that("F4: same seed gives identical draws output", {
 test_that("F5: ndraws = NULL returns standard point-mode schema", {
   skip_if(is.null(.tf$rm), "Reference model not fitted")
   out <- .smw(
-    amspaf_daily(
+    mspaf_daily(
       .tf$tgt,
       reference_model = .tf$rm,
       interpolation = "model",
@@ -197,7 +197,7 @@ test_that("F5: ndraws = NULL returns standard point-mode schema", {
     )
   )
   expected_cols <- c(
-    "date", "site_id", "amspaf", "n_analytes_used",
+    "date", "site_id", "mspaf", "n_analytes_used",
     "dominant_analyte", "max_paf",
     "n_measured_analytes", "days_since_last_sample"
   )
@@ -206,16 +206,16 @@ test_that("F5: ndraws = NULL returns standard point-mode schema", {
   expect_false("lo_ignorable" %in% names(out))
   expect_false("draw_id" %in% names(out))
   expect_s3_class(out$date, "Date")
-  expect_true(all(is.finite(out$amspaf)))
+  expect_true(all(is.finite(out$mspaf)))
 })
 
 
-## ── F6: ordering lo_ignorable <= amspaf <= hi_ignorable ──────────────────────
+## ── F6: ordering lo_ignorable <= mspaf <= hi_ignorable ──────────────────────
 
 test_that("F6: summary CI bounds straddle the central estimate", {
   skip_if(is.null(.tf$rm), "Reference model not fitted")
   out <- .smw(
-    amspaf_daily(
+    mspaf_daily(
       .tf$tgt,
       reference_model = .tf$rm,
       interpolation = "model",
@@ -238,11 +238,11 @@ test_that("F6: summary CI bounds straddle the central estimate", {
 
 
 ## ── F7: summary centre = the draws' own central tendency (issue #42) ──────
-## The summary `amspaf` must be a summary OF the draws, not a separately-built
+## The summary `mspaf` must be a summary OF the draws, not a separately-built
 ## deterministic smoother. We verify it equals the per-day median / mean of the
 ## raw draws produced with the same seed, hence lies inside its own band.
 
-test_that("F7: summary amspaf equals the draw central tendency, lies in band", {
+test_that("F7: summary mspaf equals the draw central tendency, lies in band", {
   skip_if(is.null(.tf$rm), "Reference model not fitted")
   common <- list(
     .tf$tgt,
@@ -250,16 +250,16 @@ test_that("F7: summary amspaf equals the draw central tendency, lies in band", {
     ndraws = 30L, seed = 11L, require_temperature = FALSE, conc_units = "ug/L"
   )
   draws <- .smw(
-    do.call(amspaf_daily, c(common, list(return = "draws")))
+    do.call(mspaf_daily, c(common, list(return = "draws")))
   )
 
   ## median variant
   sm_med <- .smw(do.call(
-    amspaf_daily, c(common, list(return = "summary", central = "median"))
+    mspaf_daily, c(common, list(return = "summary", central = "median"))
   )) |> dplyr::arrange(.data$site_id, .data$date)
   ref_med <- draws |>
     dplyr::group_by(.data$date, .data$site_id) |>
-    dplyr::summarise(m = stats::median(.data$amspaf_ignorable), .groups = "drop") |>
+    dplyr::summarise(m = stats::median(.data$mspaf_ignorable), .groups = "drop") |>
     dplyr::arrange(.data$site_id, .data$date)
   expect_equal(sm_med$median_ignorable, ref_med$m,
     tolerance = 1e-8,
@@ -273,11 +273,11 @@ test_that("F7: summary amspaf equals the draw central tendency, lies in band", {
 
   ## mean variant
   sm_mean <- .smw(do.call(
-    amspaf_daily, c(common, list(return = "summary", central = "mean"))
+    mspaf_daily, c(common, list(return = "summary", central = "mean"))
   )) |> dplyr::arrange(.data$site_id, .data$date)
   ref_mean <- draws |>
     dplyr::group_by(.data$date, .data$site_id) |>
-    dplyr::summarise(m = mean(.data$amspaf_ignorable), .groups = "drop") |>
+    dplyr::summarise(m = mean(.data$mspaf_ignorable), .groups = "drop") |>
     dplyr::arrange(.data$site_id, .data$date)
   expect_equal(sm_mean$median_ignorable, ref_mean$m,
     tolerance = 1e-8,
@@ -294,7 +294,7 @@ test_that("G6a: ou_scale = 2 produces wider CI than ou_scale = 1", {
 
   run <- function(scale) {
     .smw(
-      amspaf_daily(
+      mspaf_daily(
         .tf$tgt,
         reference_model = .tf$rm,
         interpolation = "model",
@@ -325,7 +325,7 @@ test_that("G6b: grab_cv = 0.3 widens CI compared to grab_cv = NULL", {
 
   run <- function(gcv) {
     .smw(
-      amspaf_daily(
+      mspaf_daily(
         .tf$tgt,
         reference_model = .tf$rm,
         interpolation = "model",
@@ -360,7 +360,7 @@ test_that("G6c: multi-site draws output has ndraws rows per (date, site_id)", {
   both <- dplyr::bind_rows(.tf$tgt, tgt2)
 
   out <- .smw(
-    amspaf_daily(
+    mspaf_daily(
       both,
       reference_model = .tf$rm,
       interpolation = "model",
@@ -392,7 +392,7 @@ test_that("G6d: .empty_daily_result modes return correct column sets", {
   dr <- hydroSense:::.empty_daily_result("draws")
 
   ## Point: standard schema, no CI columns, no draw_id
-  expect_true(all(c("date", "site_id", "amspaf", "n_analytes_used") %in% names(pt)))
+  expect_true(all(c("date", "site_id", "mspaf", "n_analytes_used") %in% names(pt)))
   expect_false("lo_ignorable" %in% names(pt))
   expect_false("draw_id" %in% names(pt))
 
@@ -405,7 +405,7 @@ test_that("G6d: .empty_daily_result modes return correct column sets", {
 
   ## Draws: adds draw_id and per-draw envelope value(s)
   expect_true("draw_id" %in% names(dr))
-  expect_true("amspaf_ignorable" %in% names(dr))
+  expect_true("mspaf_ignorable" %in% names(dr))
   expect_false("lo_ignorable" %in% names(dr))
 
   ## All are zero-row tibbles
@@ -428,7 +428,7 @@ test_that("H2a: parallel=TRUE without future.apply gives informative error", {
     length.out = 5L
   ), seed = 2L)
   expect_error(
-    amspaf_daily(df,
+    mspaf_daily(df,
       ndraws = 2L, interpolation = "forward_fill",
       parallel = TRUE, require_temperature = FALSE
     ),
@@ -446,7 +446,7 @@ test_that("H2b: parallel draws output schema matches sequential", {
 
   run <- function(par) {
     .smw(
-      amspaf_daily(
+      mspaf_daily(
         .tf$tgt,
         reference_model = .tf$rm,
         interpolation = "model",
@@ -478,7 +478,7 @@ test_that("I1: couple_residuals = FALSE is identical to the pre-#32 independent 
   skip_if(is.null(.tf$rm), "Reference model not fitted")
   run <- function(couple) {
     .smw(
-      amspaf_daily(
+      mspaf_daily(
         .tf$tgt,
         reference_model = .tf$rm,
         interpolation = "model",
@@ -494,7 +494,7 @@ test_that("I1: couple_residuals = FALSE is identical to the pre-#32 independent 
   out_indep <- run(FALSE)
   out_indep2 <- run(FALSE)
   ## Reproducibility (couple=FALSE preserves the seed contract).
-  expect_equal(out_indep$amspaf_ignorable, out_indep2$amspaf_ignorable,
+  expect_equal(out_indep$mspaf_ignorable, out_indep2$mspaf_ignorable,
     label = "couple=FALSE is reproducible"
   )
 })
@@ -504,7 +504,7 @@ test_that("I2: couple_residuals = TRUE returns same output schema as FALSE", {
   skip_if(is.null(.tf$rm), "Reference model not fitted")
   run <- function(couple) {
     .smw(
-      amspaf_daily(
+      mspaf_daily(
         .tf$tgt,
         reference_model = .tf$rm,
         interpolation = "model",
@@ -529,7 +529,7 @@ test_that("I3: couple_residuals = TRUE is reproducible with the same seed", {
   skip_if(is.null(.tf$rm), "Reference model not fitted")
   run <- function() {
     .smw(
-      amspaf_daily(
+      mspaf_daily(
         .tf$tgt,
         reference_model = .tf$rm,
         interpolation = "model",
@@ -544,18 +544,18 @@ test_that("I3: couple_residuals = TRUE is reproducible with the same seed", {
   }
   r1 <- run()
   r2 <- run()
-  expect_equal(r1$amspaf_ignorable, r2$amspaf_ignorable,
+  expect_equal(r1$mspaf_ignorable, r2$mspaf_ignorable,
     label = "couple=TRUE is reproducible"
   )
 })
 
 ## I4: summary-mode under coupling has correct schema and a band-coherent centre.
-## Since issue #42, summary `amspaf` is the draws' own central tendency (default
+## Since issue #42, summary `mspaf` is the draws' own central tendency (default
 ## central = "median"), so it MUST lie within [lo_ignorable, hi_ignorable].
 test_that("I4: summary mode under coupling has centre within ordered CI bounds", {
   skip_if(is.null(.tf$rm), "Reference model not fitted")
   out <- .smw(
-    amspaf_daily(
+    mspaf_daily(
       .tf$tgt,
       reference_model = .tf$rm,
       interpolation = "model",
@@ -594,7 +594,7 @@ test_that("H2c: parallel draws are reproducible with same seed", {
 
   run_par <- function() {
     .smw(
-      amspaf_daily(
+      mspaf_daily(
         .tf$tgt,
         reference_model = .tf$rm,
         interpolation = "model",
@@ -609,7 +609,7 @@ test_that("H2c: parallel draws are reproducible with same seed", {
   }
   r1 <- run_par()
   r2 <- run_par()
-  expect_equal(r1$amspaf_ignorable, r2$amspaf_ignorable,
+  expect_equal(r1$mspaf_ignorable, r2$mspaf_ignorable,
     label = "parallel draws reproducible with same seed"
   )
 })

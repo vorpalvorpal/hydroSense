@@ -2,12 +2,12 @@
 % Please edit documentation in R/reference_model.R
 \name{ara_summary}
 \alias{ara_summary}
-\title{Retrieve per-cell ARA diagnostics from an \code{add_amspaf()} result}
+\title{Retrieve per-cell ARA diagnostics from an \code{add_mspaf()} result}
 \usage{
 ara_summary(x)
 }
 \arguments{
-\item{x}{A data frame returned by \code{\link[=add_amspaf]{add_amspaf()}}.}
+\item{x}{A data frame returned by \code{\link[=add_mspaf]{add_mspaf()}}.}
 }
 \value{
 A tibble with columns:
@@ -28,16 +28,16 @@ geogenic artefact (e.g. low-pH upstream metal mobilisation).}
 Returns \code{NULL} (with a message) if the attribute is absent.
 }
 \description{
-After calling \code{\link[=add_amspaf]{add_amspaf()}} with a \code{reference_model} (or any reference),
+After calling \code{\link[=add_mspaf]{add_mspaf()}} with a \code{reference_model} (or any reference),
 this accessor returns a tibble describing what happened in the ARA
 subtraction for every (sample × analyte) that was assessed.  This is the
 primary tool for auditing the "reference higher than target" case (floored
 to zero) and for understanding which tier was used per cell.
 }
 \details{
-The attribute is stored by \code{\link[=add_amspaf]{add_amspaf()}} and is dropped by most dplyr
+The attribute is stored by \code{\link[=add_mspaf]{add_mspaf()}} and is dropped by most dplyr
 verbs, so read the summary before further wrangling.
 }
 \seealso{
-\code{\link[=add_amspaf]{add_amspaf()}}, \code{\link[=fit_reference_model]{fit_reference_model()}}
+\code{\link[=add_mspaf]{add_mspaf()}}, \code{\link[=fit_reference_model]{fit_reference_model()}}
 }

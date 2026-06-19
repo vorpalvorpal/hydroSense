@@ -3,8 +3,8 @@
 ##
 ## Five properties tested:
 ##   1. Regression   — point input produces output byte-identical to pre-draws
-##   2. Shape        — draws input gives one AmsPAF row per (sample, draw)
-##   3. Per-draw     — draw-d AmsPAF == point AmsPAF from draw-d chemistry
+##   2. Shape        — draws input gives one msPAF row per (sample, draw)
+##   3. Per-draw     — draw-d msPAF == point msPAF from draw-d chemistry
 ##   4. Broadcast    — exact co-analyte rows are shared identically across draws
 ##   5. Alignment    — Cu/Zn draws are paired by draw_id, not shuffled
 
@@ -71,44 +71,44 @@ make_draws_chem <- function(metal_draws,
 
 test_that("point input: no draw_id column in output (schema unchanged)", {
   df  <- make_point_chem(cu = 5, zn = 10, ni = 0.1)
-  out <- add_amspaf(df, reference = NULL, conc_units = "ug/L")
+  out <- add_mspaf(df, reference = NULL, conc_units = "ug/L")
 
   expect_false("draw_id" %in% names(out))
 })
 
-test_that("point input: AmsPAF values are finite and in [0, 100]", {
+test_that("point input: msPAF values are finite and in [0, 100]", {
   df  <- make_point_chem(cu = 5, zn = 10, ni = 0.1)
-  out <- add_amspaf(df, reference = NULL, conc_units = "ug/L")
+  out <- add_mspaf(df, reference = NULL, conc_units = "ug/L")
 
-  amspaf_rows <- dplyr::filter(out, analyte == "AmsPAF")
-  expect_gt(nrow(amspaf_rows), 0L)
-  expect_true(all(is.finite(amspaf_rows$value)))
-  expect_true(all(amspaf_rows$value >= 0 & amspaf_rows$value <= 100))
+  mspaf_rows <- dplyr::filter(out, analyte == "msPAF")
+  expect_gt(nrow(mspaf_rows), 0L)
+  expect_true(all(is.finite(mspaf_rows$value)))
+  expect_true(all(mspaf_rows$value >= 0 & mspaf_rows$value <= 100))
 })
 
 
 ## ── 2. Draws shape ────────────────────────────────────────────────────────────
 
-test_that("draws input: AmsPAF rows have draw_id 1..N, one per (sample, draw)", {
+test_that("draws input: msPAF rows have draw_id 1..N, one per (sample, draw)", {
   n_draws <- 4L
   df  <- make_draws_chem(list(Cu  = rep(5,     n_draws),
                                Zn  = rep(10,    n_draws),
                                Ni  = rep(0.001, n_draws)))
-  out <- add_amspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
+  out <- add_mspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
 
-  amspaf <- dplyr::filter(out, analyte == "AmsPAF")
+  mspaf <- dplyr::filter(out, analyte == "msPAF")
 
-  expect_true("draw_id" %in% names(amspaf))
-  expect_false(anyNA(amspaf$draw_id))
-  expect_equal(sort(unique(amspaf$draw_id)), seq_len(n_draws))
+  expect_true("draw_id" %in% names(mspaf))
+  expect_false(anyNA(mspaf$draw_id))
+  expect_equal(sort(unique(mspaf$draw_id)), seq_len(n_draws))
   # Exactly one row per draw (one sample in this fixture)
-  expect_equal(nrow(amspaf), n_draws)
+  expect_equal(nrow(mspaf), n_draws)
 })
 
 test_that("draws input: original chemistry rows kept with their original draw_ids", {
   df  <- make_draws_chem(list(Cu = c(5, 10, 15), Zn = c(10, 20, 30),
                                Ni = c(0.001, 0.001, 0.001)))
-  out <- add_amspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
+  out <- add_mspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
 
   # Cu rows should retain draw_id 1/2/3
   cu_rows <- dplyr::filter(out, analyte == "Cu")
@@ -122,48 +122,48 @@ test_that("draws input: original chemistry rows kept with their original draw_id
 test_that("draws: n_analytes_used is consistent across draws for the same sample", {
   df  <- make_draws_chem(list(Cu = c(1, 2, 3), Zn = c(10, 20, 30),
                                Ni = c(0.1, 0.2, 0.3)))
-  out <- add_amspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
+  out <- add_mspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
 
-  amspaf <- dplyr::filter(out, analyte == "AmsPAF")
+  mspaf <- dplyr::filter(out, analyte == "msPAF")
   # n_analytes_used should be the same across draws (structure doesn't vary)
-  expect_equal(length(unique(amspaf$n_analytes_used)), 1L)
+  expect_equal(length(unique(mspaf$n_analytes_used)), 1L)
 })
 
 
 ## ── 3. Per-draw correctness ───────────────────────────────────────────────────
 
-test_that("draw-d AmsPAF equals point AmsPAF computed from draw-d chemistry alone", {
+test_that("draw-d msPAF equals point msPAF computed from draw-d chemistry alone", {
   # Two-draw frame: draw 1 has Cu=5, draw 2 has Cu=50; Zn/Ni identical across draws
   df_draws <- make_draws_chem(list(Cu = c(5, 50), Zn = c(10, 10),
                                     Ni = c(0.001, 0.001)))
-  out_draws <- add_amspaf(df_draws, reference = NULL, conc_units = "ug/L",
+  out_draws <- add_mspaf(df_draws, reference = NULL, conc_units = "ug/L",
                           return = "draws")
 
-  d1_val <- dplyr::filter(out_draws, analyte == "AmsPAF", draw_id == 1L)$value
-  d2_val <- dplyr::filter(out_draws, analyte == "AmsPAF", draw_id == 2L)$value
+  d1_val <- dplyr::filter(out_draws, analyte == "msPAF", draw_id == 1L)$value
+  d2_val <- dplyr::filter(out_draws, analyte == "msPAF", draw_id == 2L)$value
 
   # Point references
-  point1 <- add_amspaf(make_point_chem(cu = 5,  zn = 10),
+  point1 <- add_mspaf(make_point_chem(cu = 5,  zn = 10),
                        reference = NULL, conc_units = "ug/L")
-  point2 <- add_amspaf(make_point_chem(cu = 50, zn = 10),
+  point2 <- add_mspaf(make_point_chem(cu = 50, zn = 10),
                        reference = NULL, conc_units = "ug/L")
-  p1_val <- dplyr::filter(point1, analyte == "AmsPAF")$value
-  p2_val <- dplyr::filter(point2, analyte == "AmsPAF")$value
+  p1_val <- dplyr::filter(point1, analyte == "msPAF")$value
+  p2_val <- dplyr::filter(point2, analyte == "msPAF")$value
 
   expect_equal(d1_val, p1_val)
   expect_equal(d2_val, p2_val)
-  # Sanity: higher Cu → higher AmsPAF
+  # Sanity: higher Cu → higher msPAF
   expect_gt(d2_val, d1_val)
 })
 
-test_that("draws with identical chemistry across all draws produce identical AmsPAF", {
+test_that("draws with identical chemistry across all draws produce identical msPAF", {
   df_draws <- make_draws_chem(list(Cu = c(5, 5, 5), Zn = c(10, 10, 10),
                                     Ni = c(0.001, 0.001, 0.001)))
-  out <- add_amspaf(df_draws, reference = NULL, conc_units = "ug/L",
+  out <- add_mspaf(df_draws, reference = NULL, conc_units = "ug/L",
                    return = "draws")
 
-  amspaf <- dplyr::filter(out, analyte == "AmsPAF")
-  expect_equal(length(unique(amspaf$value)), 1L)
+  mspaf <- dplyr::filter(out, analyte == "msPAF")
+  expect_equal(length(unique(mspaf$value)), 1L)
 })
 
 
@@ -174,21 +174,21 @@ test_that("exact co-analyte value is shared identically across draws", {
   # We can verify by checking pH value is identical in each draw's
   # chemistry block after broadcasting (via the analyte_pafs diagnostic).
   df <- make_draws_chem(list(Cu = c(5, 50), Zn = c(10, 10), Ni = c(0.001, 0.001)))
-  out <- add_amspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
+  out <- add_mspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
 
-  amspaf <- dplyr::filter(out, analyte == "AmsPAF")
+  mspaf <- dplyr::filter(out, analyte == "msPAF")
   # Both draws should have been normalised with the same pH (7.5)
   # Indirect check: both dominant_analyte columns should be "Cu"
   # (structure, not values, depends on co-analytes)
-  expect_true(all(!is.na(amspaf$dominant_analyte)))
+  expect_true(all(!is.na(mspaf$dominant_analyte)))
 })
 
 
 ## ── 5. Cross-analyte alignment ────────────────────────────────────────────────
 
 test_that("Cu and Zn draws are paired by draw_id, not cross-contaminated", {
-  # Draw 1: Cu=high, Zn=near-zero → Cu dominates AmsPAF
-  # Draw 2: Cu=near-zero, Zn=high → Zn dominates AmsPAF
+  # Draw 1: Cu=high, Zn=near-zero → Cu dominates msPAF
+  # Draw 2: Cu=near-zero, Zn=high → Zn dominates msPAF
   # Correct pairing: dominant_analyte[d=1]="Cu", dominant_analyte[d=2]="Zn"
   # Wrong pairing  : would mix (Cu_d1 with Zn_d2) giving different dominance
 
@@ -198,56 +198,56 @@ test_that("Cu and Zn draws are paired by draw_id, not cross-contaminated", {
     Zn = c(0.001, 500),
     Ni = c(0.001, 0.001)
   ))
-  out <- add_amspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
+  out <- add_mspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
 
-  d1 <- dplyr::filter(out, analyte == "AmsPAF", draw_id == 1L)
-  d2 <- dplyr::filter(out, analyte == "AmsPAF", draw_id == 2L)
+  d1 <- dplyr::filter(out, analyte == "msPAF", draw_id == 1L)
+  d2 <- dplyr::filter(out, analyte == "msPAF", draw_id == 2L)
 
   expect_equal(d1$dominant_analyte, "Cu")
   expect_equal(d2$dominant_analyte, "Zn")
 
-  # Draws should produce different AmsPAF values (one Cu-dominated, one Zn-dominated)
+  # Draws should produce different msPAF values (one Cu-dominated, one Zn-dominated)
   expect_false(isTRUE(all.equal(d1$value, d2$value)))
 })
 
-test_that("cross-analyte alignment: draws-pipeline AmsPAF != mis-paired AmsPAF", {
+test_that("cross-analyte alignment: draws-pipeline msPAF != mis-paired msPAF", {
   # Quantifies the alignment guarantee: mis-pairing Cu_d1 with Zn_d2 would
-  # give a different AmsPAF than the correctly-paired result.
+  # give a different msPAF than the correctly-paired result.
   df <- make_draws_chem(list(
     Cu = c(200, 0.001),
     Zn = c(0.001, 500),
     Ni = c(0.001, 0.001)
   ))
-  out <- add_amspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
-  d1_correct <- dplyr::filter(out, analyte == "AmsPAF", draw_id == 1L)$value
+  out <- add_mspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
+  d1_correct <- dplyr::filter(out, analyte == "msPAF", draw_id == 1L)$value
 
   # Mis-paired reference: Cu=200 but paired with Zn=500 (draw 2's Zn value)
   df_mispaired <- make_point_chem(cu = 200, zn = 500)
-  out_mispaired <- add_amspaf(df_mispaired, reference = NULL, conc_units = "ug/L")
-  d1_mispaired <- dplyr::filter(out_mispaired, analyte == "AmsPAF")$value
+  out_mispaired <- add_mspaf(df_mispaired, reference = NULL, conc_units = "ug/L")
+  d1_mispaired <- dplyr::filter(out_mispaired, analyte == "msPAF")$value
 
   expect_false(isTRUE(all.equal(d1_correct, d1_mispaired)))
 })
 
 
 ## ── 6. Multi-sample blocks: each (sample, draw) computed independently ────────
-## Guards the batched per-(sample, draw) split in compute_amspaf_per_sample():
-## a sample's AmsPAF must not change when other samples share the call, and
+## Guards the batched per-(sample, draw) split in compute_mspaf_per_sample():
+## a sample's msPAF must not change when other samples share the call, and
 ## draws within a sample must stay paired.
 
-test_that("multi-sample draws: each sample's AmsPAF matches computing it alone", {
+test_that("multi-sample draws: each sample's msPAF matches computing it alone", {
   dfA <- make_draws_chem(list(Cu = c(5, 50),  Zn = c(10, 10), Ni = c(0.001, 0.001)),
                          sample_id = "A")
   dfB <- make_draws_chem(list(Cu = c(1, 2),   Zn = c(20, 5),  Ni = c(0.10, 0.20)),
                          sample_id = "B")
 
-  combined <- add_amspaf(dplyr::bind_rows(dfA, dfB), reference = NULL,
+  combined <- add_mspaf(dplyr::bind_rows(dfA, dfB), reference = NULL,
                          conc_units = "ug/L", return = "draws")
-  onlyA <- add_amspaf(dfA, reference = NULL, conc_units = "ug/L", return = "draws")
-  onlyB <- add_amspaf(dfB, reference = NULL, conc_units = "ug/L", return = "draws")
+  onlyA <- add_mspaf(dfA, reference = NULL, conc_units = "ug/L", return = "draws")
+  onlyB <- add_mspaf(dfB, reference = NULL, conc_units = "ug/L", return = "draws")
 
   pick <- function(x, sid) {
-    r <- dplyr::filter(x, .data$analyte == "AmsPAF", .data$sample_id == sid)
+    r <- dplyr::filter(x, .data$analyte == "msPAF", .data$sample_id == sid)
     r$value[order(r$draw_id)]
   }
   expect_equal(pick(combined, "A"), pick(onlyA, "A"))

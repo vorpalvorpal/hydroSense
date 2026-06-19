@@ -13,7 +13,7 @@
 ##     .g_transform(I, c)   -> asinh(I / c)
 ##     .g_inverse(g, c)     -> c * sinh(g)
 ##     .analyte_c(fit)      -> ssdtools::ssd_hc(fit, proportion = 0.05)$est  (HC5)
-##   Wiring (R/target_model.R / R/amspaf_daily.R): anchors and the impact-GAM
+##   Wiring (R/target_model.R / R/mspaf_daily.R): anchors and the impact-GAM
 ##   residual are built in g-space; reconstruction inverse-transforms back to I.
 ##
 ## Units: HC5 from the fitted SSD is in the SAME normalised concentration space

@@ -127,7 +127,7 @@ Fits a simple linear regression between observed air temperature and
 observed water temperature, then predicts water temperature for a set of
 target dates. The result can be added to a chemistry data frame as
 \code{analyte = "temperature"} rows, enabling the NH₃-N pH/temperature
-normalisation in \code{\link[=add_amspaf]{add_amspaf()}}.
+normalisation in \code{\link[=add_mspaf]{add_mspaf()}}.
 }
 \section{Air temperature variable}{
 
@@ -191,6 +191,6 @@ attr(wt, "model")  # which model was selected (air-only vs air + season)
 }
 \seealso{
 \code{\link[=get_silo_air_temp]{get_silo_air_temp()}} to source \code{air_temp_df} from SILO for an
-Australian location; \code{\link[=add_amspaf]{add_amspaf()}}, which requires the resulting water
+Australian location; \code{\link[=add_mspaf]{add_mspaf()}}, which requires the resulting water
 \code{temperature} rows for ammonia.
 }

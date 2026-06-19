@@ -2,7 +2,7 @@
 % Please edit documentation in R/mspaf.R
 \name{derive_ssd_params}
 \alias{derive_ssd_params}
-\title{Derive SSD parameters for AmsPAF computation}
+\title{Derive SSD parameters for msPAF computation}
 \usage{
 derive_ssd_params(meta, method, guideline_dir)
 }
@@ -19,7 +19,7 @@ Tibble with columns \code{analyte}, \code{hc50}, \code{sigma}, \code{moa_group},
 \code{coanalytes_req} (character), and \code{fit} (list column of fitted SSD
 objects, one per analyte).  The fitted SSD is loaded \strong{once per analyte
 here} (via the cached \code{.load_or_fit()} path) so that
-\code{\link[=compute_amspaf_per_sample]{compute_amspaf_per_sample()}} can evaluate every sample's PAF in a single
+\code{\link[=compute_mspaf_per_sample]{compute_mspaf_per_sample()}} can evaluate every sample's PAF in a single
 vectorised \code{\link[ssdtools:ssd_hp]{ssdtools::ssd_hp()}} call per analyte, rather than refitting /
 re-resolving the SSD inside a per-(sample × analyte) loop.
 }
@@ -28,13 +28,13 @@ Reads analyte eligibility and mode-of-action groups from the bundled
 metadata CSV, then calls \code{\link[=ssd_hc50]{ssd_hc50()}} and \code{.ssd_sigma()} to populate the
 HC50 and effective sigma needed for Concentration Addition. Chemistry
 normalisation formulas (currently all stubs) are parsed once and stored
-as a list column for use in \code{\link[=compute_amspaf_per_sample]{compute_amspaf_per_sample()}}.
+as a list column for use in \code{\link[=compute_mspaf_per_sample]{compute_mspaf_per_sample()}}.
 }
 \details{
 Eligibility criteria:
 \itemize{
 \item \code{ssd_available == TRUE} in the metadata
-\item \code{analyte} not in \code{.AMSPAF_EXCLUDED_ANALYTES}
+\item \code{analyte} not in \code{.MSPAF_EXCLUDED_ANALYTES}
 \item \code{ssd_hc50()} returns a non-NA value (model fits successfully)
 }
 }

@@ -13,7 +13,7 @@
 
 ## Daily gap-uncertainty bracket: informative vs ignorable envelopes (issue #50)
 
-* `amspaf_daily()` gains a `gap_uncertainty` argument
+* `mspaf_daily()` gains a `gap_uncertainty` argument
   (`"bracket"` (default), `"ignorable"`, `"informative"`). In observation gaps
   the latent Kalman residual reverts to its marginal variance, widening the
   band — the honest posterior only under **ignorable (MAR)** missingness. Field
@@ -27,9 +27,9 @@
   returns a `deterministic` centre line plus `median_*`/`lo_*`/`hi_*` columns
   per envelope (and `precautionary_lo`/`precautionary_hi` in `"bracket"` mode —
   a labelled *decision* bound `[lo_informative, hi_ignorable]`, not a calibrated
-  interval). `"draws"` returns `amspaf_ignorable`/`amspaf_informative` per draw.
-  The old `amspaf`/`amspaf_lower`/`amspaf_upper` columns are removed.
-* `amspaf_daily()` emits a one-time CLI warning, when uncertainty is requested
+  interval). `"draws"` returns `mspaf_ignorable`/`mspaf_informative` per draw.
+  The old `mspaf`/`mspaf_lower`/`mspaf_upper` columns are removed.
+* `mspaf_daily()` emits a one-time CLI warning, when uncertainty is requested
   against rainfall hydrology, that gaps are treated as ignorable and the
   intervals over-state uncertainty in gaps known to be quiescent.
 
@@ -47,24 +47,24 @@
   ranges; defaults `c(1, 30)` and `c(20, 365)`). Per-analyte model fields
   `window_short`/`window_long` are renamed `tau_short`/`tau_long`.
 
-## AmsPAF engine vectorisation + `analyte_pafs` API change (issue #30)
+## msPAF engine vectorisation + `analyte_pafs` API change (issue #30)
 
-* `compute_amspaf_per_sample()` is vectorised across all (sample × draw) blocks
+* `compute_mspaf_per_sample()` is vectorised across all (sample × draw) blocks
   in one pass (normalisation/ARA with a wide co-analyte join and per-analyte
   formula evaluation; CA/IA via grouped reductions) instead of a per-block
   dplyr/purrr loop. Output is mathematically identical (verified by a before/after
-  equivalence harness across `add_amspaf()`, `time_weighted_aggregate()`, and
-  `amspaf_daily()`, point and draws modes). Removes the per-block overhead that
+  equivalence harness across `add_mspaf()`, `time_weighted_aggregate()`, and
+  `mspaf_daily()`, point and draws modes). Removes the per-block overhead that
   dominated draws-mode runtime; the residual cost is now `ssdtools::ssd_hp()`.
 * **API change (pre-v1):** the per-analyte PAF breakdown is no longer a per-row
   `analyte_pafs` **list-column** — it is a flat tibble attribute, retrieved with
   the new exported `analyte_pafs()` accessor (mirroring `ara_summary()`), keyed
-  by `(site_id, sample_id, draw_id, analyte)`. Affects `add_amspaf()` and
-  `amspaf_daily()` output schemas.
+  by `(site_id, sample_id, draw_id, analyte)`. Affects `add_mspaf()` and
+  `mspaf_daily()` output schemas.
 
-## Daily AmsPAF uncertainty via a state-space (Kalman) residual smoother (issue #16)
+## Daily msPAF uncertainty via a state-space (Kalman) residual smoother (issue #16)
 
-`amspaf_daily()` propagates uncertainty through the daily AmsPAF time series via
+`mspaf_daily()` propagates uncertainty through the daily msPAF time series via
 `ndraws`, `seed`, `return`, `interval`, `central`, `grab_cv`, `ou_scale`, and
 `kappa`.  The latent residual impact state is modelled as a continuous-time
 AR(1)/Ornstein–Uhlenbeck process fitted by a **Kalman filter + smoother** (KFAS):
@@ -90,14 +90,14 @@ inter-site coupling would correlate the draws.  Requires the **KFAS** package.
 New return modes:
 
 * `return = "summary"` (default): one row per (date, site_id) with columns
-  `amspaf`, `amspaf_lower`, `amspaf_upper`.  The centre line (`amspaf`) is the
+  `mspaf`, `mspaf_lower`, `mspaf_upper`.  The centre line (`mspaf`) is the
   deterministic smoother posterior mean; bounds are empirical quantiles of the
   stochastic draws.
 * `return = "draws"`: one row per (date, site_id, draw_id) with `draw_id`
   running 1..N.
 
 The `seed` argument saves and restores `.Random.seed` so that calling
-`amspaf_daily()` with a seed does not alter the caller's RNG state.
+`mspaf_daily()` with a seed does not alter the caller's RNG state.
 
 A new `parallel = FALSE` argument opts in to parallel draw execution via
 `future.apply::future_lapply()`, honouring whatever `future::plan()` the
@@ -118,7 +118,7 @@ New exports:
   interval; identity on point frames.
 * `draw_measurement_error()` — applies per-measurement lognormal draws on
   observed detected values.
-* `add_amspaf(..., return = "draws")` — returns per-draw AmsPAF rows.
+* `add_mspaf(..., return = "draws")` — returns per-draw msPAF rows.
 * `time_weighted_aggregate(..., return = "draws")` — propagates draws through
   the 365-day time-weighted chronic aggregate.
 * `impute_coanalytes(..., return = "draws")` — full GAM posterior-predictive

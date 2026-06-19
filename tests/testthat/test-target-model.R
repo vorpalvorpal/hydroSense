@@ -3,7 +3,7 @@
 ## All Stan-free: the imputation (tier-2) front-end is gated and not exercised
 ## here. Covers fit_target_model(), the season-blind property, the
 ## perfect-management invariant, the elevated-site contrast, the residual
-## bridge interpolation, and the amspaf_daily(interpolation = "model") path.
+## bridge interpolation, and the mspaf_daily(interpolation = "model") path.
 
 library(testthat)
 library(hydroSense)
@@ -159,13 +159,13 @@ test_that(".resolve_target_impact() returns C_norm = max(ref_norm + impact, 0)",
 })
 
 
-## ── amspaf_daily(interpolation = "model") end-to-end ──────────────────────────
+## ── mspaf_daily(interpolation = "model") end-to-end ──────────────────────────
 
-test_that("amspaf_daily(interpolation='model') requires a reference_model", {
+test_that("mspaf_daily(interpolation='model') requires a reference_model", {
   dates <- seq(as.Date("2021-01-01"), by = "2 weeks", length.out = 10)
   tgt   <- make_chem("target", dates)
   expect_error(
-    amspaf_daily(tgt, interpolation = "model", conc_units = "ug/L",
+    mspaf_daily(tgt, interpolation = "model", conc_units = "ug/L",
                  require_temperature = FALSE),
     regexp = "reference_model"
   )
@@ -354,7 +354,7 @@ test_that("pool = TRUE preserves per-analyte magnitude (no cross-contamination)"
   # impact shrank each analyte's response toward the population: with several
   # large-signal toxicants present, a near-zero analyte (Ni) was dragged up
   # toward their high-amplitude hydro response (on the real B.S01 data Ni's
-  # daily AmsPAF share jumped from ~0% to ~40% while Cu collapsed from ~45% to
+  # daily msPAF share jumped from ~0% to ~40% while Cu collapsed from ~45% to
   # 0%).  The fix pools the standardised (z) SHAPE and restores each analyte's
   # own magnitude.
   #
@@ -388,10 +388,10 @@ test_that("pool = TRUE preserves per-analyte magnitude (no cross-contamination)"
 
 ## ── impact_tier surfaced in ara_summary() (issue #14, item A) ─────────────────
 
-test_that("amspaf_daily(interpolation='model') surfaces impact_tier in ara_summary()", {
+test_that("mspaf_daily(interpolation='model') surfaces impact_tier in ara_summary()", {
   dates <- seq(as.Date("2021-01-01"), by = "2 weeks", length.out = 40)
   rm    <- fit_rm(make_chem("reference", dates), make_hydro())
-  d     <- amspaf_daily(make_chem("target", dates, mult = 10, seed = 2),
+  d     <- mspaf_daily(make_chem("target", dates, mult = 10, seed = 2),
                         reference = rm, reference_model = rm,
                         interpolation = "model", conc_units = "ug/L",
                         require_temperature = FALSE, min_analytes = 1)
@@ -449,25 +449,25 @@ test_that("impute-first enriches reference & target anchors (brms smoke test)", 
 })
 
 
-test_that("amspaf_daily(interpolation='model'): ARA <= no-ARA, daily series", {
+test_that("mspaf_daily(interpolation='model'): ARA <= no-ARA, daily series", {
   dates <- seq(as.Date("2021-01-01"), by = "2 weeks", length.out = 40)
   ref   <- make_chem("reference", dates)
   hydro <- make_hydro()
   rm    <- fit_rm(ref, hydro)
   tgt   <- make_chem("target", dates, mult = 10, seed = 2)
 
-  d_ara <- amspaf_daily(tgt, reference = rm, reference_model = rm,
+  d_ara <- mspaf_daily(tgt, reference = rm, reference_model = rm,
                         interpolation = "model", conc_units = "ug/L",
                         require_temperature = FALSE, min_analytes = 1)
-  d_tot <- amspaf_daily(tgt, reference = NULL, reference_model = rm,
+  d_tot <- mspaf_daily(tgt, reference = NULL, reference_model = rm,
                         interpolation = "model", conc_units = "ug/L",
                         require_temperature = FALSE, min_analytes = 1)
 
   expect_s3_class(d_ara, "tbl_df")
   expect_true(nrow(d_ara) > 100L)           # genuinely daily
-  expect_true(all(c("date", "site_id", "amspaf") %in% names(d_ara)))
+  expect_true(all(c("date", "site_id", "mspaf") %in% names(d_ara)))
   # Impact (ARA) cannot exceed total (no ARA), on average
-  expect_lte(mean(d_ara$amspaf), mean(d_tot$amspaf) + 1e-6)
+  expect_lte(mean(d_ara$mspaf), mean(d_tot$mspaf) + 1e-6)
   # ara_summary attribute survives
   expect_false(is.null(attr(d_ara, "ara_summary")))
 })

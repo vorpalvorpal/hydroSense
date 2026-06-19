@@ -1,5 +1,5 @@
 ## Integration tests for the Kalman daily-uncertainty rework (issue #16).
-## New guarantees beyond test-amspaf-daily-draws.R (which covers schema, draws,
+## New guarantees beyond test-mspaf-daily-draws.R (which covers schema, draws,
 ## reproducibility, grab_cv, parallel, and the draw-bearing-input error):
 ##   I2 centre line invariant to ndraws/seed (deterministic posterior mean)
 ##   I3 interval pinches near grabs, balloons mid-gap
@@ -64,7 +64,7 @@ make_hydro_k <- function(n = 760L, seed = 99L) {
 })
 
 run_summary <- function(ndraws, seed = 1L, ...) {
-  .smw(amspaf_daily(
+  .smw(mspaf_daily(
     .kf$tgt,
     reference_model = .kf$rm, interpolation = "model",
     ndraws = ndraws, seed = seed, return = "summary",
@@ -80,7 +80,7 @@ run_summary <- function(ndraws, seed = 1L, ...) {
 test_that("I2: point-mode centre stable; summary centre is draw median", {
   skip_if(is.null(.kf$rm), "no reference model")
   run_point <- function() {
-    .smw(amspaf_daily(
+    .smw(mspaf_daily(
       .kf$tgt,
       reference_model = .kf$rm, interpolation = "model",
       require_temperature = FALSE, conc_units = "ug/L"
@@ -88,10 +88,10 @@ test_that("I2: point-mode centre stable; summary centre is draw median", {
   }
 
   ## Point mode: the deterministic best guess — identical on repeat, seedless.
-  expect_equal(run_point()$amspaf, run_point()$amspaf, tolerance = 1e-8)
+  expect_equal(run_point()$mspaf, run_point()$mspaf, tolerance = 1e-8)
 
   ## Summary centre = the per-day median of the same draws (coherent with band).
-  draws <- .smw(amspaf_daily(
+  draws <- .smw(mspaf_daily(
     .kf$tgt,
     reference_model = .kf$rm, interpolation = "model",
     ndraws = 20L, seed = 7L, return = "draws",
@@ -101,7 +101,7 @@ test_that("I2: point-mode centre stable; summary centre is draw median", {
   ref <- draws |>
     dplyr::group_by(.data$date) |>
     dplyr::summarise(
-      m = stats::median(.data$amspaf_ignorable),
+      m = stats::median(.data$mspaf_ignorable),
       .groups = "drop"
     )
   m <- dplyr::inner_join(
@@ -162,7 +162,7 @@ test_that("I8: bounds are non-negative/ordered and the envelope is asymmetric", 
   expect_true(all(ordered_ok, na.rm = TRUE))
   # The floor + SSD nonlinearity make the interval asymmetric about the centre
   # on a non-trivial share of days. (Direction is data-dependent: symmetric
-  # concentration draws map through the SSD curvature, which can skew the AmsPAF
+  # concentration draws map through the SSD curvature, which can skew the msPAF
   # band either way, so we test that asymmetry EXISTS, not its sign.)
   uhw <- out$hi_ignorable - out$median_ignorable
   lhw <- out$median_ignorable - out$lo_ignorable

@@ -34,7 +34,7 @@ dimnames; must be supplied explicitly otherwise.}
 
 \item{seed}{Integer or \code{NULL}.  When non-\code{NULL}, \code{set.seed(seed)} is called
 at the start of the function so results are reproducible.  In
-\code{amspaf_daily()}, the seed is set by the caller (via its own \code{seed}
+\code{mspaf_daily()}, the seed is set by the caller (via its own \code{seed}
 argument) before this function is invoked, so \code{seed = NULL} is used there.}
 }
 \value{
@@ -60,7 +60,7 @@ guarantees each analyte's marginal distribution is unchanged when the
 process innovations \eqn{\eta^+} are correlated: the smoother gain \code{L} is
 precomputed on the actual data, and the correction \eqn{\alpha^+ - L y^+}
 has expectation zero.  Correlating \eqn{\eta^+} across analytes widens only
-the \emph{joint} distribution (i.e. the combined AmsPAF interval).
+the \emph{joint} distribution (i.e. the combined msPAF interval).
 
 \strong{Cholesky coupling}: \code{Z_raw \%*\% U_chol} (where \code{U_chol = chol(R)}, upper
 triangular) gives rows with covariance \code{R} when rows of \code{Z_raw} are iid

@@ -10,7 +10,7 @@
 ##   - .select_api_tau()           continuous tau selection by AIC (issue #49)
 ##   - fit_reference_model()       with pre-supplied hydro; basic structure
 ##   - .resolve_ref_norm()         three-tier ladder
-##   - add_amspaf(reference_model) end-to-end (target = reference → ARA ≈ 0)
+##   - add_mspaf(reference_model) end-to-end (target = reference → ARA ≈ 0)
 ##   - ara_summary()               attribute accessor
 
 library(testthat)
@@ -523,10 +523,10 @@ test_that(".resolve_ref_norm() chronic path returns model_integrated or static t
 
 
 ## ============================================================================
-## End-to-end: add_amspaf(reference_model) — target = reference → ARA ≈ 0
+## End-to-end: add_mspaf(reference_model) — target = reference → ARA ≈ 0
 ## ============================================================================
 
-test_that("add_amspaf(reference_model): target = reference gives small AmsPAF", {
+test_that("add_mspaf(reference_model): target = reference gives small msPAF", {
   ref   <- make_ref_chem(60)
   hydro <- make_hydro(500)
   m     <- fit_reference_model(
@@ -540,17 +540,17 @@ test_that("add_amspaf(reference_model): target = reference gives small AmsPAF", 
     dplyr::filter(sample_id %in% unique(sample_id)[1:5]) |>
     dplyr::mutate(site_id = "target")
 
-  out <- add_amspaf(target, reference = m, conc_units = "ug/L",
+  out <- add_mspaf(target, reference = m, conc_units = "ug/L",
                     require_temperature = FALSE)
-  amspaf <- dplyr::filter(out, analyte == "AmsPAF")
+  mspaf <- dplyr::filter(out, analyte == "msPAF")
 
-  # When target ≈ reference background, AmsPAF should be low
+  # When target ≈ reference background, msPAF should be low
   # (not necessarily exactly 0 because tier-2 prediction adds noise)
-  expect_true(nrow(amspaf) > 0L)
-  expect_true(all(amspaf$value >= 0))
+  expect_true(nrow(mspaf) > 0L)
+  expect_true(all(mspaf$value >= 0))
 })
 
-test_that("add_amspaf(reference_model): elevated target gives higher AmsPAF than clean target", {
+test_that("add_mspaf(reference_model): elevated target gives higher msPAF than clean target", {
   ref   <- make_ref_chem(60)
   hydro <- make_hydro(500)
   m     <- fit_reference_model(
@@ -571,12 +571,12 @@ test_that("add_amspaf(reference_model): elevated target gives higher AmsPAF than
     )
 
   both <- dplyr::bind_rows(base_sample, elevated)
-  out  <- add_amspaf(both, reference = m, conc_units = "ug/L",
+  out  <- add_mspaf(both, reference = m, conc_units = "ug/L",
                      require_temperature = FALSE)
-  amspaf <- dplyr::filter(out, analyte == "AmsPAF")
+  mspaf <- dplyr::filter(out, analyte == "msPAF")
 
-  paf_clean    <- amspaf$value[amspaf$sample_id == "clean"]
-  paf_elevated <- amspaf$value[amspaf$sample_id == "elevated"]
+  paf_clean    <- mspaf$value[mspaf$sample_id == "clean"]
+  paf_elevated <- mspaf$value[mspaf$sample_id == "elevated"]
 
   expect_gt(paf_elevated, paf_clean)
 })
@@ -598,7 +598,7 @@ test_that("ara_summary() returns a tibble with expected columns for NULL referen
     dplyr::filter(sample_id %in% unique(sample_id)[1:3]) |>
     dplyr::mutate(site_id = "target")
 
-  out <- add_amspaf(target, reference = m, conc_units = "ug/L",
+  out <- add_mspaf(target, reference = m, conc_units = "ug/L",
                     require_temperature = FALSE)
   s   <- ara_summary(out)
 
@@ -616,7 +616,7 @@ test_that("ara_summary() also works for static reference path", {
   target <- dplyr::filter(demo, site_id == "downstream")
   refdat <- dplyr::filter(demo, site_id == "reference")
 
-  out <- add_amspaf(target, reference = refdat,
+  out <- add_mspaf(target, reference = refdat,
                     conc_units = "ug/L", require_temperature = FALSE)
   s   <- ara_summary(out)
 

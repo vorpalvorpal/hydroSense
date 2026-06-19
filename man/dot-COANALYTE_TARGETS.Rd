@@ -12,7 +12,7 @@ An object of class \code{character} of length 4.
 }
 \description{
 These are imputed separately (after metals/organics imputation) via
-\code{\link[=impute_coanalytes]{impute_coanalytes()}} so that \code{\link[=add_amspaf]{add_amspaf()}} has values to normalise
+\code{\link[=impute_coanalytes]{impute_coanalytes()}} so that \code{\link[=add_mspaf]{add_mspaf()}} has values to normalise
 against.  pH and EC are excluded — they are always present (required vars).
 }
 \keyword{internal}

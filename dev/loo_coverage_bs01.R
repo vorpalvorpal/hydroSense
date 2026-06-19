@@ -7,7 +7,7 @@
 # checks whether the held-out residual falls inside the state-posterior interval.
 # Coverage is in LATENT residual space (what the bridge models), so this isolates
 # the bridge-variance calibration from the convex-SSD/floor transform (#15):
-#   * coverage ~ nominal at scale=1  -> bridge variance OK; AmsPAF inflation is
+#   * coverage ~ nominal at scale=1  -> bridge variance OK; msPAF inflation is
 #     the transform (#15), not the variance.
 #   * coverage > nominal (over-covered) -> bridge too wide -> lower ou_scale.
 # block >= 2 probes mid-gap width (plain LOO mostly tests the pinch zone).

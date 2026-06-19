@@ -104,7 +104,7 @@ This function is value-agnostic: pass any long-format data frame with
 \code{analyte} and \code{value} columns and it will compute one time-weighted value
 per (focal_date × site_id × analyte).  Use it to aggregate raw chemistry
 (\code{analyte} = chemical species, \code{summary = "geom_mean"}) or per-sample
-AmsPAF values (\code{analyte = "AmsPAF"}, \code{summary = "arith_mean"}) into a
+msPAF values (\code{analyte = "msPAF"}, \code{summary = "arith_mean"}) into a
 chronic predictor.
 
 \strong{Forward-step duration weighting} treats each sample as representing the
@@ -137,19 +137,19 @@ Use for chemistry concentrations.  Caveat: with highly pulsed exposure
 and a non-linear SSD response, this underestimates the time-averaged
 risk metric (Jensen's inequality on the upper tail of the SSD).
 \item \code{"arith_mean"}: weighted arithmetic mean.  Use for bounded indices
-like AmsPAF percentages, or for chemistry when comparison against an
+like msPAF percentages, or for chemistry when comparison against an
 arithmetic-mean compliance trigger is wanted.
 \item \code{"p90"}: 90th percentile (duration-weighted empirical CDF).  Diagnostic
 for "what's the upper-end exposure the community sees most of the
 time."
 }
 
-For chronic AmsPAF specifically, the recommended pipeline is
-\code{add_amspaf()} on per-sample chemistry, then \code{time_weighted_aggregate()}
-on the resulting AmsPAF rows with \code{summary = "arith_mean"}.  This
-computes the time-averaged AmsPAF, which integrates the toxic response
+For chronic msPAF specifically, the recommended pipeline is
+\code{add_mspaf()} on per-sample chemistry, then \code{time_weighted_aggregate()}
+on the resulting msPAF rows with \code{summary = "arith_mean"}.  This
+computes the time-averaged msPAF, which integrates the toxic response
 over time (consistent with how biological communities respond to
-fluctuating exposure) — rather than the AmsPAF computed at a single
+fluctuating exposure) — rather than the msPAF computed at a single
 time-averaged chemistry, which can substantially under-state risk for
 pulsed exposures.
 }

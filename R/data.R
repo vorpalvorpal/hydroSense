@@ -20,7 +20,7 @@
 #' Each site has six bi-monthly samples through 2024. The analyte panel carries
 #' the major ions used by [add_lmf()] / [to_meq()] (`Na`, `K`, `Ca`, `Mg`,
 #' `Cl`, sulfate, `F`, `NO3-N`, `NO2-N`, `CO3-CaCO3`, `HCO3-CaCO3`), the
-#' toxicants assessed by [ssd_paf()] / [add_amspaf()] (`Cu`, `Zn`, `NH3-N`),
+#' toxicants assessed by [ssd_paf()] / [add_mspaf()] (`Cu`, `Zn`, `NH3-N`),
 #' and the co-analytes needed for the ammonia and bioavailability
 #' normalisations (`pH`, `temperature`, `DOC`, `hardness`).
 #'

@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# Issue #15 crossover-scale experiment (B.S01, ARA): compare the daily AmsPAF
+# Issue #15 crossover-scale experiment (B.S01, ARA): compare the daily msPAF
 # band under c = HC5 / HC1 / HC0.1 (SSD proportions 0.05 / 0.01 / 0.001) against
 # the deterministic centre. c sets where asinh(I/c) switches additive ->
 # multiplicative; a lower c puts more of the impact range in the proportional
@@ -35,9 +35,9 @@ set_prop <- function(p) {
 
 alpha <- (1 - INTERVAL) / 2     # NB: not named `lo` -> would shadow the lo column
 band <- function(dr) dr |> dplyr::group_by(date) |>
-  dplyr::summarise(median = median(amspaf, na.rm = TRUE),
-                   lo = quantile(amspaf, alpha, names = FALSE, na.rm = TRUE),
-                   hi = quantile(amspaf, 1 - alpha, names = FALSE, na.rm = TRUE),
+  dplyr::summarise(median = median(mspaf, na.rm = TRUE),
+                   lo = quantile(mspaf, alpha, names = FALSE, na.rm = TRUE),
+                   hi = quantile(mspaf, 1 - alpha, names = FALSE, na.rm = TRUE),
                    .groups = "drop")
 win <- function(d, w) dplyr::filter(d, date >= w[1], date <= w[2])
 
@@ -46,11 +46,11 @@ res <- list()
 for (nm in names(props)) {
   cat("running", nm, "(p =", props[[nm]], ") ...\n")
   set_prop(props[[nm]])
-  dr  <- suppressMessages(do.call(amspaf_daily, c(da, list(
+  dr  <- suppressMessages(do.call(mspaf_daily, c(da, list(
     reference = da$reference_model, ndraws = N, seed = SEED,
     return = "draws", grab_cv = TOX_RSD))))
-  det <- suppressMessages(do.call(amspaf_daily, c(da, list(
-    reference = da$reference_model))))[, c("date", "amspaf")]
+  det <- suppressMessages(do.call(mspaf_daily, c(da, list(
+    reference = da$reference_model))))[, c("date", "mspaf")]
   ap  <- attr(dr, "analyte_pafs")
   nh  <- ap[ap$analyte == "NH3-N" & ap$date > GAP[1] & ap$date < GAP[2], ]
   res[[nm]] <- list(band = band(dr), det = det,

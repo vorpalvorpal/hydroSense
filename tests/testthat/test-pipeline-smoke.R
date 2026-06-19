@@ -1,13 +1,13 @@
-## End-to-end smoke tests for the chronic AmsPAF pipeline
+## End-to-end smoke tests for the chronic msPAF pipeline
 ##
 ## Structure:
 ##   § 1  Always-run: prescreen → chronic → prepare_reference (no external deps)
-##   § 2  Gated on guideline_dir: full pipeline including add_amspaf
+##   § 2  Gated on guideline_dir: full pipeline including add_mspaf
 ##   § 3  Gated on BRMS_SMOKE_TEST=1: full pipeline including impute_chemistry
 ##
 ## The pipeline under test:
 ##   prescreen_analytes() → [impute_chemistry()] →
-##   time_weighted_aggregate() → prepare_reference() → add_amspaf()
+##   time_weighted_aggregate() → prepare_reference() → add_mspaf()
 
 library(testthat)
 library(hydroSense)
@@ -162,11 +162,11 @@ test_that("§1e chronic reference baseline is lower for reference than downstrea
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# § 2  Full pipeline including add_amspaf
+# § 2  Full pipeline including add_mspaf
 # Requires hydroSense.guideline_dir option to be set.
 # ─────────────────────────────────────────────────────────────────────────────
 
-test_that("§2 full chronic AmsPAF pipeline runs end-to-end", {
+test_that("§2 full chronic msPAF pipeline runs end-to-end", {
 
   chem <- make_pipeline_chem()
 
@@ -186,24 +186,24 @@ test_that("§2 full chronic AmsPAF pipeline runs end-to-end", {
   # Step 3: prepare reference
   prep_ref <- prepare_reference(chr_ref, conc_units = "ug/L")
 
-  # Step 4: AmsPAF
-  out <- add_amspaf(chr_ds, reference = prep_ref, conc_units = "ug/L")
+  # Step 4: msPAF
+  out <- add_mspaf(chr_ds, reference = prep_ref, conc_units = "ug/L")
 
-  # Should have AmsPAF rows appended
-  amspaf_rows <- dplyr::filter(out, analyte == "AmsPAF")
-  expect_gte(nrow(amspaf_rows), 1L)
+  # Should have msPAF rows appended
+  mspaf_rows <- dplyr::filter(out, analyte == "msPAF")
+  expect_gte(nrow(mspaf_rows), 1L)
 
-  # AmsPAF values should be non-negative finite numbers
-  expect_true(all(is.finite(amspaf_rows$value)))
-  expect_true(all(amspaf_rows$value >= 0))
+  # msPAF values should be non-negative finite numbers
+  expect_true(all(is.finite(mspaf_rows$value)))
+  expect_true(all(mspaf_rows$value >= 0))
 
   # n_analytes_used should be populated
-  expect_true("n_analytes_used" %in% names(amspaf_rows))
-  expect_true(all(amspaf_rows$n_analytes_used >= 1L))
+  expect_true("n_analytes_used" %in% names(mspaf_rows))
+  expect_true(all(mspaf_rows$n_analytes_used >= 1L))
 
   # focal_date column should be preserved in output
-  expect_true("focal_date" %in% names(amspaf_rows))
-  expect_equal(sort(unique(amspaf_rows$focal_date)), sort(focal))
+  expect_true("focal_date" %in% names(mspaf_rows))
+  expect_equal(sort(unique(mspaf_rows$focal_date)), sort(focal))
 })
 
 
@@ -240,20 +240,20 @@ test_that("§3 full pipeline with imputation runs end-to-end (Path B)", {
   expect_true(all(is.finite(imp$value)))
   expect_true("imputed" %in% names(imp))
 
-  # Step 3: per-sample AmsPAF
+  # Step 3: per-sample msPAF
   prep_ref <- prepare_reference(dplyr::filter(imp, site_id == "ref"),
                                 conc_units = "ug/L")
-  ps       <- add_amspaf(dplyr::filter(imp, site_id == "ds"),
+  ps       <- add_mspaf(dplyr::filter(imp, site_id == "ds"),
                          reference = prep_ref, conc_units = "ug/L")
-  ps_amspaf <- dplyr::filter(ps, analyte == "AmsPAF")
-  expect_gte(nrow(ps_amspaf), 1L)
+  ps_mspaf <- dplyr::filter(ps, analyte == "msPAF")
+  expect_gte(nrow(ps_mspaf), 1L)
 
-  # Step 4: chronic Path B — time-weighted arithmetic mean of per-sample AmsPAF
+  # Step 4: chronic Path B — time-weighted arithmetic mean of per-sample msPAF
   focal     <- as.Date(c("2025-04-01", "2025-10-01"))
-  chr_amspaf <- time_weighted_aggregate(
-    ps_amspaf, focal_dates = focal, summary = "arith_mean"
+  chr_mspaf <- time_weighted_aggregate(
+    ps_mspaf, focal_dates = focal, summary = "arith_mean"
   )
 
-  expect_gte(nrow(chr_amspaf), 1L)
-  expect_true(all(is.finite(chr_amspaf$value)))
+  expect_gte(nrow(chr_mspaf), 1L)
+  expect_true(all(is.finite(chr_mspaf$value)))
 })

@@ -10,7 +10,7 @@
 \item{tm}{A \code{target_model} from \code{\link[=fit_target_model]{fit_target_model()}}.}
 
 \item{perturb_reference}{Logical; when \code{TRUE}, also perturb the embedded
-\code{reference_model}'s GAMs (use only when \code{amspaf_daily(reference = NULL)}
+\code{reference_model}'s GAMs (use only when \code{mspaf_daily(reference = NULL)}
 — total-concentration mode — so that \code{ref_norm} uncertainty is not
 inadvertently cancelled by a downstream subtraction).}
 }

@@ -15,7 +15,7 @@ mk <- function(sid, cu, zn, ni, draw_id = NA_integer_) {
 
 test_that("point mode: analyte_pafs() returns a flat breakdown, not a column", {
   df  <- dplyr::bind_rows(mk("s1", 5, 10, 0.3), mk("s2", 50, 20, 0.1))
-  out <- suppressMessages(add_amspaf(df, reference = NULL, conc_units = "ug/L"))
+  out <- suppressMessages(add_mspaf(df, reference = NULL, conc_units = "ug/L"))
 
   expect_false("analyte_pafs" %in% names(out))          # no list-column
   bd <- analyte_pafs(out)
@@ -38,7 +38,7 @@ test_that("draws mode: analyte_pafs() is keyed per (sample, draw, analyte)", {
                      value = c(5, 10, 0.3) * d, detected = TRUE, draw_id = d)))
   cofix <- mk("s1", 0, 0, 0)[4:8, ] |> dplyr::mutate(draw_id = NA_integer_)
   df <- dplyr::bind_rows(metals, cofix)
-  out <- suppressMessages(add_amspaf(df, reference = NULL, conc_units = "ug/L",
+  out <- suppressMessages(add_mspaf(df, reference = NULL, conc_units = "ug/L",
                                      return = "draws"))
   bd <- analyte_pafs(out)
   expect_true("draw_id" %in% names(bd))

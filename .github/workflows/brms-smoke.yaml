@@ -70,7 +70,7 @@ jobs:
         # Scope to test-impute-smoke.R: it exercises the full brms/Stan path
         # (fit_imputation_model + impute_chemistry for rescor_mi / cens /
         # cens_factor) without needing the gitignored SSD guideline data that
-        # the add_amspaf-based pipeline smoke test requires.
+        # the add_mspaf-based pipeline smoke test requires.
         run: |
           options(mc.cores = 2, brms.backend = "cmdstanr")
           res <- devtools::test(filter = "impute-smoke")

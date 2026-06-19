@@ -11,7 +11,7 @@ Description: Tools for detecting and assessing landfill-leachate impacts on
     below-detection and missing analyte concentrations while preserving
     cross-analyte correlation structure. Third, species-sensitivity-
     distribution ('SSD') based potentially-affected-fraction ('PAF') toxicity
-    assessment, including a multi-substance PAF ('msPAF' / 'AmsPAF') that
+    assessment, including a multi-substance PAF ('msPAF') that
     combines toxicants by concentration and response addition and subtracts
     local background via the Added Risk Approach. Toxicity is derived from the
     ANZECC/ANZG freshwater guideline datasets, with bioavailability and

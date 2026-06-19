@@ -4,7 +4,7 @@
 # The informative envelope reuses the ignorable simulation-smoother draws,
 # freezing the residual at its posterior mean on in-gap days. The plan claims it
 # is "~free given the ignorable draws": the marginal cost over the single
-# (ignorable) envelope should be the one extra add_amspaf() pass on the
+# (ignorable) envelope should be the one extra add_mspaf() pass on the
 # frozen-residual synthetic frame, not a second full draw simulation. This
 # benchmark records the wall-clock cost of each `gap_uncertainty` mode at a
 # realistic daily horizon so regressions in that claim are visible.
@@ -50,7 +50,7 @@ rm <- suppressMessages(fit_reference_model(
 ))
 
 run <- function(mode) {
-  suppressWarnings(suppressMessages(amspaf_daily(
+  suppressWarnings(suppressMessages(mspaf_daily(
     tgt,
     reference_model = rm, interpolation = "model",
     require_temperature = FALSE, conc_units = "ug/L",

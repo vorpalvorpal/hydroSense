@@ -4,7 +4,7 @@
 #' observed water temperature, then predicts water temperature for a set of
 #' target dates. The result can be added to a chemistry data frame as
 #' `analyte = "temperature"` rows, enabling the NH₃-N pH/temperature
-#' normalisation in [add_amspaf()].
+#' normalisation in [add_mspaf()].
 #'
 #' @section Air temperature variable:
 #' This function requires **mean daily air temperature** (°C). Mean daily air
@@ -140,7 +140,7 @@
 #' attr(wt, "model")  # which model was selected (air-only vs air + season)
 #'
 #' @seealso [get_silo_air_temp()] to source `air_temp_df` from SILO for an
-#'   Australian location; [add_amspaf()], which requires the resulting water
+#'   Australian location; [add_mspaf()], which requires the resulting water
 #'   `temperature` rows for ammonia.
 #' @export
 estimate_water_temp <- function(

@@ -1,9 +1,9 @@
 #!/usr/bin/env Rscript
-# Benchmark add_amspaf() draws-mode scaling — issue #30 (vectorise the engine).
+# Benchmark add_mspaf() draws-mode scaling — issue #30 (vectorise the engine).
 # No prior benchmark coverage existed for this engine; this fills that gap and
 # provides the before/after baseline. Outside R CMD check (lives under bench/).
 #
-# Usage: Rscript bench/bench-amspaf.R [label]   (label tags the saved results,
+# Usage: Rscript bench/bench-mspaf.R [label]   (label tags the saved results,
 #        e.g. "baseline" before the change, "after" once vectorised)
 suppressMessages({ library(bench); devtools::load_all(".", quiet = TRUE) })
 
@@ -40,7 +40,7 @@ grid <- rbind(
 res <- purrr::pmap_dfr(grid, function(n_samples, n_draws, n_analytes) {
   df <- make_frame(n_samples, n_draws, n_analytes)
   b  <- bench::mark(
-    add_amspaf(df, reference = NULL, conc_units = "ug/L", return = "draws"),
+    add_mspaf(df, reference = NULL, conc_units = "ug/L", return = "draws"),
     iterations = 2L, check = FALSE, filter_gc = FALSE
   )
   tibble::tibble(
@@ -62,7 +62,7 @@ cat("WROTE", out, "\n")
 ## lookup table:
 ##   A. .ssd_paf_lookup() cold vs warm cache (per-analyte spline build cost)
 ##   B. .ssd_paf_vec() lookup vs direct ssd_hp() at various concentration counts
-##   C. add_amspaf() draws-mode end-to-end: #36 vs a reference call using the
+##   C. add_mspaf() draws-mode end-to-end: #36 vs a reference call using the
 ##      cold-cache path (approximates #30 baseline for PAF cost)
 
 cat("\n── PAF lookup micro-benchmarks ──\n")
@@ -107,20 +107,20 @@ paf_vec <- bench::mark(
 cat("\nB. .ssd_paf_vec() lookup vs direct ssd_hp() (Cu/multi):\n")
 print(paf_vec[, c("expression", "min", "median", "mem_alloc")])
 
-## C. End-to-end add_amspaf() draws mode: 30 samples × 8 draws, 9 analytes.
+## C. End-to-end add_mspaf() draws mode: 30 samples × 8 draws, 9 analytes.
 ## Run twice to show warm-cache performance; first call populates the lookup.
 df_large <- make_frame(30L, 8L, 9L)
 .warmup <- suppressMessages(
-  add_amspaf(df_large, reference = NULL, conc_units = "ug/L", return = "draws")
+  add_mspaf(df_large, reference = NULL, conc_units = "ug/L", return = "draws")
 )  # warm up the cache
 rm(.warmup)
 e2e <- bench::mark(
-  add_amspaf_lookup = suppressMessages(
-    add_amspaf(df_large, reference = NULL, conc_units = "ug/L", return = "draws")
+  add_mspaf_lookup = suppressMessages(
+    add_mspaf(df_large, reference = NULL, conc_units = "ug/L", return = "draws")
   ),
   iterations = 3L, check = FALSE, filter_gc = FALSE
 )
-cat("\nC. add_amspaf() 30s×8d×9a warm cache (lookup active):\n")
+cat("\nC. add_mspaf() 30s×8d×9a warm cache (lookup active):\n")
 print(e2e[, c("expression", "min", "median", "mem_alloc")])
 
 paf_bench <- list(cache = paf_cache, paf_vec = paf_vec, e2e = e2e)

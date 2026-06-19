@@ -29,7 +29,7 @@ Routine monitoring chemistry is rarely complete. Two kinds of gaps dominate:
 - **Missing.** The analyte was not measured at that sample at all, so there
   is no value and no detection limit.
 
-Both gaps matter for mixture toxicity: `add_amspaf()` sums the potentially
+Both gaps matter for mixture toxicity: `add_mspaf()` sums the potentially
 affected fraction across analytes, so a sample where Cu was never measured
 and Zn came back BDL is not automatically "clean" — it is *under-determined*.
 The imputation tools fill these gaps with statistically defensible estimates
@@ -227,7 +227,7 @@ dplyr::count(filled, analyte, imputed_kind)
 By default the result is a **posterior mean per cell** (`return = "point"`).
 For uncertainty propagation, request the full posterior with
 `return = "draws"` to get one row per sample × analyte × draw — feed those
-draws through `add_amspaf()` to obtain a posterior distribution of mixture
+draws through `add_mspaf()` to obtain a posterior distribution of mixture
 PAF rather than a point estimate. Draws can be memory-heavy (especially for
 `"rescor_mi"`); `ndraws =` subsamples the posterior and `batch_size =` predicts
 the samples in batches, both of which bound peak memory.
@@ -255,7 +255,7 @@ bdl_cap_summary(filled)   # NULL (with a message) if nothing was capped
 
 ## Imputing normalisation co-analytes
 
-The bioavailability normalisations in `add_amspaf()` need co-analytes —
+The bioavailability normalisations in `add_mspaf()` need co-analytes —
 DOC, Ca, Mg, and hardness — to convert field concentrations to the SSD index
 condition (see the *Analyte normalisation* article). When one of these is
 missing, `impute_coanalytes()` fills it with a fast, deterministic
@@ -287,7 +287,7 @@ model  <- fit_imputation_model(monitoring_long)
 result <- monitoring_long |>
   impute_chemistry(model) |>     # BDL + missing metals/organics
   impute_coanalytes(model) |>    # missing DOC / Ca / Mg / hardness
-  add_amspaf(reference = prep_ref) |>
+  add_mspaf(reference = prep_ref) |>
   time_weighted_aggregate()
 ```
 
@@ -324,7 +324,7 @@ that the data never contained. A few situations call for restraint:
 
 The Bayesian step is the only part of hydroSense that needs **brms**, so
 brms is an optional dependency rather than a hard requirement — the LMF and
-AmsPAF tools install and run without it. To use `fit_imputation_model()` and
+msPAF tools install and run without it. To use `fit_imputation_model()` and
 `impute_chemistry()`, install brms and a working Stan engine once:
 
 ```r

@@ -18,17 +18,17 @@
 #   you pass, as-is, for every analyte. Six analytes carry an index-condition
 #   normalisation_formula in the metadata (NH3-N: pH/temperature un-ionised
 #   fraction; Cu/Ni/Zn/Cd/Pb: hardness/DOC bioavailability). Those formulas are
-#   applied automatically — and only — by add_amspaf(), which reads the required
+#   applied automatically — and only — by add_mspaf(), which reads the required
 #   co-analyte rows (pH, temperature, hardness, DOC, ...) from the data frame.
 #
 #   So: for a pipeline assessment, pass RAW measured concentrations plus the
-#   co-analyte rows to add_amspaf() and let it correct once, internally. Do not
+#   co-analyte rows to add_mspaf() and let it correct once, internally. Do not
 #   pre-correct. For a standalone single-sample ssd_paf() spot-check you may
 #   pre-correct ammonia with correct_ammonia_ph_temp(conc, pH, temperature_C);
 #   this is a convenience for the manual path only, never a pipeline step.
 #
 #   Water temperature is mandatory for any sample assessed for NH3-N (see
-#   add_amspaf(require_temperature=)). Source it by measurement, or derive it
+#   add_mspaf(require_temperature=)). Source it by measurement, or derive it
 #   with estimate_water_temp() — optionally fed by get_silo_air_temp(), which
 #   pulls daily mean air temperature from SILO for an Australian lat/lon.
 #   Cr    : no external correction needed (freshwater subset already applied)

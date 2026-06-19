@@ -29,8 +29,8 @@ navbar:
           href: articles/imputation.html
         - text: Analyte normalisation
           href: articles/normalisation.html
-        - text: Interpreting chronic AmsPAF outputs
-          href: articles/chronic-amspaf-interpretation.html
+        - text: Interpreting chronic msPAF outputs
+          href: articles/chronic-mspaf-interpretation.html
 
 reference:
   - title: Example data
@@ -66,14 +66,14 @@ reference:
       - ssd_pct
       - ssd_hc50
 
-  - title: Multi-substance PAF (AmsPAF)
+  - title: Multi-substance PAF (msPAF)
     desc: >
       Concentration- and response-addition mixture PAF with Added-Risk local
       background adjustment.  Includes the static and temporal (contemporaneous)
       ARA reference paths.
     contents:
-      - add_amspaf
-      - amspaf_daily
+      - add_mspaf
+      - mspaf_daily
       - prepare_reference
       - fit_reference_model
       - fit_target_model

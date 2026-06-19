@@ -1,6 +1,6 @@
 ## Tests for the multi-output daily uncertainty bracket (issue #50).
 ##
-## amspaf_daily() gains a `gap_uncertainty = c("bracket","ignorable",
+## mspaf_daily() gains a `gap_uncertainty = c("bracket","ignorable",
 ## "informative")` selector. Of all propagated uncertainty sources only the
 ## latent Kalman residual is missingness-dependent (it balloons in gaps). The
 ## INFORMATIVE (lower) envelope freezes that residual at its posterior MEAN on
@@ -12,7 +12,7 @@
 ##
 ## Functions under test:
 ##   .summarise_bracket(draws_df, interval, central, gap_uncertainty)  [pure]
-##   amspaf_daily(..., gap_uncertainty=)                                [public]
+##   mspaf_daily(..., gap_uncertainty=)                                [public]
 ##
 ## Scientific basis: Rubin (1976) ignorable vs informative missingness; Durbin &
 ## Koopman (2002) simulation smoother (frozen mean = x_hat, the deviation term
@@ -75,10 +75,10 @@ make_hydro_b <- function(n = 700L, seed = 99L) {
   list(rm = rm, tgt = tgt, dates = dates)
 })
 
-## Run amspaf_daily with bracket defaults, silencing the rainfall CLI warning.
+## Run mspaf_daily with bracket defaults, silencing the rainfall CLI warning.
 run_daily <- function(..., gap_uncertainty = "bracket") {
   suppressWarnings(suppressMessages(
-    amspaf_daily(
+    mspaf_daily(
       .bf$tgt,
       reference_model = .bf$rm,
       interpolation = "model",
@@ -108,14 +108,14 @@ capture_warns <- function(expr) {
 ## ═══════════════════════════════════════════════════════════════════════════
 
 describe(".summarise_bracket()", {
-  ## Two envelopes of per-draw AmsPAF for a single (site, date); informative is a
+  ## Two envelopes of per-draw msPAF for a single (site, date); informative is a
   ## deliberately narrower spread than ignorable.
   toy <- tibble::tibble(
     date = as.Date("2021-02-01"),
     site_id = "S",
     draw_id = 1:5,
-    amspaf_ignorable = c(1, 2, 3, 4, 5),
-    amspaf_informative = c(2, 2, 3, 4, 4)
+    mspaf_ignorable = c(1, 2, 3, 4, 5),
+    mspaf_informative = c(2, 2, 3, 4, 4)
   )
   lo_p <- 0.1
   hi_p <- 0.9 # interval = 0.8
@@ -201,10 +201,10 @@ describe(".summarise_bracket()", {
 
 
 ## ═══════════════════════════════════════════════════════════════════════════
-## B. amspaf_daily() bracket integration
+## B. mspaf_daily() bracket integration
 ## ═══════════════════════════════════════════════════════════════════════════
 
-describe("amspaf_daily(gap_uncertainty=)", {
+describe("mspaf_daily(gap_uncertainty=)", {
   ## ── Schema ────────────────────────────────────────────────────────────────
 
   it("bracket summary returns deterministic + both envelopes + precautionary", {
@@ -217,7 +217,7 @@ describe("amspaf_daily(gap_uncertainty=)", {
       "precautionary_lo", "precautionary_hi"
     ) %in% names(out)))
     # the old single-envelope columns are gone (pre-v1, no shim)
-    expect_false(any(c("amspaf", "amspaf_lower", "amspaf_upper") %in% names(out)))
+    expect_false(any(c("mspaf", "mspaf_lower", "mspaf_upper") %in% names(out)))
     expect_equal(
       nrow(out),
       nrow(dplyr::distinct(dplyr::select(out, "date", "site_id")))
@@ -250,12 +250,12 @@ describe("amspaf_daily(gap_uncertainty=)", {
     expect_false(any(grepl("ignorable|precautionary", names(out))))
   })
 
-  it("bracket draws mode carries amspaf_ignorable and amspaf_informative per draw", {
+  it("bracket draws mode carries mspaf_ignorable and mspaf_informative per draw", {
     skip_if(is.null(.bf$rm), "Reference model not fitted")
     out <- run_daily(ndraws = 6L, seed = 1L, return = "draws")
     expect_true(all(c(
       "date", "site_id", "draw_id",
-      "amspaf_ignorable", "amspaf_informative"
+      "mspaf_ignorable", "mspaf_informative"
     ) %in% names(out)))
     counts <- out |>
       dplyr::group_by(.data$date, .data$site_id) |>
@@ -271,11 +271,11 @@ describe("amspaf_daily(gap_uncertainty=)", {
     br <- run_daily(ndraws = 20L, seed = 1L, return = "summary") |>
       dplyr::arrange(.data$site_id, .data$date)
     j <- dplyr::inner_join(
-      dplyr::select(pt, "date", "site_id", amspaf_pt = "amspaf"),
+      dplyr::select(pt, "date", "site_id", mspaf_pt = "mspaf"),
       dplyr::select(br, "date", "site_id", "deterministic"),
       by = c("date", "site_id")
     )
-    expect_equal(j$deterministic, j$amspaf_pt,
+    expect_equal(j$deterministic, j$mspaf_pt,
       tolerance = 1e-6,
       label = "deterministic == grabs-exact point line"
     )
@@ -297,9 +297,9 @@ describe("amspaf_daily(gap_uncertainty=)", {
     ref <- draws |>
       dplyr::group_by(.data$date, .data$site_id) |>
       dplyr::summarise(
-        med = stats::median(.data$amspaf_ignorable),
-        lo = stats::quantile(.data$amspaf_ignorable, lo_p, names = FALSE),
-        hi = stats::quantile(.data$amspaf_ignorable, hi_p, names = FALSE),
+        med = stats::median(.data$mspaf_ignorable),
+        lo = stats::quantile(.data$mspaf_ignorable, lo_p, names = FALSE),
+        hi = stats::quantile(.data$mspaf_ignorable, hi_p, names = FALSE),
         .groups = "drop"
       ) |>
       dplyr::arrange(.data$site_id, .data$date)
@@ -322,7 +322,7 @@ describe("amspaf_daily(gap_uncertainty=)", {
       gap_uncertainty = "ignorable"
     ) |>
       dplyr::arrange(.data$site_id, .data$date, .data$draw_id)
-    expect_equal(br$amspaf_ignorable, ig$amspaf_ignorable,
+    expect_equal(br$mspaf_ignorable, ig$mspaf_ignorable,
       tolerance = 1e-12,
       label = "informative path is RNG-neutral"
     )
@@ -370,7 +370,7 @@ describe("amspaf_daily(gap_uncertainty=)", {
     skip_if(is.null(.bf$rm), "Reference model not fitted")
     daily_dates <- seq(as.Date("2021-03-01"), by = "day", length.out = 30L)
     tgt_dense <- make_chem_b("dense", daily_dates, mult = 5, seed = 4L)
-    out <- suppressWarnings(suppressMessages(amspaf_daily(
+    out <- suppressWarnings(suppressMessages(mspaf_daily(
       tgt_dense,
       reference_model = .bf$rm, interpolation = "model",
       require_temperature = FALSE, conc_units = "ug/L",
@@ -395,15 +395,15 @@ describe("amspaf_daily(gap_uncertainty=)", {
     )
     tol <- 1e-6
     # Jensen on the convex multi-stressor combine: more input variance -> higher
-    # AmsPAF central tendency. The IGNORABLE envelope carries the most variance
+    # msPAF central tendency. The IGNORABLE envelope carries the most variance
     # (residual drawn across every gap), so its median is the largest -- robustly
     # above both the informative median and the deterministic line. These two
-    # gaps are ~0.1 AmsPAF and hold across platforms.
+    # gaps are ~0.1 msPAF and hold across platforms.
     expect_gte(mean(out$median_ignorable), mean(out$median_informative) - tol)
     expect_gte(mean(out$median_ignorable), mean(out$deterministic) - tol)
     # Deterministic and informative nearly COINCIDE: they differ only by the
     # in-gap residual freeze and the per-draw trend perturbation, a second-order
-    # Jensen effect that acts on the handful of observed days only (~0.004 AmsPAF
+    # Jensen effect that acts on the handful of observed days only (~0.004 msPAF
     # here) and sits below Monte-Carlo noise. So no strict ordering is asserted
     # between them (it inverts across BLAS/RNG platforms); we assert only that
     # they agree to within a small tolerance. Per-day gap structure is covered by
@@ -429,7 +429,7 @@ describe("amspaf_daily(gap_uncertainty=)", {
 
   it("warns about ignorable gap treatment for rainfall hydrology + uncertainty", {
     skip_if(is.null(.bf$rm), "Reference model not fitted")
-    w <- capture_warns(amspaf_daily(
+    w <- capture_warns(mspaf_daily(
       .bf$tgt,
       reference_model = .bf$rm, interpolation = "model",
       require_temperature = FALSE, conc_units = "ug/L",
@@ -440,7 +440,7 @@ describe("amspaf_daily(gap_uncertainty=)", {
 
   it("does not emit the ignorable-gap warning in point mode (no uncertainty)", {
     skip_if(is.null(.bf$rm), "Reference model not fitted")
-    w <- capture_warns(amspaf_daily(
+    w <- capture_warns(mspaf_daily(
       .bf$tgt,
       reference_model = .bf$rm, interpolation = "model",
       require_temperature = FALSE, conc_units = "ug/L",
@@ -454,7 +454,7 @@ describe("amspaf_daily(gap_uncertainty=)", {
   it("point mode (ndraws=NULL) ignores gap_uncertainty and returns the point schema", {
     skip_if(is.null(.bf$rm), "Reference model not fitted")
     out <- run_daily(ndraws = NULL)
-    expect_true(all(c("date", "site_id", "amspaf") %in% names(out)))
+    expect_true(all(c("date", "site_id", "mspaf") %in% names(out)))
     expect_false(any(grepl(
       "informative|ignorable|precautionary|deterministic",
       names(out)
@@ -465,7 +465,7 @@ describe("amspaf_daily(gap_uncertainty=)", {
     skip_if(is.null(.bf$rm), "Reference model not fitted")
     tgt1 <- dplyr::filter(.bf$tgt, .data$analyte %in%
       c("Cu", "pH", "DOC", "hardness", "Ca", "Mg"))
-    out <- suppressWarnings(suppressMessages(amspaf_daily(
+    out <- suppressWarnings(suppressMessages(mspaf_daily(
       tgt1,
       reference_model = .bf$rm, interpolation = "model",
       require_temperature = FALSE, conc_units = "ug/L", min_analytes = 1L,
@@ -482,7 +482,7 @@ describe("amspaf_daily(gap_uncertainty=)", {
     skip_if(is.null(.bf$rm), "Reference model not fitted")
     r1 <- run_daily(ndraws = 6L, seed = 77L, return = "draws")
     r2 <- run_daily(ndraws = 6L, seed = 77L, return = "draws")
-    expect_equal(r1$amspaf_ignorable, r2$amspaf_ignorable)
-    expect_equal(r1$amspaf_informative, r2$amspaf_informative)
+    expect_equal(r1$mspaf_ignorable, r2$mspaf_ignorable)
+    expect_equal(r1$mspaf_informative, r2$mspaf_informative)
   })
 })

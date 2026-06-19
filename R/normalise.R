@@ -128,11 +128,11 @@
 #'   `ssd_paf("NH3-N", conc = ., conc_units = "ug/L")`.
 #'
 #' @section Do not double-correct:
-#' [add_amspaf()] applies this same correction **automatically** from the
+#' [add_mspaf()] applies this same correction **automatically** from the
 #' metadata `normalisation_formula` (it reads the per-sample `pH` and
 #' `temperature` columns). Use this helper only for the manual [ssd_paf()]
 #' path. Do **not** pre-correct with this helper and then pass the result to
-#' [add_amspaf()], or ammonia will be corrected twice.
+#' [add_mspaf()], or ammonia will be corrected twice.
 #'
 #' @examples
 #' # 900 µg/L total ammonia-N measured at pH 8.5, 20 °C is far more toxic than

@@ -1,5 +1,5 @@
 ## Temperature is mandatory for any sample assessed for NH3-N: the un-ionised
-## fraction normalisation is undefined without water temperature. add_amspaf()
+## fraction normalisation is undefined without water temperature. add_mspaf()
 ## must fail loudly (not silently drop ammonia) when it is missing.
 
 library(testthat)
@@ -48,17 +48,17 @@ test_that("datasets without ammonia are unaffected", {
   expect_true(hydroSense:::.assert_temperature_present(df))
 })
 
-test_that("add_amspaf rejects an ammonia sample with no temperature by default", {
+test_that("add_mspaf rejects an ammonia sample with no temperature by default", {
   df <- tibble::tibble(
     sample_id = "S1",
     site_id   = "A",
     analyte   = "NH3-N",
     value     = 500
   )
-  expect_error(add_amspaf(df), "temperature")
+  expect_error(add_mspaf(df), "temperature")
 })
 
-test_that("add_amspaf(require_temperature = FALSE) bypasses the check", {
+test_that("add_mspaf(require_temperature = FALSE) bypasses the check", {
   df <- tibble::tibble(
     sample_id = "S1",
     site_id   = "A",
@@ -68,7 +68,7 @@ test_that("add_amspaf(require_temperature = FALSE) bypasses the check", {
   # Should not raise the temperature error; it may warn/return for other
   # reasons (too few analytes), but must get past the temperature gate.
   expect_no_error(
-    suppressWarnings(add_amspaf(df, require_temperature = FALSE,
+    suppressWarnings(add_mspaf(df, require_temperature = FALSE,
                                 conc_units    = "ug/L",
                                 guideline_dir = getOption("hydroSense.guideline_dir")))
   )

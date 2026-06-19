@@ -135,8 +135,8 @@ utils::globalVariables(c(
   "focal_date", "hydro_long", "hydro_short", "log_pred", "n_obs",
   "normalisation_formula", "null_aic", "rainfall_mm", "ref_norm",
   "ref_source", "ref_tier", "tau_long", "tau_short", "value_norm",
-  # amspaf_daily (amspaf_daily.R)
-  ".measured", "amspaf", "days_since_last_sample", "n_measured_analytes",
+  # mspaf_daily (mspaf_daily.R)
+  ".measured", "mspaf", "days_since_last_sample", "n_measured_analytes",
   # target_model (target_model.R)
   "I", "S", "impact", "impact_tier",
   # host-environment (dashboard) functions used only on add_lmf()'s non-override
