@@ -72,6 +72,7 @@ reference:
       background adjustment.  Includes the static and temporal (contemporaneous)
       ARA reference paths.
     contents:
+      - mspaf_pipeline
       - add_mspaf
       - mspaf_daily
       - prepare_reference
