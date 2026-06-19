@@ -44,6 +44,8 @@
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-apply_normalisation.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-assert_pos_scale.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-assert_temperature_present.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-bracket_draw_cols.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-bracket_summary_cols.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-broadcast_draws.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-build_analyte_model_df.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-build_daily_chem.html</loc></url>
@@ -102,6 +104,7 @@
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-ref_summary.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-ref_summary_bootstrap_ci.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-require_brms.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-residual_gap_mask.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-residual_on_qdates.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-residual_smoother.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-resolve_ref_norm.html</loc></url>
@@ -116,6 +119,7 @@
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-ssd_paf_vec.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-summarise_amspaf_diagnostics.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-summarise_ara_coverage.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-summarise_bracket.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/dot-validate_impute_groups.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/draw_measurement_error.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/leachatetools/reference/estimate_water_temp.html</loc></url>

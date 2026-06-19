@@ -119,7 +119,7 @@ fit_reference_model(
   Start/end dates for SILO auto-fetch. Default `NULL`: derived from the
   reference chemistry date range, padded on the left by
   `5 × max(api_tau_bounds_long)` days so the recursive reservoir has
-  enough burn-in (≈5τ) to converge before the first observation.
+  enough burn-in (about 5 tau) to converge before the first observation.
 
 - silo_api_key:
 

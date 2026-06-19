@@ -81,6 +81,7 @@ analysis, visualisation, and downstream <code><a href="time_weighted_aggregate.h
 <span>  kappa <span class="op">=</span> <span class="fl">0.5</span>,</span>
 <span>  parallel <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  couple_residuals <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  gap_uncertainty <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"bracket"</span>, <span class="st">"ignorable"</span>, <span class="st">"informative"</span><span class="op">)</span>,</span>
 <span>  transform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"pseudo_log"</span>, <span class="st">"additive"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -197,11 +198,13 @@ product instead (see Details for the distinction).  Requires
 
 <dt id="arg-return">return<a class="anchor" aria-label="anchor" href="#arg-return"></a></dt>
 <dd><p><code>"summary"</code> (default) or <code>"draws"</code>; relevant only when
-<code>ndraws</code> is supplied.  <code>"summary"</code> collapses the draws to a central
-estimate (<code>amspaf</code>, the draws' own central tendency — see <code>central</code>) plus
-credible-interval bounds (<code>amspaf_lower</code>, <code>amspaf_upper</code>).  <code>"draws"</code>
+<code>ndraws</code> is supplied.  <code>"summary"</code> collapses the draws to per-envelope
+central estimates (<code>median_*</code>, the draws' own central tendency — see
+<code>central</code>) plus credible-interval bounds (<code>lo_*</code>, <code>hi_*</code>) for the chosen
+<code>gap_uncertainty</code>, alongside the <code>deterministic</code> centre line.  <code>"draws"</code>
 returns one row per (site \(\times\) day \(\times\) draw) with a
-<code>draw_id</code> column.  Ignored in point mode (<code>ndraws = NULL</code>).</p></dd>
+<code>draw_id</code> column and the per-draw envelope value(s).  See <em>Value</em>.  Ignored
+in point mode (<code>ndraws = NULL</code>).</p></dd>
 
 
 <dt id="arg-interval">interval<a class="anchor" aria-label="anchor" href="#arg-interval"></a></dt>
@@ -211,12 +214,13 @@ is the <code>1 - (1 - interval)/2</code> quantile.</p></dd>
 
 
 <dt id="arg-central">central<a class="anchor" aria-label="anchor" href="#arg-central"></a></dt>
-<dd><p>Central tendency for the <code>amspaf</code> column when
+<dd><p>Central tendency for the <code>median_*</code> envelope columns when
 <code>return = "summary"</code>: <code>"median"</code> (default) or <code>"mean"</code> of the per-day
-draws.  Because it is a summary <em>of the draws</em>, <code>amspaf</code> is coherent with
-its band (the median lies inside <code>[amspaf_lower, amspaf_upper]</code> by
-construction) and depends on <code>ndraws</code>/<code>seed</code>.  It is NOT the deterministic
-point estimate — for that, call with <code>ndraws = NULL</code>.</p></dd>
+draws.  Because it is a summary <em>of the draws</em>, each <code>median_*</code> is coherent
+with its band (it lies inside <code>[lo_*, hi_*]</code> by construction) and depends on
+<code>ndraws</code>/<code>seed</code>.  It is NOT the deterministic point estimate, which is
+reported separately in the <code>deterministic</code> column (and is the sole estimate
+when called with <code>ndraws = NULL</code>).</p></dd>
 
 
 <dt id="arg-grab-cv">grab_cv<a class="anchor" aria-label="anchor" href="#arg-grab-cv"></a></dt>
@@ -264,6 +268,23 @@ per-analyte marginals unchanged.  Set to <code>FALSE</code> to reproduce the pre
 independent-draw path exactly.</p></dd>
 
 
+<dt id="arg-gap-uncertainty">gap_uncertainty<a class="anchor" aria-label="anchor" href="#arg-gap-uncertainty"></a></dt>
+<dd><p>One of <code>"bracket"</code> (default), <code>"ignorable"</code>, or
+<code>"informative"</code>; relevant only in draws mode.  In observation gaps the
+latent residual reverts to its marginal variance, widening the band — the
+honest posterior <strong>only under ignorable (MAR) missingness</strong>.  Field
+sampling is often <strong>informative (MNAR)</strong>: gaps exist <em>because</em> the system
+was judged quiescent, so that band over-states gap uncertainty.  The model
+cannot identify the mechanism from grabs, so the default <strong>brackets</strong> both:
+the <em>ignorable</em> (upper) envelope keeps the simulation-smoother draw; the
+<em>informative</em> (lower) envelope freezes the residual at its posterior mean on
+in-gap days (the fully-informative extreme — gaps perfectly predictable).
+The two are nested and coincide at observation days.  <code>"ignorable"</code> /
+<code>"informative"</code> return only that envelope.  See <em>Interpreting gap
+uncertainty</em> below.  Reference: Rubin (1976) <a href="https://doi.org/10.1093/biomet/63.3.581" class="external-link">doi:10.1093/biomet/63.3.581</a>
+.</p></dd>
+
+
 <dt id="arg-transform">transform<a class="anchor" aria-label="anchor" href="#arg-transform"></a></dt>
 <dd><p><code>"pseudo_log"</code> (default) or <code>"additive"</code>.  Controls the
 variance-stabilising transform for the daily impact residual smoother.
@@ -278,23 +299,21 @@ Forwarded to <code><a href="fit_target_model.html">fit_target_model()</a></code>
     <p><strong>Point mode</strong> (<code>ndraws = NULL</code>): a tibble with one row per (site
 \(\times\) day) for days with sufficient analyte coverage; <code>amspaf</code> is
 the deterministic daily estimate.</p>
-<p><strong>Draws mode</strong> (<code>ndraws &gt; 0</code>, <code>return = "summary"</code>): same schema, where
-<code>amspaf</code> is the draws' central tendency (<code>central</code>), plus two extra columns
-<code>amspaf_lower</code> and <code>amspaf_upper</code> (the credible-interval bounds from the
-<code>ndraws</code> posterior draws).</p>
+<p><strong>Draws mode</strong> (<code>ndraws &gt; 0</code>, <code>return = "summary"</code>): one row per (site
+\(\times\) day) with the <code>deterministic</code> centre line and the envelope
+columns for the chosen <code>gap_uncertainty</code>: <code>median_*</code>, <code>lo_*</code>, <code>hi_*</code> per
+envelope (<code>informative</code> and/or <code>ignorable</code>, the central tendency per
+<code>central</code> and the <code>interval</code> credible bounds), plus
+<code>precautionary_lo</code>/<code>precautionary_hi</code> in <code>"bracket"</code> mode.</p>
 <p><strong>Draws mode</strong> (<code>ndraws &gt; 0</code>, <code>return = "draws"</code>): one row per (site
-\(\times\) day \(\times\) draw), with an additional <code>draw_id</code>
-integer column.</p>
+\(\times\) day \(\times\) draw), with a <code>draw_id</code> integer column and the
+per-draw AmsPAF value(s) <code>amspaf_ignorable</code> and/or <code>amspaf_informative</code> for
+the chosen <code>gap_uncertainty</code>.</p>
 <p>Common columns:</p><dl><dt><code>date</code></dt>
 <dd><p>Date of this daily estimate.</p></dd>
 
 <dt><code>site_id</code></dt>
 <dd><p>Site identifier.</p></dd>
-
-<dt><code>amspaf</code></dt>
-<dd><p>Daily AmsPAF (percentage, 0–100+).  The deterministic
-point estimate in point mode; the draws' central tendency in
-<code>return = "summary"</code>.</p></dd>
 
 <dt><code>n_analytes_used</code></dt>
 <dd><p>SSD-eligible analytes contributing to AmsPAF.</p></dd>
@@ -384,6 +403,24 @@ grab temperature.  Grab-sample-day measurements take priority.</p></li>
 ammonia.</p>
     </div>
     <div class="section level2">
+    <h2 id="interpreting-gap-uncertainty">Interpreting gap uncertainty<a class="anchor" aria-label="anchor" href="#interpreting-gap-uncertainty"></a></h2>
+
+
+<p>In draws mode the width of the band across an observation gap is the honest
+posterior <strong>only under ignorable (MAR) missingness</strong>.  Where you have
+external grounds that a gap was quiescent (informative/MNAR sampling), the
+ignorable band over-states uncertainty there.  The <code>"bracket"</code> output gives
+both extremes: read the <strong>informative</strong> (lower) envelope where you vouch the
+gap was quiet, the <strong>ignorable</strong> (upper) envelope otherwise.  The
+<code>precautionary_lo</code>/<code>precautionary_hi</code> columns are the composite
+<code>[lo_informative, hi_ignorable]</code> — a <strong>decision bound, not a calibrated
+credible interval</strong> (its coverage exceeds nominal and is undefined).  Applied
+blanket, the informative envelope under-covers genuinely eventful gaps, so use
+it per-gap; automatic per-gap conditioning on a continuous proxy is future
+work (#18).  The <code>deterministic</code> line is <strong>not</strong> a safe blanket alternative —
+it under-states risk by Jensen's inequality (#39/#42).</p>
+    </div>
+    <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p><code><a href="add_amspaf.html">add_amspaf()</a></code>, <code><a href="time_weighted_aggregate.html">time_weighted_aggregate()</a></code>,
 <code><a href="estimate_water_temp.html">estimate_water_temp()</a></code>, <code><a href="get_silo_air_temp.html">get_silo_air_temp()</a></code></p></div>
@@ -393,10 +430,12 @@ ammonia.</p>
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># \donttest{</span></span></span>
 <span class="r-in"><span><span class="va">demo</span> <span class="op">&lt;-</span> <span class="fu"><a href="leachate_demo.html">leachate_demo</a></span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">ds</span>  <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">demo</span>, <span class="va">site_id</span> <span class="op">==</span> <span class="st">"downstream"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">ds</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">demo</span>, <span class="va">site_id</span> <span class="op">==</span> <span class="st">"downstream"</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">out</span> <span class="op">&lt;-</span> <span class="fu">amspaf_daily</span><span class="op">(</span><span class="va">ds</span>, require_temperature <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">out</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"date"</span>, <span class="st">"site_id"</span>, <span class="st">"amspaf"</span>, <span class="st">"n_measured_analytes"</span>,</span></span>
-<span class="r-in"><span>             <span class="st">"days_since_last_sample"</span><span class="op">)</span><span class="op">]</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">out</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="st">"date"</span>, <span class="st">"site_id"</span>, <span class="st">"amspaf"</span>, <span class="st">"n_measured_analytes"</span>,</span></span>
+<span class="r-in"><span>  <span class="st">"days_since_last_sample"</span></span></span>
+<span class="r-in"><span><span class="op">)</span><span class="op">]</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 6 × 5</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   date       site_id    amspaf n_measured_analytes days_since_last_sample</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;date&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>       <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>               <span style="color: #949494; font-style: italic;">&lt;int&gt;</span>                  <span style="color: #949494; font-style: italic;">&lt;int&gt;</span></span>

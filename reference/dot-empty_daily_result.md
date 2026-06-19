@@ -5,7 +5,10 @@ Empty tibble matching the amspaf_daily() return schema
 ## Usage
 
 ``` r
-.empty_daily_result(mode = c("point", "summary", "draws"))
+.empty_daily_result(
+  mode = c("point", "summary", "draws"),
+  gap_uncertainty = "bracket"
+)
 ```
 
 ## Arguments
@@ -14,3 +17,8 @@ Empty tibble matching the amspaf_daily() return schema
 
   One of `"point"`, `"summary"`, or `"draws"` — governs which extra
   columns are included.
+
+- gap_uncertainty:
+
+  Bracket mode (`"bracket"`/`"ignorable"`/ `"informative"`); governs the
+  envelope columns in draws/summary mode. Ignored for point mode.

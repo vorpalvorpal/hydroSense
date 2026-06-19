@@ -37,6 +37,7 @@ amspaf_daily(
   kappa = 0.5,
   parallel = FALSE,
   couple_residuals = TRUE,
+  gap_uncertainty = c("bracket", "ignorable", "informative"),
   transform = c("pseudo_log", "additive")
 )
 ```
@@ -163,11 +164,13 @@ amspaf_daily(
 - return:
 
   `"summary"` (default) or `"draws"`; relevant only when `ndraws` is
-  supplied. `"summary"` collapses the draws to a central estimate
-  (`amspaf`, the draws' own central tendency — see `central`) plus
-  credible-interval bounds (`amspaf_lower`, `amspaf_upper`). `"draws"`
-  returns one row per (site \\\times\\ day \\\times\\ draw) with a
-  `draw_id` column. Ignored in point mode (`ndraws = NULL`).
+  supplied. `"summary"` collapses the draws to per-envelope central
+  estimates (`median_*`, the draws' own central tendency — see
+  `central`) plus credible-interval bounds (`lo_*`, `hi_*`) for the
+  chosen `gap_uncertainty`, alongside the `deterministic` centre line.
+  `"draws"` returns one row per (site \\\times\\ day \\\times\\ draw)
+  with a `draw_id` column and the per-draw envelope value(s). See
+  *Value*. Ignored in point mode (`ndraws = NULL`).
 
 - interval:
 
@@ -177,12 +180,13 @@ amspaf_daily(
 
 - central:
 
-  Central tendency for the `amspaf` column when `return = "summary"`:
-  `"median"` (default) or `"mean"` of the per-day draws. Because it is a
-  summary *of the draws*, `amspaf` is coherent with its band (the median
-  lies inside `[amspaf_lower, amspaf_upper]` by construction) and
-  depends on `ndraws`/`seed`. It is NOT the deterministic point estimate
-  — for that, call with `ndraws = NULL`.
+  Central tendency for the `median_*` envelope columns when
+  `return = "summary"`: `"median"` (default) or `"mean"` of the per-day
+  draws. Because it is a summary *of the draws*, each `median_*` is
+  coherent with its band (it lies inside `[lo_*, hi_*]` by construction)
+  and depends on `ndraws`/`seed`. It is NOT the deterministic point
+  estimate, which is reported separately in the `deterministic` column
+  (and is the sole estimate when called with `ndraws = NULL`).
 
 - grab_cv:
 
@@ -234,6 +238,24 @@ amspaf_daily(
   unchanged. Set to `FALSE` to reproduce the pre-#32 independent-draw
   path exactly.
 
+- gap_uncertainty:
+
+  One of `"bracket"` (default), `"ignorable"`, or `"informative"`;
+  relevant only in draws mode. In observation gaps the latent residual
+  reverts to its marginal variance, widening the band — the honest
+  posterior **only under ignorable (MAR) missingness**. Field sampling
+  is often **informative (MNAR)**: gaps exist *because* the system was
+  judged quiescent, so that band over-states gap uncertainty. The model
+  cannot identify the mechanism from grabs, so the default **brackets**
+  both: the *ignorable* (upper) envelope keeps the simulation-smoother
+  draw; the *informative* (lower) envelope freezes the residual at its
+  posterior mean on in-gap days (the fully-informative extreme — gaps
+  perfectly predictable). The two are nested and coincide at observation
+  days. `"ignorable"` / `"informative"` return only that envelope. See
+  *Interpreting gap uncertainty* below. Reference: Rubin (1976)
+  [doi:10.1093/biomet/63.3.581](https://doi.org/10.1093/biomet/63.3.581)
+  .
+
 - transform:
 
   `"pseudo_log"` (default) or `"additive"`. Controls the
@@ -250,14 +272,17 @@ amspaf_daily(
 \\\times\\ day) for days with sufficient analyte coverage; `amspaf` is
 the deterministic daily estimate.
 
-**Draws mode** (`ndraws > 0`, `return = "summary"`): same schema, where
-`amspaf` is the draws' central tendency (`central`), plus two extra
-columns `amspaf_lower` and `amspaf_upper` (the credible-interval bounds
-from the `ndraws` posterior draws).
+**Draws mode** (`ndraws > 0`, `return = "summary"`): one row per (site
+\\\times\\ day) with the `deterministic` centre line and the envelope
+columns for the chosen `gap_uncertainty`: `median_*`, `lo_*`, `hi_*` per
+envelope (`informative` and/or `ignorable`, the central tendency per
+`central` and the `interval` credible bounds), plus
+`precautionary_lo`/`precautionary_hi` in `"bracket"` mode.
 
 **Draws mode** (`ndraws > 0`, `return = "draws"`): one row per (site
-\\\times\\ day \\\times\\ draw), with an additional `draw_id` integer
-column.
+\\\times\\ day \\\times\\ draw), with a `draw_id` integer column and the
+per-draw AmsPAF value(s) `amspaf_ignorable` and/or `amspaf_informative`
+for the chosen `gap_uncertainty`.
 
 Common columns:
 
@@ -268,11 +293,6 @@ Common columns:
 - `site_id`:
 
   Site identifier.
-
-- `amspaf`:
-
-  Daily AmsPAF (percentage, 0–100+). The deterministic point estimate in
-  point mode; the draws' central tendency in `return = "summary"`.
 
 - `n_analytes_used`:
 
@@ -383,6 +403,23 @@ the un-ionised fraction normalisation. Two sources are accepted:
 Set `require_temperature = FALSE` only for datasets that do not contain
 ammonia.
 
+## Interpreting gap uncertainty
+
+In draws mode the width of the band across an observation gap is the
+honest posterior **only under ignorable (MAR) missingness**. Where you
+have external grounds that a gap was quiescent (informative/MNAR
+sampling), the ignorable band over-states uncertainty there. The
+`"bracket"` output gives both extremes: read the **informative** (lower)
+envelope where you vouch the gap was quiet, the **ignorable** (upper)
+envelope otherwise. The `precautionary_lo`/`precautionary_hi` columns
+are the composite `[lo_informative, hi_ignorable]` — a **decision bound,
+not a calibrated credible interval** (its coverage exceeds nominal and
+is undefined). Applied blanket, the informative envelope under-covers
+genuinely eventful gaps, so use it per-gap; automatic per-gap
+conditioning on a continuous proxy is future work (#18). The
+`deterministic` line is **not** a safe blanket alternative — it
+under-states risk by Jensen's inequality (#39/#42).
+
 ## See also
 
 [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md),
@@ -395,10 +432,12 @@ ammonia.
 ``` r
 # \donttest{
 demo <- leachate_demo()
-ds  <- subset(demo, site_id == "downstream")
+ds <- subset(demo, site_id == "downstream")
 out <- amspaf_daily(ds, require_temperature = FALSE)
-head(out[, c("date", "site_id", "amspaf", "n_measured_analytes",
-             "days_since_last_sample")])
+head(out[, c(
+  "date", "site_id", "amspaf", "n_measured_analytes",
+  "days_since_last_sample"
+)])
 #> # A tibble: 6 × 5
 #>   date       site_id    amspaf n_measured_analytes days_since_last_sample
 #>   <date>     <chr>       <dbl>               <int>                  <int>
