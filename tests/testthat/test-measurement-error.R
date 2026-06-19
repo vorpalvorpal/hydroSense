@@ -16,7 +16,7 @@
 ##   12. seed reproducibility → same seed → identical draws; different → different
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 ## ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -291,6 +291,6 @@ test_that("draw output passes .draw_domain() ragged-N validation", {
   df  <- make_point_df(vals = c(1, 10))
   out <- draw_measurement_error(df, error_col = "value_cv",
                                  ndraws = 7L, seed = 5L)
-  expect_no_error(leachatetools:::.draw_domain(out))
-  expect_equal(leachatetools:::.draw_domain(out), 1:7)
+  expect_no_error(hydroSense:::.draw_domain(out))
+  expect_equal(hydroSense:::.draw_domain(out), 1:7)
 })

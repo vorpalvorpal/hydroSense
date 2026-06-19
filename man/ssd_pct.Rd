@@ -11,7 +11,7 @@ ssd_pct(
   method = "multi",
   hardness = NULL,
   hardness_units = NULL,
-  guideline_dir = getOption("leachatetools.guideline_dir")
+  guideline_dir = getOption("hydroSense.guideline_dir")
 )
 }
 \arguments{
@@ -39,7 +39,7 @@ or \code{NULL}.}
 
 \item{guideline_dir}{Character. Path to the "guideline data" folder
 containing ANZG XLSX files. Falls back to
-getOption("leachatetools.guideline_dir").}
+getOption("hydroSense.guideline_dir").}
 }
 \value{
 Numeric — \% species affected, or NA.

@@ -3,7 +3,7 @@
 ## appended with the analyte name suffixed "_"; originals are preserved.
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 base_df <- function() {
   tibble::tibble(

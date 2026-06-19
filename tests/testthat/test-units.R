@@ -8,31 +8,31 @@
 ##   - add_amspaf() / prepare_reference() error when no units information at all
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 
 # ── .resolve_to() ─────────────────────────────────────────────────────────────
 
 test_that(".resolve_to() converts bare numeric + units_str to the target unit", {
   # 1 mg/L == 1000 ug/L
-  val <- leachatetools:::.resolve_to(1, "ug/L", units_str = "mg/L")
+  val <- hydroSense:::.resolve_to(1, "ug/L", units_str = "mg/L")
   expect_equal(val, 1000)
 })
 
 test_that(".resolve_to() accepts a units object and auto-converts", {
   x   <- units::set_units(1, "mg/L")
-  val <- leachatetools:::.resolve_to(x, "ug/L")
+  val <- hydroSense:::.resolve_to(x, "ug/L")
   expect_equal(val, 1000)
 })
 
 test_that(".resolve_to() is a no-op when source and target units match", {
-  val <- leachatetools:::.resolve_to(500, "ug/L", units_str = "ug/L")
+  val <- hydroSense:::.resolve_to(500, "ug/L", units_str = "ug/L")
   expect_equal(val, 500)
 })
 
 test_that(".resolve_to() errors when bare numeric has no units_str", {
   expect_error(
-    leachatetools:::.resolve_to(1, "ug/L"),
+    hydroSense:::.resolve_to(1, "ug/L"),
     regexp = "bare numeric"
   )
 })
@@ -51,26 +51,26 @@ make_tox_df <- function(value, unit, analyte = "Cu") {
 
 test_that(".convert_df_tox_to_ugL() converts mg/L rows to µg/L via units.analyte", {
   df  <- make_tox_df(1, "mg/L")
-  out <- leachatetools:::.convert_df_tox_to_ugL(df, ssd_analytes = "Cu")
+  out <- hydroSense:::.convert_df_tox_to_ugL(df, ssd_analytes = "Cu")
   expect_equal(out$value, 1000)
 })
 
 test_that(".convert_df_tox_to_ugL() is a no-op when value is already in µg/L", {
   df  <- make_tox_df(500, "ug/L")
-  out <- leachatetools:::.convert_df_tox_to_ugL(df, ssd_analytes = "Cu")
+  out <- hydroSense:::.convert_df_tox_to_ugL(df, ssd_analytes = "Cu")
   expect_equal(out$value, 500)
 })
 
 test_that(".convert_df_tox_to_ugL() uses conc_units fallback when no units.analyte column", {
   df  <- tibble::tibble(analyte = "Cu", value = 1, detected = TRUE)
-  out <- leachatetools:::.convert_df_tox_to_ugL(df, ssd_analytes = "Cu", conc_units = "mg/L")
+  out <- hydroSense:::.convert_df_tox_to_ugL(df, ssd_analytes = "Cu", conc_units = "mg/L")
   expect_equal(out$value, 1000)
 })
 
 test_that(".convert_df_tox_to_ugL() errors when units.analyte is NA for a tox row", {
   df <- make_tox_df(1, NA_character_)
   expect_error(
-    leachatetools:::.convert_df_tox_to_ugL(df, ssd_analytes = "Cu"),
+    hydroSense:::.convert_df_tox_to_ugL(df, ssd_analytes = "Cu"),
     regexp = "Missing.*units.analyte"
   )
 })
@@ -78,7 +78,7 @@ test_that(".convert_df_tox_to_ugL() errors when units.analyte is NA for a tox ro
 test_that(".convert_df_tox_to_ugL() errors when no units.analyte column and no conc_units", {
   df <- tibble::tibble(analyte = "Cu", value = 1, detected = TRUE)
   expect_error(
-    leachatetools:::.convert_df_tox_to_ugL(df, ssd_analytes = "Cu"),
+    hydroSense:::.convert_df_tox_to_ugL(df, ssd_analytes = "Cu"),
     regexp = "units.analyte"
   )
 })
@@ -90,14 +90,14 @@ test_that(".convert_df_tox_to_ugL() does not convert non-SSD-eligible rows", {
     units.analyte = c("mg/L", "pH"),
     detected      = TRUE
   )
-  out <- leachatetools:::.convert_df_tox_to_ugL(df, ssd_analytes = "Cu")
+  out <- hydroSense:::.convert_df_tox_to_ugL(df, ssd_analytes = "Cu")
   expect_equal(out$value[out$analyte == "Cu"], 1000)    # converted
   expect_equal(out$value[out$analyte == "pH"],  7.5)    # untouched
 })
 
 test_that(".convert_df_tox_to_ugL() returns empty df unchanged", {
   df  <- tibble::tibble(analyte = character(), value = numeric(), detected = logical())
-  out <- leachatetools:::.convert_df_tox_to_ugL(df, ssd_analytes = "Cu")
+  out <- hydroSense:::.convert_df_tox_to_ugL(df, ssd_analytes = "Cu")
   expect_equal(nrow(out), 0L)
 })
 

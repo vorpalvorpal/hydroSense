@@ -15,7 +15,7 @@
 ##       into the draw summary.
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 ## Silence messages and the expected rainfall gap-uncertainty warning (#50)
 ## around draws-mode calls; the warning is asserted in test-daily-bracket.R.
@@ -387,9 +387,9 @@ test_that("G6c: multi-site draws output has ndraws rows per (date, site_id)", {
 
 ## G6d: .empty_daily_result() returns the correct column schema per mode
 test_that("G6d: .empty_daily_result modes return correct column sets", {
-  pt <- leachatetools:::.empty_daily_result("point")
-  sm <- leachatetools:::.empty_daily_result("summary")
-  dr <- leachatetools:::.empty_daily_result("draws")
+  pt <- hydroSense:::.empty_daily_result("point")
+  sm <- hydroSense:::.empty_daily_result("summary")
+  dr <- hydroSense:::.empty_daily_result("draws")
 
   ## Point: standard schema, no CI columns, no draw_id
   expect_true(all(c("date", "site_id", "amspaf", "n_analytes_used") %in% names(pt)))

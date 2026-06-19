@@ -1,4 +1,4 @@
-url: https://vorpalvorpal.github.io/leachatetools/
+url: https://vorpalvorpal.github.io/hydroSense/
 
 template:
   bootstrap: 5
@@ -9,7 +9,7 @@ template:
     code_font: {google: "JetBrains Mono"}
 
 home:
-  title: leachatetools
+  title: hydroSense
   description: >
     Species-sensitivity-distribution toxicity, multi-substance PAF with local
     background adjustment, and end-member mixing for leachate-impacted

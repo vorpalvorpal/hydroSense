@@ -96,7 +96,7 @@
 #' @param method SSD method (`"multi"` or `"anzecc"`) used to derive each
 #'   analyte's HC5 transform scale when `analyte_c` is not supplied.
 #' @param guideline_dir Path to the ANZG guideline data folder (for the SSD
-#'   fits); falls back to `getOption("leachatetools.guideline_dir")`.
+#'   fits); falls back to `getOption("hydroSense.guideline_dir")`.
 #' @param transform `"pseudo_log"` (default) or `"additive"`. Controls the
 #'   variance-stabilising transform applied to the impact residual before
 #'   smoothing. `"pseudo_log"` uses `g = asinh(I / c)` with per-analyte scale
@@ -166,7 +166,7 @@ fit_target_model <- function(
   conc_units = NULL,
   analyte_metadata = NULL,
   method = c("multi", "anzecc"),
-  guideline_dir = getOption("leachatetools.guideline_dir"),
+  guideline_dir = getOption("hydroSense.guideline_dir"),
   transform = c("pseudo_log", "additive"),
   analyte_c = NULL,
   api_tau_bounds_short = c(1, 30),

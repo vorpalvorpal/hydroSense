@@ -9,14 +9,14 @@
 #   Rscript dev/crossover_experiment.R   (slow: 3 x draws regen)
 
 suppressMessages({ library(dplyr); devtools::load_all(".", quiet = TRUE) })
-options(leachatetools.guideline_dir = "guideline data")
+options(hydroSense.guideline_dir = "guideline data")
 cc <- qs2::qs_read("test data/bs01_v3_cache.qs2")
 da <- cc$daily_args
 N <- 20L; SEED <- 42L; INTERVAL <- 0.5; TOX_RSD <- 0.15
 GAP <- as.Date(c("2023-12-18", "2024-02-17"))   # Jan-2024 baseline gap
 EVT <- as.Date(c("2024-08-15", "2024-10-15"))   # 2024 event
 
-orig_analyte_c <- leachatetools:::.analyte_c
+orig_analyte_c <- hydroSense:::.analyte_c
 set_prop <- function(p) {
   f <- function(fit) {
     hc <- tryCatch(ssdtools::ssd_hc(fit, proportion = p, ci = FALSE)$est,
@@ -30,7 +30,7 @@ set_prop <- function(p) {
     }
     hc
   }
-  assignInNamespace(".analyte_c", f, "leachatetools")
+  assignInNamespace(".analyte_c", f, "hydroSense")
 }
 
 alpha <- (1 - INTERVAL) / 2     # NB: not named `lo` -> would shadow the lo column
@@ -57,7 +57,7 @@ for (nm in names(props)) {
                     nh3_gap_q99 = quantile(nh$PAF, .99, names = FALSE))
   qs2::qs_save(res, "dev/crossover_experiment.qs2")   # incremental: survive a crash
 }
-assignInNamespace(".analyte_c", orig_analyte_c, "leachatetools")
+assignInNamespace(".analyte_c", orig_analyte_c, "hydroSense")
 
 qs2::qs_save(res, "dev/crossover_experiment.qs2")
 

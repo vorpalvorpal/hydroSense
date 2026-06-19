@@ -1,17 +1,17 @@
 # run_amspaf_pipeline.R ──────────────────────────────────────────────────────
 #
 # Standalone helper script: reads chemistry from a monitoring DuckDB (same
-# schema as leachatetools/test data/monitoring.duckdb), runs the full
+# schema as hydroSense/test data/monitoring.duckdb), runs the full
 # chronic AmsPAF pipeline, and writes results back to the DB.
 #
-# This script is NOT part of the leachatetools package — it is intended to be
-# dropped next to a DB copy and run as needed.  It calls the leachatetools
+# This script is NOT part of the hydroSense package — it is intended to be
+# dropped next to a DB copy and run as needed.  It calls the hydroSense
 # package from wherever it is installed (or loaded via devtools::load_all).
 #
 # ── Quick start ──────────────────────────────────────────────────────────────
 #
-#   # Install leachatetools once (if not already installed):
-#   # remotes::install_github("vorpalvorpal/leachatetools")
+#   # Install hydroSense once (if not already installed):
+#   # remotes::install_github("vorpalvorpal/hydroSense")
 #
 #   source("run_amspaf_pipeline.R")
 #
@@ -23,7 +23,7 @@
 #
 #   run_amspaf_pipeline(
 #     db_path,                         # path to DuckDB file (required)
-#     leachatetools_dir  = NULL,       # path for devtools::load_all(); NULL = installed pkg
+#     hydroSense_dir  = NULL,       # path for devtools::load_all(); NULL = installed pkg
 #     focal_features     = NULL,       # character vector of feature names to analyse
 #                                      #   NULL = all non-reference surface-water features
 #     reference_features = NULL,       # character vector of reference feature names
@@ -121,7 +121,7 @@ suppressPackageStartupMessages({
 
 run_amspaf_pipeline <- function(
     db_path,
-    leachatetools_dir  = NULL,
+    hydroSense_dir  = NULL,
     focal_features     = NULL,
     reference_features = NULL,
     date_range         = NULL,
@@ -143,16 +143,16 @@ run_amspaf_pipeline <- function(
     replace_existing   = FALSE
 ) {
 
-  # ── 0. Load leachatetools ──────────────────────────────────────────────────
-  if (!is.null(leachatetools_dir)) {
-    message("Loading leachatetools from ", leachatetools_dir)
-    devtools::load_all(leachatetools_dir, quiet = TRUE)
+  # ── 0. Load hydroSense ──────────────────────────────────────────────────
+  if (!is.null(hydroSense_dir)) {
+    message("Loading hydroSense from ", hydroSense_dir)
+    devtools::load_all(hydroSense_dir, quiet = TRUE)
   } else {
-    if (!requireNamespace("leachatetools", quietly = TRUE))
-      stop("leachatetools package not found. ",
-           "Install with: remotes::install_github('vorpalvorpal/leachatetools') ",
-           "or pass leachatetools_dir = '<path>' to load_all().")
-    library(leachatetools)
+    if (!requireNamespace("hydroSense", quietly = TRUE))
+      stop("hydroSense package not found. ",
+           "Install with: remotes::install_github('vorpalvorpal/hydroSense') ",
+           "or pass hydroSense_dir = '<path>' to load_all().")
+    library(hydroSense)
   }
 
   stopifnot(file.exists(db_path))
@@ -376,7 +376,7 @@ run_amspaf_pipeline <- function(
     message("  Imputing co-analytes (DOC, Ca, Mg, hardness) …")
     focal_imp <- impute_coanalytes(imp_result, model)
     n_coa <- sum(focal_imp$imputed & focal_imp$imputed_kind == "missing" &
-                   focal_imp$analyte %in% leachatetools:::.COANALYTE_TARGETS,
+                   focal_imp$analyte %in% hydroSense:::.COANALYTE_TARGETS,
                  na.rm = TRUE)
     message("  Co-analyte rows imputed: ", n_coa)
 
@@ -818,7 +818,7 @@ run_amspaf_pipeline <- function(
       uuid         = vapply(seq_len(n()), function(i) uuid::UUIDgenerate(), character(1)),
       date         = focal_date,
       datetime     = as.POSIXct(paste(focal_date, "00:00:00")),
-      organisation = "leachatetools",
+      organisation = "hydroSense",
       purpose      = "chronic_amspaf_computed",
       comments     = sprintf("Chronic AmsPAF computed by run_amspaf_pipeline.R on %s",
                              Sys.Date())
@@ -864,7 +864,7 @@ run_amspaf_pipeline <- function(
 #
 # result <- run_amspaf_pipeline(
 #   db_path            = "monitoring.duckdb",
-#   # leachatetools_dir = "/path/to/leachatetools",  # uncomment if not installed
+#   # hydroSense_dir = "/path/to/hydroSense",  # uncomment if not installed
 #   focal_features     = c("B.S01"),                 # NULL = all non-reference features
 #   reference_features = c("B.S03"),                 # NULL = auto-detect from DB
 #   date_range         = c(as.Date("2017-01-01"), Sys.Date()),

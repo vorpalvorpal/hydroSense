@@ -15,7 +15,7 @@
 #   Rscript dev/loo_coverage_bs01.R
 
 suppressMessages({ library(dplyr); devtools::load_all(".", quiet = TRUE) })
-options(leachatetools.guideline_dir = "guideline data")
+options(hydroSense.guideline_dir = "guideline data")
 
 cc <- qs2::qs_read("test data/bs01_v3_cache.qs2")
 da <- cc$daily_args

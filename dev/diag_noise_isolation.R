@@ -18,7 +18,7 @@
 suppressMessages({ library(dplyr); devtools::load_all(".", quiet = TRUE) })
 
 GUIDE  <- "guideline data"
-options(leachatetools.guideline_dir = GUIDE)
+options(hydroSense.guideline_dir = GUIDE)
 cc <- qs2::qs_read("test data/bs01_v3_cache.qs2")
 da <- cc$daily_args
 ## Reduce to a baseline (late 2023, deterministic ~8) + pulse (2024-09, ~44).
@@ -27,9 +27,9 @@ N <- 20L; SEED <- 42L
 
 ## Swap the GAM perturbation for an identity to disable the S1-S3 trend draws.
 ident <- function(tm, perturb_reference = FALSE) tm
-orig  <- leachatetools:::.perturb_target_model
-gam_off <- function() assignInNamespace(".perturb_target_model", ident, "leachatetools")
-gam_on  <- function() assignInNamespace(".perturb_target_model", orig,  "leachatetools")
+orig  <- hydroSense:::.perturb_target_model
+gam_off <- function() assignInNamespace(".perturb_target_model", ident, "hydroSense")
+gam_on  <- function() assignInNamespace(".perturb_target_model", orig,  "hydroSense")
 
 run_draws <- function(ou_scale, grab_cv, gam) {
   if (gam) gam_on() else gam_off()

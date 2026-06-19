@@ -51,7 +51,7 @@
 #' @export
 leachate_demo <- function() {
   path <- system.file("extdata", "leachate_demo.qs2",
-                      package = "leachatetools")
+                      package = "hydroSense")
   if (!nzchar(path))
     cli::cli_abort("Bundled {.file leachate_demo.qs2} not found.")
   qs2::qd_read(path)

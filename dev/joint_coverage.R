@@ -12,7 +12,7 @@
 #   Rscript dev/joint_coverage.R  (first run: slow; ~2-3 min for the LOO loop)
 
 suppressMessages({ library(dplyr); library(ggplot2); devtools::load_all(".", quiet = TRUE) })
-options(leachatetools.guideline_dir = "guideline data")
+options(hydroSense.guideline_dir = "guideline data")
 
 CACHE   <- "test data/bs01_v3_cache.qs2"
 CENTRE  <- "dev/bs01_kalman_centre.qs2"
@@ -127,7 +127,7 @@ tm <- suppressMessages(
 analytes <- names(tm$models)
 
 ## Base case: use .anchor_residual_cor() with the hardcoded λ=0.10.
-cor_base <- leachatetools:::.anchor_residual_cor(tm, analytes)
+cor_base <- hydroSense:::.anchor_residual_cor(tm, analytes)
 
 ## Build the wide anchor-residual matrix once (reused across λ values).
 extract_S <- function(nm) {

@@ -11,7 +11,7 @@
 ##   E7. Anchor + co perturbations change .predict_daily_tox output
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 
 ## ── Shared setup (reuses helpers from test-daily-target.R) ───────────────────
@@ -54,16 +54,16 @@ make_hydro_e <- function(n = 700, seed = 99) {
                                 api_tau_bounds_short = c(7, 7),
                                 api_tau_bounds_long  = c(30, 30))
   all_dates <- seq(dates[1], dates[length(dates)], by = "day")
-  meta      <- leachatetools:::.load_analyte_metadata(NULL)
+  meta      <- hydroSense:::.load_analyte_metadata(NULL)
   tox_nms   <- meta$analyte[!is.na(meta$ssd_available) & meta$ssd_available]
-  daily_long <- leachatetools:::.build_daily_chem(
+  daily_long <- hydroSense:::.build_daily_chem(
     site_rows     = tgt,
     dates         = all_dates,
     interpolation = "forward_fill",
     leading_edge  = "drop",
     tox_analytes  = tox_nms
   )
-  fdm <- leachatetools:::.fit_daily_target(
+  fdm <- hydroSense:::.fit_daily_target(
     site_rows        = tgt,
     reference_model  = rm,
     imputation_model = NULL,
@@ -111,7 +111,7 @@ test_that("E2: fdm$co_grab_map is a named list covering co-analytes", {
 
 test_that("E3: grab_cv > 0 widens draw spread at anchors vs no grab_cv", {
   fdm0 <- .te$fdm                                       # built without grab_cv
-  fdm_cv <- leachatetools:::.fit_daily_target(
+  fdm_cv <- hydroSense:::.fit_daily_target(
     site_rows = .te$tgt, reference_model = .te$rm, imputation_model = NULL,
     conc_units = "ug/L", meta = .te$meta, tox_analytes = .te$tox_nms,
     daily_long = .te$daily_long, grab_cv = 0.2)
@@ -126,8 +126,8 @@ test_that("E3: grab_cv > 0 widens draw spread at anchors vs no grab_cv", {
   grid <- fdm0$smoothers[[nm_test]]$grid_dates
   pos  <- match(fdm0$tm$models[[nm_test]]$anchors$date, grid)
   pos  <- pos[!is.na(pos)]
-  set.seed(1L); d0  <- leachatetools:::.kalman_draw(fdm0$smoothers[[nm_test]]$draw_model, 200L)
-  set.seed(1L); dcv <- leachatetools:::.kalman_draw(fdm_cv$smoothers[[nm_test]]$draw_model, 200L)
+  set.seed(1L); d0  <- hydroSense:::.kalman_draw(fdm0$smoothers[[nm_test]]$draw_model, 200L)
+  set.seed(1L); dcv <- hydroSense:::.kalman_draw(fdm_cv$smoothers[[nm_test]]$draw_model, 200L)
   sd0  <- mean(apply(d0[pos, , drop = FALSE],  1L, stats::sd))
   sdcv <- mean(apply(dcv[pos, , drop = FALSE], 1L, stats::sd))
   expect_gt(sdcv, sd0)                                  # S6 adds anchor spread
@@ -146,7 +146,7 @@ test_that("E4: with no grab_cv, draw spread is smaller at anchors than mid-gap",
   pos  <- match(fdm$tm$models[[nm]]$anchors$date, grid); pos <- pos[!is.na(pos)]
   skip_if(length(pos) < 2L, "Need >= 2 anchors on the grid")
   mid  <- pmin(pos[-length(pos)] + 7L, length(grid))     # mid-gap samples
-  set.seed(2L); d <- leachatetools:::.kalman_draw(fdm$smoothers[[nm]]$draw_model, 200L)
+  set.seed(2L); d <- hydroSense:::.kalman_draw(fdm$smoothers[[nm]]$draw_model, 200L)
   sd_anchor <- mean(apply(d[pos, , drop = FALSE], 1L, stats::sd))
   sd_mid    <- mean(apply(d[mid, , drop = FALSE], 1L, stats::sd))
   expect_lt(sd_anchor, sd_mid)
@@ -158,7 +158,7 @@ test_that("E4: with no grab_cv, draw spread is smaller at anchors than mid-gap",
 test_that("E5: co_split values differ after perturbation with CV > 0", {
   fdm <- .te$fdm
   set.seed(7L)
-  res <- leachatetools:::.perturb_co_split(fdm, grab_cv_co = 0.15)
+  res <- hydroSense:::.perturb_co_split(fdm, grab_cv_co = 0.15)
   co_orig  <- fdm$co_split
   co_pert  <- res$co_split
 
@@ -189,7 +189,7 @@ test_that("E6: forward-filled days from the same grab get the same multiplier", 
   skip_if(length(day_strs) < 2L, "Need >= 2 days sharing a grab for coherence test")
 
   set.seed(3L)
-  res <- leachatetools:::.perturb_co_split(fdm, grab_cv_co = 0.15)
+  res <- hydroSense:::.perturb_co_split(fdm, grab_cv_co = 0.15)
 
   # All days sharing the same grab should have the same ratio to original
   orig_vals <- vapply(day_strs, function(d) {
@@ -210,27 +210,27 @@ test_that("E6: forward-filled days from the same grab get the same multiplier", 
 ## ── E7: a draw (S4+S6 residual path + GAM) + S7 shift .predict_daily_tox ─────
 
 test_that("E7: residual draw (S4/S6) + GAM + co perturbations shift the output", {
-  fdm <- leachatetools:::.fit_daily_target(
+  fdm <- hydroSense:::.fit_daily_target(
     site_rows = .te$tgt, reference_model = .te$rm, imputation_model = NULL,
     conc_units = "ug/L", meta = .te$meta, tox_analytes = .te$tox_nms,
     daily_long = .te$daily_long, grab_cv = 0.2)
 
-  rows_base <- leachatetools:::.predict_daily_tox(fdm)   # centre
+  rows_base <- hydroSense:::.predict_daily_tox(fdm)   # centre
 
   set.seed(11L)
-  tm_p <- leachatetools:::.perturb_target_model(fdm$tm)
+  tm_p <- hydroSense:::.perturb_target_model(fdm$tm)
   rp <- stats::setNames(lapply(fdm$modelled, function(nm) {
     sm <- fdm$smoothers[[nm]]
     if (is.null(sm$draw_model))
-      leachatetools:::.residual_on_qdates(sm$grid_dates, sm$mean, fdm$qdates)
+      hydroSense:::.residual_on_qdates(sm$grid_dates, sm$mean, fdm$qdates)
     else {
-      dr <- leachatetools:::.kalman_draw(sm$draw_model, 1L)
-      leachatetools:::.residual_on_qdates(sm$grid_dates, dr[, 1L], fdm$qdates)
+      dr <- hydroSense:::.kalman_draw(sm$draw_model, 1L)
+      hydroSense:::.residual_on_qdates(sm$grid_dates, dr[, 1L], fdm$qdates)
     }
   }), fdm$modelled)
-  co_p <- leachatetools:::.perturb_co_split(fdm, grab_cv_co = 0.2)
+  co_p <- hydroSense:::.perturb_co_split(fdm, grab_cv_co = 0.2)
 
-  rows_pert <- leachatetools:::.predict_daily_tox(
+  rows_pert <- hydroSense:::.predict_daily_tox(
     fdm, tm_p = tm_p, residual_paths = rp,
     co_split = fdm$co_split, wq_long = co_p$wq_long)
 

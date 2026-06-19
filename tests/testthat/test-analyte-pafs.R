@@ -2,7 +2,7 @@
 ## per-row list-column with a flat per-(sample, draw, analyte) attribute).
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 co <- c(pH = 7.5, DOC = 2.0, Ca = 6.0, Mg = 4.0, hardness = 30.0)
 mk <- function(sid, cu, zn, ni, draw_id = NA_integer_) {

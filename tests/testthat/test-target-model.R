@@ -6,7 +6,7 @@
 ## bridge interpolation, and the amspaf_daily(interpolation = "model") path.
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 
 ## ── Helpers ───────────────────────────────────────────────────────────────────
@@ -106,8 +106,8 @@ test_that("clean site -> impact centred near zero; elevated site -> positive", {
                                rm, conc_units = "ug/L", min_obs_model = 8L,
                                api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
 
-  cu_clean <- leachatetools:::.resolve_target_impact(tm_clean, q)
-  cu_hot   <- leachatetools:::.resolve_target_impact(tm_hot,   q)
+  cu_clean <- hydroSense:::.resolve_target_impact(tm_clean, q)
+  cu_hot   <- hydroSense:::.resolve_target_impact(tm_hot,   q)
   cu_clean <- cu_clean[cu_clean$analyte == "Cu", ]
   cu_hot   <- cu_hot[cu_hot$analyte == "Cu", ]
 
@@ -148,7 +148,7 @@ test_that(".resolve_target_impact() returns C_norm = max(ref_norm + impact, 0)",
   tm    <- fit_target_model(make_chem("target", dates, mult = 10, seed = 2),
                             rm, conc_units = "ug/L", min_obs_model = 8L,
                             api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
-  res <- leachatetools:::.resolve_target_impact(
+  res <- hydroSense:::.resolve_target_impact(
     tm, tibble::tibble(date = seq(as.Date("2021-02-01"),
                                   as.Date("2021-06-01"), by = "week"))
   )
@@ -192,7 +192,7 @@ make_wq_chem <- function(site, dates, mult = 1, seed = 1) {
 
 # A Stan-free PCA-only imputation_model (same shape the bs01 script builds).
 make_pca_model <- function(chem, wq = c("pH", "EC", "DOC", "Ca", "Mg", "hardness")) {
-  pca <- leachatetools:::.prepare_chem_pca(chem, wq_vars = wq)
+  pca <- hydroSense:::.prepare_chem_pca(chem, wq_vars = wq)
   structure(list(pca = pca, pca_vars = wq), class = "imputation_model")
 }
 
@@ -234,7 +234,7 @@ test_that(".resolve_target_impact() uses the 'wq' tier when wq is supplied", {
     analyte   = rep(c("EC", "pH"), times = 2),
     value     = c(550, 7.2, 120, 7.2)     # day 1 high EC, day 2 low EC
   )
-  res <- leachatetools:::.resolve_target_impact(
+  res <- hydroSense:::.resolve_target_impact(
     tm, tibble::tibble(date = qdates), analytes = "Cu", wq = wq
   )
   expect_true(all(res$impact_tier == "wq"))
@@ -251,7 +251,7 @@ test_that("without a wq argument the resolver falls back to the impact tiers", {
   tm <- fit_target_model(tgt, rm, imputation_model = make_pca_model(tgt),
                          conc_units = "ug/L", min_obs_model = 10L,
                          api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
-  res <- leachatetools:::.resolve_target_impact(
+  res <- hydroSense:::.resolve_target_impact(
     tm, tibble::tibble(date = as.Date("2021-04-07")), analytes = "Cu"  # no wq
   )
   expect_true(all(res$impact_tier %in% c("model", "bridge")))
@@ -265,7 +265,7 @@ test_that("without a wq argument the resolver falls back to the impact tiers", {
 make_hydro_driven <- function(site, dates, hydro, mult = 1, seed = 5) {
   set.seed(seed)
   analytes <- c("Cu", "Zn", "Ni", "pH", "DOC", "hardness", "Ca", "Mg")
-  api7 <- leachatetools:::.compute_api(hydro$value, hydro$date, dates, 7L)
+  api7 <- hydroSense:::.compute_api(hydro$value, hydro$date, dates, 7L)
   api7 <- (api7 - mean(api7)) / (stats::sd(api7) + 1e-9)
   purrr::pmap_dfr(list(dates, api7), function(d, a) {
     flush <- exp(0.8 * a)   # metals rise with antecedent rainfall
@@ -289,7 +289,7 @@ test_that("pool = TRUE produces a valid model and finite predictions", {
                          pool = TRUE, api_tau_bounds_short = c(7, 14),
                          api_tau_bounds_long = c(30, 90))
   expect_s3_class(tm, "target_model")
-  res <- leachatetools:::.resolve_target_impact(
+  res <- hydroSense:::.resolve_target_impact(
     tm, tibble::tibble(date = seq(as.Date("2021-03-01"), as.Date("2021-09-01"),
                                   by = "month"))
   )
@@ -331,7 +331,7 @@ test_that("pool = TRUE with a single modelled analyte falls back gracefully", {
 # analyte toward it.  All share the same first-flush shape so they pool.
 make_multi_scale <- function(site, dates, hydro, big_mult, ni_mult, seed = 7) {
   set.seed(seed)
-  api7 <- leachatetools:::.compute_api(hydro$value, hydro$date, dates, 7L)
+  api7 <- hydroSense:::.compute_api(hydro$value, hydro$date, dates, 7L)
   api7 <- (api7 - mean(api7)) / (stats::sd(api7) + 1e-9)
   bases <- c(Cu = 0.5, Zn = 5, Pb = 0.8, Cr = 1.0)           # large toxicants
   purrr::pmap_dfr(list(dates, api7), function(d, a) {
@@ -377,7 +377,7 @@ test_that("pool = TRUE preserves per-analyte magnitude (no cross-contamination)"
 
   q   <- tibble::tibble(date = seq(as.Date("2021-02-03"), as.Date("2021-11-01"),
                                    by = "day"))
-  res <- leachatetools:::.resolve_target_impact(tm, q)
+  res <- hydroSense:::.resolve_target_impact(tm, q)
   big <- stats::sd(res$impact[res$analyte == "Cu"])
   ni  <- stats::sd(res$impact[res$analyte == "Ni"])
   # Ni's pooled hydro-response swing must stay far below the big toxicants'.

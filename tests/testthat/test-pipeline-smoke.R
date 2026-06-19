@@ -10,7 +10,7 @@
 ##   time_weighted_aggregate() → prepare_reference() → add_amspaf()
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 # ── Shared synthetic dataset ──────────────────────────────────────────────────
 #
@@ -163,7 +163,7 @@ test_that("§1e chronic reference baseline is lower for reference than downstrea
 
 # ─────────────────────────────────────────────────────────────────────────────
 # § 2  Full pipeline including add_amspaf
-# Requires leachatetools.guideline_dir option to be set.
+# Requires hydroSense.guideline_dir option to be set.
 # ─────────────────────────────────────────────────────────────────────────────
 
 test_that("§2 full chronic AmsPAF pipeline runs end-to-end", {

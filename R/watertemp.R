@@ -599,7 +599,7 @@ estimate_water_temp <- function(
 #' @param api_key Character SILO API key (your email address). Default `NULL`
 #'   defers to [weatherOz::get_key()].
 #' @param cache Logical; cache the result on disk under
-#'   `tools::R_user_dir("leachatetools", "cache")/silo`. Default `TRUE`.
+#'   `tools::R_user_dir("hydroSense", "cache")/silo`. Default `TRUE`.
 #' @param refresh Logical; if `TRUE`, ignore and overwrite any cached result.
 #'   Default `FALSE`.
 #'
@@ -649,7 +649,7 @@ get_silo_air_temp <- function(
   # ── Disk cache keyed by grid cell (0.05°) + date range ──────────────────────
   cache_path <- NULL
   if (cache) {
-    cache_dir <- file.path(tools::R_user_dir("leachatetools", "cache"), "silo")
+    cache_dir <- file.path(tools::R_user_dir("hydroSense", "cache"), "silo")
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     key <- sprintf(
       "silo_%+07.2f_%+07.2f_%s_%s.qs",
@@ -729,7 +729,7 @@ get_silo_air_temp <- function(
 #' @param api_key Character SILO API key (your email address). Default `NULL`
 #'   defers to [weatherOz::get_key()].
 #' @param cache Logical; cache the result on disk under
-#'   `tools::R_user_dir("leachatetools", "cache")/silo`. Default `TRUE`.
+#'   `tools::R_user_dir("hydroSense", "cache")/silo`. Default `TRUE`.
 #' @param refresh Logical; if `TRUE`, ignore and overwrite any cached result.
 #'   Default `FALSE`.
 #'
@@ -779,7 +779,7 @@ get_silo_rainfall <- function(
 
   cache_path <- NULL
   if (cache) {
-    cache_dir <- file.path(tools::R_user_dir("leachatetools", "cache"), "silo")
+    cache_dir <- file.path(tools::R_user_dir("hydroSense", "cache"), "silo")
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     key <- sprintf(
       "silo_rain_%+07.2f_%+07.2f_%s_%s.qs",

@@ -1,7 +1,7 @@
 ## Capture the engine invariant (add_amspaf, untouched by #15) + grab dates on
 ## B.S01, under the CURRENT additive model, for before/after comparison.
 suppressMessages({library(dplyr); devtools::load_all(".", quiet=TRUE)})
-options(leachatetools.guideline_dir = "guideline data")
+options(hydroSense.guideline_dir = "guideline data")
 cc <- qs2::qs_read("test data/bs01_v3_cache.qs2")
 grabs <- cc$target_chem
 

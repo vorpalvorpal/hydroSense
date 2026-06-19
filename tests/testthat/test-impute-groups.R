@@ -4,7 +4,7 @@
 ## brms/Stan and run in the default suite.
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 # ── impute_group() constructor ───────────────────────────────────────────────
 
@@ -59,19 +59,19 @@ test_that("leachate_impute_groups() returns the metals + organics preset", {
 # ── .validate_impute_groups() ────────────────────────────────────────────────
 
 test_that(".validate_impute_groups() rejects malformed group lists", {
-  expect_error(leachatetools:::.validate_impute_groups(list()), "non-empty list")
+  expect_error(hydroSense:::.validate_impute_groups(list()), "non-empty list")
   expect_error(
-    leachatetools:::.validate_impute_groups(list(impute_group("a"), "nope")),
+    hydroSense:::.validate_impute_groups(list(impute_group("a"), "nope")),
     "impute_group"
   )
   expect_error(
-    leachatetools:::.validate_impute_groups(
+    hydroSense:::.validate_impute_groups(
       list(impute_group("dup", targets = "Cu"), impute_group("dup", targets = "Zn"))
     ),
     "unique"
   )
   expect_error(
-    leachatetools:::.validate_impute_groups(
+    hydroSense:::.validate_impute_groups(
       list(impute_group("a", targets = NULL), impute_group("b", targets = NULL))
     ),
     "catch-all"
@@ -79,7 +79,7 @@ test_that(".validate_impute_groups() rejects malformed group lists", {
 })
 
 test_that(".validate_impute_groups() accepts the leachate preset", {
-  expect_silent(leachatetools:::.validate_impute_groups(leachate_impute_groups()))
+  expect_silent(hydroSense:::.validate_impute_groups(leachate_impute_groups()))
 })
 
 
@@ -92,7 +92,7 @@ test_that(".route_groups() assigns explicit targets and routes remainder to catc
     impute_group("nutrients", targets = c("NO3-N")),
     impute_group("organics",  targets = NULL)   # catch-all
   )
-  routed <- leachatetools:::.route_groups(pool, groups)
+  routed <- hydroSense:::.route_groups(pool, groups)
 
   expect_named(routed, c("metals", "nutrients", "organics"))
   expect_setequal(routed$metals,    c("Cu", "Zn", "As"))
@@ -106,7 +106,7 @@ test_that(".route_groups() gives an overlapping analyte to the first group", {
     impute_group("a", targets = c("Cu", "Zn")),
     impute_group("b", targets = c("Zn"))        # Zn already claimed by 'a'
   )
-  routed <- leachatetools:::.route_groups(pool, groups)
+  routed <- hydroSense:::.route_groups(pool, groups)
   expect_setequal(routed$a, c("Cu", "Zn"))
   expect_length(routed$b, 0L)
 })
@@ -114,7 +114,7 @@ test_that(".route_groups() gives an overlapping analyte to the first group", {
 test_that(".route_groups() leaves unmatched analytes unassigned without a catch-all", {
   pool <- c("Cu", "Zn", "Mystery")
   groups <- list(impute_group("metals", targets = c("Cu", "Zn")))
-  routed <- leachatetools:::.route_groups(pool, groups)
+  routed <- hydroSense:::.route_groups(pool, groups)
   expect_setequal(routed$metals, c("Cu", "Zn"))
   expect_false("Mystery" %in% unlist(routed))   # dropped, no catch-all
 })

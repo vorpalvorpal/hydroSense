@@ -1,4 +1,4 @@
-Package: leachatetools
+Package: hydroSense
 Title: Water Quality Analysis Tools for Leachate-Impacted Waters
 Version: 0.2.0
 Authors@R: person("Robin", "Shannon", email = "rjs@robinshannon.net",
@@ -21,8 +21,8 @@ Description: Tools for detecting and assessing landfill-leachate impacts on
 License: MIT + file LICENSE
 Depends:
     R (>= 4.1.0)
-URL: https://vorpalvorpal.github.io/leachatetools/, https://github.com/vorpalvorpal/leachatetools
-BugReports: https://github.com/vorpalvorpal/leachatetools/issues
+URL: https://vorpalvorpal.github.io/hydroSense/, https://github.com/vorpalvorpal/hydroSense
+BugReports: https://github.com/vorpalvorpal/hydroSense/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3

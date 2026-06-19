@@ -90,7 +90,7 @@ ragged across analytes.
 ### Minimal example
 
 ```{r demo-draw, eval = FALSE}
-library(leachatetools)
+library(hydroSense)
 
 demo   <- leachate_demo()
 target <- subset(demo, site_id == "downstream")

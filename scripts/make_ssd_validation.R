@@ -19,9 +19,9 @@
 #   Otherwise:
 #       calc_N = HC_N
 #
-# Output: leachatetools/data-raw/ssd_validation.csv
+# Output: hydroSense/data-raw/ssd_validation.csv
 #
-# Usage (run from the dashboard/ root): Rscript leachatetools/scripts/make_ssd_validation.R
+# Usage (run from the dashboard/ root): Rscript hydroSense/scripts/make_ssd_validation.R
 
 suppressPackageStartupMessages({
   library(ssdtools)
@@ -32,7 +32,7 @@ suppressPackageStartupMessages({
 
 `%||%` <- function(a, b) if (!is.null(a) && length(a) > 0) a else b
 
-PKG_DIR <- "leachatetools"
+PKG_DIR <- "hydroSense"
 RAW_DIR <- file.path(PKG_DIR, "data-raw")
 OUT_DIR <- file.path(PKG_DIR, "data-raw")
 SSD_DIR <- file.path(PKG_DIR, "data-raw", "ssd_models")

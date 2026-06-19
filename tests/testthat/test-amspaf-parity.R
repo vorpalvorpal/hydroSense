@@ -9,7 +9,7 @@
 ## Ni (pH/DOC/Ca/Mg) require them.
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 make_minimal_chem <- function(analytes = c("Cu", "Zn", "Ni"),
                               n_samples = 3,

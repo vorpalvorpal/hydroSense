@@ -12,7 +12,7 @@
 ##      predicted on different score scales.
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 make_pca_chem <- function(n = 30, seed = 1, with_missing = TRUE) {
   set.seed(seed)
@@ -39,7 +39,7 @@ pca_vars_used <- c("pH", "Cl", "SO4²⁻", "Ca", "temperature", "DOC")
 
 test_that(".prepare_chem_pca returns a valid variance curve (R2cum bug guard)", {
   df  <- make_pca_chem()
-  pca <- leachatetools:::.prepare_chem_pca(
+  pca <- hydroSense:::.prepare_chem_pca(
     df, wq_vars = pca_vars_used, min_var_explained = 0.75, max_pcs = 4L
   )
   # The R2cum-NULL bug produced n_pcs = 0 and an NA/empty var_explained.
@@ -53,10 +53,10 @@ test_that(".prepare_chem_pca returns a valid variance curve (R2cum bug guard)", 
 
 test_that("training PC scores equal the prediction-time projection (scale bug guard)", {
   df  <- make_pca_chem()
-  pca <- leachatetools:::.prepare_chem_pca(
+  pca <- hydroSense:::.prepare_chem_pca(
     df, wq_vars = pca_vars_used, min_var_explained = 0.75, max_pcs = 4L
   )
-  rescored <- leachatetools:::.compute_pca_scores(df, pca)
+  rescored <- hydroSense:::.compute_pca_scores(df, pca)
 
   a <- dplyr::arrange(pca$pc_scores, sample_id)
   b <- dplyr::arrange(rescored,      sample_id)
@@ -82,7 +82,7 @@ test_that(".log_transform_pca logs concentrations but not pH/temperature/ORP/DO"
     nrow = 2, byrow = TRUE
   )
   colnames(m) <- c("pH", "Cl", "temperature", "DO")
-  out <- leachatetools:::.log_transform_pca(m)
+  out <- hydroSense:::.log_transform_pca(m)
 
   expect_equal(out[, "pH"],          m[, "pH"])           # untouched
   expect_equal(out[, "temperature"], m[, "temperature"])  # untouched
@@ -91,5 +91,5 @@ test_that(".log_transform_pca logs concentrations but not pH/temperature/ORP/DO"
 
   # NAs are preserved (NIPALS relies on this).
   m2 <- m; m2[1, "Cl"] <- NA
-  expect_true(is.na(leachatetools:::.log_transform_pca(m2)[1, "Cl"]))
+  expect_true(is.na(hydroSense:::.log_transform_pca(m2)[1, "Cl"]))
 })

@@ -15,15 +15,15 @@
 ## prompting a switch to a true runtime envelope (or an As(III) default).
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 gd <- function() {
-  d <- getOption("leachatetools.guideline_dir")
+  d <- getOption("hydroSense.guideline_dir")
   if (is.null(d)) "guideline data" else d
 }
 
 test_that("unspeciated 'As' resolves to the As(V) SSD", {
-  expect_identical(leachatetools:::.SSD_NAME_MAP[["As"]], "As_V")
+  expect_identical(hydroSense:::.SSD_NAME_MAP[["As"]], "As_V")
 })
 
 test_that("As(V) PAF >= As(III) PAF across the realistic concentration range", {

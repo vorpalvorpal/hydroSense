@@ -2,9 +2,9 @@
 # Fit SSD models for all ANZECC/ANZG analytes and save as .qs files.
 #
 # Data sources:
-#   leachatetools/data-raw/anzecc_warne2000_observations.csv  — Warne (2000) raw values
-#   leachatetools/data-raw/anzecc_analyte_metadata.csv        — per-analyte fit parameters
-#   leachatetools/guideline data/*.xlsx                        — ANZG modern technical briefs
+#   hydroSense/data-raw/anzecc_warne2000_observations.csv  — Warne (2000) raw values
+#   hydroSense/data-raw/anzecc_analyte_metadata.csv        — per-analyte fit parameters
+#   hydroSense/guideline data/*.xlsx                        — ANZG modern technical briefs
 #
 # Design:
 #   - Per-analyte distribution: the 'fit_dist' column in anzecc_analyte_metadata.csv
@@ -23,10 +23,10 @@
 #     recorded in the metadata; the SSD itself is fitted normally.
 #
 # Usage (run from the dashboard/ root):
-#   Rscript leachatetools/scripts/fit_ssd_models.R [--dists lnorm|multi]
+#   Rscript hydroSense/scripts/fit_ssd_models.R [--dists lnorm|multi]
 #   (--dists sets the fallback default when fit_dist is not specified per-analyte)
 #
-# Output: leachatetools/data-raw/ssd_models/<safe_name>.qs  (one per analyte)
+# Output: hydroSense/data-raw/ssd_models/<safe_name>.qs  (one per analyte)
 
 suppressPackageStartupMessages({
   library(ssdtools)
@@ -43,7 +43,7 @@ DISTS  <- if ("--dists" %in% args) {
   args[which(args == "--dists") + 1]
 } else "lnorm"   # "lnorm" to match ANZECC; "multi" for model-averaged
 
-PKG_DIR   <- "leachatetools"
+PKG_DIR   <- "hydroSense"
 RAW_DIR   <- file.path(PKG_DIR, "data-raw")
 GUIDE_DIR <- file.path(PKG_DIR, "guideline data")
 OUT_DIR   <- file.path(RAW_DIR, "ssd_models")

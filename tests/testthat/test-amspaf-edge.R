@@ -3,7 +3,7 @@
 ## <min_analytes drop; these add unmatched-reference and all-BDL behaviour.
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 co <- c(pH = 7.5, DOC = 2.0, Ca = 6.0, Mg = 4.0, hardness = 30.0)
 mk <- function(sid, cu, zn, ni, det = TRUE) {

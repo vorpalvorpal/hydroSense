@@ -4,7 +4,7 @@
 ## smoke test does not.
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 # Chemistry with the standard PCA panel; DOC missing for some samples so
 # impute_coanalytes() has something to fill.
@@ -34,7 +34,7 @@ pca_vars_used <- c("pH", "Cl", "SO4²⁻", "Ca", "temperature", "DOC")
 # Build an imputation_model carrying only a fitted PCA (no brms models needed
 # for impute_coanalytes()).
 make_pca_model <- function(df) {
-  pca <- leachatetools:::.prepare_chem_pca(
+  pca <- hydroSense:::.prepare_chem_pca(
     df, wq_vars = pca_vars_used, min_var_explained = 0.75, max_pcs = 4L
   )
   structure(
@@ -93,7 +93,7 @@ test_that(".check_bdl_imputed caps imputed BDL values above the detection limit"
 
   # s1 is BDL with value 5 > DL 1 -> exceedance -> warn + cap to 1.
   expect_warning(
-    capped <- leachatetools:::.check_bdl_imputed(result, dl, cap = TRUE), "exceed"
+    capped <- hydroSense:::.check_bdl_imputed(result, dl, cap = TRUE), "exceed"
   )
   expect_equal(capped$value[capped$sample_id == "s1"], 1)  # capped
   expect_equal(capped$value[capped$sample_id == "s2"], 0.5) # untouched (below DL)
@@ -109,7 +109,7 @@ test_that(".check_bdl_imputed attaches an auditable per-cell cap summary", {
   )
   dl <- tibble::tibble(sample_id = c("s1", "s2", "s3"), analyte = c("Cu", "Zn", "Cu"),
                        detection_limit = c(1, 1, 1))
-  suppressWarnings(capped <- leachatetools:::.check_bdl_imputed(result, dl, cap = TRUE))
+  suppressWarnings(capped <- hydroSense:::.check_bdl_imputed(result, dl, cap = TRUE))
 
   s <- bdl_cap_summary(capped)
   expect_s3_class(s, "tbl_df")
@@ -132,7 +132,7 @@ test_that(".check_bdl_imputed caps per-row without duplicating posterior draws",
     imputed_kind = "censored_left"
   )
   dl <- tibble::tibble(sample_id = "s1", analyte = "Cu", detection_limit = 1)
-  suppressWarnings(out <- leachatetools:::.check_bdl_imputed(result, dl, cap = TRUE))
+  suppressWarnings(out <- hydroSense:::.check_bdl_imputed(result, dl, cap = TRUE))
 
   expect_equal(nrow(out), 3L)                # no duplication
   expect_equal(out$value, c(1, 0.5, 1))      # only exceeding draws capped
@@ -144,7 +144,7 @@ test_that(".check_bdl_imputed warns but does not cap when cap = FALSE", {
                            imputed_kind = "censored_left")
   dl <- tibble::tibble(sample_id = "s1", analyte = "Cu", detection_limit = 1)
   expect_warning(
-    out <- leachatetools:::.check_bdl_imputed(result, dl, cap = FALSE), "NOT capped"
+    out <- hydroSense:::.check_bdl_imputed(result, dl, cap = FALSE), "NOT capped"
   )
   expect_equal(out$value, 5)
 })
@@ -154,11 +154,11 @@ test_that(".check_bdl_imputed is a no-op with an empty DL table or no exceedance
                            imputed_kind = "censored_left")
   empty_dl <- tibble::tibble(sample_id = character(), analyte = character(),
                              detection_limit = numeric())
-  expect_identical(leachatetools:::.check_bdl_imputed(result, empty_dl), result)
+  expect_identical(hydroSense:::.check_bdl_imputed(result, empty_dl), result)
 
   # Present DL but value below it -> no exceedance, unchanged, no warning.
   dl <- tibble::tibble(sample_id = "s1", analyte = "Cu", detection_limit = 1)
-  expect_identical(leachatetools:::.check_bdl_imputed(result, dl), result)
+  expect_identical(hydroSense:::.check_bdl_imputed(result, dl), result)
 })
 
 test_that("print.imputation_model summarises the fit", {

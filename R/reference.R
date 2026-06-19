@@ -367,11 +367,11 @@ print.prepared_reference <- function(x, ...) {
   }
 
   path <- system.file("extdata", "anzecc_analyte_metadata.csv",
-                      package = "leachatetools")
+                      package = "hydroSense")
   if (!nzchar(path)) {
     cli::cli_abort(
       "Cannot find {.file inst/extdata/anzecc_analyte_metadata.csv} inside the \\
-       installed leachatetools package. Re-install or supply {.arg analyte_metadata} \\
+       installed hydroSense package. Re-install or supply {.arg analyte_metadata} \\
        explicitly."
     )
   }

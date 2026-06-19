@@ -17,7 +17,7 @@ suppressMessages({
 label <- (commandArgs(trailingOnly = TRUE)[1]) %||% "after"
 set.seed(49L)
 
-api <- leachatetools:::.compute_api
+api <- hydroSense:::.compute_api
 
 grid <- expand.grid(
   n_hydro   = c(2000L, 5000L, 10000L),

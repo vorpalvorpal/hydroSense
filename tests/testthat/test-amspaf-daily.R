@@ -13,7 +13,7 @@
 ## No ANZG XLSX files are required -- the bundled observations CSV is used.
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 ## Helper: minimal long-format chemistry for one site, n_samples grab events.
 ## Co-analytes are included so normalisation formulas for Cu/Zn/Ni can run.
@@ -363,7 +363,7 @@ test_that(".interpolate_analyte forward-fills correctly", {
   obs_det <- c(TRUE, TRUE)
   targets <- seq(as.Date("2024-01-01"), as.Date("2024-01-15"), by = "day")
 
-  res <- leachatetools:::.interpolate_analyte(
+  res <- hydroSense:::.interpolate_analyte(
     obs_dates     = obs_d,
     obs_values    = obs_v,
     obs_detected  = obs_det,
@@ -389,7 +389,7 @@ test_that(".interpolate_analyte linear interpolates correctly", {
   obs_det <- c(TRUE, TRUE)
   targets <- seq(as.Date("2024-01-01"), as.Date("2024-01-11"), by = "day")
 
-  res <- leachatetools:::.interpolate_analyte(
+  res <- hydroSense:::.interpolate_analyte(
     obs_dates     = obs_d,
     obs_values    = obs_v,
     obs_detected  = obs_det,
@@ -410,7 +410,7 @@ test_that(".interpolate_analyte log-space interpolation stays positive", {
   obs_det <- c(TRUE, TRUE)
   targets <- seq(as.Date("2024-01-01"), as.Date("2024-01-11"), by = "day")
 
-  res <- leachatetools:::.interpolate_analyte(
+  res <- hydroSense:::.interpolate_analyte(
     obs_dates     = obs_d,
     obs_values    = obs_v,
     obs_detected  = obs_det,
@@ -432,12 +432,12 @@ test_that(".interpolate_analyte backfill extends before first obs", {
   obs_det <- TRUE
   targets <- seq(as.Date("2024-01-05"), as.Date("2024-01-15"), by = "day")
 
-  drop_res <- leachatetools:::.interpolate_analyte(
+  drop_res <- hydroSense:::.interpolate_analyte(
     obs_dates = obs_d, obs_values = obs_v, obs_detected = obs_det,
     target_dates = targets, interpolation = "forward_fill",
     leading_edge = "drop", log_space = FALSE
   )
-  back_res <- leachatetools:::.interpolate_analyte(
+  back_res <- hydroSense:::.interpolate_analyte(
     obs_dates = obs_d, obs_values = obs_v, obs_detected = obs_det,
     target_dates = targets, interpolation = "forward_fill",
     leading_edge = "backfill", log_space = FALSE

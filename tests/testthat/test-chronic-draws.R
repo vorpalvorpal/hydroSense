@@ -12,7 +12,7 @@
 ##   7. Guard        — amspaf_daily errors on draws input
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 ## ── Shared helpers ────────────────────────────────────────────────────────────
 

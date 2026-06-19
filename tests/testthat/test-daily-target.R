@@ -12,7 +12,7 @@
 ##   D7. .daily_tox_from_model wrapper produces expected output
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 
 ## ── Shared setup (fitted once at file-parse time) ─────────────────────────────
@@ -55,9 +55,9 @@ make_hydro <- function(n = 700, seed = 99) {
                                 api_tau_bounds_short = c(7, 7),
                                 api_tau_bounds_long  = c(30, 30))
   all_dates <- seq(dates[1], dates[length(dates)], by = "day")
-  meta      <- leachatetools:::.load_analyte_metadata(NULL)
+  meta      <- hydroSense:::.load_analyte_metadata(NULL)
   tox_nms   <- meta$analyte[!is.na(meta$ssd_available) & meta$ssd_available]
-  daily_long <- leachatetools:::.build_daily_chem(
+  daily_long <- hydroSense:::.build_daily_chem(
     site_rows     = tgt,
     dates         = all_dates,
     interpolation = "forward_fill",
@@ -72,7 +72,7 @@ make_hydro <- function(n = 700, seed = 99) {
 ## ── D1: .fit_daily_target structure ──────────────────────────────────────────
 
 test_that("D1: .fit_daily_target returns a list with required fields", {
-  fdm <- leachatetools:::.fit_daily_target(
+  fdm <- hydroSense:::.fit_daily_target(
     site_rows        = .td$tgt,
     reference_model  = .td$rm,
     imputation_model = NULL,
@@ -94,7 +94,7 @@ test_that("D1: .fit_daily_target returns a list with required fields", {
 ## ── D2: smoother scaffold present, clipped within the daily grid ──────────────
 
 test_that("D2: fdm$smoothers carry a grid (clipped within qdates) and a mean", {
-  fdm <- leachatetools:::.fit_daily_target(
+  fdm <- hydroSense:::.fit_daily_target(
     site_rows        = .td$tgt,
     reference_model  = .td$rm,
     imputation_model = NULL,
@@ -120,14 +120,14 @@ test_that("D3: degenerate smoother (NULL draw_model) when analyte has 1 grab", {
   ## Build minimal single-obs target chemistry (1 grab per analyte)
   single_date <- as.Date("2021-07-01")
   one_grab    <- make_chem("target", single_date, mult = 3, seed = 5)
-  daily_1     <- leachatetools:::.build_daily_chem(
+  daily_1     <- hydroSense:::.build_daily_chem(
     site_rows     = one_grab,
     dates         = seq(single_date, single_date + 30, by = "day"),
     interpolation = "forward_fill",
     leading_edge  = "drop",
     tox_analytes  = .td$tox_nms
   )
-  fdm <- leachatetools:::.fit_daily_target(
+  fdm <- hydroSense:::.fit_daily_target(
     site_rows        = one_grab,
     reference_model  = .td$rm,
     imputation_model = NULL,
@@ -149,7 +149,7 @@ test_that("D3: degenerate smoother (NULL draw_model) when analyte has 1 grab", {
 ## ── D4: point-mode prediction returns finite values ──────────────────────────
 
 test_that("D4: .predict_daily_tox (point mode) returns finite C_raw for all rows", {
-  fdm <- leachatetools:::.fit_daily_target(
+  fdm <- hydroSense:::.fit_daily_target(
     site_rows        = .td$tgt,
     reference_model  = .td$rm,
     imputation_model = NULL,
@@ -158,7 +158,7 @@ test_that("D4: .predict_daily_tox (point mode) returns finite C_raw for all rows
     tox_analytes     = .td$tox_nms,
     daily_long       = .td$daily_long
   )
-  model_rows <- leachatetools:::.predict_daily_tox(fdm)
+  model_rows <- hydroSense:::.predict_daily_tox(fdm)
   expect_true(!is.null(model_rows))
   expect_true(nrow(model_rows) > 0L)
   expect_true(all(is.finite(model_rows$value)))
@@ -170,7 +170,7 @@ test_that("D4: .predict_daily_tox (point mode) returns finite C_raw for all rows
 ## ── D5: residual_paths = NULL (centre means) ≡ explicit centre paths ──────────
 
 test_that("D5: NULL residual_paths equals the explicit centre (smoother means)", {
-  fdm <- leachatetools:::.fit_daily_target(
+  fdm <- hydroSense:::.fit_daily_target(
     site_rows        = .td$tgt,
     reference_model  = .td$rm,
     imputation_model = NULL,
@@ -179,12 +179,12 @@ test_that("D5: NULL residual_paths equals the explicit centre (smoother means)",
     tox_analytes     = .td$tox_nms,
     daily_long       = .td$daily_long
   )
-  rows_null <- leachatetools:::.predict_daily_tox(fdm, residual_paths = NULL)
+  rows_null <- hydroSense:::.predict_daily_tox(fdm, residual_paths = NULL)
   centre <- stats::setNames(lapply(fdm$modelled, function(nm) {
     sm <- fdm$smoothers[[nm]]
-    leachatetools:::.residual_on_qdates(sm$grid_dates, sm$mean, fdm$qdates)
+    hydroSense:::.residual_on_qdates(sm$grid_dates, sm$mean, fdm$qdates)
   }), fdm$modelled)
-  rows_centre <- leachatetools:::.predict_daily_tox(fdm, residual_paths = centre)
+  rows_centre <- hydroSense:::.predict_daily_tox(fdm, residual_paths = centre)
   expect_equal(rows_null$value, rows_centre$value)
 })
 
@@ -192,7 +192,7 @@ test_that("D5: NULL residual_paths equals the explicit centre (smoother means)",
 ## ── D6: a raised residual path shifts C_raw upwards ──────────────────────────
 
 test_that("D6: a positive residual path shifts C_raw upwards for that analyte", {
-  fdm <- leachatetools:::.fit_daily_target(
+  fdm <- hydroSense:::.fit_daily_target(
     site_rows        = .td$tgt,
     reference_model  = .td$rm,
     imputation_model = NULL,
@@ -201,7 +201,7 @@ test_that("D6: a positive residual path shifts C_raw upwards for that analyte", 
     tox_analytes     = .td$tox_nms,
     daily_long       = .td$daily_long
   )
-  rows_base <- leachatetools:::.predict_daily_tox(fdm, residual_paths = NULL)
+  rows_base <- hydroSense:::.predict_daily_tox(fdm, residual_paths = NULL)
 
   ## A positive residual on the first modelled analyte (over its grid). The
   ## residual now lives on the g = asinh(I/c) scale (issue #15), so the
@@ -209,11 +209,11 @@ test_that("D6: a positive residual path shifts C_raw upwards for that analyte", 
   nm  <- fdm$modelled[[1L]]
   sm  <- fdm$smoothers[[nm]]
   rp  <- stats::setNames(lapply(fdm$modelled, function(a) {
-    base <- leachatetools:::.residual_on_qdates(fdm$smoothers[[a]]$grid_dates,
+    base <- hydroSense:::.residual_on_qdates(fdm$smoothers[[a]]$grid_dates,
                                                 fdm$smoothers[[a]]$mean, fdm$qdates)
     if (a == nm) base + 1 else base
   }), fdm$modelled)
-  rows_rp <- leachatetools:::.predict_daily_tox(fdm, residual_paths = rp)
+  rows_rp <- hydroSense:::.predict_daily_tox(fdm, residual_paths = rp)
 
   base_nm <- rows_base$value[rows_base$analyte == nm]
   rp_nm   <- rows_rp$value[rows_rp$analyte == nm]
@@ -226,7 +226,7 @@ test_that("D6: a positive residual path shifts C_raw upwards for that analyte", 
 ## ── D7: .daily_tox_from_model wrapper end-to-end ─────────────────────────────
 
 test_that("D7: .daily_tox_from_model replaces modelled-analyte rows and attaches impact_tiers", {
-  out <- leachatetools:::.daily_tox_from_model(
+  out <- hydroSense:::.daily_tox_from_model(
     daily_long       = .td$daily_long,
     site_rows        = .td$tgt,
     reference_model  = .td$rm,

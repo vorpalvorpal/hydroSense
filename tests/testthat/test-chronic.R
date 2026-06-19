@@ -1,7 +1,7 @@
 ## Tests for time_weighted_aggregate() and expand_focal_dates()
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 # ── Helper: build a synthetic long-format chemistry df ────────────────────────
 make_synth_chem <- function(

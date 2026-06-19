@@ -13,7 +13,7 @@ fit_target_model(
   conc_units = NULL,
   analyte_metadata = NULL,
   method = c("multi", "anzecc"),
-  guideline_dir = getOption("leachatetools.guideline_dir"),
+  guideline_dir = getOption("hydroSense.guideline_dir"),
   transform = c("pseudo_log", "additive"),
   analyte_c = NULL,
   api_tau_bounds_short = c(1, 30),
@@ -55,7 +55,7 @@ column is present.}
 analyte's HC5 transform scale when \code{analyte_c} is not supplied.}
 
 \item{guideline_dir}{Path to the ANZG guideline data folder (for the SSD
-fits); falls back to \code{getOption("leachatetools.guideline_dir")}.}
+fits); falls back to \code{getOption("hydroSense.guideline_dir")}.}
 
 \item{transform}{\code{"pseudo_log"} (default) or \code{"additive"}. Controls the
 variance-stabilising transform applied to the impact residual before

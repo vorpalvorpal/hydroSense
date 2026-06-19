@@ -14,7 +14,7 @@
 ##   C10. .perturb_target_model(perturb_reference=TRUE) perturbs ref model too
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 ## ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -107,21 +107,21 @@ make_mock_reference_model <- function(gam_fit) {
 ## ── C1–C5: .perturb_gam ──────────────────────────────────────────────────────
 
 test_that("C1: NULL input returns NULL", {
-  expect_null(leachatetools:::.perturb_gam(NULL))
+  expect_null(hydroSense:::.perturb_gam(NULL))
 })
 
 test_that("C2: GAM without $Vp returned unchanged", {
   g     <- make_simple_gam()
   g_nov <- g
   g_nov$Vp <- NULL
-  result <- leachatetools:::.perturb_gam(g_nov)
+  result <- hydroSense:::.perturb_gam(g_nov)
   expect_identical(result$coefficients, g_nov$coefficients)
 })
 
 test_that("C3: perturbed coefficients differ from original", {
   g   <- make_simple_gam()
   set.seed(1L)
-  g_p <- leachatetools:::.perturb_gam(g)
+  g_p <- hydroSense:::.perturb_gam(g)
   expect_false(isTRUE(all.equal(g$coefficients, g_p$coefficients)))
 })
 
@@ -133,7 +133,7 @@ test_that("C4: mean prediction over many perturbation draws ≈ original", {
   # Draw 2000 perturbed predictions
   set.seed(42L)
   preds <- replicate(2000L, {
-    g_p <- leachatetools:::.perturb_gam(g)
+    g_p <- hydroSense:::.perturb_gam(g)
     as.numeric(stats::predict(g_p, newdata = nd))
   })
   pred_mean <- rowMeans(preds)
@@ -146,7 +146,7 @@ test_that("C5: .perturb_gam does not mutate the original object", {
   g    <- make_simple_gam()
   orig <- g$coefficients
   set.seed(1L)
-  leachatetools:::.perturb_gam(g)
+  hydroSense:::.perturb_gam(g)
   expect_identical(g$coefficients, orig)
 })
 
@@ -157,7 +157,7 @@ test_that("C6: pooled analytes (Cu, Zn) get the SAME perturbed impact_fit", {
   g   <- make_simple_gam()
   tm  <- make_mock_target_model(g)
   set.seed(3L)
-  tm_p <- leachatetools:::.perturb_target_model(tm)
+  tm_p <- hydroSense:::.perturb_target_model(tm)
   # Coefficients must be identical between Cu and Zn (same draw)
   expect_identical(
     tm_p$models$Cu$impact_fit$coefficients,
@@ -169,7 +169,7 @@ test_that("C6: pooled analytes' perturbed coefficients differ from original", {
   g   <- make_simple_gam()
   tm  <- make_mock_target_model(g)
   set.seed(3L)
-  tm_p <- leachatetools:::.perturb_target_model(tm)
+  tm_p <- hydroSense:::.perturb_target_model(tm)
   expect_false(isTRUE(all.equal(
     tm_p$models$Cu$impact_fit$coefficients,
     g$coefficients
@@ -179,7 +179,7 @@ test_that("C6: pooled analytes' perturbed coefficients differ from original", {
 test_that("C7: bridge-tier analyte (Ni) impact_fit stays NULL after perturbation", {
   g   <- make_simple_gam()
   tm  <- make_mock_target_model(g)
-  tm_p <- leachatetools:::.perturb_target_model(tm)
+  tm_p <- hydroSense:::.perturb_target_model(tm)
   expect_null(tm_p$models$Ni$impact_fit)
 })
 
@@ -188,7 +188,7 @@ test_that("C8: .perturb_target_model does not mutate the original model", {
   tm   <- make_mock_target_model(g)
   orig_coef <- tm$models$Cu$impact_fit$coefficients
   set.seed(1L)
-  leachatetools:::.perturb_target_model(tm)
+  hydroSense:::.perturb_target_model(tm)
   expect_identical(tm$models$Cu$impact_fit$coefficients, orig_coef)
 })
 
@@ -199,7 +199,7 @@ test_that("C9: .perturb_reference_model perturbs gamm_fit coefficients", {
   g   <- make_simple_gam()
   rm  <- make_mock_reference_model(g)
   set.seed(5L)
-  rm_p <- leachatetools:::.perturb_reference_model(rm)
+  rm_p <- hydroSense:::.perturb_reference_model(rm)
   expect_false(isTRUE(all.equal(
     rm_p$models$Cu$gamm_fit$coefficients,
     g$coefficients
@@ -217,7 +217,7 @@ test_that("C10: perturb_reference=TRUE perturbs embedded reference model", {
   orig_coef <- rm$models$Cu$gamm_fit$coefficients
 
   set.seed(6L)
-  tm_p <- leachatetools:::.perturb_target_model(tm, perturb_reference = TRUE)
+  tm_p <- hydroSense:::.perturb_target_model(tm, perturb_reference = TRUE)
   expect_false(isTRUE(all.equal(
     tm_p$reference_model$models$Cu$gamm_fit$coefficients,
     orig_coef
@@ -231,7 +231,7 @@ test_that("C10: perturb_reference=FALSE leaves embedded reference unchanged", {
   tm$reference_model <- rm
   orig_coef <- rm$models$Cu$gamm_fit$coefficients
 
-  tm_p <- leachatetools:::.perturb_target_model(tm, perturb_reference = FALSE)
+  tm_p <- hydroSense:::.perturb_target_model(tm, perturb_reference = FALSE)
   expect_identical(
     tm_p$reference_model$models$Cu$gamm_fit$coefficients,
     orig_coef

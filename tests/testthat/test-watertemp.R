@@ -4,7 +4,7 @@
 ## selection via LOO-CV PRESS (part b).
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 # Helper: a year-spanning air-temperature series.
 make_air <- function(years = 2021:2022) {
@@ -87,12 +87,12 @@ test_that(".aicc returns Inf when the sample is too small for the correction", {
   d <- data.frame(y = c(1, 2, 3, 4), x1 = c(1, 2, 3, 4),
                   x2 = c(2, 1, 4, 3), x3 = c(1, 3, 2, 4))
   fit <- stats::lm(y ~ x1 + x2 + x3, data = d)  # k = 5, n = 4 -> undefined
-  expect_identical(leachatetools:::.aicc(fit), Inf)
+  expect_identical(hydroSense:::.aicc(fit), Inf)
 })
 
 test_that(".add_doy_harmonics is cyclic and bounded", {
   df <- data.frame(d = as.Date(c("2021-01-01", "2021-12-31", "2021-07-02")))
-  h  <- leachatetools:::.add_doy_harmonics(df, "d")
+  h  <- hydroSense:::.add_doy_harmonics(df, "d")
   expect_true(all(h$sin_doy >= -1 & h$sin_doy <= 1))
   expect_true(all(h$cos_doy >= -1 & h$cos_doy <= 1))
   # Jan 1 (doy 1) and Dec 31 (doy 365) are adjacent on the annual circle.
@@ -186,7 +186,7 @@ test_that("select = 'auto' recovers a window near the true antecedence scale", {
   # With 200 pairs over 3 years, auto should converge near window = 14.
   set.seed(100)
   air <- make_air(2020:2022)
-  roll14 <- leachatetools:::.trailing_rollmean(air$air_temp_mean_C, 14)
+  roll14 <- hydroSense:::.trailing_rollmean(air$air_temp_mean_C, 14)
   # Discard first 13 days (NA rolling mean)
   air14  <- air[!is.na(roll14), ]
   roll14 <- roll14[!is.na(roll14)]
@@ -262,8 +262,8 @@ test_that("1-SE rule selects a shorter window when near-tie exists", {
   air <- make_air(2020:2022)
   # Use the average of 7-day and 14-day rolling means as the true signal —
   # neither window dominates, so CV RMSEs will be close.
-  r7  <- leachatetools:::.trailing_rollmean(air$air_temp_mean_C, 7)
-  r14 <- leachatetools:::.trailing_rollmean(air$air_temp_mean_C, 14)
+  r7  <- hydroSense:::.trailing_rollmean(air$air_temp_mean_C, 7)
+  r14 <- hydroSense:::.trailing_rollmean(air$air_temp_mean_C, 14)
   ok  <- !is.na(r7) & !is.na(r14)
   air_ok <- air[ok, ]
   signal  <- 0.5 * (r7[ok] + r14[ok])

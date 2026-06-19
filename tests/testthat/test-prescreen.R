@@ -1,7 +1,7 @@
 ## Tests for prescreen_analytes()
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 make_chem <- function() {
   # expand_grid varies analyte slowest (outer) so rows are grouped by sample.

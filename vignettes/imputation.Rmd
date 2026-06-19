@@ -14,7 +14,7 @@ knitr::opts_chunk$set(
   message  = FALSE,
   warning  = FALSE
 )
-library(leachatetools)
+library(hydroSense)
 ```
 
 ## The problem
@@ -37,7 +37,7 @@ that borrow strength from the analytes that *were* measured.
 
 ## The approach in brief
 
-leachatetools imputes chemistry with a **Bayesian multivariate model** fitted
+hydroSense imputes chemistry with a **Bayesian multivariate model** fitted
 once on your monitoring history and then applied to new samples. The design
 has three ideas at its core:
 
@@ -322,7 +322,7 @@ that the data never contained. A few situations call for restraint:
 
 ## Installation note
 
-The Bayesian step is the only part of leachatetools that needs **brms**, so
+The Bayesian step is the only part of hydroSense that needs **brms**, so
 brms is an optional dependency rather than a hard requirement — the LMF and
 AmsPAF tools install and run without it. To use `fit_imputation_model()` and
 `impute_chemistry()`, install brms and a working Stan engine once:

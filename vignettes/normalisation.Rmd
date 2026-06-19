@@ -1,8 +1,8 @@
 ---
-title: "Analyte normalisation: bioavailability adjustments in leachatetools"
+title: "Analyte normalisation: bioavailability adjustments in hydroSense"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Analyte normalisation: bioavailability adjustments in leachatetools}
+  %\VignetteIndexEntry{Analyte normalisation: bioavailability adjustments in hydroSense}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -16,7 +16,7 @@ knitr::opts_chunk$set(
 
 ## Overview
 
-The ANZG freshwater toxicant guideline values are derived at a specific **index water-chemistry condition**. When ambient water chemistry differs from that condition, the guideline — and therefore the effective toxicity — changes. leachatetools adjusts measured concentrations to index-condition equivalents before computing PAF values so that all samples are compared on the same basis.
+The ANZG freshwater toxicant guideline values are derived at a specific **index water-chemistry condition**. When ambient water chemistry differs from that condition, the guideline — and therefore the effective toxicity — changes. hydroSense adjusts measured concentrations to index-condition equivalents before computing PAF values so that all samples are compared on the same basis.
 
 The adjustment is:
 

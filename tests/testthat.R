@@ -1,4 +1,4 @@
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
-test_check("leachatetools")
+test_check("hydroSense")

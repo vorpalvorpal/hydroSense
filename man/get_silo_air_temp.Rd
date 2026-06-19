@@ -26,7 +26,7 @@ interest. Must fall within the SILO grid (approximately latitude -44 to
 defers to \code{\link[weatherOz:get_key]{weatherOz::get_key()}}.}
 
 \item{cache}{Logical; cache the result on disk under
-\code{tools::R_user_dir("leachatetools", "cache")/silo}. Default \code{TRUE}.}
+\code{tools::R_user_dir("hydroSense", "cache")/silo}. Default \code{TRUE}.}
 
 \item{refresh}{Logical; if \code{TRUE}, ignore and overwrite any cached result.
 Default \code{FALSE}.}

@@ -9,7 +9,7 @@
 ##   5. Alignment    — Cu/Zn draws are paired by draw_id, not shuffled
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 ## ── Shared helpers ────────────────────────────────────────────────────────────
 

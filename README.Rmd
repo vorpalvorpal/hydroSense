@@ -13,17 +13,17 @@ knitr::opts_chunk$set(
 )
 ```
 
-# leachatetools
+# hydroSense
 
 <!-- badges: start -->
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
-[![R-CMD-check](https://github.com/vorpalvorpal/leachatetools/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/vorpalvorpal/leachatetools/actions/workflows/R-CMD-check.yaml)
-[![pkgdown](https://github.com/vorpalvorpal/leachatetools/actions/workflows/pkgdown.yaml/badge.svg)](https://github.com/vorpalvorpal/leachatetools/actions/workflows/pkgdown.yaml)
-[![brms-smoke](https://github.com/vorpalvorpal/leachatetools/actions/workflows/brms-smoke.yaml/badge.svg)](https://github.com/vorpalvorpal/leachatetools/actions/workflows/brms-smoke.yaml)
+[![R-CMD-check](https://github.com/vorpalvorpal/hydroSense/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/vorpalvorpal/hydroSense/actions/workflows/R-CMD-check.yaml)
+[![pkgdown](https://github.com/vorpalvorpal/hydroSense/actions/workflows/pkgdown.yaml/badge.svg)](https://github.com/vorpalvorpal/hydroSense/actions/workflows/pkgdown.yaml)
+[![brms-smoke](https://github.com/vorpalvorpal/hydroSense/actions/workflows/brms-smoke.yaml/badge.svg)](https://github.com/vorpalvorpal/hydroSense/actions/workflows/brms-smoke.yaml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 <!-- badges: end -->
 
-**leachatetools** analyses water quality in freshwater systems potentially
+**hydroSense** analyses water quality in freshwater systems potentially
 impacted by landfill leachate. It turns routine monitoring chemistry into
 ecologically interpretable, mixture-aware risk estimates, with explicit
 handling of below-detection data and local background conditions.
@@ -57,11 +57,11 @@ index-condition basis.
 ## Installation
 
 You can install the development version from
-[GitHub](https://github.com/vorpalvorpal/leachatetools):
+[GitHub](https://github.com/vorpalvorpal/hydroSense):
 
 ```{r, eval = FALSE}
 # install.packages("pak")
-pak::pak("vorpalvorpal/leachatetools")
+pak::pak("vorpalvorpal/hydroSense")
 ```
 
 Bayesian imputation additionally requires a working
@@ -75,10 +75,10 @@ sample × analyte) and returns a per-sample multi-substance PAF, adjusted for
 local background:
 
 ```{r, eval = FALSE}
-library(leachatetools)
+library(hydroSense)
 
 # Point the toxicity engine at the ANZG guideline-data folder once per session.
-options(leachatetools.guideline_dir = "path/to/guideline data")
+options(hydroSense.guideline_dir = "path/to/guideline data")
 
 amspaf <- add_amspaf(
   df        = monitoring_long,   # sample_id, site_id, analyte, value, ...
@@ -99,17 +99,17 @@ ssd_hc50("Cu")
 
 ## Learn more
 
-- [Leachate Mixing Fraction](https://vorpalvorpal.github.io/leachatetools/articles/leachate-mixing-fraction.html)
+- [Leachate Mixing Fraction](https://vorpalvorpal.github.io/hydroSense/articles/leachate-mixing-fraction.html)
   — what fraction of a sample's chemistry can be explained as a mixture of local
   reference water and landfill leachate.
-- [Imputation](https://vorpalvorpal.github.io/leachatetools/articles/imputation.html)
+- [Imputation](https://vorpalvorpal.github.io/hydroSense/articles/imputation.html)
   — how missing and below-detection values are imputed.
-- [Analyte normalisation](https://vorpalvorpal.github.io/leachatetools/articles/normalisation.html)
+- [Analyte normalisation](https://vorpalvorpal.github.io/hydroSense/articles/normalisation.html)
   — how bioavailability and physicochemical corrections bring concentrations to
   the SSD index condition.
-- [AmsPAF](https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.html)
+- [AmsPAF](https://vorpalvorpal.github.io/hydroSense/articles/chronic-amspaf-interpretation.html)
   — what the returned PAF values mean for an environmental assessment.
-- [Function reference](https://vorpalvorpal.github.io/leachatetools/reference/index.html)
+- [Function reference](https://vorpalvorpal.github.io/hydroSense/reference/index.html)
   — all exported functions, grouped by pillar.
 
 ## License

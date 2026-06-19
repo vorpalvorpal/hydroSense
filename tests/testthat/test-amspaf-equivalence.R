@@ -12,7 +12,7 @@
 ## list-column (pre-change).
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 golden <- qs2::qs_read(test_path("fixtures", "amspaf_golden.qs2"))
 

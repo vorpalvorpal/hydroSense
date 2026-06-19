@@ -15,7 +15,7 @@
 ##   11. Median within interval             — value ∈ [value_lower, value_upper]
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 ## ── Shared helpers ────────────────────────────────────────────────────────────
 

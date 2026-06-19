@@ -7,7 +7,7 @@
 ##   I8 envelope non-negative and upper-skewed (floor + SSD asymmetry)
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 ## Silence messages and the expected rainfall gap-uncertainty warning (#50)
 ## around draws-mode calls; the warning is asserted in test-daily-bracket.R.
@@ -142,7 +142,7 @@ test_that("I7: a short-sampled analyte's modelled rows are clipped to its span",
   ))
   skip_if(!("Ni" %in% names(tm$models)), "Ni not modelled")
   q <- tibble::tibble(date = seq(min(.kf$dates), max(.kf$dates), by = "day"))
-  res <- leachatetools:::.resolve_target_impact(tm, q)
+  res <- hydroSense:::.resolve_target_impact(tm, q)
 
   ni <- res[res$analyte == "Ni", , drop = FALSE]
   expect_gt(nrow(ni), 0)

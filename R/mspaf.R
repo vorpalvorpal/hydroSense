@@ -247,7 +247,7 @@
 #'   `"anzecc"` uses the per-analyte distribution matching the original ANZG
 #'   derivation.
 #' @param guideline_dir Path to the "guideline data" folder containing ANZG
-#'   XLSX files. Falls back to `getOption("leachatetools.guideline_dir")`.
+#'   XLSX files. Falls back to `getOption("hydroSense.guideline_dir")`.
 #' @param min_analytes Minimum number of analytes with fitted SSDs required
 #'   to compute AmsPAF for a sample. Default `3`.
 #' @param ref_summary Summary statistic for the reference distribution when
@@ -325,7 +325,7 @@ add_amspaf <- function(
     reference        = NULL,
     analyte_metadata = NULL,
     method           = c("multi", "anzecc"),
-    guideline_dir    = getOption("leachatetools.guideline_dir"),
+    guideline_dir    = getOption("hydroSense.guideline_dir"),
     min_analytes     = 3,
     ref_summary      = c("geom_mean", "median", "arith_mean",
                           "p80", "p90", "p95"),
@@ -1040,7 +1040,7 @@ compute_amspaf_per_sample <- function(
 
   if (is.null(guideline_dir)) {
     shipped_path <- system.file("extdata", "ssd_paf_lookup.qs2",
-                                package = "leachatetools")
+                                package = "hydroSense")
     if (nzchar(shipped_path) && file.exists(shipped_path)) {
       shipped_all <- tryCatch(qs2::qs_read(shipped_path), error = function(e) NULL)
       if (!is.null(shipped_all) && key %in% names(shipped_all)) {

@@ -80,9 +80,9 @@ suppressMessages(devtools::load_all(".", quiet = TRUE))
 tables <- list()
 
 for (mth in c("multi", "anzecc")) {
-  meta <- leachatetools:::.load_analyte_metadata(NULL)
+  meta <- hydroSense:::.load_analyte_metadata(NULL)
   sp   <- suppressMessages(
-    leachatetools:::derive_ssd_params(meta, method = mth, guideline_dir = NULL)
+    hydroSense:::derive_ssd_params(meta, method = mth, guideline_dir = NULL)
   )
 
   for (k in seq_len(nrow(sp))) {

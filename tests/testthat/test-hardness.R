@@ -1,7 +1,7 @@
 ## Tests for derive_hardness()
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 base_chem <- function() {
   tibble::tribble(

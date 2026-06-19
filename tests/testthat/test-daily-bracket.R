@@ -19,7 +19,7 @@
 ## dropped); Jensen convex multi-stressor ordering (#39/#42).
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 
 ## ── Shared fixtures ──────────────────────────────────────────────────────────
@@ -121,7 +121,7 @@ describe(".summarise_bracket()", {
   hi_p <- 0.9 # interval = 0.8
 
   it("bracket mode returns both envelopes + precautionary composite", {
-    out <- leachatetools:::.summarise_bracket(
+    out <- hydroSense:::.summarise_bracket(
       toy,
       interval = 0.8, central = "median", gap_uncertainty = "bracket"
     )
@@ -159,7 +159,7 @@ describe(".summarise_bracket()", {
   })
 
   it("ignorable mode returns only the ignorable columns (no informative, no precautionary)", {
-    out <- leachatetools:::.summarise_bracket(
+    out <- hydroSense:::.summarise_bracket(
       toy,
       interval = 0.8, central = "median", gap_uncertainty = "ignorable"
     )
@@ -170,7 +170,7 @@ describe(".summarise_bracket()", {
   })
 
   it("informative mode returns only the informative columns", {
-    out <- leachatetools:::.summarise_bracket(
+    out <- hydroSense:::.summarise_bracket(
       toy,
       interval = 0.8, central = "median", gap_uncertainty = "informative"
     )
@@ -181,7 +181,7 @@ describe(".summarise_bracket()", {
   })
 
   it("central='mean' uses the per-day draw mean for the centre", {
-    out <- leachatetools:::.summarise_bracket(
+    out <- hydroSense:::.summarise_bracket(
       toy,
       interval = 0.8, central = "mean", gap_uncertainty = "bracket"
     )
@@ -190,7 +190,7 @@ describe(".summarise_bracket()", {
   })
 
   it("nested bounds hold within each row (informative ⊆ ignorable)", {
-    out <- leachatetools:::.summarise_bracket(
+    out <- hydroSense:::.summarise_bracket(
       toy,
       interval = 0.8, central = "median", gap_uncertainty = "bracket"
     )

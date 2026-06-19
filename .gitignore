@@ -29,3 +29,8 @@ docs/
 
 # Pre-built vignette HTML (generated artefacts)
 vignettes/*.html
+
+# R CMD check output dir + built tarballs (never tracked)
+*.Rcheck/
+*.tar.gz
+.claude/

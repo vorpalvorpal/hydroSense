@@ -22,7 +22,7 @@
 ##           generated_on
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 ## ── Shared setup helpers ──────────────────────────────────────────────────────
 
@@ -31,9 +31,9 @@ library(leachatetools)
 ## every it().
 .lookup_test_env <- local({
   e <- new.env(parent = emptyenv())
-  e$meta       <- leachatetools:::.load_analyte_metadata(NULL)
+  e$meta       <- hydroSense:::.load_analyte_metadata(NULL)
   e$ssd_params <- suppressMessages(
-    leachatetools:::derive_ssd_params(e$meta, method = "multi", guideline_dir = NULL)
+    hydroSense:::derive_ssd_params(e$meta, method = "multi", guideline_dir = NULL)
   )
   e
 })
@@ -93,7 +93,7 @@ make_sample_df <- function(n_samples = 2, n_draws = NA_integer_,
 
 ## Clear the session lookup cache so tests start from a cold state.
 clear_lookup_cache <- function() {
-  env <- tryCatch(leachatetools:::.ssd_paf_lookup_env, error = function(e) NULL)
+  env <- tryCatch(hydroSense:::.ssd_paf_lookup_env, error = function(e) NULL)
   if (!is.null(env)) {
     rm(list = ls(envir = env, all.names = TRUE), envir = env)
   }
@@ -114,7 +114,7 @@ describe(".ssd_paf_lookup accuracy vs ssd_hp()", {
       ## transition band (1e-3 to 1e5 µg/L; the lookup grid covers this range).
       cc <- 10^stats::runif(5000L, -3, 5)
 
-      f <- leachatetools:::.ssd_paf_lookup(analyte, "multi", fit, NULL)
+      f <- hydroSense:::.ssd_paf_lookup(analyte, "multi", fit, NULL)
       expect_true(is.function(f),
                   info = paste(".ssd_paf_lookup should return a function for:", analyte))
 
@@ -135,7 +135,7 @@ describe(".ssd_paf_lookup monotone & bounded", {
     fit <- get_fit("Cu")
     cc  <- sort(10^stats::runif(1000L, -3, 5))
 
-    f <- leachatetools:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
+    f <- hydroSense:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
     vals <- pmin(pmax(f(log10(cc)), 0), 1)
 
     ## Bounded
@@ -152,7 +152,7 @@ describe(".ssd_paf_lookup monotone & bounded", {
 describe(".ssd_paf_lookup clamping at grid boundaries", {
   it("clamps extreme / degenerate concentrations to [0, 1e-9] and [1-1e-9, 1]", {
     fit <- get_fit("Cu")
-    f   <- leachatetools:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
+    f   <- hydroSense:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
 
     ## Well below grid lo (say, 1e-15 µg/L) → PAF near 0
     paf_lo <- pmin(pmax(f(log10(1e-15)), 0), 1)
@@ -166,7 +166,7 @@ describe(".ssd_paf_lookup clamping at grid boundaries", {
 
     ## .ssd_paf_vec() handles degenerate inputs before calling the spline:
     ## conc = 0 → PAF 0; negative → PAF 0; NA → PAF 0; Inf → PAF 0
-    degenerate_pafs <- leachatetools:::.ssd_paf_vec(
+    degenerate_pafs <- hydroSense:::.ssd_paf_vec(
       fit           = fit,
       conc          = c(0, -5, NA, Inf),
       analyte       = "Cu",
@@ -197,7 +197,7 @@ describe(".ssd_paf_vec breakeven exact-path fallback", {
     ## threshold, triggering the exact-fallback path.
     conc_small <- c(1, 5, 10)
 
-    result_vec <- leachatetools:::.ssd_paf_vec(
+    result_vec <- hydroSense:::.ssd_paf_vec(
       fit           = fit,
       conc          = conc_small,
       analyte       = "Cu",
@@ -244,8 +244,8 @@ describe(".ssd_paf_lookup session cache", {
     clear_lookup_cache()
     fit <- get_fit("Cu")
 
-    f1 <- leachatetools:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
-    f2 <- leachatetools:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
+    f1 <- hydroSense:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
+    f2 <- hydroSense:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
 
     ## Pointer identity — the second call must return the cached closure,
     ## not rebuild a new one.
@@ -257,8 +257,8 @@ describe(".ssd_paf_lookup session cache", {
 describe(".ssd_paf_vec NULL-fit fallback", {
   it("returns numeric[3] in [0,1] when fit is NULL, via scalar ssd_paf()", {
     result <- withr::with_options(
-      list(leachatetools.suppress_ssd_messages = TRUE),
-      leachatetools:::.ssd_paf_vec(
+      list(hydroSense.suppress_ssd_messages = TRUE),
+      hydroSense:::.ssd_paf_vec(
         fit           = NULL,
         conc          = c(1, 5, 10),
         analyte       = "Cu",
@@ -280,7 +280,7 @@ describe("drift guard: rebuilt table matches shipped table", {
   it("max|rebuilt - shipped paf| < 1e-6 for Cu and NH3-N on a dense grid", {
     shipped_path <- system.file(
       "extdata", "ssd_paf_lookup.qs2",
-      package = "leachatetools"
+      package = "hydroSense"
     )
     skip_if(
       !nzchar(shipped_path) || !file.exists(shipped_path),
@@ -301,7 +301,7 @@ describe("drift guard: rebuilt table matches shipped table", {
       ## Rebuild the spline from scratch (clear cache first).
       clear_lookup_cache()
       fit <- get_fit(analyte)
-      f_rebuilt <- leachatetools:::.ssd_paf_lookup(analyte, "multi", fit, NULL)
+      f_rebuilt <- hydroSense:::.ssd_paf_lookup(analyte, "multi", fit, NULL)
 
       rebuilt_paf <- pmin(pmax(f_rebuilt(log10_grid), 0), 1)
 

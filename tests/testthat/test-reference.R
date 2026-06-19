@@ -1,7 +1,7 @@
 ## Tests for prepare_reference() — summary statistics and CI
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 ## Mn and Hg have no normalisation formula in the bundled metadata, so the
 ## reference computation is a clean test of the summary statistics without

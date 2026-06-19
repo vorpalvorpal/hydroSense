@@ -24,7 +24,7 @@ OUT_QS2  <- "dev/baseline_bs01_centreline.qs2"
 GUIDE    <- "guideline data"   # SSD/guideline tables (amspaf_daily needs these)
 
 stopifnot(file.exists(CACHE_V3))
-options(leachatetools.guideline_dir = GUIDE)
+options(hydroSense.guideline_dir = GUIDE)
 
 cc <- qs2::qs_read(CACHE_V3)
 da <- cc$daily_args            # df, reference_model, temperature, start, end,

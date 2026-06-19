@@ -17,7 +17,7 @@ amspaf_daily(
   leading_edge = c("drop", "backfill"),
   analyte_metadata = NULL,
   method = c("multi", "anzecc"),
-  guideline_dir = getOption("leachatetools.guideline_dir"),
+  guideline_dir = getOption("hydroSense.guideline_dir"),
   min_analytes = 3L,
   conc_units = NULL,
   require_temperature = TRUE,
@@ -87,7 +87,7 @@ the bundled metadata. Passed to \code{\link[=add_amspaf]{add_amspaf()}}.}
 \code{"anzecc"}. Passed to \code{\link[=add_amspaf]{add_amspaf()}}.}
 
 \item{guideline_dir}{Path to the ANZG guideline data folder. Falls back to
-\code{getOption("leachatetools.guideline_dir")}.}
+\code{getOption("hydroSense.guideline_dir")}.}
 
 \item{min_analytes}{Minimum number of SSD-eligible analytes per day for
 AmsPAF to be computed. Default \code{3L}.}

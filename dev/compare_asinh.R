@@ -14,7 +14,7 @@
 #   Rscript dev/compare_asinh.R
 
 suppressMessages({ library(dplyr); devtools::load_all(".", quiet = TRUE) })
-options(leachatetools.guideline_dir = "guideline data")
+options(hydroSense.guideline_dir = "guideline data")
 B <- "dev/before_asinh"
 GAP <- as.Date(c("2023-12-18", "2024-02-17"))   # the Jan-2024 baseline gap
 EVT <- as.Date(c("2024-08-15", "2024-10-15"))   # the 2024 impact event

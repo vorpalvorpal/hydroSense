@@ -7,9 +7,9 @@
 ## sigma_mix = sqrt(sum(w^2 * sigma^2)).
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
-ca <- function(...) leachatetools:::compute_ca_group_mspaf(tibble::tibble(...))
+ca <- function(...) hydroSense:::compute_ca_group_mspaf(tibble::tibble(...))
 
 test_that("a single-component group reduces to that component's own SSD", {
   # TU = 1 (C_adj = HC50) -> log10(1) = 0 -> Phi(0) = 0.5

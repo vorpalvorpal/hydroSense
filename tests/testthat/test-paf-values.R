@@ -3,7 +3,7 @@
 ## so they run offline and pin the numeric behaviour of ssd_hc50()/ssd_pct().
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 test_that("ssd_hc50() returns the ANZG index value for total ammonia-N", {
   # NH3-N SSD is expressed as total ammonia-N at the pH 7.0 / 20 degC index
@@ -48,16 +48,16 @@ test_that("ssd_paf() returns the documented list shape", {
 ## --- NO3-N probabilistic hardness weighting (§10a) -------------------------
 
 test_that(".no3_weights are a valid distribution and track hardness", {
-  expect_equal(sum(leachatetools:::.no3_weights(90)), 1)
+  expect_equal(sum(hydroSense:::.no3_weights(90)), 1)
   # Soft water -> soft class dominates; hard water -> hard class dominates.
-  expect_gt(leachatetools:::.no3_weights(15)["soft"],  0.9)
-  expect_gt(leachatetools:::.no3_weights(500)["hard"], 0.9)
+  expect_gt(hydroSense:::.no3_weights(15)["soft"],  0.9)
+  expect_gt(hydroSense:::.no3_weights(500)["hard"], 0.9)
   # On a boundary (150) mod and hard split evenly.
-  w150 <- leachatetools:::.no3_weights(150)
+  w150 <- hydroSense:::.no3_weights(150)
   expect_equal(unname(w150["mod"]), 0.5, tolerance = 1e-6)
   expect_equal(unname(w150["hard"]), 0.5, tolerance = 1e-6)
   # Missing hardness -> all NA.
-  expect_true(all(is.na(leachatetools:::.no3_weights(NA))))
+  expect_true(all(is.na(hydroSense:::.no3_weights(NA))))
 })
 
 test_that("ssd_paf NO3-N blend equals the weighted mean of class PAFs", {

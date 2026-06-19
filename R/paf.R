@@ -5,7 +5,7 @@
 #   ssd_hc50()  — HC50 (for Concentration Addition in msPAF)
 #
 # Model files are fitted lazily on first request and cached in the
-# per-user R cache directory (tools::R_user_dir("leachatetools", "cache")).
+# per-user R cache directory (tools::R_user_dir("hydroSense", "cache")).
 # Two method variants are cached separately:
 #   method = "multi"   (default) — 6-distribution model average; current
 #                                   best practice regardless of what ANZG used
@@ -113,7 +113,7 @@
 # ── Cache helpers ─────────────────────────────────────────────────────────────
 
 .cache_dir <- function() {
-  d <- tools::R_user_dir("leachatetools", which = "cache")
+  d <- tools::R_user_dir("hydroSense", which = "cache")
   dir.create(d, showWarnings = FALSE, recursive = TRUE)
   d
 }
@@ -150,7 +150,7 @@
 .fit_model <- function(analyte, stem, method, guideline_dir) {
   # Load the fitting infrastructure from ssd_fit.R
   meta_path <- system.file("extdata", "anzecc_analyte_metadata.csv",
-                            package = "leachatetools")
+                            package = "hydroSense")
   meta_all <- readr::read_csv(
     meta_path,
     col_types = readr::cols(
@@ -200,7 +200,7 @@
 # the full data-loading logic (XLSX readers, Warne 2000 CSV, etc.).
 # It requires guideline_dir to point to the "guideline data/" folder
 # containing the ANZG XLSX technical brief data files.
-# Set via: options(leachatetools.guideline_dir = "/path/to/guideline data")
+# Set via: options(hydroSense.guideline_dir = "/path/to/guideline data")
 
 # ── NO3-N hardness class resolution ───────────────────────────────────────────
 
@@ -277,7 +277,7 @@
 #'   to 0 to recover hard class cutoffs.
 #' @param guideline_dir Character. Path to the "guideline data" folder
 #'   containing ANZG XLSX files. Falls back to
-#'   getOption("leachatetools.guideline_dir").
+#'   getOption("hydroSense.guideline_dir").
 #' @param nboot        Integer. Bootstrap replicates for CI. 0 = no CI.
 #' @param level        Numeric. Confidence level (default 0.95).
 #'
@@ -292,7 +292,7 @@
 #' @examples
 #' # Fraction of species affected by 9.3 mg/L total ammonia-N at the pH 7.0 /
 #' # 20 degC index condition. Uses the package's bundled SSD data; set
-#' # options(leachatetools.guideline_dir=) to fit from the ANZG XLSX files.
+#' # options(hydroSense.guideline_dir=) to fit from the ANZG XLSX files.
 #' ssd_paf("NH3-N", conc = 9321, conc_units = "ug/L")
 #'
 #' # NO3-N needs hardness for automatic soft/moderate/hard SSD selection:
@@ -306,7 +306,7 @@ ssd_paf <- function(analyte,
                     hardness       = NULL,
                     hardness_units = NULL,
                     hardness_cv    = 0.05,
-                    guideline_dir  = getOption("leachatetools.guideline_dir"),
+                    guideline_dir  = getOption("hydroSense.guideline_dir"),
                     nboot          = 0L,
                     level          = 0.95) {
   method <- match.arg(method)
@@ -413,7 +413,7 @@ ssd_hc50 <- function(analyte,
                      method         = c("multi", "anzecc"),
                      hardness       = NULL,
                      hardness_units = NULL,
-                     guideline_dir  = getOption("leachatetools.guideline_dir")) {
+                     guideline_dir  = getOption("hydroSense.guideline_dir")) {
   method <- match.arg(method)
   hardness_mg_L <- if (!is.null(hardness))
     .resolve_to(hardness, "mg/L", hardness_units, "hardness") else NULL
@@ -444,7 +444,7 @@ ssd_hc50 <- function(analyte,
 #' @export
 ssd_pct <- function(analyte, conc, conc_units = NULL, method = "multi",
                     hardness = NULL, hardness_units = NULL,
-                    guideline_dir = getOption("leachatetools.guideline_dir")) {
+                    guideline_dir = getOption("hydroSense.guideline_dir")) {
   ssd_paf(analyte, conc, conc_units = conc_units, method = method,
           hardness = hardness, hardness_units = hardness_units,
           guideline_dir = guideline_dir, nboot = 0L)$pct

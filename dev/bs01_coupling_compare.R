@@ -9,7 +9,7 @@
 #   Rscript dev/bs01_coupling_compare.R  (first run: slow — two draw sets)
 
 suppressMessages({ library(dplyr); library(ggplot2); devtools::load_all(".", quiet = TRUE) })
-options(leachatetools.guideline_dir = "guideline data")
+options(hydroSense.guideline_dir = "guideline data")
 
 CACHE        <- "test data/bs01_v3_cache.qs2"
 DRAWS_INDEP  <- "dev/bs01_kalman_draws_ara_indep.qs2"

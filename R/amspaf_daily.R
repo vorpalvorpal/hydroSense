@@ -114,7 +114,7 @@
 #' @param method SSD method. One of `"multi"` (default, model-averaged) or
 #'   `"anzecc"`. Passed to [add_amspaf()].
 #' @param guideline_dir Path to the ANZG guideline data folder. Falls back to
-#'   `getOption("leachatetools.guideline_dir")`.
+#'   `getOption("hydroSense.guideline_dir")`.
 #' @param min_analytes Minimum number of SSD-eligible analytes per day for
 #'   AmsPAF to be computed. Default `3L`.
 #' @param conc_units Character. Concentration units for SSD-eligible rows when
@@ -296,7 +296,7 @@ amspaf_daily <- function(
   leading_edge = c("drop", "backfill"),
   analyte_metadata = NULL,
   method = c("multi", "anzecc"),
-  guideline_dir = getOption("leachatetools.guideline_dir"),
+  guideline_dir = getOption("hydroSense.guideline_dir"),
   min_analytes = 3L,
   conc_units = NULL,
   require_temperature = TRUE,

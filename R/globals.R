@@ -3,10 +3,10 @@
 # dplyr/tidyr verbs (bare column names) and from host-environment functions.
 # These are not real bindings -- column names are resolved inside the data mask
 # at run time -- so we declare them here. The rlang `.data` / `.env` pronouns
-# are imported from rlang in leachatetools-package.R instead.
+# are imported from rlang in hydroSense-package.R instead.
 #
 # The list is the complete set reported by
-#   codetools::checkUsagePackage("leachatetools", all = FALSE)
+#   codetools::checkUsagePackage("hydroSense", all = FALSE)
 # (the same analysis R CMD check runs). Regenerate it if that check ever flags
 # a new name.
 ## ── Unit-resolution helpers ──────────────────────────────────────────────────
