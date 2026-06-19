@@ -82,7 +82,7 @@ directly to tier 3.}
 \item{silo_start, silo_end}{Start/end dates for SILO auto-fetch.  Default
 \code{NULL}: derived from the reference chemistry date range, padded on the left
 by \verb{5 × max(api_tau_bounds_long)} days so the recursive reservoir has
-enough burn-in (≈5τ) to converge before the first observation.}
+enough burn-in (about 5 tau) to converge before the first observation.}
 
 \item{silo_api_key}{Passed to \code{\link[=get_silo_rainfall]{get_silo_rainfall()}} when \code{hydro = NULL}.}
 

@@ -31,6 +31,7 @@ amspaf_daily(
   kappa = 0.5,
   parallel = FALSE,
   couple_residuals = TRUE,
+  gap_uncertainty = c("bracket", "ignorable", "informative"),
   transform = c("pseudo_log", "additive")
 )
 }
@@ -108,22 +109,25 @@ product instead (see Details for the distinction).  Requires
 \item{seed}{Integer or \code{NULL}. RNG seed for reproducibility of draws.}
 
 \item{return}{\code{"summary"} (default) or \code{"draws"}; relevant only when
-\code{ndraws} is supplied.  \code{"summary"} collapses the draws to a central
-estimate (\code{amspaf}, the draws' own central tendency — see \code{central}) plus
-credible-interval bounds (\code{amspaf_lower}, \code{amspaf_upper}).  \code{"draws"}
+\code{ndraws} is supplied.  \code{"summary"} collapses the draws to per-envelope
+central estimates (\verb{median_*}, the draws' own central tendency — see
+\code{central}) plus credible-interval bounds (\verb{lo_*}, \verb{hi_*}) for the chosen
+\code{gap_uncertainty}, alongside the \code{deterministic} centre line.  \code{"draws"}
 returns one row per (site \eqn{\times} day \eqn{\times} draw) with a
-\code{draw_id} column.  Ignored in point mode (\code{ndraws = NULL}).}
+\code{draw_id} column and the per-draw envelope value(s).  See \emph{Value}.  Ignored
+in point mode (\code{ndraws = NULL}).}
 
 \item{interval}{Credible interval width for \code{return = "summary"} (default
 \code{0.9}).  The lower bound is the \code{(1 - interval)/2} quantile, the upper
 is the \code{1 - (1 - interval)/2} quantile.}
 
-\item{central}{Central tendency for the \code{amspaf} column when
+\item{central}{Central tendency for the \verb{median_*} envelope columns when
 \code{return = "summary"}: \code{"median"} (default) or \code{"mean"} of the per-day
-draws.  Because it is a summary \emph{of the draws}, \code{amspaf} is coherent with
-its band (the median lies inside \verb{[amspaf_lower, amspaf_upper]} by
-construction) and depends on \code{ndraws}/\code{seed}.  It is NOT the deterministic
-point estimate — for that, call with \code{ndraws = NULL}.}
+draws.  Because it is a summary \emph{of the draws}, each \verb{median_*} is coherent
+with its band (it lies inside \verb{[lo_*, hi_*]} by construction) and depends on
+\code{ndraws}/\code{seed}.  It is NOT the deterministic point estimate, which is
+reported separately in the \code{deterministic} column (and is the sole estimate
+when called with \code{ndraws = NULL}).}
 
 \item{grab_cv}{Numeric scalar or named numeric vector of coefficients of
 variation for grab-sample measurement error.  A scalar applies the same
@@ -160,6 +164,20 @@ to reflect co-movement of co-toxicants on breach events while leaving
 per-analyte marginals unchanged.  Set to \code{FALSE} to reproduce the pre-#32
 independent-draw path exactly.}
 
+\item{gap_uncertainty}{One of \code{"bracket"} (default), \code{"ignorable"}, or
+\code{"informative"}; relevant only in draws mode.  In observation gaps the
+latent residual reverts to its marginal variance, widening the band — the
+honest posterior \strong{only under ignorable (MAR) missingness}.  Field
+sampling is often \strong{informative (MNAR)}: gaps exist \emph{because} the system
+was judged quiescent, so that band over-states gap uncertainty.  The model
+cannot identify the mechanism from grabs, so the default \strong{brackets} both:
+the \emph{ignorable} (upper) envelope keeps the simulation-smoother draw; the
+\emph{informative} (lower) envelope freezes the residual at its posterior mean on
+in-gap days (the fully-informative extreme — gaps perfectly predictable).
+The two are nested and coincide at observation days.  \code{"ignorable"} /
+\code{"informative"} return only that envelope.  See \emph{Interpreting gap
+uncertainty} below.  Reference: Rubin (1976) \doi{10.1093/biomet/63.3.581}.}
+
 \item{transform}{\code{"pseudo_log"} (default) or \code{"additive"}.  Controls the
 variance-stabilising transform for the daily impact residual smoother.
 \code{"pseudo_log"} applies \code{g = asinh(I / c)} with per-analyte scale \code{c = HC5}
@@ -172,22 +190,22 @@ Forwarded to \code{\link[=fit_target_model]{fit_target_model()}}; ignored unless
 \eqn{\times} day) for days with sufficient analyte coverage; \code{amspaf} is
 the deterministic daily estimate.
 
-\strong{Draws mode} (\code{ndraws > 0}, \code{return = "summary"}): same schema, where
-\code{amspaf} is the draws' central tendency (\code{central}), plus two extra columns
-\code{amspaf_lower} and \code{amspaf_upper} (the credible-interval bounds from the
-\code{ndraws} posterior draws).
+\strong{Draws mode} (\code{ndraws > 0}, \code{return = "summary"}): one row per (site
+\eqn{\times} day) with the \code{deterministic} centre line and the envelope
+columns for the chosen \code{gap_uncertainty}: \verb{median_*}, \verb{lo_*}, \verb{hi_*} per
+envelope (\code{informative} and/or \code{ignorable}, the central tendency per
+\code{central} and the \code{interval} credible bounds), plus
+\code{precautionary_lo}/\code{precautionary_hi} in \code{"bracket"} mode.
 
 \strong{Draws mode} (\code{ndraws > 0}, \code{return = "draws"}): one row per (site
-\eqn{\times} day \eqn{\times} draw), with an additional \code{draw_id}
-integer column.
+\eqn{\times} day \eqn{\times} draw), with a \code{draw_id} integer column and the
+per-draw AmsPAF value(s) \code{amspaf_ignorable} and/or \code{amspaf_informative} for
+the chosen \code{gap_uncertainty}.
 
 Common columns:
 \describe{
 \item{\code{date}}{Date of this daily estimate.}
 \item{\code{site_id}}{Site identifier.}
-\item{\code{amspaf}}{Daily AmsPAF (percentage, 0--100+).  The deterministic
-point estimate in point mode; the draws' central tendency in
-\code{return = "summary"}.}
 \item{\code{n_analytes_used}}{SSD-eligible analytes contributing to AmsPAF.}
 \item{\code{dominant_analyte}}{Analyte with the highest individual PAF.}
 \item{\code{max_paf}}{PAF of the dominant analyte (proportion 0--1).}
@@ -280,13 +298,32 @@ Set \code{require_temperature = FALSE} only for datasets that do not contain
 ammonia.
 }
 
+\section{Interpreting gap uncertainty}{
+
+In draws mode the width of the band across an observation gap is the honest
+posterior \strong{only under ignorable (MAR) missingness}.  Where you have
+external grounds that a gap was quiescent (informative/MNAR sampling), the
+ignorable band over-states uncertainty there.  The \code{"bracket"} output gives
+both extremes: read the \strong{informative} (lower) envelope where you vouch the
+gap was quiet, the \strong{ignorable} (upper) envelope otherwise.  The
+\code{precautionary_lo}/\code{precautionary_hi} columns are the composite
+\verb{[lo_informative, hi_ignorable]} — a \strong{decision bound, not a calibrated
+credible interval} (its coverage exceeds nominal and is undefined).  Applied
+blanket, the informative envelope under-covers genuinely eventful gaps, so use
+it per-gap; automatic per-gap conditioning on a continuous proxy is future
+work (#18).  The \code{deterministic} line is \strong{not} a safe blanket alternative —
+it under-states risk by Jensen's inequality (#39/#42).
+}
+
 \examples{
 \donttest{
 demo <- leachate_demo()
-ds  <- subset(demo, site_id == "downstream")
+ds <- subset(demo, site_id == "downstream")
 out <- amspaf_daily(ds, require_temperature = FALSE)
-head(out[, c("date", "site_id", "amspaf", "n_measured_analytes",
-             "days_since_last_sample")])
+head(out[, c(
+  "date", "site_id", "amspaf", "n_measured_analytes",
+  "days_since_last_sample"
+)])
 }
 }
 \seealso{

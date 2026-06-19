@@ -4,11 +4,18 @@
 \alias{.empty_daily_result}
 \title{Empty tibble matching the amspaf_daily() return schema}
 \usage{
-.empty_daily_result(mode = c("point", "summary", "draws"))
+.empty_daily_result(
+  mode = c("point", "summary", "draws"),
+  gap_uncertainty = "bracket"
+)
 }
 \arguments{
 \item{mode}{One of \code{"point"}, \code{"summary"}, or \code{"draws"} — governs which
 extra columns are included.}
+
+\item{gap_uncertainty}{Bracket mode (\code{"bracket"}/\code{"ignorable"}/
+\code{"informative"}); governs the envelope columns in draws/summary mode.
+Ignored for point mode.}
 }
 \description{
 Empty tibble matching the amspaf_daily() return schema

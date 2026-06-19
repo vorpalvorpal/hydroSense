@@ -1,5 +1,27 @@
 # leachatetools (development)
 
+## Daily gap-uncertainty bracket: informative vs ignorable envelopes (issue #50)
+
+* `amspaf_daily()` gains a `gap_uncertainty` argument
+  (`"bracket"` (default), `"ignorable"`, `"informative"`). In observation gaps
+  the latent Kalman residual reverts to its marginal variance, widening the
+  band — the honest posterior only under **ignorable (MAR)** missingness. Field
+  sampling is often **informative (MNAR)** (gaps exist *because* the system was
+  judged quiescent), so the band is now **bracketed** between two extremes: the
+  ignorable envelope keeps the simulation-smoother draw (previous behaviour),
+  while the informative envelope freezes the residual at its posterior mean on
+  in-gap days. The two are nested and coincide at observation days; their
+  separation is the cost of the ignorability assumption (Rubin 1976).
+* **Breaking (pre-v1):** draws-mode output schema changes. `"summary"` now
+  returns a `deterministic` centre line plus `median_*`/`lo_*`/`hi_*` columns
+  per envelope (and `precautionary_lo`/`precautionary_hi` in `"bracket"` mode —
+  a labelled *decision* bound `[lo_informative, hi_ignorable]`, not a calibrated
+  interval). `"draws"` returns `amspaf_ignorable`/`amspaf_informative` per draw.
+  The old `amspaf`/`amspaf_lower`/`amspaf_upper` columns are removed.
+* `amspaf_daily()` emits a one-time CLI warning, when uncertainty is requested
+  against rainfall hydrology, that gaps are treated as ignorable and the
+  intervals over-state uncertainty in gaps known to be quiescent.
+
 ## Free recession constant in the rainfall API (issue #49)
 
 * The Antecedent Precipitation Index is now an **exact recursive linear

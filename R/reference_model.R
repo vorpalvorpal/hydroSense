@@ -468,7 +468,7 @@
 #' @param silo_start,silo_end Start/end dates for SILO auto-fetch.  Default
 #'   `NULL`: derived from the reference chemistry date range, padded on the left
 #'   by `5 × max(api_tau_bounds_long)` days so the recursive reservoir has
-#'   enough burn-in (≈5\u03c4) to converge before the first observation.
+#'   enough burn-in (about 5 tau) to converge before the first observation.
 #' @param silo_api_key Passed to [get_silo_rainfall()] when `hydro = NULL`.
 #' @param eps Small positive guard for log transform (default `1e-9`).
 #'
