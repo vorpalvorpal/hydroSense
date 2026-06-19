@@ -10,35 +10,40 @@ library(leachatetools)
 
 make_impute_chem <- function(n = 20, n_bdl = 3, n_missing = 2) {
   set.seed(7)
-  samples  <- paste0("s", seq_len(n))
-  metals   <- c("Cu", "Zn", "Ni")
-  drivers  <- c("pH", "EC", "NH3-N", "DOC")
+  samples <- paste0("s", seq_len(n))
+  metals <- c("Cu", "Zn", "Ni")
+  drivers <- c("pH", "EC", "NH3-N", "DOC")
 
   rows <- tidyr::expand_grid(
     sample_id = samples,
     analyte   = c(metals, drivers)
   ) |>
     dplyr::mutate(
-      site_id  = "f1",
+      site_id = "f1",
       datetime = as.Date("2023-01-01") + (match(sample_id, samples) - 1L),
-      value    = dplyr::case_when(
-        analyte == "pH"     ~ runif(dplyr::n(), 6.5, 8.5),
-        analyte == "EC"     ~ runif(dplyr::n(), 100, 500),
-        analyte == "NH3-N"  ~ runif(dplyr::n(), 0.01, 0.5),
-        analyte == "DOC"    ~ runif(dplyr::n(), 0.2, 5),
-        TRUE                ~ exp(rnorm(dplyr::n(), log(2), 0.5))
+      value = dplyr::case_when(
+        analyte == "pH" ~ runif(dplyr::n(), 6.5, 8.5),
+        analyte == "EC" ~ runif(dplyr::n(), 100, 500),
+        analyte == "NH3-N" ~ runif(dplyr::n(), 0.01, 0.5),
+        analyte == "DOC" ~ runif(dplyr::n(), 0.2, 5),
+        TRUE ~ exp(rnorm(dplyr::n(), log(2), 0.5))
       ),
       detected = TRUE,
-      imputed  = FALSE
+      imputed = FALSE
     )
 
   # Introduce some BDL rows for metals (not drivers)
-  bdl_idx <- sample(which(rows$analyte %in% metals), n_bdl)
-  rows$detected[bdl_idx] <- FALSE
+  if (n_bdl > 0L) {
+    bdl_idx <- sample(which(rows$analyte %in% metals), n_bdl)
+    rows$detected[bdl_idx] <- FALSE
+  }
 
-  # Introduce missing metal rows (remove entirely)
-  miss_idx <- sample(which(rows$analyte %in% metals), n_missing)
-  rows <- rows[-miss_idx, ]
+  # Introduce missing metal rows (remove entirely). Guard n_missing == 0:
+  # negative indexing by integer(0) (`rows[-integer(0), ]`) selects *no* rows.
+  if (n_missing > 0L) {
+    miss_idx <- sample(which(rows$analyte %in% metals), n_missing)
+    rows <- rows[-miss_idx, ]
+  }
 
   rows
 }
@@ -70,8 +75,10 @@ test_that("fit_imputation_model handles a fully-empty target set gracefully", {
   df <- make_impute_chem() |>
     dplyr::filter(analyte %in% c("pH", "EC", "NH3-N", "DOC"))
   expect_warning(
-    m <- fit_imputation_model(df, required_vars = c("pH", "EC"),
-                              iter = 100, warmup = 50, chains = 1),
+    m <- fit_imputation_model(df,
+      required_vars = c("pH", "EC"),
+      iter = 100, warmup = 50, chains = 1
+    ),
     regexp = "No target analytes"
   )
   expect_length(m$groups, 0L)
@@ -86,14 +93,14 @@ test_that("fit_imputation_model full run (brms smoke test)", {
     "Skipping brms smoke test: brms not installed or BRMS_SMOKE_TEST != '1'"
   )
 
-  df  <- make_impute_chem(n = 30, n_bdl = 4, n_missing = 3)
-  m   <- fit_imputation_model(
+  df <- make_impute_chem(n = 30, n_bdl = 4, n_missing = 3)
+  m <- fit_imputation_model(
     df,
     required_vars = c("pH", "EC"),
-    iter    = 500,
-    warmup  = 250,
-    chains  = 1,
-    cores   = 1
+    iter = 500,
+    warmup = 250,
+    chains = 1,
+    cores = 1
   )
 
   expect_s3_class(m, "imputation_model")
@@ -119,8 +126,10 @@ test_that("fit_imputation_model rejects an unknown impute_method", {
   df <- make_impute_chem()
   # match.arg() runs before any Stan fitting, so this is fast and Stan-free.
   expect_error(
-    fit_imputation_model(df, required_vars = c("pH","EC"),
-                         impute_method = "bogus"),
+    fit_imputation_model(df,
+      required_vars = c("pH", "EC"),
+      impute_method = "bogus"
+    ),
     regexp = "should be one of"
   )
 })
@@ -133,15 +142,17 @@ test_that("cens / cens_factor impute methods fit and impute (brms smoke test)", 
   )
   df <- make_impute_chem(n = 30, n_bdl = 4, n_missing = 3)
   for (meth in c("cens", "cens_factor")) {
-    m <- fit_imputation_model(df, required_vars = c("pH","EC"),
-                              impute_method = meth,
-                              iter = 400, warmup = 200, chains = 1, cores = 1)
+    m <- fit_imputation_model(df,
+      required_vars = c("pH", "EC"),
+      impute_method = meth,
+      iter = 400, warmup = 200, chains = 1, cores = 1
+    )
     expect_equal(m$impute_method, meth)
     expect_equal(m$groups$metals$impute_method, meth)
     imp <- impute_chemistry(df, m)
     expect_true(all(is.finite(imp$value)))
     expect_true(any(imp$imputed))
-    expect_true(all(imp$imputed_kind %in% c("observed","censored_left","missing")))
+    expect_true(all(imp$imputed_kind %in% c("observed", "censored_left", "missing")))
 
     # cens_factor must carry a genuine shared per-sample latent factor: the
     # long-format model has a `sample_id` group-level effect. (The old wide
@@ -176,14 +187,18 @@ test_that("apply_hurdles = FALSE imputes samples that carry no hurdle analytes (
 
   # apply_hurdles = TRUE (default): s1 has no metals → not eligible → no metal rows added
   imp_with <- impute_chemistry(df_no_metal, m, apply_hurdles = TRUE)
-  s1_metal_with <- dplyr::filter(imp_with, sample_id == "s1",
-                                  analyte %in% c("Cu", "Zn", "Ni"))
+  s1_metal_with <- dplyr::filter(
+    imp_with, sample_id == "s1",
+    analyte %in% c("Cu", "Zn", "Ni")
+  )
   expect_equal(nrow(s1_metal_with), 0L)
 
   # apply_hurdles = FALSE: s1 gets imputed regardless of missing hurdle analytes
   imp_without <- impute_chemistry(df_no_metal, m, apply_hurdles = FALSE)
-  s1_metal_without <- dplyr::filter(imp_without, sample_id == "s1",
-                                     analyte %in% c("Cu", "Zn", "Ni"))
+  s1_metal_without <- dplyr::filter(
+    imp_without, sample_id == "s1",
+    analyte %in% c("Cu", "Zn", "Ni")
+  )
   expect_gt(nrow(s1_metal_without), 0L)
   expect_true(all(s1_metal_without$imputed))
 })
@@ -192,7 +207,7 @@ test_that("impute_coanalytes skips targets not in pca_vars", {
   # Trivial test: construct an imputation_model with no PCA and confirm the
   # function gives a clear error rather than crashing.
   fake_model <- structure(
-    list(pca = NULL, pca_vars = c("pH","EC")),
+    list(pca = NULL, pca_vars = c("pH", "EC")),
     class = "imputation_model"
   )
   df <- make_impute_chem()
