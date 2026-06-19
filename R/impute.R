@@ -765,8 +765,26 @@ print.imputation_model <- function(x, ...) {
 #' Impute missing and BDL chemistry using a fitted imputation model
 #'
 #' Applies the models fitted by [fit_imputation_model()] to `df`, returning
-#' posterior mean estimates for missing and below-detection-limit (BDL)
-#' observations in every fitted group.
+#' posterior estimates for below-detection-limit (BDL) and missing observations
+#' in every fitted group.
+#'
+#' **Completing the panel**
+#'
+#' For each eligible sample (see *Hurdles*), every target analyte the group
+#' models is filled: BDL cells are replaced with their posterior estimate, and
+#' analytes that are **entirely absent** for a sample gain a new
+#' model-anchored row (`imputed_kind = "missing"`, `detected = TRUE`). This is
+#' what lets a well-sampled analyte lift a sparsely-sampled one — e.g. a sample
+#' with Zn but no Cu gains a Cu row predicted from the fitted Cu–Zn
+#' relationship. Fabricated rows carry the originating sample's `site_id`,
+#' `datetime`, and any other sample-level columns.
+#'
+#' Fabricated rows are model predictions, not measurements. With
+#' `return = "draws"` the imputation-model uncertainty propagates through the
+#' draw carrier; with `return = "point"` the single anchor enters any
+#' downstream model as if observed, which can understate that model's
+#' uncertainty. Prefer `return = "draws"` when the imputed values feed a
+#' further model (e.g. the reference/target GAMs).
 #'
 #' **Hurdles**
 #'
@@ -1747,6 +1765,50 @@ impute_coanalytes <- function(
     ) |>
     dplyr::select(-dplyr::all_of(val_col))
 
+  # ── Fabricate rows for entirely-absent target cells ───────────────────────
+  # The overlay above can only fill cells that already have a row. An eligible
+  # sample missing a target analyte *entirely* is classified "missing" in
+  # `impute_kind`, and its prediction already sits in `pm_long` — emit a new row
+  # for it so the group's model completes the panel (e.g. a Zn-only sample gains
+  # a model-anchored Cu row). Hurdle-failing samples never reach `impute_kind`
+  # (they are not in `eligible_ids`), so they are never fabricated.
+  missing_combos <- impute_kind |>
+    dplyr::filter(.data$.imputed_kind == "missing") |>
+    dplyr::select("sample_id", "analyte")
+
+  new_rows <- NULL
+  if (nrow(missing_combos) > 0L) {
+    # Per-sample carrier metadata: every column except the per-cell ones, which
+    # we set explicitly below (and `draw_id` / `val_col`, supplied by pm_long).
+    per_cell_cols <- c(
+      "analyte", "value", "detected", "imputed",
+      "imputed_kind", "draw_id", val_col
+    )
+    carrier <- df |>
+      dplyr::filter(.data$sample_id %in% missing_combos$sample_id) |>
+      dplyr::group_by(.data$sample_id) |>
+      dplyr::slice(1L) |>
+      dplyr::ungroup() |>
+      dplyr::select(-dplyr::any_of(per_cell_cols))
+
+    new_rows <- missing_combos |>
+      dplyr::left_join(carrier, by = "sample_id") |>
+      dplyr::left_join(
+        dplyr::select(pm_long, dplyr::all_of(join_cols)),
+        by = c("sample_id", "analyte")
+      ) |>
+      # Drop any combo without a prediction (e.g. a sample lacking PC scores):
+      # fabricating an NA-valued row would feed garbage to downstream models.
+      dplyr::filter(!is.na(.data[[val_col]])) |>
+      dplyr::mutate(
+        value        = .data[[val_col]],
+        detected     = TRUE,
+        imputed      = TRUE,
+        imputed_kind = "missing"
+      ) |>
+      dplyr::select(-dplyr::all_of(val_col))
+  }
+
   # Rows for non-eligible samples (failed hurdle): keep unchanged
   non_eligible_target_rows <- df |>
     dplyr::filter(
@@ -1762,6 +1824,7 @@ impute_coanalytes <- function(
     non_target_rows,
     observed_rows,
     imputed_filled,
+    new_rows,
     non_eligible_target_rows
   ) |>
     dplyr::arrange(.data$sample_id, .data$analyte)

@@ -51,10 +51,28 @@ limit, a per-cell audit of the cap activations is attached as the
 }
 \description{
 Applies the models fitted by \code{\link[=fit_imputation_model]{fit_imputation_model()}} to \code{df}, returning
-posterior mean estimates for missing and below-detection-limit (BDL)
-observations in every fitted group.
+posterior estimates for below-detection-limit (BDL) and missing observations
+in every fitted group.
 }
 \details{
+\strong{Completing the panel}
+
+For each eligible sample (see \emph{Hurdles}), every target analyte the group
+models is filled: BDL cells are replaced with their posterior estimate, and
+analytes that are \strong{entirely absent} for a sample gain a new
+model-anchored row (\code{imputed_kind = "missing"}, \code{detected = TRUE}). This is
+what lets a well-sampled analyte lift a sparsely-sampled one — e.g. a sample
+with Zn but no Cu gains a Cu row predicted from the fitted Cu–Zn
+relationship. Fabricated rows carry the originating sample's \code{site_id},
+\code{datetime}, and any other sample-level columns.
+
+Fabricated rows are model predictions, not measurements. With
+\code{return = "draws"} the imputation-model uncertainty propagates through the
+draw carrier; with \code{return = "point"} the single anchor enters any
+downstream model as if observed, which can understate that model's
+uncertainty. Prefer \code{return = "draws"} when the imputed values feed a
+further model (e.g. the reference/target GAMs).
+
 \strong{Hurdles}
 
 Each fitted group may carry a presence hurdle (see \code{\link[=impute_group]{impute_group()}}).  When
