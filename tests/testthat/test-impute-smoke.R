@@ -203,6 +203,90 @@ test_that("apply_hurdles = FALSE imputes samples that carry no hurdle analytes (
   expect_true(all(s1_metal_without$imputed))
 })
 
+test_that("fabricated rows carry the 'missing' kind, detected flag, and sample metadata (brms smoke test)", {
+  # Plan #53 reqs 1-2: entirely-absent target cells for eligible samples gain
+  # new rows tagged imputed_kind = "missing", detected = TRUE, with sample-level
+  # metadata (site_id, datetime) carried from that sample's existing rows.
+  skip_if_not(
+    requireNamespace("brms", quietly = TRUE) &&
+      identical(Sys.getenv("BRMS_SMOKE_TEST"), "1"),
+    "Skipping brms smoke test: brms not installed or BRMS_SMOKE_TEST != '1'"
+  )
+
+  df_full <- make_impute_chem(n = 30, n_bdl = 0, n_missing = 0)
+  # s1 has all three metals removed entirely -> they are "missing" for s1.
+  df_no_metal <- dplyr::filter(
+    df_full, !(sample_id == "s1" & analyte %in% c("Cu", "Zn", "Ni"))
+  )
+  m <- fit_imputation_model(
+    df_full,
+    required_vars = c("pH", "EC"),
+    iter = 500, warmup = 250, chains = 1, cores = 1
+  )
+
+  imp <- impute_chemistry(df_no_metal, m, apply_hurdles = FALSE)
+  s1_metals <- dplyr::filter(
+    imp, sample_id == "s1", analyte %in% c("Cu", "Zn", "Ni")
+  )
+
+  # All three absent metals are fabricated, once each.
+  expect_setequal(s1_metals$analyte, c("Cu", "Zn", "Ni"))
+  # Correct flags on every fabricated row.
+  expect_true(all(s1_metals$imputed))
+  expect_true(all(s1_metals$imputed_kind == "missing"))
+  expect_true(all(s1_metals$detected))
+  expect_true(all(is.finite(s1_metals$value) & s1_metals$value > 0))
+
+  # Sample metadata carried from s1's surviving (driver) rows.
+  s1_carrier <- dplyr::slice(dplyr::filter(df_no_metal, sample_id == "s1"), 1L)
+  expect_true(all(s1_metals$site_id == s1_carrier$site_id))
+  expect_true(all(s1_metals$datetime == s1_carrier$datetime))
+
+  # Req 5: observed driver rows for s1 are untouched by fabrication.
+  ph_in <- dplyr::filter(df_no_metal, sample_id == "s1", analyte == "pH")$value
+  ph_out <- dplyr::filter(
+    imp, sample_id == "s1", analyte == "pH", !imputed
+  )$value
+  expect_equal(sort(ph_out), sort(ph_in))
+
+  # Edge case: a complete frame (every sample has every metal) yields no
+  # "missing" fabrication at all.
+  imp_complete <- impute_chemistry(df_full, m, apply_hurdles = FALSE)
+  expect_false(any(imp_complete$imputed_kind == "missing"))
+})
+
+test_that("fabrication in draws mode emits one row per draw for each absent cell (brms smoke test)", {
+  # Plan #53 req 4: in draws mode, each fabricated cell expands to one row per
+  # draw_id, sourced solely from the posterior draws (no row duplication).
+  skip_if_not(
+    requireNamespace("brms", quietly = TRUE) &&
+      identical(Sys.getenv("BRMS_SMOKE_TEST"), "1"),
+    "Skipping brms smoke test: brms not installed or BRMS_SMOKE_TEST != '1'"
+  )
+
+  df_full <- make_impute_chem(n = 30, n_bdl = 0, n_missing = 0)
+  df_no_metal <- dplyr::filter(
+    df_full, !(sample_id == "s1" & analyte %in% c("Cu", "Zn", "Ni"))
+  )
+  m <- fit_imputation_model(
+    df_full,
+    required_vars = c("pH", "EC"),
+    iter = 500, warmup = 250, chains = 1, cores = 1
+  )
+
+  nd <- 20L
+  imp <- impute_chemistry(
+    df_no_metal, m,
+    apply_hurdles = FALSE, return = "draws", ndraws = nd
+  )
+
+  cu <- dplyr::filter(imp, sample_id == "s1", analyte == "Cu")
+  expect_equal(nrow(cu), nd)
+  expect_setequal(cu$draw_id, seq_len(nd))
+  expect_true(all(cu$imputed_kind == "missing"))
+  expect_true(all(is.finite(cu$value) & cu$value > 0))
+})
+
 test_that("impute_coanalytes skips targets not in pca_vars", {
   # Trivial test: construct an imputation_model with no PCA and confirm the
   # function gives a clear error rather than crashing.
