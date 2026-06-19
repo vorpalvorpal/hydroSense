@@ -8,7 +8,7 @@
 ##       -> tibble (analyte, tier, n, coverage, mean_width) + a pooled row.
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 sim_ou <- function(n_days = 420L, theta = 0.05, gamma = 4, anchor_every = 10L,
                    seed = 1L, r = 1e-2) {
@@ -26,13 +26,13 @@ sim_ou <- function(n_days = 420L, theta = 0.05, gamma = 4, anchor_every = 10L,
 
 test_that("L1: coverage is reasonable, and too-narrow scale lowers it", {
   s <- sim_ou(seed = 11L)
-  cov_ok <- leachatetools:::.loo_coverage_series(s$anchor_dates, s$anchor_S,
+  cov_ok <- hydroSense:::.loo_coverage_series(s$anchor_dates, s$anchor_S,
                                                  interval = 0.9, scale = 1)
   expect_gte(cov_ok$coverage, 0.7)
   expect_lte(cov_ok$coverage, 1.0)
   expect_gt(cov_ok$n, 0)
 
-  cov_narrow <- leachatetools:::.loo_coverage_series(s$anchor_dates, s$anchor_S,
+  cov_narrow <- hydroSense:::.loo_coverage_series(s$anchor_dates, s$anchor_S,
                                                      interval = 0.9, scale = 0.02)
   expect_lt(cov_narrow$coverage, cov_ok$coverage)        # harness detects under-spread
 })
@@ -41,7 +41,7 @@ test_that("L1: coverage is reasonable, and too-narrow scale lowers it", {
 
 test_that("L2: block holdout runs and returns coverage/width/n", {
   s <- sim_ou(seed = 12L)
-  out <- leachatetools:::.loo_coverage_series(s$anchor_dates, s$anchor_S,
+  out <- hydroSense:::.loo_coverage_series(s$anchor_dates, s$anchor_S,
                                               interval = 0.9, block = 3L)
   expect_true(all(c("coverage", "mean_width", "n", "n_held") %in% names(out)))
   expect_gt(out$n_held, 0)
@@ -52,9 +52,9 @@ test_that("L2: block holdout runs and returns coverage/width/n", {
 
 test_that("L3: mean interval width grows with scale", {
   s <- sim_ou(seed = 13L)
-  w1 <- leachatetools:::.loo_coverage_series(s$anchor_dates, s$anchor_S,
+  w1 <- hydroSense:::.loo_coverage_series(s$anchor_dates, s$anchor_S,
                                              scale = 1)$mean_width
-  w4 <- leachatetools:::.loo_coverage_series(s$anchor_dates, s$anchor_S,
+  w4 <- hydroSense:::.loo_coverage_series(s$anchor_dates, s$anchor_S,
                                              scale = 4)$mean_width
   expect_gt(w4, w1)
 })
@@ -62,7 +62,7 @@ test_that("L3: mean interval width grows with scale", {
 ## ── L4: sparse / degenerate series handled without error ──────────────────────
 
 test_that("L4: too-few anchors returns NA coverage, no crash", {
-  out <- leachatetools:::.loo_coverage_series(as.Date("2021-01-01") + c(0, 14),
+  out <- hydroSense:::.loo_coverage_series(as.Date("2021-01-01") + c(0, 14),
                                               c(1, 2), interval = 0.9)
   expect_true(is.na(out$coverage) || out$n == 0L)
 })
@@ -78,7 +78,7 @@ test_that("L5: .loo_anchor_coverage returns per-analyte + pooled rows", {
     Cu = list(tier = "model",  anchors = mk_anchors(21L)),
     Zn = list(tier = "bridge", anchors = mk_anchors(22L))
   ))
-  res <- leachatetools:::.loo_anchor_coverage(fake_tm, interval = 0.9)
+  res <- hydroSense:::.loo_anchor_coverage(fake_tm, interval = 0.9)
   expect_s3_class(res, "data.frame")
   expect_true(all(c("analyte", "tier", "n", "coverage", "mean_width") %in%
                     names(res)))

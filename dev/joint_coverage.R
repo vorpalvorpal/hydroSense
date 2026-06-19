@@ -1,8 +1,8 @@
 #!/usr/bin/env Rscript
 # Issue #32: date-held-out LOO calibration check — does cross-analyte coupling
-# improve empirical coverage of the combined AmsPAF?
+# improve empirical coverage of the combined msPAF?
 #
-# Holds out every 4th grab date, re-runs amspaf_daily() with and without
+# Holds out every 4th grab date, re-runs mspaf_daily() with and without
 # couple_residuals, and records whether the hold-out day's "truth" (the
 # deterministic centre from the full data) falls inside the 90% CI.
 #
@@ -12,7 +12,7 @@
 #   Rscript dev/joint_coverage.R  (first run: slow; ~2-3 min for the LOO loop)
 
 suppressMessages({ library(dplyr); library(ggplot2); devtools::load_all(".", quiet = TRUE) })
-options(leachatetools.guideline_dir = "guideline data")
+options(hydroSense.guideline_dir = "guideline data")
 
 CACHE   <- "test data/bs01_v3_cache.qs2"
 CENTRE  <- "dev/bs01_kalman_centre.qs2"
@@ -32,8 +32,8 @@ if (file.exists(CENTRE)) {
   centre_full <- ctr_cache$ara
 } else {
   cat("Computing deterministic centre (point mode) ...\n")
-  centre_full <- suppressMessages(do.call(amspaf_daily, da)) |>
-    dplyr::select("date", "amspaf")
+  centre_full <- suppressMessages(do.call(mspaf_daily, da)) |>
+    dplyr::select("date", "mspaf")
 }
 
 ## ── Hold-out grab dates ───────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ if (file.exists(LOO_OUT)) {
       cat(sprintf("  skip %s (not in centre)\n", d))
       return(NULL)
     }
-    truth <- truth_row$amspaf[[1L]]
+    truth <- truth_row$mspaf[[1L]]
 
     da_loo         <- da
     da_loo$df      <- dplyr::filter(da$df, as.Date(.data$datetime) != .env$d)
@@ -66,7 +66,7 @@ if (file.exists(LOO_OUT)) {
     run_loo <- function(couple) {
       args <- da_loo
       args$couple_residuals <- couple
-      suppressMessages(do.call(amspaf_daily, args))
+      suppressMessages(do.call(mspaf_daily, args))
     }
 
     out_indep  <- run_loo(FALSE)
@@ -83,16 +83,16 @@ if (file.exists(LOO_OUT)) {
     tibble::tibble(
       date           = d,
       truth          = truth,
-      indep_lower    = row_indep$amspaf_lower[[1L]],
-      indep_upper    = row_indep$amspaf_upper[[1L]],
-      coupled_lower  = row_coup$amspaf_lower[[1L]],
-      coupled_upper  = row_coup$amspaf_upper[[1L]],
-      indep_covered  = truth >= row_indep$amspaf_lower[[1L]] &&
-                       truth <= row_indep$amspaf_upper[[1L]],
-      coupled_covered = truth >= row_coup$amspaf_lower[[1L]] &&
-                        truth <= row_coup$amspaf_upper[[1L]],
-      indep_width    = row_indep$amspaf_upper[[1L]] - row_indep$amspaf_lower[[1L]],
-      coupled_width  = row_coup$amspaf_upper[[1L]]  - row_coup$amspaf_lower[[1L]]
+      indep_lower    = row_indep$mspaf_lower[[1L]],
+      indep_upper    = row_indep$mspaf_upper[[1L]],
+      coupled_lower  = row_coup$mspaf_lower[[1L]],
+      coupled_upper  = row_coup$mspaf_upper[[1L]],
+      indep_covered  = truth >= row_indep$mspaf_lower[[1L]] &&
+                       truth <= row_indep$mspaf_upper[[1L]],
+      coupled_covered = truth >= row_coup$mspaf_lower[[1L]] &&
+                        truth <= row_coup$mspaf_upper[[1L]],
+      indep_width    = row_indep$mspaf_upper[[1L]] - row_indep$mspaf_lower[[1L]],
+      coupled_width  = row_coup$mspaf_upper[[1L]]  - row_coup$mspaf_lower[[1L]]
     )
   }) |>
     purrr::compact() |>
@@ -127,7 +127,7 @@ tm <- suppressMessages(
 analytes <- names(tm$models)
 
 ## Base case: use .anchor_residual_cor() with the hardcoded λ=0.10.
-cor_base <- leachatetools:::.anchor_residual_cor(tm, analytes)
+cor_base <- hydroSense:::.anchor_residual_cor(tm, analytes)
 
 ## Build the wide anchor-residual matrix once (reused across λ values).
 extract_S <- function(nm) {

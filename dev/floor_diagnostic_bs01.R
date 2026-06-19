@@ -17,7 +17,7 @@ suppressMessages(library(dplyr))
 dr  <- qs2::qs_read("dev/bs01_kalman_draws_ara.qs2")
 ap  <- attr(dr, "analyte_pafs")
 ctr <- qs2::qs_read("dev/bs01_kalman_centre.qs2")$ara |>
-  dplyr::rename(det = "amspaf") |>
+  dplyr::rename(det = "mspaf") |>
   dplyr::mutate(regime = dplyr::case_when(det < 10 ~ "baseline",
                                           det >= 20 ~ "pulse",
                                           TRUE ~ "mid"))

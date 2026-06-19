@@ -8,11 +8,11 @@
 ##   3. Per-draw     — draw-d chronic == running TWA on draw-d chemistry alone
 ##   4. Broadcast    — observed (exact) sample participates in every draw's aggregate
 ##   5. Index-pairing— samples are paired by draw_id across time, not shuffled
-##   6. Composition  — add_amspaf(draws) |> TWA yields chronic AmsPAF draws
-##   7. Guard        — amspaf_daily errors on draws input
+##   6. Composition  — add_mspaf(draws) |> TWA yields chronic msPAF draws
+##   7. Guard        — mspaf_daily errors on draws input
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 ## ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -212,9 +212,9 @@ test_that("samples are paired by draw_id across time, not cross-contaminated", {
 })
 
 
-## ── 6. End-to-end composition: add_amspaf → time_weighted_aggregate ──────────
+## ── 6. End-to-end composition: add_mspaf → time_weighted_aggregate ──────────
 
-test_that("AmsPAF draws flow from add_amspaf into time_weighted_aggregate", {
+test_that("msPAF draws flow from add_mspaf into time_weighted_aggregate", {
   # Co-analytes required by Cu/Zn/Ni normalisation
   co <- c(pH = 7.5, DOC = 2.0, Ca = 6.0, Mg = 4.0, hardness = 30.0)
 
@@ -246,16 +246,16 @@ test_that("AmsPAF draws flow from add_amspaf into time_weighted_aggregate", {
     make_sample("s2", 30L, cu_draws = c(10, 100))
   )
 
-  amspaf_draws <- suppressMessages(
-    add_amspaf(df_draws, reference = NULL, conc_units = "ug/L", return = "draws")
+  mspaf_draws <- suppressMessages(
+    add_mspaf(df_draws, reference = NULL, conc_units = "ug/L", return = "draws")
   )
-  # Filter to just AmsPAF rows and attach datetime for TWA
-  amspaf_only <- dplyr::filter(amspaf_draws, analyte == "AmsPAF")
-  expect_true("draw_id" %in% names(amspaf_only))
+  # Filter to just msPAF rows and attach datetime for TWA
+  mspaf_only <- dplyr::filter(mspaf_draws, analyte == "msPAF")
+  expect_true("draw_id" %in% names(mspaf_only))
 
-  # Chronic AmsPAF over draws
+  # Chronic msPAF over draws
   chronic_draws <- time_weighted_aggregate(
-    amspaf_only,
+    mspaf_only,
     focal_dates  = as.Date("2024-07-01"),
     tau          = .tau,  tau_units    = "d",
     window       = .win,  window_units = "d",
@@ -266,15 +266,15 @@ test_that("AmsPAF draws flow from add_amspaf into time_weighted_aggregate", {
   expect_true("draw_id" %in% names(chronic_draws))
   expect_equal(sort(unique(chronic_draws$draw_id)), 1:2)
 
-  # Each draw's chronic AmsPAF should be finite and in [0, 100]
+  # Each draw's chronic msPAF should be finite and in [0, 100]
   expect_true(all(is.finite(chronic_draws$value)))
   expect_true(all(chronic_draws$value >= 0 & chronic_draws$value <= 100))
 })
 
 
-## ── 7. amspaf_daily guard ────────────────────────────────────────────────────
+## ── 7. mspaf_daily guard ────────────────────────────────────────────────────
 
-test_that("amspaf_daily errors with a clear message when handed draws input", {
+test_that("mspaf_daily errors with a clear message when handed draws input", {
   df_draws <- tibble::tibble(
     sample_id = "s1", site_id = "A",
     datetime  = as.Date("2024-01-01"),
@@ -282,7 +282,7 @@ test_that("amspaf_daily errors with a clear message when handed draws input", {
     draw_id   = c(1L, 2L)
   )
   expect_error(
-    amspaf_daily(df_draws),
+    mspaf_daily(df_draws),
     "does not accept draw-bearing input"
   )
 })

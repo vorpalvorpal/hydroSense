@@ -1,9 +1,9 @@
 #!/usr/bin/env Rscript
-# Benchmark add_amspaf() draws-mode scaling — issue #30 (vectorise the engine).
+# Benchmark add_mspaf() draws-mode scaling — issue #30 (vectorise the engine).
 # No prior benchmark coverage existed for this engine; this fills that gap and
 # provides the before/after baseline. Outside R CMD check (lives under bench/).
 #
-# Usage: Rscript bench/bench-amspaf.R [label]   (label tags the saved results,
+# Usage: Rscript bench/bench-mspaf.R [label]   (label tags the saved results,
 #        e.g. "baseline" before the change, "after" once vectorised)
 suppressMessages({ library(bench); devtools::load_all(".", quiet = TRUE) })
 
@@ -40,7 +40,7 @@ grid <- rbind(
 res <- purrr::pmap_dfr(grid, function(n_samples, n_draws, n_analytes) {
   df <- make_frame(n_samples, n_draws, n_analytes)
   b  <- bench::mark(
-    add_amspaf(df, reference = NULL, conc_units = "ug/L", return = "draws"),
+    add_mspaf(df, reference = NULL, conc_units = "ug/L", return = "draws"),
     iterations = 2L, check = FALSE, filter_gc = FALSE
   )
   tibble::tibble(
@@ -62,26 +62,26 @@ cat("WROTE", out, "\n")
 ## lookup table:
 ##   A. .ssd_paf_lookup() cold vs warm cache (per-analyte spline build cost)
 ##   B. .ssd_paf_vec() lookup vs direct ssd_hp() at various concentration counts
-##   C. add_amspaf() draws-mode end-to-end: #36 vs a reference call using the
+##   C. add_mspaf() draws-mode end-to-end: #36 vs a reference call using the
 ##      cold-cache path (approximates #30 baseline for PAF cost)
 
 cat("\n── PAF lookup micro-benchmarks ──\n")
 
-meta      <- leachatetools:::.load_analyte_metadata(NULL)
+meta      <- hydroSense:::.load_analyte_metadata(NULL)
 ssd_params <- suppressMessages(
-  leachatetools:::derive_ssd_params(meta, method = "multi", guideline_dir = NULL)
+  hydroSense:::derive_ssd_params(meta, method = "multi", guideline_dir = NULL)
 )
 cu_fit <- ssd_params$fit[[which(ssd_params$analyte == "Cu")]]
 
 ## A. Cold vs warm cache for .ssd_paf_lookup()
 clear_lookup <- function() {
-  env <- leachatetools:::.ssd_paf_lookup_env
+  env <- hydroSense:::.ssd_paf_lookup_env
   rm(list = ls(envir = env, all.names = TRUE), envir = env)
 }
 
 paf_cache <- bench::mark(
-  cold = { clear_lookup(); leachatetools:::.ssd_paf_lookup("Cu", "multi", cu_fit, NULL) },
-  warm = leachatetools:::.ssd_paf_lookup("Cu", "multi", cu_fit, NULL),
+  cold = { clear_lookup(); hydroSense:::.ssd_paf_lookup("Cu", "multi", cu_fit, NULL) },
+  warm = hydroSense:::.ssd_paf_lookup("Cu", "multi", cu_fit, NULL),
   iterations = 5L, check = FALSE, filter_gc = FALSE
 )
 cat("\nA. .ssd_paf_lookup() cold vs warm cache (Cu/multi):\n")
@@ -96,10 +96,10 @@ set.seed(36L)
 conc_large <- stats::runif(2000L, 0.1, 100)   # 2000 unique → lookup path eligible
 
 paf_vec <- bench::mark(
-  lookup_shipped = leachatetools:::.ssd_paf_vec(
+  lookup_shipped = hydroSense:::.ssd_paf_vec(
     cu_fit, conc_large, "Cu", "multi", NULL
   ),
-  direct_ssd_hp = leachatetools:::.ssd_paf_vec(
+  direct_ssd_hp = hydroSense:::.ssd_paf_vec(
     cu_fit, conc_large[seq_len(3)], "Cu", "multi", tmp_gdir
   ),
   iterations = 10L, check = FALSE, filter_gc = FALSE
@@ -107,20 +107,20 @@ paf_vec <- bench::mark(
 cat("\nB. .ssd_paf_vec() lookup vs direct ssd_hp() (Cu/multi):\n")
 print(paf_vec[, c("expression", "min", "median", "mem_alloc")])
 
-## C. End-to-end add_amspaf() draws mode: 30 samples × 8 draws, 9 analytes.
+## C. End-to-end add_mspaf() draws mode: 30 samples × 8 draws, 9 analytes.
 ## Run twice to show warm-cache performance; first call populates the lookup.
 df_large <- make_frame(30L, 8L, 9L)
 .warmup <- suppressMessages(
-  add_amspaf(df_large, reference = NULL, conc_units = "ug/L", return = "draws")
+  add_mspaf(df_large, reference = NULL, conc_units = "ug/L", return = "draws")
 )  # warm up the cache
 rm(.warmup)
 e2e <- bench::mark(
-  add_amspaf_lookup = suppressMessages(
-    add_amspaf(df_large, reference = NULL, conc_units = "ug/L", return = "draws")
+  add_mspaf_lookup = suppressMessages(
+    add_mspaf(df_large, reference = NULL, conc_units = "ug/L", return = "draws")
   ),
   iterations = 3L, check = FALSE, filter_gc = FALSE
 )
-cat("\nC. add_amspaf() 30s×8d×9a warm cache (lookup active):\n")
+cat("\nC. add_mspaf() 30s×8d×9a warm cache (lookup active):\n")
 print(e2e[, c("expression", "min", "median", "mem_alloc")])
 
 paf_bench <- list(cache = paf_cache, paf_vec = paf_vec, e2e = e2e)

@@ -7,7 +7,7 @@
 #   "leachate"   — the leachate end-member
 #
 # Carries the major-ion panel (for add_lmf / to_meq), the toxicants Cu/Zn/NH3-N
-# (for ssd_paf / add_amspaf), and the co-analytes pH/temperature/DOC/hardness
+# (for ssd_paf / add_mspaf), and the co-analytes pH/temperature/DOC/hardness
 # needed for the ammonia and bioavailability normalisations.
 #
 # Concentration units: major ions in mg/L; Cu/Zn/NH3-N in ug/L (the SSD scale);

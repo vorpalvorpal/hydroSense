@@ -9,7 +9,7 @@
 \arguments{
 \item{ref_model}{A \code{reference_model} object.}
 
-\item{df}{Target chemistry data frame (as passed to \code{\link[=add_amspaf]{add_amspaf()}}).}
+\item{df}{Target chemistry data frame (as passed to \code{\link[=add_mspaf]{add_mspaf()}}).}
 
 \item{tau_days}{Exponential-decay parameter for chronic integration.}
 
@@ -21,7 +21,7 @@ Tibble \verb{(sample_id, analyte, ref_norm, ref_tier)}.
 \description{
 Dispatches to \code{\link[=.resolve_ref_norm_instant]{.resolve_ref_norm_instant()}} or \code{\link[=.resolve_ref_norm_chronic]{.resolve_ref_norm_chronic()}}
 depending on whether \code{df} contains a \code{focal_date} column.  Returns a tibble
-\verb{(sample_id, analyte, ref_norm, ref_tier)} that \code{\link[=add_amspaf]{add_amspaf()}} uses instead
+\verb{(sample_id, analyte, ref_norm, ref_tier)} that \code{\link[=add_mspaf]{add_mspaf()}} uses instead
 of the static \verb{(analyte, ref_norm)} table produced by \code{\link[=prepare_reference]{prepare_reference()}}.
 }
 \keyword{internal}

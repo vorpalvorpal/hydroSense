@@ -6,7 +6,7 @@
 #   ANZG_XLSX  — modern ANZG technical-brief data, read directly from the
 #                guideline XLSX files.  Requires guideline_dir to point to the
 #                folder containing the ANZG "guideline data/" XLSX files.
-#                Set via: options(leachatetools.guideline_dir = "/path/to/...")
+#                Set via: options(hydroSense.guideline_dir = "/path/to/...")
 #
 #   Warne2000  — ANZECC 2000 analytes; raw data from the package-bundled
 #                inst/extdata/anzecc_warne2000_observations.csv.
@@ -108,7 +108,7 @@
   # inst/extdata/ni_mlr_normalised_table3.csv.
   `Ni` = function(gdir) {
     csv_path <- system.file("extdata", "ni_mlr_normalised_table3.csv",
-                             package = "leachatetools")
+                             package = "hydroSense")
     readr::read_csv(
       csv_path,
       col_types = readr::cols(Conc_ug_L = readr::col_double(),
@@ -183,10 +183,10 @@
     if (!use_xlsx) {
       # Fallback: read from the bundled CSV that ships with the package
       csv_path <- system.file("extdata", "anzg_xlsx_observations.csv",
-                               package = "leachatetools")
+                               package = "hydroSense")
       if (!nzchar(csv_path)) {
         stop("Cannot find bundled anzg_xlsx_observations.csv inside the ",
-             "installed leachatetools package. Re-install the package.")
+             "installed hydroSense package. Re-install the package.")
       }
       obs_all <- readr::read_csv(
         csv_path,
@@ -203,7 +203,7 @@
   } else {
     # Warne2000 (or any other CSV-backed source)
     obs_path <- system.file("extdata", "anzecc_warne2000_observations.csv",
-                             package = "leachatetools")
+                             package = "hydroSense")
     obs_all <- readr::read_csv(
       obs_path,
       col_types = readr::cols(value_ug_L = readr::col_double(),

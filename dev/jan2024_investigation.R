@@ -27,7 +27,7 @@ suppressMessages(library(dplyr))
 cc  <- qs2::qs_read("test data/bs01_v3_cache.qs2")
 dr  <- qs2::qs_read("dev/bs01_kalman_draws_ara.qs2")
 ap  <- attr(dr, "analyte_pafs")
-ctr <- qs2::qs_read("dev/bs01_kalman_centre.qs2")$ara |> dplyr::rename(det = "amspaf")
+ctr <- qs2::qs_read("dev/bs01_kalman_centre.qs2")$ara |> dplyr::rename(det = "mspaf")
 GAP <- as.Date(c("2023-12-18", "2024-02-17"))
 apg <- ap |> filter(date > GAP[1], date < GAP[2])
 drg <- dr |> filter(date > GAP[1], date < GAP[2])
@@ -38,7 +38,7 @@ pa <- apg |> group_by(analyte) |>
   summarise(mean_i = mean(PAF), median_i = median(PAF), .groups = "drop") |>
   filter(mean_i > 0)
 cat(sprintf("    combined: mean=%.1f%% median=%.1f%% | IA(means)=%.1f%% IA(medians)=%.1f%%\n",
-            mean(drg$amspaf), median(drg$amspaf), ia(pa$mean_i), ia(pa$median_i)))
+            mean(drg$mspaf), median(drg$mspaf), ia(pa$mean_i), ia(pa$median_i)))
 
 cat("[2] NH3-N spread baseline gap vs 2024 event (homoscedasticity test):\n")
 w <- function(a, b) ap |> filter(analyte == "NH3-N", date >= as.Date(a), date <= as.Date(b))
@@ -52,7 +52,7 @@ for (r in list(c("baseline", "2023-12-18", "2024-02-17"),
 
 cat("[3] median/deterministic ratio, sampled vs mid-gap (pervasive, not gap-only):\n")
 dr |> group_by(date) |>
-  summarise(median = median(amspaf, na.rm = TRUE),
+  summarise(median = median(mspaf, na.rm = TRUE),
             dsl = first(days_since_last_sample), .groups = "drop") |>
   left_join(ctr, by = "date") |>
   filter(date >= as.Date("2023-09-01"), date <= as.Date("2024-05-31")) |>

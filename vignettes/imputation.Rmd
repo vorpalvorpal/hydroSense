@@ -14,7 +14,7 @@ knitr::opts_chunk$set(
   message  = FALSE,
   warning  = FALSE
 )
-library(leachatetools)
+library(hydroSense)
 ```
 
 ## The problem
@@ -29,7 +29,7 @@ Routine monitoring chemistry is rarely complete. Two kinds of gaps dominate:
 - **Missing.** The analyte was not measured at that sample at all, so there
   is no value and no detection limit.
 
-Both gaps matter for mixture toxicity: `add_amspaf()` sums the potentially
+Both gaps matter for mixture toxicity: `add_mspaf()` sums the potentially
 affected fraction across analytes, so a sample where Cu was never measured
 and Zn came back BDL is not automatically "clean" — it is *under-determined*.
 The imputation tools fill these gaps with statistically defensible estimates
@@ -37,7 +37,7 @@ that borrow strength from the analytes that *were* measured.
 
 ## The approach in brief
 
-leachatetools imputes chemistry with a **Bayesian multivariate model** fitted
+hydroSense imputes chemistry with a **Bayesian multivariate model** fitted
 once on your monitoring history and then applied to new samples. The design
 has three ideas at its core:
 
@@ -227,7 +227,7 @@ dplyr::count(filled, analyte, imputed_kind)
 By default the result is a **posterior mean per cell** (`return = "point"`).
 For uncertainty propagation, request the full posterior with
 `return = "draws"` to get one row per sample × analyte × draw — feed those
-draws through `add_amspaf()` to obtain a posterior distribution of mixture
+draws through `add_mspaf()` to obtain a posterior distribution of mixture
 PAF rather than a point estimate. Draws can be memory-heavy (especially for
 `"rescor_mi"`); `ndraws =` subsamples the posterior and `batch_size =` predicts
 the samples in batches, both of which bound peak memory.
@@ -255,7 +255,7 @@ bdl_cap_summary(filled)   # NULL (with a message) if nothing was capped
 
 ## Imputing normalisation co-analytes
 
-The bioavailability normalisations in `add_amspaf()` need co-analytes —
+The bioavailability normalisations in `add_mspaf()` need co-analytes —
 DOC, Ca, Mg, and hardness — to convert field concentrations to the SSD index
 condition (see the *Analyte normalisation* article). When one of these is
 missing, `impute_coanalytes()` fills it with a fast, deterministic
@@ -287,12 +287,43 @@ model  <- fit_imputation_model(monitoring_long)
 result <- monitoring_long |>
   impute_chemistry(model) |>     # BDL + missing metals/organics
   impute_coanalytes(model) |>    # missing DOC / Ca / Mg / hardness
-  add_amspaf(reference = prep_ref) |>
+  add_mspaf(reference = prep_ref) |>
   time_weighted_aggregate()
 ```
 
 Fit once on the longest, richest history you have; impute repeatedly as new
 data arrive.
+
+### One call: `mspaf_pipeline()`
+
+The daily version of that whole flow — fit an imputation model, fit the
+reference/impact model, then compute the daily msPAF for a target site — is
+bundled into `mspaf_pipeline()`, with imputation **on by default**:
+
+```{r orchestrator, eval = FALSE}
+out <- mspaf_pipeline(
+  target     = subset(monitoring_long, site_id == "downstream"),
+  reference  = subset(monitoring_long, site_id == "reference"),
+  hydro      = rainfall,
+  daily_args = list(require_temperature = FALSE, ndraws = 50L, seed = 1L)
+)
+```
+
+A single imputation model is fitted (on the reference chemistry by default;
+`impute_on = "target"` to fit on the target instead) and threaded into both
+`fit_reference_model()` and `mspaf_daily()`. Extra arguments go through
+`reference_args` and `daily_args`; the fitted reference and imputation models
+are attached to the result as the `"reference_model"` and `"imputation_model"`
+attributes.
+
+Because it imputes by default, the orchestrator **moves the msPAF result**
+relative to the non-imputed calculation: imputing below-detection cells
+(replacing detection-limit values with modelled sub-limit estimates) and
+fabricating entirely-absent analytes both change the mixture, and in practice
+the net effect can be sizeable. That is a missingness (MAR/MNAR) judgement, not
+a neutral default — pass `impute = FALSE` to reproduce the non-imputed
+behaviour of chaining `fit_reference_model()` and `mspaf_daily()` directly. See
+*When not to impute* below.
 
 ## When not to impute
 
@@ -322,10 +353,10 @@ that the data never contained. A few situations call for restraint:
 
 ## Installation note
 
-The Bayesian step is the only part of leachatetools that needs **brms**, so
-brms is an optional dependency rather than a hard requirement — the LMF and
-AmsPAF tools install and run without it. To use `fit_imputation_model()` and
-`impute_chemistry()`, install brms and a working Stan engine once:
+**brms** is a hard dependency of hydroSense (it is listed under `Imports`), so
+it is installed automatically with the package. The Bayesian step additionally
+needs a working **Stan** engine, which is *not* pulled in automatically. Set it
+up once:
 
 ```r
 install.packages("brms")
@@ -334,4 +365,4 @@ install.packages("brms")
 If the install alone is not enough, follow the short Stan toolchain setup at
 <https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started>.
 `impute_coanalytes()` uses `mgcv` (already a hard dependency) and does **not**
-require brms or Stan.
+require Stan.

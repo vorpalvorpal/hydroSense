@@ -2,12 +2,12 @@
 % Please edit documentation in R/reference_model.R
 \name{analyte_pafs}
 \alias{analyte_pafs}
-\title{Per-analyte PAF breakdown from add_amspaf()}
+\title{Per-analyte PAF breakdown from add_mspaf()}
 \usage{
 analyte_pafs(x)
 }
 \arguments{
-\item{x}{A data frame returned by \code{\link[=add_amspaf]{add_amspaf()}}.}
+\item{x}{A data frame returned by \code{\link[=add_mspaf]{add_mspaf()}}.}
 }
 \value{
 A tibble with columns \code{site_id}, \code{sample_id}, \code{draw_id} (draws mode
@@ -15,16 +15,16 @@ only), \code{analyte}, \code{C_adj}, \code{PAF}, \code{moa_group}, \code{ref_sou
 (with a message) if the attribute is absent.
 }
 \description{
-After calling \code{\link[=add_amspaf]{add_amspaf()}}, this accessor returns the per-analyte
-contribution breakdown behind each AmsPAF value: the ARA-adjusted
+After calling \code{\link[=add_mspaf]{add_mspaf()}}, this accessor returns the per-analyte
+contribution breakdown behind each msPAF value: the ARA-adjusted
 concentration, single-substance PAF, MOA group and reference source for every
 assessed (sample × draw × analyte). It replaces the former \code{analyte_pafs}
 list-column with a flat, tidy frame (filter/join directly).
 }
 \details{
-The attribute is stored by \code{\link[=add_amspaf]{add_amspaf()}} and is dropped by most dplyr verbs,
+The attribute is stored by \code{\link[=add_mspaf]{add_mspaf()}} and is dropped by most dplyr verbs,
 so read it before further wrangling.
 }
 \seealso{
-\code{\link[=add_amspaf]{add_amspaf()}}, \code{\link[=ara_summary]{ara_summary()}}
+\code{\link[=add_mspaf]{add_mspaf()}}, \code{\link[=ara_summary]{ara_summary()}}
 }

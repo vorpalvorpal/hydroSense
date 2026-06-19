@@ -1,8 +1,8 @@
 #!/usr/bin/env Rscript
-# Noise-source isolation for the daily AmsPAF credible band (diagnostic).
+# Noise-source isolation for the daily msPAF credible band (diagnostic).
 #
 # Symptom (B.S01): the daily band does NOT pinch at grab anchors (IQR ~constant
-# with distance to a grab) and E[AmsPAF] is inflated ~state-independently, which
+# with distance to a grab) and E[msPAF] is inflated ~state-independently, which
 # washes the event signal out of the chronic mean.
 #
 # Hypothesis: the per-draw impact/WQ GAM coefficient perturbation
@@ -18,7 +18,7 @@
 suppressMessages({ library(dplyr); devtools::load_all(".", quiet = TRUE) })
 
 GUIDE  <- "guideline data"
-options(leachatetools.guideline_dir = GUIDE)
+options(hydroSense.guideline_dir = GUIDE)
 cc <- qs2::qs_read("test data/bs01_v3_cache.qs2")
 da <- cc$daily_args
 ## Reduce to a baseline (late 2023, deterministic ~8) + pulse (2024-09, ~44).
@@ -27,21 +27,21 @@ N <- 20L; SEED <- 42L
 
 ## Swap the GAM perturbation for an identity to disable the S1-S3 trend draws.
 ident <- function(tm, perturb_reference = FALSE) tm
-orig  <- leachatetools:::.perturb_target_model
-gam_off <- function() assignInNamespace(".perturb_target_model", ident, "leachatetools")
-gam_on  <- function() assignInNamespace(".perturb_target_model", orig,  "leachatetools")
+orig  <- hydroSense:::.perturb_target_model
+gam_off <- function() assignInNamespace(".perturb_target_model", ident, "hydroSense")
+gam_on  <- function() assignInNamespace(".perturb_target_model", orig,  "hydroSense")
 
 run_draws <- function(ou_scale, grab_cv, gam) {
   if (gam) gam_on() else gam_off()
   on.exit(gam_on(), add = TRUE)
-  suppressMessages(do.call(amspaf_daily, c(da, list(
+  suppressMessages(do.call(mspaf_daily, c(da, list(
     reference = da$reference_model, ndraws = N, seed = SEED, return = "draws",
     ou_scale = ou_scale, kappa = 0.5, grab_cv = grab_cv))))
 }
 
 ## Deterministic centre (config-independent; point mode).
-det <- suppressMessages(do.call(amspaf_daily, c(da, list(
-  reference = da$reference_model))))[, c("date", "amspaf")]
+det <- suppressMessages(do.call(mspaf_daily, c(da, list(
+  reference = da$reference_model))))[, c("date", "mspaf")]
 
 configs <- tibble::tribble(
   ~name,          ~ou_scale, ~grab_cv, ~gam,
@@ -55,10 +55,10 @@ configs <- tibble::tribble(
 summ <- function(dr, nm) {
   per <- dr |> group_by(date) |>
     summarise(dsl = first(days_since_last_sample),
-              mn = mean(amspaf, na.rm = TRUE),
-              med = median(amspaf, na.rm = TRUE),
-              w = quantile(amspaf, .75, names = FALSE, na.rm = TRUE) -
-                  quantile(amspaf, .25, names = FALSE, na.rm = TRUE),
+              mn = mean(mspaf, na.rm = TRUE),
+              med = median(mspaf, na.rm = TRUE),
+              w = quantile(mspaf, .75, names = FALSE, na.rm = TRUE) -
+                  quantile(mspaf, .25, names = FALSE, na.rm = TRUE),
               .groups = "drop")
   grab <- per |> filter(dsl == 0)
   gap  <- per |> filter(dsl >= 31, dsl <= 90)
@@ -79,7 +79,7 @@ res <- purrr::pmap_dfr(configs, function(name, ou_scale, grab_cv, gam) {
 })
 
 cat(sprintf("\nWindow %s .. %s | deterministic mean PAF = %.1f\n",
-            da$start, da$end, mean(det$amspaf, na.rm = TRUE)))
+            da$start, da$end, mean(det$mspaf, na.rm = TRUE)))
 cat("(pinch_ratio << 1 = band collapses at grabs = healthy; ~1 = no pinch)\n\n")
 print(as.data.frame(res))
 qs2::qs_save(res, "dev/diag_noise_isolation.qs2")

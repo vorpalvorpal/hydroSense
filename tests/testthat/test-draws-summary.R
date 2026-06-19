@@ -1,5 +1,5 @@
 ## Tests for summarise_draws() and the return= param at the boundary
-## functions (add_amspaf, time_weighted_aggregate).  Stan-free.
+## functions (add_mspaf, time_weighted_aggregate).  Stan-free.
 ##
 ## Eleven properties tested:
 ##   1.  summarise_draws point identity     — no CI cols added to point frames
@@ -7,22 +7,22 @@
 ##   3.  Exact cell degenerate interval     — draw_id=NA → lower=upper=value, n=1
 ##   4.  interval configurable              — 0.5 strictly narrower than 0.9
 ##   5.  central="mean" vs "median"         — differ on skewed cell
-##   6.  add_amspaf(return="summary")       — AmsPAF rows have value_lower/upper, no draw_id
-##   7.  add_amspaf(return="draws")         — raw per-draw rows (Chunk 1 parity)
-##   8.  add_amspaf point + default         — byte-identical output (no CI cols)
+##   6.  add_mspaf(return="summary")       — msPAF rows have value_lower/upper, no draw_id
+##   7.  add_mspaf(return="draws")         — raw per-draw rows (Chunk 1 parity)
+##   8.  add_mspaf point + default         — byte-identical output (no CI cols)
 ##   9.  TWA(return="summary")              — collapses chronic draws → median+CI
-##   10. End-to-end composition             — draws|>add_amspaf(draws)|>TWA() → CI cols, no draw_id
+##   10. End-to-end composition             — draws|>add_mspaf(draws)|>TWA() → CI cols, no draw_id
 ##   11. Median within interval             — value ∈ [value_lower, value_upper]
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 ## ── Shared helpers ────────────────────────────────────────────────────────────
 
 .co_vals <- c(pH = 7.5, DOC = 2.0, Ca = 6.0, Mg = 4.0, hardness = 30.0)
 
 ## Minimal draw-carrier frame: Cu drawn, co-analytes exact.
-make_amspaf_draws_input <- function(cu_draws = c(5, 20, 50),
+make_mspaf_draws_input <- function(cu_draws = c(5, 20, 50),
                                     sample_id = "s1",
                                     site_id   = "f1") {
   n <- length(cu_draws)
@@ -144,77 +144,77 @@ test_that("central=mean and median differ on a right-skewed cell", {
 })
 
 
-## ── 6. add_amspaf(return="summary") default ──────────────────────────────────
+## ── 6. add_mspaf(return="summary") default ──────────────────────────────────
 
-test_that("add_amspaf default collapses AmsPAF draws to median+CI, one row per sample", {
-  df   <- make_amspaf_draws_input(cu_draws = c(5, 20, 50))
+test_that("add_mspaf default collapses msPAF draws to median+CI, one row per sample", {
+  df   <- make_mspaf_draws_input(cu_draws = c(5, 20, 50))
   out  <- suppressMessages(
-    add_amspaf(df, reference = NULL, conc_units = "ug/L")
+    add_mspaf(df, reference = NULL, conc_units = "ug/L")
   )
 
-  amspaf <- dplyr::filter(out, analyte == "AmsPAF")
+  mspaf <- dplyr::filter(out, analyte == "msPAF")
 
   # One row per sample (collapsed)
-  expect_equal(nrow(amspaf), 1L)
+  expect_equal(nrow(mspaf), 1L)
 
   # CI columns present
-  expect_true("value_lower" %in% names(amspaf))
-  expect_true("value_upper" %in% names(amspaf))
-  expect_true("n_draws"     %in% names(amspaf))
+  expect_true("value_lower" %in% names(mspaf))
+  expect_true("value_upper" %in% names(mspaf))
+  expect_true("n_draws"     %in% names(mspaf))
 
   # No raw-draws columns
-  expect_false("draw_id"          %in% names(amspaf))
-  expect_false("dominant_analyte" %in% names(amspaf))
-  expect_false("analyte_pafs"     %in% names(amspaf))
+  expect_false("draw_id"          %in% names(mspaf))
+  expect_false("dominant_analyte" %in% names(mspaf))
+  expect_false("analyte_pafs"     %in% names(mspaf))
 
   # n_draws = 3
-  expect_equal(amspaf$n_draws, 3L)
+  expect_equal(mspaf$n_draws, 3L)
 
   # value ∈ [lower, upper]
-  expect_gte(amspaf$value, amspaf$value_lower)
-  expect_lte(amspaf$value, amspaf$value_upper)
+  expect_gte(mspaf$value, mspaf$value_lower)
+  expect_lte(mspaf$value, mspaf$value_upper)
 })
 
 
-## ── 7. add_amspaf(return="draws") passes through raw draws ───────────────────
+## ── 7. add_mspaf(return="draws") passes through raw draws ───────────────────
 
-test_that("add_amspaf(return='draws') emits raw per-draw AmsPAF rows", {
-  df  <- make_amspaf_draws_input(cu_draws = c(5, 20, 50))
+test_that("add_mspaf(return='draws') emits raw per-draw msPAF rows", {
+  df  <- make_mspaf_draws_input(cu_draws = c(5, 20, 50))
   out <- suppressMessages(
-    add_amspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
+    add_mspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
   )
 
-  amspaf <- dplyr::filter(out, analyte == "AmsPAF")
+  mspaf <- dplyr::filter(out, analyte == "msPAF")
 
-  expect_equal(nrow(amspaf), 3L)
-  expect_true("draw_id" %in% names(amspaf))
-  expect_equal(sort(amspaf$draw_id), 1:3)
-  expect_false("value_lower" %in% names(amspaf))
+  expect_equal(nrow(mspaf), 3L)
+  expect_true("draw_id" %in% names(mspaf))
+  expect_equal(sort(mspaf$draw_id), 1:3)
+  expect_false("value_lower" %in% names(mspaf))
 })
 
 
-## ── 8. add_amspaf point input + default = byte-identical to pre-draws ────────
+## ── 8. add_mspaf point input + default = byte-identical to pre-draws ────────
 
-test_that("add_amspaf default on point input: no CI columns, schema unchanged", {
+test_that("add_mspaf default on point input: no CI columns, schema unchanged", {
   df  <- make_point_input(cu = 5)
   out <- suppressMessages(
-    add_amspaf(df, reference = NULL, conc_units = "ug/L")
+    add_mspaf(df, reference = NULL, conc_units = "ug/L")
   )
 
   expect_false("draw_id"    %in% names(out))
   expect_false("value_lower" %in% names(out))
   expect_false("n_draws"    %in% names(out))
 
-  amspaf <- dplyr::filter(out, analyte == "AmsPAF")
-  expect_equal(nrow(amspaf), 1L)
-  expect_true(all(is.finite(amspaf$value)))
+  mspaf <- dplyr::filter(out, analyte == "msPAF")
+  expect_equal(nrow(mspaf), 1L)
+  expect_true(all(is.finite(mspaf$value)))
 })
 
 
 ## ── 9. time_weighted_aggregate(return="summary") collapses draws ─────────────
 
-test_that("TWA(return='summary') collapses chronic AmsPAF draws to median+CI", {
-  # Build AmsPAF draws for two samples
+test_that("TWA(return='summary') collapses chronic msPAF draws to median+CI", {
+  # Build msPAF draws for two samples
   make_s <- function(sid, dt_offset, cu_draws) {
     n <- length(cu_draws)
     dplyr::bind_rows(
@@ -235,13 +235,13 @@ test_that("TWA(return='summary') collapses chronic AmsPAF draws to median+CI", {
     make_s("s1", 0L,  c(5, 10, 20)),
     make_s("s2", 30L, c(5, 10, 20))
   )
-  amspaf_draws <- suppressMessages(
-    add_amspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
+  mspaf_draws <- suppressMessages(
+    add_mspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
   )
-  amspaf_only <- dplyr::filter(amspaf_draws, analyte == "AmsPAF")
+  mspaf_only <- dplyr::filter(mspaf_draws, analyte == "msPAF")
 
   chronic <- time_weighted_aggregate(
-    amspaf_only,
+    mspaf_only,
     focal_dates  = as.Date("2024-03-01"),
     tau = 90, tau_units = "d", window = 365, window_units = "d",
     summary = "arith_mean",
@@ -258,17 +258,17 @@ test_that("TWA(return='summary') collapses chronic AmsPAF draws to median+CI", {
 })
 
 
-## ── 10. End-to-end composition: draws → add_amspaf(draws) → TWA() ────────────
+## ── 10. End-to-end composition: draws → add_mspaf(draws) → TWA() ────────────
 
-test_that("draws → add_amspaf(draws) → TWA default → CI cols, no draw_id", {
-  df <- make_amspaf_draws_input(cu_draws = c(5, 20, 50))
-  amspaf_raw <- suppressMessages(
-    add_amspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
+test_that("draws → add_mspaf(draws) → TWA default → CI cols, no draw_id", {
+  df <- make_mspaf_draws_input(cu_draws = c(5, 20, 50))
+  mspaf_raw <- suppressMessages(
+    add_mspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
   )
-  amspaf_only <- dplyr::filter(amspaf_raw, analyte == "AmsPAF")
+  mspaf_only <- dplyr::filter(mspaf_raw, analyte == "msPAF")
 
   chronic <- time_weighted_aggregate(
-    amspaf_only,
+    mspaf_only,
     focal_dates  = as.Date("2024-03-01"),
     tau = 90, tau_units = "d", window = 365, window_units = "d",
     summary = "arith_mean"
@@ -285,12 +285,12 @@ test_that("draws → add_amspaf(draws) → TWA default → CI cols, no draw_id",
 ## ── 11. Median within interval ────────────────────────────────────────────────
 
 test_that("value (median) lies within [value_lower, value_upper] for all cells", {
-  df   <- make_amspaf_draws_input(cu_draws = c(5, 20, 50, 100, 200))
+  df   <- make_mspaf_draws_input(cu_draws = c(5, 20, 50, 100, 200))
   out  <- suppressMessages(
-    add_amspaf(df, reference = NULL, conc_units = "ug/L")
+    add_mspaf(df, reference = NULL, conc_units = "ug/L")
   )
 
-  amspaf <- dplyr::filter(out, analyte == "AmsPAF")
-  expect_true(all(amspaf$value >= amspaf$value_lower - .Machine$double.eps))
-  expect_true(all(amspaf$value <= amspaf$value_upper + .Machine$double.eps))
+  mspaf <- dplyr::filter(out, analyte == "msPAF")
+  expect_true(all(mspaf$value >= mspaf$value_lower - .Machine$double.eps))
+  expect_true(all(mspaf$value <= mspaf$value_upper + .Machine$double.eps))
 })

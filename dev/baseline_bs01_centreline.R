@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# Freeze the CURRENT (pre-rework) deterministic daily AmsPAF centre line for
+# Freeze the CURRENT (pre-rework) deterministic daily msPAF centre line for
 # B.S01, so the Kalman-smoother rework can be sanity-checked against it.
 #
 # Why this exists: the rework REPLACES the `.interp_residual` centre line with a
@@ -21,10 +21,10 @@ suppressMessages({
 
 CACHE_V3 <- "test data/bs01_v3_cache.qs2"
 OUT_QS2  <- "dev/baseline_bs01_centreline.qs2"
-GUIDE    <- "guideline data"   # SSD/guideline tables (amspaf_daily needs these)
+GUIDE    <- "guideline data"   # SSD/guideline tables (mspaf_daily needs these)
 
 stopifnot(file.exists(CACHE_V3))
-options(leachatetools.guideline_dir = GUIDE)
+options(hydroSense.guideline_dir = GUIDE)
 
 cc <- qs2::qs_read(CACHE_V3)
 da <- cc$daily_args            # df, reference_model, temperature, start, end,
@@ -34,13 +34,13 @@ cat("Loaded v3 cache. daily_args fields:", paste(names(da), collapse = ", "), "\
 
 ## ── Point-mode centre lines (deterministic; no ndraws) ───────────────────────
 # ARA mode: reference = the fitted reference_model (impact = C_norm - ref_norm,
-#   which cancels ref in C_excess -> AmsPAF reflects the impact only).
+#   which cancels ref in C_excess -> msPAF reflects the impact only).
 # non-ARA (total concentration) mode: reference = NULL (no background subtracted)
 #   but reference_model is still supplied so interpolation = "model" can fit the
 #   season-blind impact model used to interpolate between grabs.
 
 run_point <- function(reference) {
-  do.call(amspaf_daily, c(da, list(reference = reference)))
+  do.call(mspaf_daily, c(da, list(reference = reference)))
 }
 
 cat("Running ARA point-mode centre line...\n")
@@ -49,7 +49,7 @@ ara_now <- run_point(reference = da$reference_model)
 cat("Running non-ARA (total) point-mode centre line...\n")
 tot_now <- run_point(reference = NULL)
 
-pick <- function(x) x[, intersect(c("date", "site_id", "amspaf"), names(x)), drop = FALSE]
+pick <- function(x) x[, intersect(c("date", "site_id", "mspaf"), names(x)), drop = FALSE]
 ara_now <- pick(ara_now)
 tot_now <- pick(tot_now)
 
@@ -58,13 +58,13 @@ tot_now <- pick(tot_now)
 # so we know the "current" baseline is the freshly regenerated one.
 if (!is.null(cc$daily_ara)) {
   cmp <- dplyr::inner_join(
-    dplyr::rename(pick(cc$daily_ara), amspaf_cached = "amspaf"),
-    dplyr::rename(ara_now,           amspaf_now    = "amspaf"),
+    dplyr::rename(pick(cc$daily_ara), mspaf_cached = "mspaf"),
+    dplyr::rename(ara_now,           mspaf_now    = "mspaf"),
     by = intersect(c("date", "site_id"), names(ara_now))
   )
   if (nrow(cmp) > 0) {
-    md <- max(abs(cmp$amspaf_cached - cmp$amspaf_now), na.rm = TRUE)
-    rr <- suppressWarnings(stats::cor(cmp$amspaf_cached, cmp$amspaf_now,
+    md <- max(abs(cmp$mspaf_cached - cmp$mspaf_now), na.rm = TRUE)
+    rr <- suppressWarnings(stats::cor(cmp$mspaf_cached, cmp$mspaf_now,
                                       use = "complete.obs"))
     cat(sprintf("ARA cached-vs-regenerated: n=%d  max|diff|=%.3g  cor=%.5f\n",
                 nrow(cmp), md, rr))
@@ -72,8 +72,8 @@ if (!is.null(cc$daily_ara)) {
 }
 
 baseline <- list(
-  ara         = ara_now,         # date, site_id, amspaf  (ARA / added-risk)
-  total       = tot_now,         # date, site_id, amspaf  (non-ARA / total conc)
+  ara         = ara_now,         # date, site_id, mspaf  (ARA / added-risk)
+  total       = tot_now,         # date, site_id, mspaf  (non-ARA / total conc)
   source      = "dev/baseline_bs01_centreline.R",
   generated   = Sys.time(),
   point_mode  = TRUE,
@@ -84,9 +84,9 @@ baseline <- list(
 )
 qs2::qs_save(baseline, OUT_QS2)
 cat("WROTE", OUT_QS2, "\n")
-cat(sprintf("  ARA   rows: %d  (amspaf range %.4g .. %.4g)\n",
-            nrow(ara_now), min(ara_now$amspaf, na.rm = TRUE),
-            max(ara_now$amspaf, na.rm = TRUE)))
-cat(sprintf("  total rows: %d  (amspaf range %.4g .. %.4g)\n",
-            nrow(tot_now), min(tot_now$amspaf, na.rm = TRUE),
-            max(tot_now$amspaf, na.rm = TRUE)))
+cat(sprintf("  ARA   rows: %d  (mspaf range %.4g .. %.4g)\n",
+            nrow(ara_now), min(ara_now$mspaf, na.rm = TRUE),
+            max(ara_now$mspaf, na.rm = TRUE)))
+cat(sprintf("  total rows: %d  (mspaf range %.4g .. %.4g)\n",
+            nrow(tot_now), min(tot_now$mspaf, na.rm = TRUE),
+            max(tot_now$mspaf, na.rm = TRUE)))

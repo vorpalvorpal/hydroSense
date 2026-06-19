@@ -4,7 +4,7 @@
 #' observed water temperature, then predicts water temperature for a set of
 #' target dates. The result can be added to a chemistry data frame as
 #' `analyte = "temperature"` rows, enabling the NH₃-N pH/temperature
-#' normalisation in [add_amspaf()].
+#' normalisation in [add_mspaf()].
 #'
 #' @section Air temperature variable:
 #' This function requires **mean daily air temperature** (°C). Mean daily air
@@ -140,7 +140,7 @@
 #' attr(wt, "model")  # which model was selected (air-only vs air + season)
 #'
 #' @seealso [get_silo_air_temp()] to source `air_temp_df` from SILO for an
-#'   Australian location; [add_amspaf()], which requires the resulting water
+#'   Australian location; [add_mspaf()], which requires the resulting water
 #'   `temperature` rows for ammonia.
 #' @export
 estimate_water_temp <- function(
@@ -599,7 +599,7 @@ estimate_water_temp <- function(
 #' @param api_key Character SILO API key (your email address). Default `NULL`
 #'   defers to [weatherOz::get_key()].
 #' @param cache Logical; cache the result on disk under
-#'   `tools::R_user_dir("leachatetools", "cache")/silo`. Default `TRUE`.
+#'   `tools::R_user_dir("hydroSense", "cache")/silo`. Default `TRUE`.
 #' @param refresh Logical; if `TRUE`, ignore and overwrite any cached result.
 #'   Default `FALSE`.
 #'
@@ -649,7 +649,7 @@ get_silo_air_temp <- function(
   # ── Disk cache keyed by grid cell (0.05°) + date range ──────────────────────
   cache_path <- NULL
   if (cache) {
-    cache_dir <- file.path(tools::R_user_dir("leachatetools", "cache"), "silo")
+    cache_dir <- file.path(tools::R_user_dir("hydroSense", "cache"), "silo")
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     key <- sprintf(
       "silo_%+07.2f_%+07.2f_%s_%s.qs",
@@ -729,7 +729,7 @@ get_silo_air_temp <- function(
 #' @param api_key Character SILO API key (your email address). Default `NULL`
 #'   defers to [weatherOz::get_key()].
 #' @param cache Logical; cache the result on disk under
-#'   `tools::R_user_dir("leachatetools", "cache")/silo`. Default `TRUE`.
+#'   `tools::R_user_dir("hydroSense", "cache")/silo`. Default `TRUE`.
 #' @param refresh Logical; if `TRUE`, ignore and overwrite any cached result.
 #'   Default `FALSE`.
 #'
@@ -779,7 +779,7 @@ get_silo_rainfall <- function(
 
   cache_path <- NULL
   if (cache) {
-    cache_dir <- file.path(tools::R_user_dir("leachatetools", "cache"), "silo")
+    cache_dir <- file.path(tools::R_user_dir("hydroSense", "cache"), "silo")
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     key <- sprintf(
       "silo_rain_%+07.2f_%+07.2f_%s_%s.qs",

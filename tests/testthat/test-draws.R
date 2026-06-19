@@ -2,7 +2,7 @@
 ## No brms/Stan — pure data-shape checks.
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -63,24 +63,24 @@ make_exact_frame <- function(n_samples = 3L) {
 
 test_that(".draw_domain returns integer(0) when draw_id column absent", {
   df <- make_exact_frame()
-  expect_identical(leachatetools:::.draw_domain(df), integer(0))
+  expect_identical(hydroSense:::.draw_domain(df), integer(0))
 })
 
 test_that(".draw_domain returns integer(0) when all draw_ids are NA", {
   df <- make_exact_frame() |>
     dplyr::mutate(draw_id = NA_integer_)
-  expect_identical(leachatetools:::.draw_domain(df), integer(0))
+  expect_identical(hydroSense:::.draw_domain(df), integer(0))
 })
 
 test_that(".draw_domain returns 1:N for a valid draws frame", {
   df <- make_mixed_frame(n_draws = 4L)
-  expect_identical(leachatetools:::.draw_domain(df), 1:4)
+  expect_identical(hydroSense:::.draw_domain(df), 1:4)
 })
 
 test_that(".draw_domain aborts on non-contiguous draw IDs", {
   df <- make_mixed_frame(n_draws = 3L) |>
     dplyr::filter(.data$draw_id != 2L)   # remove draw 2 → gap
-  expect_error(leachatetools:::.draw_domain(df), "contiguous")
+  expect_error(hydroSense:::.draw_domain(df), "contiguous")
 })
 
 test_that(".draw_domain aborts on ragged N across cells", {
@@ -89,13 +89,13 @@ test_that(".draw_domain aborts on ragged N across cells", {
   bad <- dplyr::filter(df,
     !(.data$analyte == "Cu" & .data$draw_id == 3L)
   )
-  expect_error(leachatetools:::.draw_domain(bad), "[Rr]agged")
+  expect_error(hydroSense:::.draw_domain(bad), "[Rr]agged")
 })
 
 test_that(".draw_domain ragged check is skipped when sample_id absent", {
   # A frame with only draw_id and value (no sample_id / analyte)
   df <- tibble::tibble(draw_id = c(1L, 1L, 2L), value = 1:3)
-  expect_identical(leachatetools:::.draw_domain(df), 1:2)
+  expect_identical(hydroSense:::.draw_domain(df), 1:2)
 })
 
 
@@ -105,7 +105,7 @@ test_that(".broadcast_draws replicates exact cells N times with correct draw_ids
   # make_mixed_frame produces Cu draw cells + pH exact cell for 1 sample
   df <- make_mixed_frame(n_samples = 1L, n_draws = 3L, analytes = "Cu")
 
-  out <- leachatetools:::.broadcast_draws(df)
+  out <- hydroSense:::.broadcast_draws(df)
 
   # All draw_ids should now be non-NA
   expect_false(anyNA(out$draw_id))
@@ -128,7 +128,7 @@ test_that(".broadcast_draws leaves draw cells unchanged (order + values)", {
   draws_before <- dplyr::filter(df, !is.na(.data$draw_id)) |>
     dplyr::arrange(.data$sample_id, .data$analyte, .data$draw_id)
 
-  out <- leachatetools:::.broadcast_draws(df)
+  out <- hydroSense:::.broadcast_draws(df)
 
   draws_after <- dplyr::filter(out, .data$analyte %in% c("Cu", "Zn")) |>
     dplyr::arrange(.data$sample_id, .data$analyte, .data$draw_id)
@@ -139,7 +139,7 @@ test_that(".broadcast_draws leaves draw cells unchanged (order + values)", {
 
 test_that(".broadcast_draws handles a deterministic (no draws) frame", {
   df  <- make_exact_frame()
-  out <- leachatetools:::.broadcast_draws(df)
+  out <- hydroSense:::.broadcast_draws(df)
 
   expect_false(anyNA(out$draw_id))
   expect_true(all(out$draw_id == 1L))
@@ -148,8 +148,8 @@ test_that(".broadcast_draws handles a deterministic (no draws) frame", {
 
 test_that(".broadcast_draws is idempotent", {
   df   <- make_mixed_frame(n_samples = 1L, n_draws = 2L)
-  out1 <- leachatetools:::.broadcast_draws(df)
-  out2 <- leachatetools:::.broadcast_draws(out1)
+  out1 <- hydroSense:::.broadcast_draws(df)
+  out2 <- hydroSense:::.broadcast_draws(out1)
 
   expect_equal(nrow(out1), nrow(out2))
   expect_equal(sort(out1$draw_id), sort(out2$draw_id))
@@ -163,7 +163,7 @@ test_that(".broadcast_draws round-trip: draw cell (analyte, draw_id, value) map 
     dplyr::arrange(.data$sample_id, .data$analyte, .data$draw_id) |>
     dplyr::select("sample_id", "analyte", "draw_id", "value")
 
-  key_after <- leachatetools:::.broadcast_draws(df) |>
+  key_after <- hydroSense:::.broadcast_draws(df) |>
     dplyr::filter(.data$analyte %in% c("Cu", "Zn")) |>
     dplyr::arrange(.data$sample_id, .data$analyte, .data$draw_id) |>
     dplyr::select("sample_id", "analyte", "draw_id", "value")
@@ -176,7 +176,7 @@ test_that(".broadcast_draws degradation: all-observed frame produces determinist
   # produce N=1 pass identical in content to the point-estimate pipeline.
   exact <- make_exact_frame(n_samples = 4L)
 
-  out <- leachatetools:::.broadcast_draws(exact)
+  out <- hydroSense:::.broadcast_draws(exact)
 
   expect_equal(nrow(out), nrow(exact))
   expect_true(all(out$draw_id == 1L))
@@ -187,7 +187,7 @@ test_that(".broadcast_draws works on a frame with only exact cells and draw_id N
   df <- make_exact_frame() |>
     dplyr::mutate(draw_id = NA_integer_)
 
-  out <- leachatetools:::.broadcast_draws(df)
+  out <- hydroSense:::.broadcast_draws(df)
   expect_true(all(out$draw_id == 1L))
   expect_equal(nrow(out), nrow(df))
 })

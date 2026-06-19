@@ -1,13 +1,13 @@
-#' Prepare reference chemistry for AmsPAF background subtraction
+#' Prepare reference chemistry for msPAF background subtraction
 #'
 #' Applies chemistry normalisation (if formulas are populated in the metadata)
 #' and computes a per-analyte central-tendency summary from reference-site
 #' data, optionally with a bootstrap confidence interval.  The resulting
-#' object is passed as the `reference` argument to `add_amspaf()`.
+#' object is passed as the `reference` argument to `add_mspaf()`.
 #'
 #' This is a pure function — it has no side effects and no internal cache.
 #' In the chronic pipeline, call it once after computing chronic chemistry for
-#' the reference feature(s), then pass the object into `add_amspaf()` for
+#' the reference feature(s), then pass the object into `add_mspaf()` for
 #' every focal date.  In the per-sample pipeline, call it once on the raw
 #' reference chemistry.
 #'
@@ -30,7 +30,7 @@
 #' `"p95"`.
 #'
 #' @param reference_data Long-format chemistry data frame for the reference
-#'   (background) site(s). Same schema as the input to `add_amspaf()`:
+#'   (background) site(s). Same schema as the input to `add_mspaf()`:
 #'   `analyte`, `value`, `detected`. Toxicant concentrations must be in µg/L
 #'   before normalisation; supply them either via a `units.analyte` column or
 #'   via the `conc_units` argument. BDL (`detected == FALSE`) observations
@@ -105,7 +105,7 @@ prepare_reference <- function(
   ## that co-analyte rows (pH, DOC, hardness, etc.) are left untouched.
   ssd_analytes <- meta$analyte[
     !is.na(meta$ssd_available) & meta$ssd_available == TRUE &
-    !meta$analyte %in% .AMSPAF_EXCLUDED_ANALYTES
+    !meta$analyte %in% .MSPAF_EXCLUDED_ANALYTES
   ]
   reference_data <- .convert_df_tox_to_ugL(
     reference_data, ssd_analytes, conc_units, "reference_data"
@@ -326,7 +326,7 @@ print.prepared_reference <- function(x, ...) {
 #'
 #' Reads the bundled CSV when `meta` is NULL. Returns a tibble. Caches the
 #' result in an internal environment to avoid re-reading on every
-#' `prepare_reference()` / `add_amspaf()` call within a session.
+#' `prepare_reference()` / `add_mspaf()` call within a session.
 #' @keywords internal
 .meta_cache_env <- new.env(parent = emptyenv())
 
@@ -367,11 +367,11 @@ print.prepared_reference <- function(x, ...) {
   }
 
   path <- system.file("extdata", "anzecc_analyte_metadata.csv",
-                      package = "leachatetools")
+                      package = "hydroSense")
   if (!nzchar(path)) {
     cli::cli_abort(
       "Cannot find {.file inst/extdata/anzecc_analyte_metadata.csv} inside the \\
-       installed leachatetools package. Re-install or supply {.arg analyte_metadata} \\
+       installed hydroSense package. Re-install or supply {.arg analyte_metadata} \\
        explicitly."
     )
   }

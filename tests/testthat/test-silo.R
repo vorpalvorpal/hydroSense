@@ -3,7 +3,7 @@
 ## offline and deterministically.
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 skip_if_not_installed("weatherOz")
 

@@ -85,7 +85,7 @@ signal.
 Analytes listed in \code{coanalytes_required} in the bundled metadata (e.g. pH,
 DOC, Ca, Mg, hardness, temperature) are \strong{automatically protected} from
 exclusion regardless of detection frequency, because they are needed for
-chemistry normalisation in \code{\link[=add_amspaf]{add_amspaf()}}.  Additional analytes can be
+chemistry normalisation in \code{\link[=add_mspaf]{add_mspaf()}}.  Additional analytes can be
 protected via the \code{protect} argument (typical use: pass the
 \code{required_vars} you intend to use in \code{\link[=fit_imputation_model]{fit_imputation_model()}} here so
 those vars survive prescreen).  Protected analytes that fall below the

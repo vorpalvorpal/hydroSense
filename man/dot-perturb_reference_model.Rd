@@ -14,7 +14,7 @@ A copy of \code{rm} with each \code{gamm_fit} replaced by a posterior draw.
 }
 \description{
 Draws independent posterior-coefficient samples for each analyte's
-\code{gamm_fit}.  Used when \code{amspaf_daily(reference = NULL)} (total-
+\code{gamm_fit}.  Used when \code{mspaf_daily(reference = NULL)} (total-
 concentration mode), where \code{ref_norm} enters the result directly and
 its uncertainty should be reflected.  When background is subtracted
 via the same reference model, the reference-GAM contribution cancels

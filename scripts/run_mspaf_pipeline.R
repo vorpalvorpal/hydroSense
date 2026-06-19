@@ -1,29 +1,29 @@
-# run_amspaf_pipeline.R ──────────────────────────────────────────────────────
+# run_mspaf_pipeline.R ──────────────────────────────────────────────────────
 #
 # Standalone helper script: reads chemistry from a monitoring DuckDB (same
-# schema as leachatetools/test data/monitoring.duckdb), runs the full
-# chronic AmsPAF pipeline, and writes results back to the DB.
+# schema as hydroSense/test data/monitoring.duckdb), runs the full
+# chronic msPAF pipeline, and writes results back to the DB.
 #
-# This script is NOT part of the leachatetools package — it is intended to be
-# dropped next to a DB copy and run as needed.  It calls the leachatetools
+# This script is NOT part of the hydroSense package — it is intended to be
+# dropped next to a DB copy and run as needed.  It calls the hydroSense
 # package from wherever it is installed (or loaded via devtools::load_all).
 #
 # ── Quick start ──────────────────────────────────────────────────────────────
 #
-#   # Install leachatetools once (if not already installed):
-#   # remotes::install_github("vorpalvorpal/leachatetools")
+#   # Install hydroSense once (if not already installed):
+#   # remotes::install_github("vorpalvorpal/hydroSense")
 #
-#   source("run_amspaf_pipeline.R")
+#   source("run_mspaf_pipeline.R")
 #
-#   run_amspaf_pipeline(
+#   run_mspaf_pipeline(
 #     db_path = "monitoring.duckdb"
 #   )
 #
 # ── Full signature ────────────────────────────────────────────────────────────
 #
-#   run_amspaf_pipeline(
+#   run_mspaf_pipeline(
 #     db_path,                         # path to DuckDB file (required)
-#     leachatetools_dir  = NULL,       # path for devtools::load_all(); NULL = installed pkg
+#     hydroSense_dir  = NULL,       # path for devtools::load_all(); NULL = installed pkg
 #     focal_features     = NULL,       # character vector of feature names to analyse
 #                                      #   NULL = all non-reference surface-water features
 #     reference_features = NULL,       # character vector of reference feature names
@@ -46,21 +46,21 @@
 #     refit_model        = FALSE,      # if TRUE, always refit even if a cached model exists
 #     min_detect_freq    = 0.05,       # prescreen threshold
 #     fill_temperature   = TRUE,       # interpolate missing Temperature?
-#     write_back         = TRUE,       # write AmsPAF rows back to DB?
-#     replace_existing   = FALSE       # if TRUE, delete existing computed AmsPAF before writing
+#     write_back         = TRUE,       # write msPAF rows back to DB?
+#     replace_existing   = FALSE       # if TRUE, delete existing computed msPAF before writing
 #   )
 #
 # ── Return value ──────────────────────────────────────────────────────────────
 # A named list (invisibly):
-#   $amspaf      tibble  — chronic AmsPAF per focal_date × feature
-#   $persample   tibble  — per-sample AmsPAF + diagnostics
+#   $mspaf      tibble  — chronic msPAF per focal_date × feature
+#   $persample   tibble  — per-sample msPAF + diagnostics
 #                          (n_analytes_used, dominant_analyte, max_paf, ...)
 #   $imputed     tibble  — imputed chemistry (NULL if impute=FALSE)
 #   $n_written   integer — number of analysis rows written to DB (0 if write_back=FALSE)
 #
 # ── Notes ─────────────────────────────────────────────────────────────────────
 # • All concentrations in the DB are in mg/L.  The script multiplies by 1000
-#   to obtain µg/L for AmsPAF (which uses µg/L SSDs), with the exception of
+#   to obtain µg/L for msPAF (which uses µg/L SSDs), with the exception of
 #   analytes in NO_CONVERT (pH, Temperature, hardness, EC, etc.).
 # • Temperature is renamed from "Temperature" → "temperature" to match the
 #   NH3-N co-analyte name used in the analyte metadata.
@@ -73,8 +73,8 @@
 # • Fitted imputation models are saved as .qs files and their paths recorded
 #   in the imputation_models table in the DB.  On subsequent runs the cached
 #   model is reused unless refit_model = TRUE or the file is missing.
-# • AmsPAF rows written back use a synthetic sample row with purpose =
-#   "chronic_amspaf_computed".  Existing rows for the same feature × focal_date
+# • msPAF rows written back use a synthetic sample row with purpose =
+#   "chronic_mspaf_computed".  Existing rows for the same feature × focal_date
 #   are left untouched unless replace_existing = TRUE.
 #
 # ── DB schema assumed ─────────────────────────────────────────────────────────
@@ -108,20 +108,20 @@ suppressPackageStartupMessages({
 )
 
 # Analytes stored in the DB as derived rows — must never enter the pipeline
-.DERIVED_ANALYTES <- c("AmsPAF", "LMF")
+.DERIVED_ANALYTES <- c("msPAF", "LMF")
 
 # Fixed UUIDs for computed analytes / methods (DB-specific, but stable)
-.UUID_AMSPAF_ANALYTE   <- "b3b1f259-a05d-4dde-b153-3b91f03b51c5"
-.UUID_AMSPAF_LABMETHOD <- "00000000-0000-0000-0000-000000000004"
+.UUID_MSPAF_ANALYTE   <- "b3b1f259-a05d-4dde-b153-3b91f03b51c5"
+.UUID_MSPAF_LABMETHOD <- "00000000-0000-0000-0000-000000000004"
 .UUID_TEMP_LABMETHOD   <- "8ac3819d-92e4-4d66-a6f2-213d998b9354"  # "Internal" field temp
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main function
 # ─────────────────────────────────────────────────────────────────────────────
 
-run_amspaf_pipeline <- function(
+run_mspaf_pipeline <- function(
     db_path,
-    leachatetools_dir  = NULL,
+    hydroSense_dir  = NULL,
     focal_features     = NULL,
     reference_features = NULL,
     date_range         = NULL,
@@ -143,16 +143,16 @@ run_amspaf_pipeline <- function(
     replace_existing   = FALSE
 ) {
 
-  # ── 0. Load leachatetools ──────────────────────────────────────────────────
-  if (!is.null(leachatetools_dir)) {
-    message("Loading leachatetools from ", leachatetools_dir)
-    devtools::load_all(leachatetools_dir, quiet = TRUE)
+  # ── 0. Load hydroSense ──────────────────────────────────────────────────
+  if (!is.null(hydroSense_dir)) {
+    message("Loading hydroSense from ", hydroSense_dir)
+    devtools::load_all(hydroSense_dir, quiet = TRUE)
   } else {
-    if (!requireNamespace("leachatetools", quietly = TRUE))
-      stop("leachatetools package not found. ",
-           "Install with: remotes::install_github('vorpalvorpal/leachatetools') ",
-           "or pass leachatetools_dir = '<path>' to load_all().")
-    library(leachatetools)
+    if (!requireNamespace("hydroSense", quietly = TRUE))
+      stop("hydroSense package not found. ",
+           "Install with: remotes::install_github('vorpalvorpal/hydroSense') ",
+           "or pass hydroSense_dir = '<path>' to load_all().")
+    library(hydroSense)
   }
 
   stopifnot(file.exists(db_path))
@@ -376,7 +376,7 @@ run_amspaf_pipeline <- function(
     message("  Imputing co-analytes (DOC, Ca, Mg, hardness) …")
     focal_imp <- impute_coanalytes(imp_result, model)
     n_coa <- sum(focal_imp$imputed & focal_imp$imputed_kind == "missing" &
-                   focal_imp$analyte %in% leachatetools:::.COANALYTE_TARGETS,
+                   focal_imp$analyte %in% hydroSense:::.COANALYTE_TARGETS,
                  na.rm = TRUE)
     message("  Co-analyte rows imputed: ", n_coa)
 
@@ -429,26 +429,26 @@ run_amspaf_pipeline <- function(
   message("  Reference analytes: ", nrow(prep_ref$ref_table),
           " | Dropped: ", length(prep_ref$dropped))
 
-  # ── 12. Per-sample AmsPAF ──────────────────────────────────────────────────
-  # Compute AmsPAF on each individual focal sample's imputed chemistry.
-  # This produces a per-sample AmsPAF value that we'll time-aggregate next.
-  message("\n=== 12. Per-sample AmsPAF ===")
+  # ── 12. Per-sample msPAF ──────────────────────────────────────────────────
+  # Compute msPAF on each individual focal sample's imputed chemistry.
+  # This produces a per-sample msPAF value that we'll time-aggregate next.
+  message("\n=== 12. Per-sample msPAF ===")
   t0 <- proc.time()
   paf_persample <- suppressMessages(
-    add_amspaf(focal_final, reference = prep_ref, min_analytes = 3)
+    add_mspaf(focal_final, reference = prep_ref, min_analytes = 3)
   ) |>
-    filter(analyte == "AmsPAF")
-  message("  add_amspaf: ", round((proc.time() - t0)[3], 1), " s | ",
-          "Per-sample AmsPAF rows: ", nrow(paf_persample))
+    filter(analyte == "msPAF")
+  message("  add_mspaf: ", round((proc.time() - t0)[3], 1), " s | ",
+          "Per-sample msPAF rows: ", nrow(paf_persample))
 
-  # ── 13. Chronic AmsPAF (Path B: time-aggregate per-sample AmsPAFs) ─────────
-  # Time-weighted ARITHMETIC mean of per-sample AmsPAF values.
-  # Arithmetic mean is appropriate here because AmsPAF is a bounded
+  # ── 13. Chronic msPAF (Path B: time-aggregate per-sample msPAFs) ─────────
+  # Time-weighted ARITHMETIC mean of per-sample msPAF values.
+  # Arithmetic mean is appropriate here because msPAF is a bounded
   # percentage representing fraction of species affected; biology integrates
   # the toxic-response signal linearly over time.
-  message("\n=== 13. Chronic AmsPAF (tau=", tau_days, "d, window=", window_days, "d) ===")
+  message("\n=== 13. Chronic msPAF (tau=", tau_days, "d, window=", window_days, "d) ===")
   t0 <- proc.time()
-  chr_amspaf <- suppressWarnings(
+  chr_mspaf <- suppressWarnings(
     time_weighted_aggregate(
       paf_persample,
       focal_dates    = focal_dates,
@@ -459,17 +459,17 @@ run_amspaf_pipeline <- function(
   )
   message("  time_weighted_aggregate: ", round((proc.time() - t0)[3], 1), " s")
 
-  amspaf <- chr_amspaf |>
+  mspaf <- chr_mspaf |>
     select(focal_date, site_id, value,
            n_samples_in_window,
            any_of("n_imputed_in_window")) |>
     arrange(site_id, focal_date)
 
   message("\n  Results:")
-  message("    Focal-date × feature rows: ", nrow(amspaf))
-  message("    AmsPAF range: ",
-          round(min(amspaf$value, na.rm = TRUE), 3), " – ",
-          round(max(amspaf$value, na.rm = TRUE), 2), " %")
+  message("    Focal-date × feature rows: ", nrow(mspaf))
+  message("    msPAF range: ",
+          round(min(mspaf$value, na.rm = TRUE), 3), " – ",
+          round(max(mspaf$value, na.rm = TRUE), 2), " %")
   # Per-sample diagnostics (if user wants to inspect)
   dom <- sort(unique(na.omit(paf_persample$dominant_analyte)))
   if (length(dom) > 0L)
@@ -478,15 +478,15 @@ run_amspaf_pipeline <- function(
   # ── 14. Write back to DB ───────────────────────────────────────────────────
   n_written <- 0L
   if (write_back) {
-    message("\n=== 14. Writing AmsPAF rows to DB ===")
-    n_written <- .write_amspaf_to_db(amspaf, con, feature_map, replace_existing)
+    message("\n=== 14. Writing msPAF rows to DB ===")
+    n_written <- .write_mspaf_to_db(mspaf, con, feature_map, replace_existing)
     message("  Rows written: ", n_written)
   }
 
   message("\n=== Done ===")
   invisible(list(
-    amspaf        = amspaf,           # chronic AmsPAF per (focal_date, site)
-    persample     = paf_persample,    # per-sample AmsPAF + diagnostics
+    mspaf        = mspaf,           # chronic msPAF per (focal_date, site)
+    persample     = paf_persample,    # per-sample msPAF + diagnostics
     imputed       = imp_result,
     n_written     = n_written
   ))
@@ -590,7 +590,7 @@ run_amspaf_pipeline <- function(
     gsub("'", "''", save_path),
     format(Sys.Date(), "%Y-%m-%d"),
     gsub("'", "''", fit_settings),
-    paste0("Fitted by run_amspaf_pipeline.R on ", Sys.Date())
+    paste0("Fitted by run_mspaf_pipeline.R on ", Sys.Date())
   ))
   if (nzchar(save_path))
     message("  Model path recorded in imputation_models table: ", save_path)
@@ -607,7 +607,7 @@ run_amspaf_pipeline <- function(
 #'   "hardness" rows.
 #' @return df with NO3-N rows replaced by NO3-N_soft/mod/hard; raw NO3-N
 #'   rows are removed from the result.  Hardness rows are preserved
-#'   downstream so that add_amspaf() can use them for Cd/Pb/Zn normalisation.
+#'   downstream so that add_mspaf() can use them for Cd/Pb/Zn normalisation.
 .classify_no3 <- function(df) {
   hardness <- df |>
     filter(analyte == "hardness", detected) |>
@@ -737,7 +737,7 @@ run_amspaf_pipeline <- function(
       rl_low     = NA_real_,
       rl_high    = NA_real_,
       purpose    = "temperature_interpolated",
-      comments   = sprintf("Interpolated by run_amspaf_pipeline.R on %s", Sys.Date())
+      comments   = sprintf("Interpolated by run_mspaf_pipeline.R on %s", Sys.Date())
     ) |>
     select(uuid, uuid_sample = sample_id, uuid_lab, value, quantified,
            rl_low, rl_high, purpose, comments)
@@ -752,47 +752,47 @@ run_amspaf_pipeline <- function(
 }
 
 
-#' Write chronic AmsPAF results back to the DB
+#' Write chronic msPAF results back to the DB
 #'
 #' Creates a synthetic sample row for each (focal_date × feature) and an
-#' analysis row containing the AmsPAF value.  Existing computed rows for the
+#' analysis row containing the msPAF value.  Existing computed rows for the
 #' same feature × focal_date are deleted first if replace_existing = TRUE.
 #'
-#' @param amspaf  Tibble with columns focal_date, site_id, value, ...
+#' @param mspaf  Tibble with columns focal_date, site_id, value, ...
 #' @param con     Open DuckDB connection (read-write)
 #' @param feature_map  Tibble with uuid/name
-#' @param replace_existing  Delete existing computed AmsPAF before writing?
+#' @param replace_existing  Delete existing computed msPAF before writing?
 #' @return Number of analysis rows written
-.write_amspaf_to_db <- function(amspaf, con, feature_map, replace_existing) {
+.write_mspaf_to_db <- function(mspaf, con, feature_map, replace_existing) {
 
   if (!requireNamespace("uuid", quietly = TRUE))
-    stop("Package 'uuid' is required for writing AmsPAF rows. ",
+    stop("Package 'uuid' is required for writing msPAF rows. ",
          "Install with: install.packages('uuid')")
 
   # Join feature UUIDs
-  amspaf_w_uuid <- amspaf |>
+  mspaf_w_uuid <- mspaf |>
     left_join(feature_map, by = c("site_id" = "name")) |>
     rename(feature_uuid = uuid)
 
-  if (any(is.na(amspaf_w_uuid$feature_uuid)))
+  if (any(is.na(mspaf_w_uuid$feature_uuid)))
     warning("Some site_ids could not be matched to feature UUIDs — those rows skipped.")
-  amspaf_w_uuid <- filter(amspaf_w_uuid, !is.na(feature_uuid))
-  if (nrow(amspaf_w_uuid) == 0) return(0L)
+  mspaf_w_uuid <- filter(mspaf_w_uuid, !is.na(feature_uuid))
+  if (nrow(mspaf_w_uuid) == 0) return(0L)
 
-  # Check for existing computed AmsPAF rows
+  # Check for existing computed msPAF rows
   existing <- dbGetQuery(con, sprintf("
     SELECT s.uuid AS uuid_sample, s.uuid_feature, s.date AS focal_date
     FROM sample s
     JOIN analysis an ON an.uuid_sample = s.uuid
-    WHERE s.purpose = 'chronic_amspaf_computed'
+    WHERE s.purpose = 'chronic_mspaf_computed'
       AND an.uuid_lab = '%s'
       AND s.uuid_feature IN (%s)
-  ", .UUID_AMSPAF_LABMETHOD,
-     paste(sprintf("'%s'", unique(amspaf_w_uuid$feature_uuid)), collapse = ", ")))
+  ", .UUID_MSPAF_LABMETHOD,
+     paste(sprintf("'%s'", unique(mspaf_w_uuid$feature_uuid)), collapse = ", ")))
 
   if (nrow(existing) > 0) {
     if (replace_existing) {
-      message("  Deleting ", nrow(existing), " existing computed AmsPAF rows …")
+      message("  Deleting ", nrow(existing), " existing computed msPAF rows …")
       sample_uuids <- paste(sprintf("'%s'", existing$uuid_sample), collapse = ", ")
       dbExecute(con, sprintf("DELETE FROM analysis WHERE uuid_sample IN (%s)", sample_uuids))
       dbExecute(con, sprintf("DELETE FROM sample   WHERE uuid         IN (%s)", sample_uuids))
@@ -801,26 +801,26 @@ run_amspaf_pipeline <- function(
       existing_keys <- existing |>
         mutate(focal_date = as.Date(focal_date)) |>
         select(feature_uuid = uuid_feature, focal_date)
-      amspaf_w_uuid <- amspaf_w_uuid |>
+      mspaf_w_uuid <- mspaf_w_uuid |>
         anti_join(existing_keys, by = c("feature_uuid", "focal_date"))
-      if (nrow(amspaf_w_uuid) == 0) {
-        message("  All AmsPAF rows already exist (replace_existing = FALSE) — nothing written.")
+      if (nrow(mspaf_w_uuid) == 0) {
+        message("  All msPAF rows already exist (replace_existing = FALSE) — nothing written.")
         return(0L)
       }
       message("  Skipping ", nrow(existing), " existing rows; writing ",
-              nrow(amspaf_w_uuid), " new rows …")
+              nrow(mspaf_w_uuid), " new rows …")
     }
   }
 
   # Build sample rows (one per focal_date × feature)
-  sample_rows <- amspaf_w_uuid |>
+  sample_rows <- mspaf_w_uuid |>
     mutate(
       uuid         = vapply(seq_len(n()), function(i) uuid::UUIDgenerate(), character(1)),
       date         = focal_date,
       datetime     = as.POSIXct(paste(focal_date, "00:00:00")),
-      organisation = "leachatetools",
-      purpose      = "chronic_amspaf_computed",
-      comments     = sprintf("Chronic AmsPAF computed by run_amspaf_pipeline.R on %s",
+      organisation = "hydroSense",
+      purpose      = "chronic_mspaf_computed",
+      comments     = sprintf("Chronic msPAF computed by run_mspaf_pipeline.R on %s",
                              Sys.Date())
     ) |>
     select(uuid, uuid_feature = feature_uuid, date, datetime,
@@ -831,19 +831,19 @@ run_amspaf_pipeline <- function(
   dbAppendTable(con, "sample", sample_rows_insert)
 
   # Build analysis rows (one per focal_date × feature)
-  analysis_rows <- amspaf_w_uuid |>
+  analysis_rows <- mspaf_w_uuid |>
     mutate(
       uuid_sample = sample_rows$uuid,
       uuid        = vapply(seq_len(n()), function(i) uuid::UUIDgenerate(), character(1)),
-      uuid_lab    = .UUID_AMSPAF_LABMETHOD,
+      uuid_lab    = .UUID_MSPAF_LABMETHOD,
       quantified  = TRUE,
-      purpose     = "chronic_amspaf_computed",
+      purpose     = "chronic_mspaf_computed",
       comments    = sprintf(
         "n_samples_in_window=%s%s",
-        if ("n_samples_in_window" %in% names(amspaf_w_uuid))
-          as.character(amspaf_w_uuid$n_samples_in_window) else "?",
-        if ("n_imputed_in_window" %in% names(amspaf_w_uuid))
-          paste0(" n_imputed=", amspaf_w_uuid$n_imputed_in_window) else ""
+        if ("n_samples_in_window" %in% names(mspaf_w_uuid))
+          as.character(mspaf_w_uuid$n_samples_in_window) else "?",
+        if ("n_imputed_in_window" %in% names(mspaf_w_uuid))
+          paste0(" n_imputed=", mspaf_w_uuid$n_imputed_in_window) else ""
       )
     ) |>
     select(uuid, uuid_sample, uuid_lab, value, quantified, purpose, comments)
@@ -860,11 +860,11 @@ run_amspaf_pipeline <- function(
 # Example / quick-run block (edit and uncomment to run directly)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# source("run_amspaf_pipeline.R")
+# source("run_mspaf_pipeline.R")
 #
-# result <- run_amspaf_pipeline(
+# result <- run_mspaf_pipeline(
 #   db_path            = "monitoring.duckdb",
-#   # leachatetools_dir = "/path/to/leachatetools",  # uncomment if not installed
+#   # hydroSense_dir = "/path/to/hydroSense",  # uncomment if not installed
 #   focal_features     = c("B.S01"),                 # NULL = all non-reference features
 #   reference_features = c("B.S03"),                 # NULL = auto-detect from DB
 #   date_range         = c(as.Date("2017-01-01"), Sys.Date()),
@@ -880,7 +880,7 @@ run_amspaf_pipeline <- function(
 # )
 #
 # # Inspect results
-# print(result$amspaf)
-# ggplot2::ggplot(result$amspaf, ggplot2::aes(focal_date, value)) +
+# print(result$mspaf)
+# ggplot2::ggplot(result$mspaf, ggplot2::aes(focal_date, value)) +
 #   ggplot2::geom_line() +
 #   ggplot2::facet_wrap(~site_id)

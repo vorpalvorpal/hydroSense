@@ -10,11 +10,11 @@
 ##   - .select_api_tau()           continuous tau selection by AIC (issue #49)
 ##   - fit_reference_model()       with pre-supplied hydro; basic structure
 ##   - .resolve_ref_norm()         three-tier ladder
-##   - add_amspaf(reference_model) end-to-end (target = reference → ARA ≈ 0)
+##   - add_mspaf(reference_model) end-to-end (target = reference → ARA ≈ 0)
 ##   - ara_summary()               attribute accessor
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 
 ## ============================================================================
@@ -121,7 +121,7 @@ test_that(".compute_api() reproduces the exact recursive reservoir on a daily se
   tds    <- hdates[c(30, 60, 90, 120)]
   tau    <- 10
   expect_equal(
-    leachatetools:::.compute_api(hvals, hdates, tds, tau),
+    hydroSense:::.compute_api(hvals, hdates, tds, tau),
     api_recursion_oracle(hvals, hdates, tds, tau),
     tolerance = 1e-9
   )
@@ -133,7 +133,7 @@ test_that(".compute_api() equals the convergent sum and dominates the old trunca
   hvals  <- pmax(0, rnorm(365, 2, 4))
   tds    <- hdates[c(200, 300, 365)]
   tau    <- 30
-  new_api <- leachatetools:::.compute_api(hvals, hdates, tds, tau)
+  new_api <- hydroSense:::.compute_api(hvals, hdates, tds, tau)
   old_api <- api_old_truncated(hvals, hdates, tds, tau)
   # Truncation at the window only removes non-negative mass → new >= old.
   expect_true(all(new_api >= old_api - 1e-9))
@@ -151,10 +151,10 @@ test_that(".compute_api() is monotone non-decreasing in each rainfall input", {
   hdates <- seq(as.Date("2022-01-01"), by = "day", length.out = 20)
   hvals  <- rep(1, 20)
   tds    <- hdates
-  base   <- leachatetools:::.compute_api(hvals, hdates, tds, 7)
+  base   <- hydroSense:::.compute_api(hvals, hdates, tds, 7)
   bumped <- hvals
   bumped[10] <- bumped[10] + 5
-  out    <- leachatetools:::.compute_api(bumped, hdates, tds, 7)
+  out    <- hydroSense:::.compute_api(bumped, hdates, tds, 7)
   # Dates before the bumped day are unchanged; from the bumped day on they rise.
   expect_equal(out[1:9], base[1:9], tolerance = 1e-9)
   expect_true(all(out[10:20] > base[10:20]))
@@ -168,7 +168,7 @@ test_that(".compute_api() decays geometrically over a gap with no input", {
   tds    <- as.Date("2022-01-01") + c(0, 1, 5, 20)
   k      <- exp(-1 / tau)
   expect_equal(
-    leachatetools:::.compute_api(hvals, hdates, tds, tau),
+    hydroSense:::.compute_api(hvals, hdates, tds, tau),
     10 * k^c(0, 1, 5, 20),
     tolerance = 1e-9
   )
@@ -179,7 +179,7 @@ test_that(".compute_api() approaches a cumulative sum as tau -> Inf", {
   hdates <- seq(as.Date("2022-01-01"), by = "day", length.out = 30)
   hvals  <- rep(2, 30)
   tds    <- hdates
-  out    <- leachatetools:::.compute_api(hvals, hdates, tds, 1e6)
+  out    <- hydroSense:::.compute_api(hvals, hdates, tds, 1e6)
   expect_equal(out, cumsum(hvals), tolerance = 1e-3)
 })
 
@@ -188,7 +188,7 @@ test_that(".compute_api() approaches today's rain only as tau -> 0+", {
   hdates <- seq(as.Date("2022-01-01"), by = "day", length.out = 10)
   hvals  <- as.numeric(1:10)
   tds    <- hdates
-  out    <- leachatetools:::.compute_api(hvals, hdates, tds, 1e-6)
+  out    <- hydroSense:::.compute_api(hvals, hdates, tds, 1e-6)
   expect_equal(out, hvals, tolerance = 1e-6)
 })
 
@@ -197,7 +197,7 @@ test_that(".compute_api() returns 0 when no hydro on or before the target date",
   hdates <- as.Date(c("2022-01-10", "2022-01-11", "2022-01-12"))
   # Target precedes all hydro → empty reservoir → 0.
   expect_equal(
-    leachatetools:::.compute_api(hvals, hdates, as.Date("2022-01-01"), 7),
+    hydroSense:::.compute_api(hvals, hdates, as.Date("2022-01-01"), 7),
     0
   )
 })
@@ -208,7 +208,7 @@ test_that(".compute_api() handles irregular spacing via k^dt", {
   tds    <- as.Date(c("2022-01-05", "2022-01-20"))
   tau    <- 12
   expect_equal(
-    leachatetools:::.compute_api(hvals, hdates, tds, tau),
+    hydroSense:::.compute_api(hvals, hdates, tds, tau),
     api_recursion_oracle(hvals, hdates, tds, tau),
     tolerance = 1e-9
   )
@@ -220,7 +220,7 @@ test_that(".compute_api() treats NA rainfall as zero input while decay continues
   tds    <- hdates
   tau    <- 7
   expect_equal(
-    leachatetools:::.compute_api(hvals, hdates, tds, tau),
+    hydroSense:::.compute_api(hvals, hdates, tds, tau),
     api_recursion_oracle(hvals, hdates, tds, tau), # oracle sets NA -> 0
     tolerance = 1e-9
   )
@@ -231,8 +231,8 @@ test_that(".compute_api() is deterministic across repeated calls", {
   hdates <- seq(as.Date("2022-01-01"), by = "day", length.out = 50)
   hvals  <- pmax(0, rnorm(50, 2, 4))
   tds    <- hdates[c(10, 25, 50)]
-  a <- leachatetools:::.compute_api(hvals, hdates, tds, 9)
-  b <- leachatetools:::.compute_api(hvals, hdates, tds, 9)
+  a <- hydroSense:::.compute_api(hvals, hdates, tds, 9)
+  b <- hydroSense:::.compute_api(hvals, hdates, tds, 9)
   expect_identical(a, b)
 })
 
@@ -240,7 +240,7 @@ test_that(".compute_api() handles a vector of target dates", {
   hvals  <- rep(1, 10)
   hdates <- seq(as.Date("2022-01-01"), by = "day", length.out = 10)
   tds    <- as.Date(c("2022-01-05", "2022-01-10"))
-  apis   <- leachatetools:::.compute_api(hvals, hdates, tds, 7)
+  apis   <- hydroSense:::.compute_api(hvals, hdates, tds, 7)
   expect_length(apis, 2L)
   expect_true(all(apis > 0))
 })
@@ -254,7 +254,7 @@ test_that(".compute_antecedent_mean() returns mean of overlapping values", {
   hvals  <- c(4, 6, 8)
   hdates <- as.Date(c("2022-01-01", "2022-01-03", "2022-01-05"))
   # Window of 5 days back from 2022-01-05 covers all three
-  am <- leachatetools:::.compute_antecedent_mean(hvals, hdates,
+  am <- hydroSense:::.compute_antecedent_mean(hvals, hdates,
                                                   as.Date("2022-01-05"), 5L)
   expect_equal(am, mean(c(4, 6, 8)), tolerance = 1e-9)
 })
@@ -262,7 +262,7 @@ test_that(".compute_antecedent_mean() returns mean of overlapping values", {
 test_that(".compute_antecedent_mean() returns NA when no data in window", {
   hvals  <- c(4, 6)
   hdates <- as.Date(c("2022-01-01", "2022-01-02"))
-  am <- leachatetools:::.compute_antecedent_mean(hvals, hdates,
+  am <- hydroSense:::.compute_antecedent_mean(hvals, hdates,
                                                   as.Date("2022-01-20"), 5L)
   expect_true(is.na(am))
 })
@@ -275,7 +275,7 @@ test_that(".compute_antecedent_mean() returns NA when no data in window", {
 test_that(".compute_hydro_features() produces hydro_short and hydro_long", {
   hydro <- make_hydro(200)
   tds   <- hydro$date[100:103]
-  out   <- leachatetools:::.compute_hydro_features(hydro, tds, 7, 30, "rainfall")
+  out   <- hydroSense:::.compute_hydro_features(hydro, tds, 7, 30, "rainfall")
   expect_s3_class(out, "tbl_df")
   expect_named(out, c("date", "hydro_short", "hydro_long"))
   expect_equal(nrow(out), 4L)
@@ -284,7 +284,7 @@ test_that(".compute_hydro_features() produces hydro_short and hydro_long", {
 test_that(".compute_hydro_features() rainfall path uses the recursive reservoir at each tau", {
   hydro <- make_hydro(200)
   tds   <- hydro$date[100:103]
-  out   <- leachatetools:::.compute_hydro_features(hydro, tds, 7, 30, "rainfall")
+  out   <- hydroSense:::.compute_hydro_features(hydro, tds, 7, 30, "rainfall")
   expect_equal(out$hydro_short,
                api_recursion_oracle(hydro$value, hydro$date, tds, 7),
                tolerance = 1e-9)
@@ -299,7 +299,7 @@ test_that(".compute_hydro_features() stage type uses antecedent mean (unchanged)
     value = runif(60, 1, 5)
   )
   td  <- hydro$date[30]
-  out <- leachatetools:::.compute_hydro_features(hydro, td, 7, 30, "stage")
+  out <- hydroSense:::.compute_hydro_features(hydro, td, 7, 30, "stage")
   expect_true(!is.na(out$hydro_short))
   expect_true(!is.na(out$hydro_long))
 })
@@ -323,7 +323,7 @@ test_that(".select_api_tau() returns named per-store tau within the supplied bou
     date       = as.Date(ref$datetime[ref$analyte == "Cu"]),
     value_norm = ref$value[ref$analyte == "Cu"]
   )
-  sel <- leachatetools:::.select_api_tau(
+  sel <- hydroSense:::.select_api_tau(
     obs, hydro, "rainfall",
     tau_bounds_short = c(1, 30),
     tau_bounds_long  = c(20, 365)
@@ -343,7 +343,7 @@ test_that(".select_api_tau() enforces tau_long >= 1.5 * tau_short", {
     date       = as.Date(ref$datetime[ref$analyte == "Zn"]),
     value_norm = ref$value[ref$analyte == "Zn"]
   )
-  sel <- leachatetools:::.select_api_tau(
+  sel <- hydroSense:::.select_api_tau(
     obs, hydro, "rainfall",
     tau_bounds_short = c(1, 30),
     tau_bounds_long  = c(20, 365)
@@ -358,7 +358,7 @@ test_that(".select_api_tau() falls back to the parsimonious default on a flat AI
   hydro <- make_hydro(700)
   dates <- seq(as.Date("2020-01-01"), by = "week", length.out = 80)
   obs   <- tibble::tibble(date = dates, value_norm = exp(rnorm(80, 0, 0.3)))
-  sel <- leachatetools:::.select_api_tau(
+  sel <- hydroSense:::.select_api_tau(
     obs, hydro, "rainfall",
     tau_bounds_short = c(1, 30),
     tau_bounds_long  = c(20, 365),
@@ -375,7 +375,7 @@ test_that(".select_api_tau() collapses to the default when bounds are degenerate
     date       = as.Date(ref$datetime[ref$analyte == "Cu"]),
     value_norm = ref$value[ref$analyte == "Cu"]
   )
-  sel <- leachatetools:::.select_api_tau(
+  sel <- hydroSense:::.select_api_tau(
     obs, hydro, "rainfall",
     tau_bounds_short = c(7, 7),
     tau_bounds_long  = c(60, 60)
@@ -397,7 +397,7 @@ test_that(".select_api_tau() adopts a non-default tau when the signal warrants i
     date       = dates,
     value_norm = exp(0.5 * as.numeric(scale(api_true)) + rnorm(90, 0, 0.05))
   )
-  sel <- leachatetools:::.select_api_tau(
+  sel <- hydroSense:::.select_api_tau(
     obs, hydro, "rainfall",
     tau_bounds_short = c(1, 30),
     tau_bounds_long  = c(20, 365),
@@ -413,8 +413,8 @@ test_that(".select_api_tau() is deterministic across reruns", {
     date       = as.Date(ref$datetime[ref$analyte == "Cu"]),
     value_norm = ref$value[ref$analyte == "Cu"]
   )
-  a <- leachatetools:::.select_api_tau(obs, hydro, "rainfall", c(1, 30), c(20, 365))
-  b <- leachatetools:::.select_api_tau(obs, hydro, "rainfall", c(1, 30), c(20, 365))
+  a <- hydroSense:::.select_api_tau(obs, hydro, "rainfall", c(1, 30), c(20, 365))
+  b <- hydroSense:::.select_api_tau(obs, hydro, "rainfall", c(1, 30), c(20, 365))
   expect_equal(a, b)
 })
 
@@ -494,7 +494,7 @@ test_that(".resolve_ref_norm() returns (sample_id, analyte, ref_norm, ref_tier)"
     api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30)
   )
   target <- make_target_chem(ref)
-  out    <- leachatetools:::.resolve_ref_norm(m, target)
+  out    <- hydroSense:::.resolve_ref_norm(m, target)
   expect_named(out, c("sample_id", "analyte", "ref_norm", "ref_tier"),
                ignore.order = TRUE)
   expect_true(all(out$ref_norm > 0, na.rm = TRUE))
@@ -514,7 +514,7 @@ test_that(".resolve_ref_norm() chronic path returns model_integrated or static t
     sample_id  = c("c1", "c2"),
     focal_date = as.Date(c("2021-01-01", "2021-06-01"))
   )
-  out <- leachatetools:::.resolve_ref_norm(m, target, tau_days = 90, window_days = 180)
+  out <- hydroSense:::.resolve_ref_norm(m, target, tau_days = 90, window_days = 180)
   expect_true("focal_date" %in% names(target))  # ensure dispatch worked
   expect_named(out, c("sample_id", "analyte", "ref_norm", "ref_tier"),
                ignore.order = TRUE)
@@ -523,10 +523,10 @@ test_that(".resolve_ref_norm() chronic path returns model_integrated or static t
 
 
 ## ============================================================================
-## End-to-end: add_amspaf(reference_model) — target = reference → ARA ≈ 0
+## End-to-end: add_mspaf(reference_model) — target = reference → ARA ≈ 0
 ## ============================================================================
 
-test_that("add_amspaf(reference_model): target = reference gives small AmsPAF", {
+test_that("add_mspaf(reference_model): target = reference gives small msPAF", {
   ref   <- make_ref_chem(60)
   hydro <- make_hydro(500)
   m     <- fit_reference_model(
@@ -540,17 +540,17 @@ test_that("add_amspaf(reference_model): target = reference gives small AmsPAF", 
     dplyr::filter(sample_id %in% unique(sample_id)[1:5]) |>
     dplyr::mutate(site_id = "target")
 
-  out <- add_amspaf(target, reference = m, conc_units = "ug/L",
+  out <- add_mspaf(target, reference = m, conc_units = "ug/L",
                     require_temperature = FALSE)
-  amspaf <- dplyr::filter(out, analyte == "AmsPAF")
+  mspaf <- dplyr::filter(out, analyte == "msPAF")
 
-  # When target ≈ reference background, AmsPAF should be low
+  # When target ≈ reference background, msPAF should be low
   # (not necessarily exactly 0 because tier-2 prediction adds noise)
-  expect_true(nrow(amspaf) > 0L)
-  expect_true(all(amspaf$value >= 0))
+  expect_true(nrow(mspaf) > 0L)
+  expect_true(all(mspaf$value >= 0))
 })
 
-test_that("add_amspaf(reference_model): elevated target gives higher AmsPAF than clean target", {
+test_that("add_mspaf(reference_model): elevated target gives higher msPAF than clean target", {
   ref   <- make_ref_chem(60)
   hydro <- make_hydro(500)
   m     <- fit_reference_model(
@@ -571,12 +571,12 @@ test_that("add_amspaf(reference_model): elevated target gives higher AmsPAF than
     )
 
   both <- dplyr::bind_rows(base_sample, elevated)
-  out  <- add_amspaf(both, reference = m, conc_units = "ug/L",
+  out  <- add_mspaf(both, reference = m, conc_units = "ug/L",
                      require_temperature = FALSE)
-  amspaf <- dplyr::filter(out, analyte == "AmsPAF")
+  mspaf <- dplyr::filter(out, analyte == "msPAF")
 
-  paf_clean    <- amspaf$value[amspaf$sample_id == "clean"]
-  paf_elevated <- amspaf$value[amspaf$sample_id == "elevated"]
+  paf_clean    <- mspaf$value[mspaf$sample_id == "clean"]
+  paf_elevated <- mspaf$value[mspaf$sample_id == "elevated"]
 
   expect_gt(paf_elevated, paf_clean)
 })
@@ -598,7 +598,7 @@ test_that("ara_summary() returns a tibble with expected columns for NULL referen
     dplyr::filter(sample_id %in% unique(sample_id)[1:3]) |>
     dplyr::mutate(site_id = "target")
 
-  out <- add_amspaf(target, reference = m, conc_units = "ug/L",
+  out <- add_mspaf(target, reference = m, conc_units = "ug/L",
                     require_temperature = FALSE)
   s   <- ara_summary(out)
 
@@ -616,7 +616,7 @@ test_that("ara_summary() also works for static reference path", {
   target <- dplyr::filter(demo, site_id == "downstream")
   refdat <- dplyr::filter(demo, site_id == "reference")
 
-  out <- add_amspaf(target, reference = refdat,
+  out <- add_mspaf(target, reference = refdat,
                     conc_units = "ug/L", require_temperature = FALSE)
   s   <- ara_summary(out)
 

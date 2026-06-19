@@ -13,7 +13,7 @@ fit_target_model(
   conc_units = NULL,
   analyte_metadata = NULL,
   method = c("multi", "anzecc"),
-  guideline_dir = getOption("leachatetools.guideline_dir"),
+  guideline_dir = getOption("hydroSense.guideline_dir"),
   transform = c("pseudo_log", "additive"),
   analyte_c = NULL,
   api_tau_bounds_short = c(1, 30),
@@ -55,7 +55,7 @@ column is present.}
 analyte's HC5 transform scale when \code{analyte_c} is not supplied.}
 
 \item{guideline_dir}{Path to the ANZG guideline data folder (for the SSD
-fits); falls back to \code{getOption("leachatetools.guideline_dir")}.}
+fits); falls back to \code{getOption("hydroSense.guideline_dir")}.}
 
 \item{transform}{\code{"pseudo_log"} (default) or \code{"additive"}. Controls the
 variance-stabilising transform applied to the impact residual before
@@ -111,7 +111,7 @@ An object of class \code{target_model}:
 Models the anthropogenic increment \code{I = C_norm - ref_norm} (the ARA
 "added risk", i.e. \code{ara_summary()}'s \code{C_excess}) at a target site as a
 function of hydrology and a persistent latent state -- \strong{never} of
-day-of-year.  Used by \code{\link[=amspaf_daily]{amspaf_daily()}} (\code{interpolation = "model"}) to fill
+day-of-year.  Used by \code{\link[=mspaf_daily]{mspaf_daily()}} (\code{interpolation = "model"}) to fill
 the gaps between grab samples with a chemistry-grounded impact estimate
 instead of a forward-filled concentration.
 }
@@ -154,6 +154,6 @@ Zhang Q, Hirsch RM (2019) Water Resources Research 55(11):9705--9723.
 Godsey SE, Kirchner JW, Clow DW (2009) Hydrological Processes 23:1844--1864.
 }
 \seealso{
-\code{\link[=amspaf_daily]{amspaf_daily()}}, \code{\link[=fit_reference_model]{fit_reference_model()}}, \code{\link[=add_amspaf]{add_amspaf()}},
+\code{\link[=mspaf_daily]{mspaf_daily()}}, \code{\link[=fit_reference_model]{fit_reference_model()}}, \code{\link[=add_mspaf]{add_mspaf()}},
 \code{\link[=ara_summary]{ara_summary()}}
 }

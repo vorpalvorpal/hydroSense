@@ -1,11 +1,11 @@
 ## ============================================================================
-## amspaf_daily -- continuous daily-resolved AmsPAF time series
+## mspaf_daily -- continuous daily-resolved msPAF time series
 ## ============================================================================
 ##
 ## The core idea: grab chemistry is sparse (bi-monthly, weekly, etc.); daily
-## AmsPAF requires daily chemistry.  This function interpolates each analyte
+## msPAF requires daily chemistry.  This function interpolates each analyte
 ## onto a fine date grid, constructs synthetic "one-per-day" samples, and
-## runs the existing add_amspaf() engine on them.
+## runs the existing add_mspaf() engine on them.
 ##
 ## Two interpolation styles are offered:
 ##   forward_fill  -- step function; each day inherits the most recently
@@ -16,17 +16,17 @@
 ##
 ## Critical design constraint: synthetic samples must NOT carry a focal_date
 ## column.  That column triggers .resolve_ref_norm_chronic() inside
-## add_amspaf(), which would double-integrate the ARA reference.  We want
+## add_mspaf(), which would double-integrate the ARA reference.  We want
 ## .resolve_ref_norm_instant() -- pointwise matching per daily sample.
 
 ## ============================================================================
-## amspaf_daily
+## mspaf_daily
 ## ============================================================================
 
-#' Continuous daily AmsPAF time series from interpolated grab chemistry
+#' Continuous daily msPAF time series from interpolated grab chemistry
 #'
 #' Interpolates per-analyte grab chemistry onto a daily date grid and computes
-#' AmsPAF for every day within the requested date range.  The result is a tidy
+#' msPAF for every day within the requested date range.  The result is a tidy
 #' tibble with one row per (site \eqn{\times} day), suitable for trend
 #' analysis, visualisation, and downstream [time_weighted_aggregate()] calls.
 #'
@@ -49,7 +49,7 @@
 #'     `reference_model`; see [fit_target_model()] for the method.
 #' }
 #' Below-detection values are treated as their detection-limit value for
-#' interpolation purposes, matching the treatment in [add_amspaf()].
+#' interpolation purposes, matching the treatment in [add_mspaf()].
 #'
 #' @section Leading edge:
 #' Days before the first grab sample for an analyte are outside the observation
@@ -77,7 +77,7 @@
 #' @param df Long-format grab chemistry data frame. Required columns:
 #'   `sample_id`, `site_id`, `datetime` (Date or POSIXct), `analyte`, `value`,
 #'   `detected`. Optional but propagated: `units.analyte`, `imputed`.
-#'   Chemistry for multiple sites may be stacked; interpolation and AmsPAF are
+#'   Chemistry for multiple sites may be stacked; interpolation and msPAF are
 #'   computed per site.
 #' @param temperature Optional daily water temperature data frame for days
 #'   without a grab temperature measurement. Required columns: `datetime` (Date
@@ -87,7 +87,7 @@
 #'   present for the same day, the grab measurement takes priority.
 #'   `NULL` (default) means temperature must come from `df` rows alone.
 #' @param reference Background reference chemistry for ARA adjustment. Accepts
-#'   the same four forms as [add_amspaf()]. Controls **only** whether background
+#'   the same four forms as [add_mspaf()]. Controls **only** whether background
 #'   is subtracted; it is independent of `interpolation`. With
 #'   `interpolation = "model"`, pass the same `reference_model` here to assess
 #'   the leachate-attributable increment, or `NULL` to assess total
@@ -110,20 +110,20 @@
 #'   an analyte. `"drop"` (default) or `"backfill"`. See the *Leading edge*
 #'   section.
 #' @param analyte_metadata Data frame of analyte metadata, or `NULL` to use
-#'   the bundled metadata. Passed to [add_amspaf()].
+#'   the bundled metadata. Passed to [add_mspaf()].
 #' @param method SSD method. One of `"multi"` (default, model-averaged) or
-#'   `"anzecc"`. Passed to [add_amspaf()].
+#'   `"anzecc"`. Passed to [add_mspaf()].
 #' @param guideline_dir Path to the ANZG guideline data folder. Falls back to
-#'   `getOption("leachatetools.guideline_dir")`.
+#'   `getOption("hydroSense.guideline_dir")`.
 #' @param min_analytes Minimum number of SSD-eligible analytes per day for
-#'   AmsPAF to be computed. Default `3L`.
+#'   msPAF to be computed. Default `3L`.
 #' @param conc_units Character. Concentration units for SSD-eligible rows when
-#'   `df` lacks a `units.analyte` column. Passed to [add_amspaf()].
+#'   `df` lacks a `units.analyte` column. Passed to [add_mspaf()].
 #' @param require_temperature Logical (default `TRUE`). When `TRUE`, any daily
 #'   sample with `NH3-N` must also carry a `temperature` value. Passed to
-#'   [add_amspaf()]. Set `FALSE` for datasets without ammonia.
+#'   [add_mspaf()]. Set `FALSE` for datasets without ammonia.
 #' @param ndraws Positive integer or `NULL` (default). `NULL` returns the
-#'   **deterministic** daily AmsPAF: the fast, grabs-exact point estimate (the
+#'   **deterministic** daily msPAF: the fast, grabs-exact point estimate (the
 #'   default and recommended best guess).  When non-`NULL`, runs the full
 #'   OU/GAM uncertainty propagation for `ndraws` draws and returns a **draws**
 #'   product instead (see Details for the distinction).  Requires
@@ -174,7 +174,7 @@
 #' @param couple_residuals Logical (default `TRUE`).  When `TRUE` and >= 2
 #'   analytes have fitted residual smoothers, daily residual draws are
 #'   correlated across analytes using the empirical anchor-residual correlation
-#'   (see [.anchor_residual_cor()]).  This widens the combined AmsPAF interval
+#'   (see [.anchor_residual_cor()]).  This widens the combined msPAF interval
 #'   to reflect co-movement of co-toxicants on breach events while leaving
 #'   per-analyte marginals unchanged.  Set to `FALSE` to reproduce the pre-#32
 #'   independent-draw path exactly.
@@ -199,7 +199,7 @@
 #'   `interpolation = "model"`.
 #'
 #' @details
-#' `amspaf_daily()` returns one of **two distinct products**, chosen by
+#' `mspaf_daily()` returns one of **two distinct products**, chosen by
 #' `ndraws`; they answer different questions and should not be expected to
 #' coincide:
 #'
@@ -213,7 +213,7 @@
 #'   when `grab_cv` is set.  `return = "summary"` reports the central tendency
 #'   plus a credible band; `return = "draws"` returns per-draw paths.  *Pro:*
 #'   honest uncertainty quantification.  *Con:* the central estimate is
-#'   seed/`ndraws`-dependent and, by Jensen's inequality on the bounded AmsPAF
+#'   seed/`ndraws`-dependent and, by Jensen's inequality on the bounded msPAF
 #'   index, generally differs from the deterministic line.
 #'
 #' The summary centre is a summary *of the draws* (issue #42), so it always lies
@@ -237,7 +237,7 @@
 #'
 #' @return
 #' **Point mode** (`ndraws = NULL`): a tibble with one row per (site
-#'   \eqn{\times} day) for days with sufficient analyte coverage; `amspaf` is
+#'   \eqn{\times} day) for days with sufficient analyte coverage; `mspaf` is
 #'   the deterministic daily estimate.
 #'
 #' **Draws mode** (`ndraws > 0`, `return = "summary"`): one row per (site
@@ -249,14 +249,14 @@
 #'
 #' **Draws mode** (`ndraws > 0`, `return = "draws"`): one row per (site
 #'   \eqn{\times} day \eqn{\times} draw), with a `draw_id` integer column and the
-#'   per-draw AmsPAF value(s) `amspaf_ignorable` and/or `amspaf_informative` for
+#'   per-draw msPAF value(s) `mspaf_ignorable` and/or `mspaf_informative` for
 #'   the chosen `gap_uncertainty`.
 #'
 #' Common columns:
 #'   \describe{
 #'     \item{`date`}{Date of this daily estimate.}
 #'     \item{`site_id`}{Site identifier.}
-#'     \item{`n_analytes_used`}{SSD-eligible analytes contributing to AmsPAF.}
+#'     \item{`n_analytes_used`}{SSD-eligible analytes contributing to msPAF.}
 #'     \item{`dominant_analyte`}{Analyte with the highest individual PAF.}
 #'     \item{`max_paf`}{PAF of the dominant analyte (proportion 0--1).}
 #'     \item{`n_measured_analytes`}{SSD-eligible analytes with a direct grab
@@ -269,21 +269,21 @@
 #'   and [ara_summary()]. (`analyte_pafs` is now a flat attribute, not a
 #'   list-column — issue #30.)
 #'
-#' @seealso [add_amspaf()], [time_weighted_aggregate()],
+#' @seealso [add_mspaf()], [time_weighted_aggregate()],
 #'   [estimate_water_temp()], [get_silo_air_temp()]
 #'
 #' @examples
 #' \donttest{
 #' demo <- leachate_demo()
 #' ds <- subset(demo, site_id == "downstream")
-#' out <- amspaf_daily(ds, require_temperature = FALSE)
+#' out <- mspaf_daily(ds, require_temperature = FALSE)
 #' head(out[, c(
-#'   "date", "site_id", "amspaf", "n_measured_analytes",
+#'   "date", "site_id", "mspaf", "n_measured_analytes",
 #'   "days_since_last_sample"
 #' )])
 #' }
 #' @export
-amspaf_daily <- function(
+mspaf_daily <- function(
   df,
   temperature = NULL,
   reference = NULL,
@@ -296,7 +296,7 @@ amspaf_daily <- function(
   leading_edge = c("drop", "backfill"),
   analyte_metadata = NULL,
   method = c("multi", "anzecc"),
-  guideline_dir = getOption("leachatetools.guideline_dir"),
+  guideline_dir = getOption("hydroSense.guideline_dir"),
   min_analytes = 3L,
   conc_units = NULL,
   require_temperature = TRUE,
@@ -415,14 +415,14 @@ amspaf_daily <- function(
     )
   }
 
-  ## Draw-bearing input chemistry is not supported (amspaf_daily generates its
-  ## own draws internally via ndraws; use add_amspaf() directly for existing
+  ## Draw-bearing input chemistry is not supported (mspaf_daily generates its
+  ## own draws internally via ndraws; use add_mspaf() directly for existing
   ## draw-carrier frames).
   if ("draw_id" %in% names(df) && !all(is.na(df[["draw_id"]]))) {
     cli::cli_abort(c(
-      "{.fn amspaf_daily} does not accept draw-bearing input {.arg df}.",
+      "{.fn mspaf_daily} does not accept draw-bearing input {.arg df}.",
       "i" = "Use {.arg ndraws} to generate daily draws internally (requires \\
-             {.code interpolation = \"model\"}), or call {.fn add_amspaf} on \\
+             {.code interpolation = \"model\"}), or call {.fn add_mspaf} on \\
              your draw-carrier frame directly."
     ))
   }
@@ -525,7 +525,7 @@ amspaf_daily <- function(
         ## Deterministic prediction: supplies the per-analyte impact tier
         ## ("model"/"bridge") attached to the ARA diagnostics.  Since issue #42
         ## the summary centre line is the draws' own central tendency, so no
-        ## separate point-mode AmsPAF frame is built here (the deterministic
+        ## separate point-mode msPAF frame is built here (the deterministic
         ## point estimate is its own product, via point mode / ndraws = NULL).
         pt_rows <- .predict_daily_tox(fdm)
         impact_tiers <- if (!is.null(pt_rows)) attr(pt_rows, "impact_tiers") else NULL
@@ -554,7 +554,7 @@ amspaf_daily <- function(
         ## Cross-analyte coupling (#32): when couple_residuals = TRUE and >= 2
         ## analytes have fitted draw models, innovations are correlated via the
         ## Cholesky of cor_res$R.  The DK identity guarantees each per-analyte
-        ## marginal is unchanged; only the joint distribution (combined AmsPAF
+        ## marginal is unchanged; only the joint distribution (combined msPAF
         ## interval) widens to reflect co-movement of co-toxicants.
         if (!is.null(seed)) set.seed(as.integer(seed))
         n_couplable <- sum(vapply(
@@ -615,7 +615,7 @@ amspaf_daily <- function(
 
         ## N stochastic draw iterations (draw_id = 1..N).
         ## G2: .predict_daily_tox uses fdm$co_split (exact) for clean C_raw
-        ## reconstruction; S7 co-analyte perturbations enter add_amspaf's
+        ## reconstruction; S7 co-analyte perturbations enter add_mspaf's
         ## normalisation via draw-bearing co-analyte rows in the synthetic frame.
         ##
         ## H2: the draw loop is a closure so it can run sequentially (lapply) or
@@ -730,7 +730,7 @@ amspaf_daily <- function(
             dplyr::bind_rows(non_mod_tox, co_draws_all, tox_long)
           } else {
             ## S7 inactive: co-analytes + non-modelled tox exact (draw_id = NA →
-            ## broadcast to all stochastic draws by add_amspaf).
+            ## broadcast to all stochastic draws by add_mspaf).
             dplyr::bind_rows(daily_long_exact, tox_long)
           }
         }
@@ -792,19 +792,19 @@ amspaf_daily <- function(
   all_synth <- dplyr::bind_rows(lapply(site_results, `[[`, "synth"))
   all_diag <- dplyr::bind_rows(lapply(site_results, `[[`, "diag"))
 
-  ## Build sample_id -> date lookup before passing to add_amspaf() (add_amspaf
+  ## Build sample_id -> date lookup before passing to add_mspaf() (add_mspaf
   ## may rearrange rows but sample_id is stable throughout).
   id_date_map <- dplyr::distinct(
     dplyr::select(all_synth, "sample_id", "site_id", ".date")
   )
 
-  ## Remove .date from the df passed to add_amspaf() so it stays unaware of it.
+  ## Remove .date from the df passed to add_mspaf() so it stays unaware of it.
   all_synth_clean <- dplyr::select(all_synth, -".date")
 
-  ## --- Run add_amspaf on the daily synthetic samples -------------------------
+  ## --- Run add_mspaf on the daily synthetic samples -------------------------
   ## In draws mode, request raw per-draw rows so we can extract draw_id and
   ## per-analyte diagnostics before collapsing ourselves.
-  amspaf_out <- add_amspaf(
+  mspaf_out <- add_mspaf(
     df                  = all_synth_clean,
     reference           = reference,
     analyte_metadata    = analyte_metadata,
@@ -816,7 +816,7 @@ amspaf_daily <- function(
     return              = if (draws_mode) "draws" else "summary"
   )
 
-  ara_summ <- attr(amspaf_out, "ara_summary")
+  ara_summ <- attr(mspaf_out, "ara_summary")
 
   ## Attach the target model's per-analyte impact tier ("model" / "bridge") to
   ## the ARA diagnostics.
@@ -833,12 +833,12 @@ amspaf_daily <- function(
       dplyr::left_join(all_tiers, by = c("site_id", "analyte"))
   }
 
-  ## --- Extract and annotate AmsPAF rows -------------------------------------
-  amspaf_rows <- dplyr::filter(amspaf_out, .data$analyte == "AmsPAF")
+  ## --- Extract and annotate msPAF rows -------------------------------------
+  mspaf_rows <- dplyr::filter(mspaf_out, .data$analyte == "msPAF")
 
-  if (nrow(amspaf_rows) == 0L) {
+  if (nrow(mspaf_rows) == 0L) {
     cli::cli_warn(
-      "No daily AmsPAF rows produced. \\
+      "No daily msPAF rows produced. \\
        Check {.arg min_analytes} ({min_analytes}) and data coverage."
     )
     empty_mode <- if (!draws_mode) "point" else if (return == "draws") "draws" else "summary"
@@ -847,14 +847,14 @@ amspaf_daily <- function(
     return(result)
   }
 
-  amspaf_dated <- amspaf_rows |>
+  mspaf_dated <- mspaf_rows |>
     dplyr::left_join(id_date_map, by = c("sample_id", "site_id")) |>
     dplyr::rename(date = ".date")
 
   if (draws_mode) {
-    ## #50 bracket. The primary pass (amspaf_dated) is the IGNORABLE envelope —
+    ## #50 bracket. The primary pass (mspaf_dated) is the IGNORABLE envelope —
     ## byte-identical to the pre-#50 behaviour. The informative envelope and the
-    ## deterministic centre are additive secondary add_amspaf passes over the
+    ## deterministic centre are additive secondary add_mspaf passes over the
     ## frozen-residual / posterior-mean synthetic frames (all share the same
     ## seeded draws, so they are deterministic given the primary pass).
     want_inf <- gap_uncertainty %in% c("bracket", "informative")
@@ -864,7 +864,7 @@ amspaf_daily <- function(
       if (is.null(s) || nrow(s) == 0L) {
         return(NULL)
       }
-      out <- add_amspaf(
+      out <- add_mspaf(
         df                  = dplyr::select(s, -".date"),
         reference           = reference,
         analyte_metadata    = analyte_metadata,
@@ -875,7 +875,7 @@ amspaf_daily <- function(
         require_temperature = require_temperature,
         return              = ret
       )
-      rows <- dplyr::filter(out, .data$analyte == "AmsPAF")
+      rows <- dplyr::filter(out, .data$analyte == "msPAF")
       if (nrow(rows) == 0L) {
         return(NULL)
       }
@@ -884,10 +884,10 @@ amspaf_daily <- function(
         dplyr::rename(date = ".date")
     }
 
-    ig_draws <- amspaf_dated |>
+    ig_draws <- mspaf_dated |>
       dplyr::select(
         "date", "site_id", "draw_id",
-        amspaf_ignorable = "value",
+        mspaf_ignorable = "value",
         "n_analytes_used", "dominant_analyte", "max_paf"
       )
     inf_dated <- if (want_inf) run_pass("synth_inf", "draws") else NULL
@@ -896,14 +896,14 @@ amspaf_daily <- function(
       draws_wide <- dplyr::full_join(
         draws_wide,
         dplyr::select(inf_dated, "date", "site_id", "draw_id",
-          amspaf_informative = "value"
+          mspaf_informative = "value"
         ),
         by = c("date", "site_id", "draw_id")
       )
     }
     ## Informative requested but unproducible -> collapse onto ignorable.
-    if (want_inf && !"amspaf_informative" %in% names(draws_wide)) {
-      draws_wide$amspaf_informative <- draws_wide$amspaf_ignorable
+    if (want_inf && !"mspaf_informative" %in% names(draws_wide)) {
+      draws_wide$mspaf_informative <- draws_wide$mspaf_ignorable
     }
 
     if (return == "draws") {
@@ -933,7 +933,7 @@ amspaf_daily <- function(
           deterministic = NA_real_
         )
       }
-      comp <- amspaf_dated |>
+      comp <- mspaf_dated |>
         dplyr::group_by(.data$date, .data$site_id) |>
         dplyr::summarise(
           n_analytes_used = dplyr::first(.data$n_analytes_used),
@@ -955,11 +955,11 @@ amspaf_daily <- function(
     }
   } else {
     ## Point mode: unchanged output schema.
-    result <- amspaf_dated |>
-      dplyr::rename(amspaf = "value") |>
+    result <- mspaf_dated |>
+      dplyr::rename(mspaf = "value") |>
       dplyr::left_join(all_diag, by = c("date", "site_id")) |>
       dplyr::select(
-        "date", "site_id", "amspaf",
+        "date", "site_id", "mspaf",
         "n_analytes_used", "dominant_analyte", "max_paf",
         "n_measured_analytes", "days_since_last_sample"
       ) |>
@@ -967,7 +967,7 @@ amspaf_daily <- function(
   }
 
   ## Per-analyte PAF breakdown, re-keyed from the synthetic sample_id to date.
-  apafs <- attr(amspaf_out, "analyte_pafs")
+  apafs <- attr(mspaf_out, "analyte_pafs")
   if (!is.null(apafs) && nrow(apafs) > 0L && exists("id_date_map")) {
     apafs <- apafs |>
       dplyr::left_join(
@@ -1201,7 +1201,7 @@ amspaf_daily <- function(
 
 #' Compute per-day diagnostics: n_measured_analytes, days_since_last_sample
 #'
-#' Operates on SSD-eligible rows only (toxicants drive the AmsPAF; co-analyte
+#' Operates on SSD-eligible rows only (toxicants drive the msPAF; co-analyte
 #' sampling frequency is generally higher and not the bottleneck).
 #'
 #' @param daily_long Output of `.build_daily_chem()` (possibly augmented).
@@ -1247,13 +1247,13 @@ amspaf_daily <- function(
 #' Build synthetic long-format daily samples from interpolated chemistry
 #'
 #' Assigns `sample_id = "daily_{YYYY-MM-DD}_{site}"` per day.  Keeps `.date`
-#' as a column (the caller extracts it before passing to [add_amspaf()]).
-#' No `focal_date` column is added -- this is deliberate so [add_amspaf()]
+#' as a column (the caller extracts it before passing to [add_mspaf()]).
+#' No `focal_date` column is added -- this is deliberate so [add_mspaf()]
 #' uses the instant (pointwise) ARA path, not the chronic integrated path.
 #'
 #' @param daily_long Output of `.build_daily_chem()` (after temperature fill).
 #' @param site Site identifier string.
-#' @return Long-format tibble ready for [add_amspaf()] (after removing `.date`).
+#' @return Long-format tibble ready for [add_mspaf()] (after removing `.date`).
 #' @keywords internal
 .build_synthetic_samples <- function(daily_long, site) {
   if (nrow(daily_long) == 0L) {
@@ -1801,7 +1801,7 @@ amspaf_daily <- function(
 #' (output of [.perturb_co_split()]), and tags the result with `draw_id`.
 #' Analytes absent from `co_pert_split` (e.g. non-modelled toxicants) are left
 #' unchanged.  The resulting rows go into the synthetic frame so that
-#' [add_amspaf()]'s normalisation sees the per-draw co-analyte perturbation.
+#' [add_mspaf()]'s normalisation sees the per-draw co-analyte perturbation.
 #'
 #' @param daily_long_exact Rows of the forward-filled daily chemistry that
 #'   belong to the non-modelled subset (co-analytes + unmodelled toxicants).
@@ -1893,7 +1893,7 @@ amspaf_daily <- function(
 }
 
 
-#' Empty tibble matching the amspaf_daily() return schema
+#' Empty tibble matching the mspaf_daily() return schema
 #' @param mode One of `"point"`, `"summary"`, or `"draws"` — governs which
 #'   extra columns are included.
 #' @param gap_uncertainty Bracket mode (`"bracket"`/`"ignorable"`/
@@ -1915,7 +1915,7 @@ amspaf_daily <- function(
     return(dplyr::bind_cols(
       tibble::tibble(
         date = as.Date(character()), site_id = character(),
-        amspaf = numeric()
+        mspaf = numeric()
       ),
       diag
     ))

@@ -1,5 +1,5 @@
 ## ============================================================================
-## Adjusted multi-substance Potentially Affected Fraction (AmsPAF)
+## Adjusted multi-substance Potentially Affected Fraction (msPAF)
 ## ============================================================================
 ##
 ## Estimates the fraction of aquatic species potentially affected by the
@@ -123,12 +123,12 @@
 ##
 ## ## Output interpretation
 ##
-## AmsPAF is returned as a continuous risk metric (% of species potentially
+## msPAF is returned as a continuous risk metric (% of species potentially
 ## affected by the mixture, 0-100+).  Tier breaks are deliberately not
 ## provided by this package — msPAF semantics differ from single-substance
 ## guideline values (the "% affected" denominator depends on which
 ## substances are in the mixture).  See
-## `vignette("chronic-amspaf-interpretation")` for a discussion of how to
+## `vignette("chronic-mspaf-interpretation")` for a discussion of how to
 ## interpret msPAF values in an assessment context.
 ##
 ## ## References
@@ -160,11 +160,11 @@
 ##   CH4:   Methane guideline is aesthetic/nuisance, not an ecotoxicity SSD
 ##   LHF:   Leachate indicator index — derived values, not a toxicity endpoint
 ##
-.AMSPAF_EXCLUDED_ANALYTES <- c("NO3-N", "CH4", "LHF")
+.MSPAF_EXCLUDED_ANALYTES <- c("NO3-N", "CH4", "LHF")
 
 
 ## ============================================================================
-## add_amspaf
+## add_mspaf
 ## ============================================================================
 
 #' Assert every ammonia-bearing sample carries a water temperature
@@ -195,13 +195,13 @@
     "{n_missing} sample{?s} report NH3-N but have no water temperature.",
     "x" = "Affected: {.val {shown}}{more}",
     "i" = "Water temperature is mandatory for the ammonia pH/temperature correction. Supply a {.field temperature} row per sample, or derive one with {.fn estimate_water_temp} (optionally fed by {.fn get_silo_air_temp}).",
-    "i" = "To assess a dataset that does not include ammonia, call {.code add_amspaf(..., require_temperature = FALSE)}."
+    "i" = "To assess a dataset that does not include ammonia, call {.code add_mspaf(..., require_temperature = FALSE)}."
   ))
 }
 
-#' Compute the Adjusted multi-substance PAF (AmsPAF) for water quality samples
+#' Compute the Adjusted multi-substance PAF (msPAF) for water quality samples
 #'
-#' Appends AmsPAF rows to a long-format water quality dataframe. AmsPAF
+#' Appends msPAF rows to a long-format water quality dataframe. msPAF
 #' estimates the fraction of aquatic species potentially affected by the
 #' combined toxicant mixture, adjusted for local geogenic background via the
 #' Added Risk Approach. See the file-level header for full methodological
@@ -218,7 +218,7 @@
 #'   ultimately be in µg/L for SSD lookup; supply them either via a
 #'   `units.analyte` column (one unit string per row, e.g. `"mg/L"`) or via the
 #'   `conc_units` argument (applied uniformly to all SSD-eligible rows). Optional
-#'   but recommended: `datetime` (propagated to AmsPAF rows if present),
+#'   but recommended: `datetime` (propagated to msPAF rows if present),
 #'   `detected` (assumed `TRUE` if absent), `imputed` (logical; if present,
 #'   `n_analytes_imputed` is populated in output). Driver analytes needed for
 #'   chemistry normalisation (e.g. pH, DOC) should be present as rows in `df`.
@@ -247,9 +247,9 @@
 #'   `"anzecc"` uses the per-analyte distribution matching the original ANZG
 #'   derivation.
 #' @param guideline_dir Path to the "guideline data" folder containing ANZG
-#'   XLSX files. Falls back to `getOption("leachatetools.guideline_dir")`.
+#'   XLSX files. Falls back to `getOption("hydroSense.guideline_dir")`.
 #' @param min_analytes Minimum number of analytes with fitted SSDs required
-#'   to compute AmsPAF for a sample. Default `3`.
+#'   to compute msPAF for a sample. Default `3`.
 #' @param ref_summary Summary statistic for the reference distribution when
 #'   `reference` is a raw data frame.  Passed through to
 #'   [prepare_reference()].  Default `"geom_mean"` — the maximum-likelihood
@@ -273,7 +273,7 @@
 #' @param return Output mode for draw-carrier input (see [summarise_draws()]).
 #'   `"summary"` (default) collapses posterior draws to a central estimate plus
 #'   a credible interval (`value`, `value_lower`, `value_upper`, `n_draws`);
-#'   `"draws"` returns the raw per-draw AmsPAF rows (`draw_id 1..N`) for
+#'   `"draws"` returns the raw per-draw msPAF rows (`draw_id 1..N`) for
 #'   external risk models or further composition (e.g. into
 #'   [time_weighted_aggregate()]).  For point (non-draw) input both modes
 #'   return byte-identical output with no interval columns.
@@ -282,9 +282,9 @@
 #' @param central Central-tendency statistic when `return = "summary"`:
 #'   `"median"` (default) or `"mean"`.
 #'
-#' @return The input `df` with AmsPAF rows appended. Each AmsPAF row carries:
-#'   `value` (AmsPAF as a percentage, 0–100+), `detected = TRUE`,
-#'   `analyte = "AmsPAF"`, `n_analytes_used` (integer),
+#' @return The input `df` with msPAF rows appended. Each msPAF row carries:
+#'   `value` (msPAF as a percentage, 0–100+), `detected = TRUE`,
+#'   `analyte = "msPAF"`, `n_analytes_used` (integer),
 #'   `n_analytes_imputed` (integer, 0 if `imputed` column absent),
 #'   `dominant_analyte` (character), and `max_paf` (numeric).
 #'
@@ -296,10 +296,10 @@
 #'   [ara_summary()]. (`analyte_pafs` was formerly a per-row list-column; it is
 #'   now a flat attribute — issue #30.)
 #'
-#'   Tier breaks are not provided by this package — AmsPAF is a continuous
+#'   Tier breaks are not provided by this package — msPAF is a continuous
 #'   risk metric and the threshold at which a community is "impacted"
 #'   depends on the assessment context.  See
-#'   `vignette("chronic-amspaf-interpretation")` for guidance.
+#'   `vignette("chronic-mspaf-interpretation")` for guidance.
 #'
 #' @seealso [ssd_paf()], [ssd_hc50()], [prepare_reference()],
 #'   [fit_reference_model()], [ara_summary()],
@@ -316,16 +316,16 @@
 #' demo <- leachate_demo()
 #' ds  <- subset(demo, site_id == "downstream")
 #' ref <- subset(demo, site_id == "reference")
-#' out <- add_amspaf(ds, reference = ref)
-#' subset(out, analyte == "AmsPAF", c("sample_id", "value"))
+#' out <- add_mspaf(ds, reference = ref)
+#' subset(out, analyte == "msPAF", c("sample_id", "value"))
 #' }
 #' @export
-add_amspaf <- function(
+add_mspaf <- function(
     df,
     reference        = NULL,
     analyte_metadata = NULL,
     method           = c("multi", "anzecc"),
-    guideline_dir    = getOption("leachatetools.guideline_dir"),
+    guideline_dir    = getOption("hydroSense.guideline_dir"),
     min_analytes     = 3,
     ref_summary      = c("geom_mean", "median", "arith_mean",
                           "p80", "p90", "p95"),
@@ -369,7 +369,7 @@ add_amspaf <- function(
 
   if (nrow(ssd_params) == 0L) {
     cli::cli_warn(
-      "No analytes with fitted SSDs found. AmsPAF cannot be computed."
+      "No analytes with fitted SSDs found. msPAF cannot be computed."
     )
     return(df)
   }
@@ -385,7 +385,7 @@ add_amspaf <- function(
 
   ## ARA is "enabled" whenever the caller supplied any reference (a
   ## prepared_reference or a raw data frame).  Only `reference = NULL`
-  ## disables it.  This flag lets .amspaf_adjust() distinguish "ARA deliberately
+  ## disables it.  This flag lets .mspaf_adjust() distinguish "ARA deliberately
   ## off" from "ARA on but this analyte had no reference match" — both otherwise
   ## collapse to ref_norm = 0 (see ref_source).
   ara_enabled <- !is.null(reference)
@@ -426,7 +426,7 @@ add_amspaf <- function(
   }
 
   ## ================================================================
-  ## Step 3: Compute AmsPAF per feature, per sample.
+  ## Step 3: Compute msPAF per feature, per sample.
   ## ================================================================
 
   ## Per-site engine via split() + lapply (not group_modify): the per-site flat
@@ -434,7 +434,7 @@ add_amspaf <- function(
   ## by group_modify's row-binding, so collect them explicitly. (issue #30)
   site_ids <- sort(unique(df$site_id))
   per_site <- lapply(site_ids, function(sid) {
-    r <- compute_amspaf_per_sample(
+    r <- compute_mspaf_per_sample(
       sample_data   = df[df$site_id == sid, , drop = FALSE],
       ref_table     = ref_table,
       ssd_params    = ssd_params,
@@ -446,7 +446,7 @@ add_amspaf <- function(
     r$site_id <- sid
     r
   })
-  amspaf_df <- dplyr::bind_rows(per_site)
+  mspaf_df <- dplyr::bind_rows(per_site)
 
   collect_attr <- function(nm) {
     parts <- Map(function(r, sid) {
@@ -469,7 +469,7 @@ add_amspaf <- function(
       return(flat)
     dplyr::filter(flat, .data$draw_id == min(flat$draw_id, na.rm = TRUE))
   }
-  .summarise_amspaf_diagnostics(rep_draw(dropped_flat))
+  .summarise_mspaf_diagnostics(rep_draw(dropped_flat))
   .summarise_ara_coverage(rep_draw(analyte_pafs_flat), ara_enabled)
 
   ## ara_summary attribute: per-cell ARA diagnostics for the representative draw
@@ -480,31 +480,31 @@ add_amspaf <- function(
                   "C_adj", "C_excess", "floor_fired", "ref_source", "ref_tier")
   } else NULL
 
-  amspaf_df <- dplyr::mutate(amspaf_df,
-    analyte  = "AmsPAF",
+  mspaf_df <- dplyr::mutate(mspaf_df,
+    analyte  = "msPAF",
     detected = TRUE
   )
 
   ## Tier breaks / regulatory interpretation are intentionally NOT provided
-  ## by this package.  AmsPAF is a continuous risk metric (% of species
+  ## by this package.  msPAF is a continuous risk metric (% of species
   ## potentially affected); the threshold at which a community is
   ## "impacted" depends on the assessment context (mixture composition,
   ## site-specific calibration, target protection level) and is a
-  ## consumer-side decision.  See vignette("chronic-amspaf-interpretation").
+  ## consumer-side decision.  See vignette("chronic-mspaf-interpretation").
 
-  ## Propagate datetime from input df to AmsPAF rows (per-sample pipeline).
+  ## Propagate datetime from input df to msPAF rows (per-sample pipeline).
   if ("datetime" %in% names(df)) {
     sample_times <- dplyr::distinct(df, .data$sample_id, .data$datetime)
-    amspaf_df    <- dplyr::left_join(amspaf_df, sample_times, by = "sample_id")
+    mspaf_df    <- dplyr::left_join(mspaf_df, sample_times, by = "sample_id")
   }
 
-  ## Propagate focal_date from input df to AmsPAF rows (chronic pipeline).
+  ## Propagate focal_date from input df to msPAF rows (chronic pipeline).
   if ("focal_date" %in% names(df)) {
     focal_times <- dplyr::distinct(df, .data$sample_id, .data$focal_date)
-    amspaf_df   <- dplyr::left_join(amspaf_df, focal_times, by = "sample_id")
+    mspaf_df   <- dplyr::left_join(mspaf_df, focal_times, by = "sample_id")
   }
 
-  result <- dplyr::bind_rows(df, amspaf_df)
+  result <- dplyr::bind_rows(df, mspaf_df)
   if ("focal_date" %in% names(result)) {
     result <- dplyr::arrange(result, .data$focal_date)
   } else if ("datetime" %in% names(result)) {
@@ -528,18 +528,18 @@ add_amspaf <- function(
 ## derive_ssd_params
 ## ============================================================================
 
-#' Derive SSD parameters for AmsPAF computation
+#' Derive SSD parameters for msPAF computation
 #'
 #' Reads analyte eligibility and mode-of-action groups from the bundled
 #' metadata CSV, then calls [ssd_hc50()] and `.ssd_sigma()` to populate the
 #' HC50 and effective sigma needed for Concentration Addition. Chemistry
 #' normalisation formulas (currently all stubs) are parsed once and stored
-#' as a list column for use in [compute_amspaf_per_sample()].
+#' as a list column for use in [compute_mspaf_per_sample()].
 #'
 #' Eligibility criteria:
 #' \itemize{
 #'   \item `ssd_available == TRUE` in the metadata
-#'   \item `analyte` not in `.AMSPAF_EXCLUDED_ANALYTES`
+#'   \item `analyte` not in `.MSPAF_EXCLUDED_ANALYTES`
 #'   \item `ssd_hc50()` returns a non-NA value (model fits successfully)
 #' }
 #'
@@ -552,7 +552,7 @@ add_amspaf <- function(
 #'   `coanalytes_req` (character), and `fit` (list column of fitted SSD
 #'   objects, one per analyte).  The fitted SSD is loaded **once per analyte
 #'   here** (via the cached `.load_or_fit()` path) so that
-#'   [compute_amspaf_per_sample()] can evaluate every sample's PAF in a single
+#'   [compute_mspaf_per_sample()] can evaluate every sample's PAF in a single
 #'   vectorised [ssdtools::ssd_hp()] call per analyte, rather than refitting /
 #'   re-resolving the SSD inside a per-(sample × analyte) loop.
 #'
@@ -560,7 +560,7 @@ add_amspaf <- function(
 derive_ssd_params <- function(meta, method, guideline_dir) {
   eligible <- meta |>
     dplyr::filter(.data$ssd_available == TRUE) |>
-    dplyr::filter(!.data$analyte %in% .AMSPAF_EXCLUDED_ANALYTES)
+    dplyr::filter(!.data$analyte %in% .MSPAF_EXCLUDED_ANALYTES)
 
   if (nrow(eligible) == 0L) {
     return(.empty_ssd_params())
@@ -575,7 +575,7 @@ derive_ssd_params <- function(meta, method, guideline_dir) {
 
     ## Load the fitted SSD object once (cached in-memory + on disk by
     ## .load_or_fit()).  Stored as a list column for batched PAF evaluation.
-    ## NO3-N never reaches here (it is in .AMSPAF_EXCLUDED_ANALYTES), so no
+    ## NO3-N never reaches here (it is in .MSPAF_EXCLUDED_ANALYTES), so no
     ## hardness-class resolution is needed.
     stem <- .SSD_NAME_MAP[[nm]]
     fit  <- if (!is.null(stem)) {
@@ -672,19 +672,19 @@ compute_ca_group_mspaf <- function(group_data) {
 
 
 ## ============================================================================
-## compute_amspaf_per_sample
+## compute_mspaf_per_sample
 ## ============================================================================
 
-#' Compute AmsPAF for each sample in a per-feature data block
+#' Compute msPAF for each sample in a per-feature data block
 #'
-#' Internal workhorse called by [add_amspaf()] for each `site_id` group.  Runs
+#' Internal workhorse called by [add_mspaf()] for each `site_id` group.  Runs
 #' in three phases so the (relatively expensive) SSD evaluation is **batched
 #' across samples** rather than called once per (sample × analyte):
 #' \enumerate{
 #'   \item chemistry normalisation + ARA shift, vectorised across all rows
-#'     ([.amspaf_adjust()]);
+#'     ([.mspaf_adjust()]);
 #'   \item one vectorised [ssdtools::ssd_hp()] call per analyte across every
-#'     sample ([.amspaf_add_paf()]);
+#'     sample ([.mspaf_add_paf()]);
 #'   \item CA/IA mixture combination via grouped reductions over
 #'     (sample, draw, MOA group).
 #' }
@@ -697,13 +697,13 @@ compute_ca_group_mspaf <- function(group_data) {
 #' @param method SSD method (used only for the rare NULL-fit fallback).
 #' @param guideline_dir Path to ANZG XLSX folder (NULL-fit fallback only).
 #' @param ara_enabled Logical; whether the caller supplied a reference.
-#'   Controls the `ref_source` diagnostic (see [.amspaf_adjust()]).
+#'   Controls the `ref_source` diagnostic (see [.mspaf_adjust()]).
 #'
 #' @return Tibble with one row per sample that passes `min_analytes`, columns:
 #'   `sample_id`, `value`, `n_analytes_used`, `n_analytes_imputed`,
 #'   `dominant_analyte`, `max_paf`, `analyte_pafs`, `dropped_analytes`.
 #' @keywords internal
-compute_amspaf_per_sample <- function(
+compute_mspaf_per_sample <- function(
     sample_data,
     ref_table,
     ssd_params,
@@ -727,10 +727,10 @@ compute_amspaf_per_sample <- function(
   sample_data <- .broadcast_draws(sample_data, draws)
 
   ## ── Phase 1: normalisation + ARA, vectorised across the WHOLE frame ────────
-  ## .amspaf_adjust() handles all (sample, draw) blocks in one pass (co-analytes
+  ## .mspaf_adjust() handles all (sample, draw) blocks in one pass (co-analytes
   ## joined wide; each analyte's formula evaluated once across its rows), so
   ## there is no per-block dplyr loop. (issue #30)
-  adj <- .amspaf_adjust(sample_data, ref_table, ssd_params, ara_enabled)
+  adj <- .mspaf_adjust(sample_data, ref_table, ssd_params, ara_enabled)
   tox <- adj$tox
   tox$imp_n <- if (has_imputed && "imputed" %in% names(tox))
     as.integer(tox$imputed) else 0L
@@ -741,20 +741,20 @@ compute_amspaf_per_sample <- function(
     dplyr::filter(.data$nblk >= min_analytes) |>
     dplyr::select("sample_id", "draw_id")
   if (nrow(keep_keys) == 0L) {
-    empty <- .amspaf_empty_row(with_sample_id = TRUE)
+    empty <- .mspaf_empty_row(with_sample_id = TRUE)
     if (!is_draws_mode) empty <- dplyr::select(empty, -"draw_id")
     return(empty)
   }
   tox <- dplyr::semi_join(tox, keep_keys, by = c("sample_id", "draw_id"))
 
   ## ── Phase 2: batched PAF — one ssd_hp() per analyte across all rows. ──────
-  tox <- .amspaf_add_paf(tox, ssd_params, method, guideline_dir)
+  tox <- .mspaf_add_paf(tox, ssd_params, method, guideline_dir)
 
   ## ── Phase 3: vectorised CA (per sample x draw x MOA group) then IA. ───────
   ## De Zwart & Posthuma (2005, Integr. Environ. Assess. Manag. 1:e1, eq.6):
   ## concentration addition within an MOA group (mixture slope = mean component
   ## slope; group msPAF = pnorm(log10(sum TU)/sigma_mix)); independent action
-  ## across groups: AmsPAF = 1 - prod(1 - msPAF_group).
+  ## across groups: msPAF = 1 - prod(1 - msPAF_group).
   ## NB: rows with NA moa_group contribute 0 here, reproducing the previous
   ## per-group behaviour (`filter(moa_group == NA)` selected nothing) — see the
   ## implementation note raised on issue #30.
@@ -770,7 +770,7 @@ compute_amspaf_per_sample <- function(
                     stats::pnorm(log10(.data$TU_mix) / .data$sigma_mix), 0))
   ia <- ca |>
     dplyr::group_by(.data$sample_id, .data$draw_id) |>
-    dplyr::summarise(amspaf = 1 - prod(1 - .data$msPAF), .groups = "drop")
+    dplyr::summarise(mspaf = 1 - prod(1 - .data$msPAF), .groups = "drop")
 
   ## Per-block scalars over the kept (post-drop) tox rows.
   scal <- tox |>
@@ -786,7 +786,7 @@ compute_amspaf_per_sample <- function(
 
   result <- scal |>
     dplyr::left_join(ia, by = c("sample_id", "draw_id")) |>
-    dplyr::mutate(value = dplyr::coalesce(.data$amspaf, 0) * 100) |>
+    dplyr::mutate(value = dplyr::coalesce(.data$mspaf, 0) * 100) |>
     dplyr::select("sample_id", "draw_id", "value", "n_analytes_used",
                   "n_analytes_imputed", "dominant_analyte", "max_paf") |>
     dplyr::arrange(.data$sample_id, .data$draw_id)
@@ -815,10 +815,10 @@ compute_amspaf_per_sample <- function(
 
 
 ## ============================================================================
-## Shared AmsPAF helpers
+## Shared msPAF helpers
 ## ============================================================================
 ##
-## Normalisation / ARA / PAF helpers used by compute_amspaf_per_sample(), each
+## Normalisation / ARA / PAF helpers used by compute_mspaf_per_sample(), each
 ## vectorised across all (sample x draw) rows in one call.
 
 #' Normalise chemistry and apply the ARA shift for a block of sample rows
@@ -831,7 +831,7 @@ compute_amspaf_per_sample <- function(
 #'
 #' `ref_source` distinguishes:
 #' \itemize{
-#'   \item `"disabled"` — ARA off (no reference supplied to [add_amspaf()]);
+#'   \item `"disabled"` — ARA off (no reference supplied to [add_mspaf()]);
 #'   \item `"matched"` — ARA on and a reference value was found for the analyte;
 #'   \item `"unmatched"` — ARA on but no reference match (assessed against raw
 #'     normalised concentration, i.e. `ref_norm = 0`).
@@ -847,7 +847,7 @@ compute_amspaf_per_sample <- function(
 #'   `C_adj`) and `dropped` is a `(analyte, reason)` tibble of rows dropped for
 #'   a missing required co-analyte.
 #' @keywords internal
-.amspaf_adjust <- function(sample_rows, ref_table, ssd_params,
+.mspaf_adjust <- function(sample_rows, ref_table, ssd_params,
                            ara_enabled = TRUE) {
   ## Per-(sample, draw) keys present in this frame. The batched caller passes the
   ## whole site frame (many samples x draws); normalisation reads each row's own
@@ -988,14 +988,14 @@ compute_amspaf_per_sample <- function(
 #' than one [ssd_paf()] call per row.  The fitted SSD object is taken from the
 #' `fit` list-column of `ssd_params` (loaded once in [derive_ssd_params()]).
 #'
-#' @param tox Adjusted tox rows from [.amspaf_adjust()] (needs `analyte`,
+#' @param tox Adjusted tox rows from [.mspaf_adjust()] (needs `analyte`,
 #'   `C_adj`); may span multiple samples.
 #' @param ssd_params Tibble from [derive_ssd_params()] (uses `analyte`, `fit`).
 #' @param method SSD method (NULL-fit fallback only).
 #' @param guideline_dir Path to ANZG XLSX folder (NULL-fit fallback only).
 #' @return `tox` with a numeric `PAF` column added (proportion, 0–1).
 #' @keywords internal
-.amspaf_add_paf <- function(tox, ssd_params, method, guideline_dir) {
+.mspaf_add_paf <- function(tox, ssd_params, method, guideline_dir) {
   tox$PAF <- NA_real_
   if (nrow(tox) == 0L) return(tox)
 
@@ -1040,7 +1040,7 @@ compute_amspaf_per_sample <- function(
 
   if (is.null(guideline_dir)) {
     shipped_path <- system.file("extdata", "ssd_paf_lookup.qs2",
-                                package = "leachatetools")
+                                package = "hydroSense")
     if (nzchar(shipped_path) && file.exists(shipped_path)) {
       shipped_all <- tryCatch(qs2::qs_read(shipped_path), error = function(e) NULL)
       if (!is.null(shipped_all) && key %in% names(shipped_all)) {
@@ -1166,13 +1166,13 @@ compute_amspaf_per_sample <- function(
   out
 }
 
-#' Construct an empty (zero-row) AmsPAF result tibble
+#' Construct an empty (zero-row) msPAF result tibble
 #'
 #' @param with_sample_id Logical; if `TRUE`, prepend a `sample_id` column (used
-#'   by the batched [compute_amspaf_per_sample()] path).
-#' @return A zero-row tibble with the AmsPAF output schema.
+#'   by the batched [compute_mspaf_per_sample()] path).
+#' @return A zero-row tibble with the msPAF output schema.
 #' @keywords internal
-.amspaf_empty_row <- function(with_sample_id = FALSE) {
+.mspaf_empty_row <- function(with_sample_id = FALSE) {
   out <- tibble::tibble(
     value              = numeric(0),
     n_analytes_used    = integer(0),
@@ -1213,7 +1213,7 @@ compute_amspaf_per_sample <- function(
   n_analytes <- nrow(per_analyte)
 
   cli::cli_inform(c(
-    "i" = "add_amspaf: {n_analytes} analyte{?s} had no reference match \\
+    "i" = "add_mspaf: {n_analytes} analyte{?s} had no reference match \\
            (ARA enabled) and were assessed against raw normalised \\
            concentration:",
     paste0("    ", per_analyte$analyte, ": ", per_analyte$n_samples,
@@ -1224,7 +1224,7 @@ compute_amspaf_per_sample <- function(
 
 #' Summarise per-sample dropped-analyte tally and emit a single cli message
 #' @keywords internal
-.summarise_amspaf_diagnostics <- function(drop_long, min_analytes = NULL) {
+.summarise_mspaf_diagnostics <- function(drop_long, min_analytes = NULL) {
   if (is.null(drop_long) || nrow(drop_long) == 0L) return(invisible(NULL))
 
   per_analyte <- drop_long |>
@@ -1234,7 +1234,7 @@ compute_amspaf_per_sample <- function(
   n_samples_aff <- dplyr::n_distinct(drop_long$sample_id)
 
   cli::cli_inform(c(
-    "i" = "add_amspaf: {n_total_drops} analyte row{?s} dropped across \\
+    "i" = "add_mspaf: {n_total_drops} analyte row{?s} dropped across \\
            {n_samples_aff} sample{?s} (normalisation co-analyte missing).",
     paste0("    ", per_analyte$analyte, ": ", per_analyte$n_samples,
            " sample", ifelse(per_analyte$n_samples == 1L, "", "s"))

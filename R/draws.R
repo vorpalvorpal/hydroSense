@@ -75,7 +75,7 @@
 #'
 #' **Per-draw diagnostic columns** (`draw_id`, `dominant_analyte`, `max_paf`,
 #' `analyte_pafs`) are dropped in draws mode; they are available by passing
-#' `return = "draws"` to [add_amspaf()] or [time_weighted_aggregate()].
+#' `return = "draws"` to [add_mspaf()] or [time_weighted_aggregate()].
 #'
 #' Exact cells (`draw_id = NA`) each collapse to a degenerate interval:
 #' `value_lower = value_upper = value`, `n_draws = 1`.
@@ -90,12 +90,12 @@
 #'   (central estimate), `value_lower`, `value_upper` (interval bounds), and
 #'   `n_draws`.  Returns `df` unchanged when the input carries no draws.
 #'
-#' @seealso [add_amspaf()], [time_weighted_aggregate()]
+#' @seealso [add_mspaf()], [time_weighted_aggregate()]
 #' @examples
 #' \dontrun{
-#' # Collapse AmsPAF draws to median + 90 % CI
-#' amspaf_draws |>
-#'   add_amspaf(return = "draws") |>
+#' # Collapse msPAF draws to median + 90 % CI
+#' mspaf_draws |>
+#'   add_mspaf(return = "draws") |>
 #'   summarise_draws(interval = 0.90)
 #' }
 #' @export
@@ -218,7 +218,7 @@ summarise_draws <- function(df, interval = 0.90,
 #' independent across analytes within a sample.
 #'
 #' **Call order:** `impute_chemistry()` → `impute_coanalytes()` →
-#' `draw_measurement_error()` → `add_amspaf()`.  Imputation establishes the
+#' `draw_measurement_error()` → `add_mspaf()`.  Imputation establishes the
 #' draw count N; this function reuses it.
 #'
 #' @param df Long-format data frame following the draw-carrier contract.
@@ -374,7 +374,7 @@ draw_measurement_error <- function(df,
 #' Perturb all GAM fits inside a reference_model
 #'
 #' Draws independent posterior-coefficient samples for each analyte's
-#' `gamm_fit`.  Used when `amspaf_daily(reference = NULL)` (total-
+#' `gamm_fit`.  Used when `mspaf_daily(reference = NULL)` (total-
 #' concentration mode), where `ref_norm` enters the result directly and
 #' its uncertainty should be reflected.  When background is subtracted
 #' via the same reference model, the reference-GAM contribution cancels
@@ -402,7 +402,7 @@ draw_measurement_error <- function(df,
 #'
 #' @param tm A `target_model` from [fit_target_model()].
 #' @param perturb_reference Logical; when `TRUE`, also perturb the embedded
-#'   `reference_model`'s GAMs (use only when `amspaf_daily(reference = NULL)`
+#'   `reference_model`'s GAMs (use only when `mspaf_daily(reference = NULL)`
 #'   — total-concentration mode — so that `ref_norm` uncertainty is not
 #'   inadvertently cancelled by a downstream subtraction).
 #' @return A modified copy of `tm`.  The original object is not mutated

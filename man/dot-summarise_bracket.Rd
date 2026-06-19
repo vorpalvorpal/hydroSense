@@ -2,7 +2,7 @@
 % Please edit documentation in R/daily_bracket.R
 \name{.summarise_bracket}
 \alias{.summarise_bracket}
-\title{Summarise per-draw bracket AmsPAF into a tidy per-day frame}
+\title{Summarise per-draw bracket msPAF into a tidy per-day frame}
 \usage{
 .summarise_bracket(
   draws_df,
@@ -13,8 +13,8 @@
 }
 \arguments{
 \item{draws_df}{Long per-draw frame with \code{date}, \code{site_id}, \code{draw_id} and the
-envelope value columns needed for \code{gap_uncertainty}: \code{amspaf_ignorable}
-and/or \code{amspaf_informative}.}
+envelope value columns needed for \code{gap_uncertainty}: \code{mspaf_ignorable}
+and/or \code{mspaf_informative}.}
 
 \item{interval}{Credible-interval width (default 0.9). The lower bound is the
 \code{(1 - interval)/2} quantile, the upper the \code{1 - (1 - interval)/2} quantile
@@ -33,6 +33,6 @@ the requested mode: \verb{median_*}, \verb{lo_*}, \verb{hi_*} per envelope, and
 \code{precautionary_lo}/\code{precautionary_hi} in \code{"bracket"} mode.
 }
 \description{
-Summarise per-draw bracket AmsPAF into a tidy per-day frame
+Summarise per-draw bracket msPAF into a tidy per-day frame
 }
 \keyword{internal}

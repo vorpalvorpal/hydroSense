@@ -1,4 +1,4 @@
-## amspaf_daily(): continuous daily AmsPAF time series from interpolated chemistry
+## mspaf_daily(): continuous daily msPAF time series from interpolated chemistry
 ##
 ## Tests cover:
 ##   (a) output schema and column presence
@@ -13,7 +13,7 @@
 ## No ANZG XLSX files are required -- the bundled observations CSV is used.
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 ## Helper: minimal long-format chemistry for one site, n_samples grab events.
 ## Co-analytes are included so normalisation formulas for Cu/Zn/Ni can run.
@@ -58,14 +58,14 @@ make_daily_chem <- function(
 ## (a) Output schema
 ## =============================================================================
 
-test_that("amspaf_daily returns required columns", {
+test_that("mspaf_daily returns required columns", {
   df  <- make_daily_chem()
   out <- suppressMessages(
-    amspaf_daily(df, require_temperature = FALSE)
+    mspaf_daily(df, require_temperature = FALSE)
   )
 
   expect_s3_class(out, "data.frame")
-  expected_cols <- c("date", "site_id", "amspaf", "n_analytes_used",
+  expected_cols <- c("date", "site_id", "mspaf", "n_analytes_used",
                      "dominant_analyte", "max_paf",
                      "n_measured_analytes", "days_since_last_sample")
   expect_true(all(expected_cols %in% names(out)))
@@ -74,27 +74,27 @@ test_that("amspaf_daily returns required columns", {
   expect_false(is.null(attr(out, "analyte_pafs")))
 })
 
-test_that("amspaf_daily date column is Date class", {
+test_that("mspaf_daily date column is Date class", {
   df  <- make_daily_chem()
   out <- suppressMessages(
-    amspaf_daily(df, require_temperature = FALSE)
+    mspaf_daily(df, require_temperature = FALSE)
   )
   expect_s3_class(out$date, "Date")
 })
 
-test_that("amspaf_daily amspaf values are non-negative finite numbers", {
+test_that("mspaf_daily mspaf values are non-negative finite numbers", {
   df  <- make_daily_chem()
   out <- suppressMessages(
-    amspaf_daily(df, require_temperature = FALSE)
+    mspaf_daily(df, require_temperature = FALSE)
   )
-  expect_true(all(is.finite(out$amspaf)))
-  expect_true(all(out$amspaf >= 0))
+  expect_true(all(is.finite(out$mspaf)))
+  expect_true(all(out$mspaf >= 0))
 })
 
-test_that("amspaf_daily ara_summary attribute is attached", {
+test_that("mspaf_daily ara_summary attribute is attached", {
   df  <- make_daily_chem()
   out <- suppressMessages(
-    amspaf_daily(df, reference = NULL, require_temperature = FALSE)
+    mspaf_daily(df, reference = NULL, require_temperature = FALSE)
   )
   ## With reference = NULL the ara_summary tibble is still returned (empty).
   expect_true(!is.null(attr(out, "ara_summary")) ||
@@ -106,10 +106,10 @@ test_that("amspaf_daily ara_summary attribute is attached", {
 ## (b) Date coverage
 ## =============================================================================
 
-test_that("amspaf_daily covers every day in the grab date range", {
+test_that("mspaf_daily covers every day in the grab date range", {
   df  <- make_daily_chem(n_samples = 4, spacing = 30L)
   out <- suppressMessages(
-    amspaf_daily(df, require_temperature = FALSE)
+    mspaf_daily(df, require_temperature = FALSE)
   )
 
   ## The output should span start → end with no internal gaps
@@ -125,12 +125,12 @@ test_that("amspaf_daily covers every day in the grab date range", {
   expect_gte(nrow(out), 1L)
 })
 
-test_that("amspaf_daily respects explicit start/end bounds", {
+test_that("mspaf_daily respects explicit start/end bounds", {
   df    <- make_daily_chem(n_samples = 6, spacing = 30L)
   s     <- as.Date("2024-02-01")
   e     <- as.Date("2024-03-31")
   out   <- suppressMessages(
-    amspaf_daily(df, start = s, end = e, require_temperature = FALSE)
+    mspaf_daily(df, start = s, end = e, require_temperature = FALSE)
   )
   expect_gte(min(out$date), s)
   expect_lte(max(out$date), e)
@@ -158,26 +158,26 @@ test_that("forward_fill produces step-function values between grabs", {
   )
 
   out_ff <- suppressMessages(
-    amspaf_daily(df, interpolation = "forward_fill",
+    mspaf_daily(df, interpolation = "forward_fill",
                  require_temperature = FALSE)
   )
   out_li <- suppressMessages(
-    amspaf_daily(df, interpolation = "linear",
+    mspaf_daily(df, interpolation = "linear",
                  require_temperature = FALSE)
   )
 
-  ## forward_fill should give constant AmsPAF in the gap between grabs.
+  ## forward_fill should give constant msPAF in the gap between grabs.
   grab1 <- df$datetime[df$analyte == "Cu" & df$sample_id == "s1_s1"][1L]
   grab2 <- df$datetime[df$analyte == "Cu" & df$sample_id == "s1_s2"][1L]
   gap_dates <- seq(grab1 + 1L, grab2 - 1L, by = "day")
 
-  ff_gap <- out_ff$amspaf[out_ff$date %in% gap_dates]
+  ff_gap <- out_ff$mspaf[out_ff$date %in% gap_dates]
   expect_true(length(ff_gap) > 0L)
   ## All gap values equal (step function).
   expect_true(all(abs(ff_gap - ff_gap[1L]) < 1e-10))
 
   ## linear should show variation across the gap.
-  li_gap <- out_li$amspaf[out_li$date %in% gap_dates]
+  li_gap <- out_li$mspaf[out_li$date %in% gap_dates]
   expect_true(length(li_gap) > 1L)
   ## At least one intermediate value differs from the first.
   expect_true(any(abs(li_gap - li_gap[1L]) > 1e-10))
@@ -193,7 +193,7 @@ test_that("leading_edge = 'drop' excludes days before the first grab", {
   ## Request a start 15 days before the first grab.
   s   <- min(df$datetime) - 15L
   out <- suppressMessages(
-    amspaf_daily(df, start = s, leading_edge = "drop",
+    mspaf_daily(df, start = s, leading_edge = "drop",
                  require_temperature = FALSE)
   )
   ## No output dates should precede the first grab.
@@ -204,7 +204,7 @@ test_that("leading_edge = 'backfill' includes days before the first grab", {
   df  <- make_daily_chem(n_samples = 3, spacing = 30L)
   s   <- min(df$datetime) - 10L
   out <- suppressMessages(
-    amspaf_daily(df, start = s, leading_edge = "backfill",
+    mspaf_daily(df, start = s, leading_edge = "backfill",
                  require_temperature = FALSE)
   )
   ## Some output dates should precede the first grab.
@@ -216,13 +216,13 @@ test_that("leading_edge = 'backfill' includes days before the first grab", {
 ## (e) Multi-site handling
 ## =============================================================================
 
-test_that("amspaf_daily handles multiple sites independently", {
+test_that("mspaf_daily handles multiple sites independently", {
   df1 <- make_daily_chem(site = "A", seed = 1)
   df2 <- make_daily_chem(site = "B", seed = 2)
   df  <- dplyr::bind_rows(df1, df2)
 
   out <- suppressMessages(
-    amspaf_daily(df, require_temperature = FALSE)
+    mspaf_daily(df, require_temperature = FALSE)
   )
 
   expect_true("A" %in% out$site_id)
@@ -240,7 +240,7 @@ test_that("amspaf_daily handles multiple sites independently", {
 test_that("n_measured_analytes is positive on grab days and zero otherwise", {
   df  <- make_daily_chem(n_samples = 3, spacing = 20L)
   out <- suppressMessages(
-    amspaf_daily(df, require_temperature = FALSE)
+    mspaf_daily(df, require_temperature = FALSE)
   )
 
   grab_dates <- sort(unique(df$datetime))
@@ -261,7 +261,7 @@ test_that("n_measured_analytes is positive on grab days and zero otherwise", {
 test_that("days_since_last_sample is 0 on grab days, positive in gaps", {
   df  <- make_daily_chem(n_samples = 3, spacing = 20L)
   out <- suppressMessages(
-    amspaf_daily(df, require_temperature = FALSE)
+    mspaf_daily(df, require_temperature = FALSE)
   )
 
   grab_dates <- sort(unique(df$datetime))
@@ -296,11 +296,11 @@ test_that("external temperature fills gap days when NH3-N is absent", {
   )
 
   out <- suppressMessages(
-    amspaf_daily(df, temperature = temp_df, require_temperature = FALSE)
+    mspaf_daily(df, temperature = temp_df, require_temperature = FALSE)
   )
 
   expect_gte(nrow(out), 1L)
-  expect_true(all(is.finite(out$amspaf)))
+  expect_true(all(is.finite(out$mspaf)))
 })
 
 test_that("grab-day temperature takes priority over external temperature", {
@@ -329,7 +329,7 @@ test_that("grab-day temperature takes priority over external temperature", {
   ## but the function must run without error and produce output.
   expect_no_error(
     suppressMessages(
-      amspaf_daily(df, temperature = temp_df, require_temperature = FALSE)
+      mspaf_daily(df, temperature = temp_df, require_temperature = FALSE)
     )
   )
 })
@@ -339,15 +339,15 @@ test_that("grab-day temperature takes priority over external temperature", {
 ## (h) Error / degenerate input handling
 ## =============================================================================
 
-test_that("amspaf_daily errors on missing required columns", {
+test_that("mspaf_daily errors on missing required columns", {
   bad_df <- tibble::tibble(analyte = "Cu", value = 1, site_id = "s")
-  expect_error(amspaf_daily(bad_df), "must.include")
+  expect_error(mspaf_daily(bad_df), "must.include")
 })
 
-test_that("amspaf_daily returns empty tibble when min_analytes is too high", {
+test_that("mspaf_daily returns empty tibble when min_analytes is too high", {
   df  <- make_daily_chem(analytes = c("Cu"))  ## only one SSD analyte
   out <- suppressMessages(
-    amspaf_daily(df, min_analytes = 10L, require_temperature = FALSE)
+    mspaf_daily(df, min_analytes = 10L, require_temperature = FALSE)
   )
   expect_equal(nrow(out), 0L)
 })
@@ -363,7 +363,7 @@ test_that(".interpolate_analyte forward-fills correctly", {
   obs_det <- c(TRUE, TRUE)
   targets <- seq(as.Date("2024-01-01"), as.Date("2024-01-15"), by = "day")
 
-  res <- leachatetools:::.interpolate_analyte(
+  res <- hydroSense:::.interpolate_analyte(
     obs_dates     = obs_d,
     obs_values    = obs_v,
     obs_detected  = obs_det,
@@ -389,7 +389,7 @@ test_that(".interpolate_analyte linear interpolates correctly", {
   obs_det <- c(TRUE, TRUE)
   targets <- seq(as.Date("2024-01-01"), as.Date("2024-01-11"), by = "day")
 
-  res <- leachatetools:::.interpolate_analyte(
+  res <- hydroSense:::.interpolate_analyte(
     obs_dates     = obs_d,
     obs_values    = obs_v,
     obs_detected  = obs_det,
@@ -410,7 +410,7 @@ test_that(".interpolate_analyte log-space interpolation stays positive", {
   obs_det <- c(TRUE, TRUE)
   targets <- seq(as.Date("2024-01-01"), as.Date("2024-01-11"), by = "day")
 
-  res <- leachatetools:::.interpolate_analyte(
+  res <- hydroSense:::.interpolate_analyte(
     obs_dates     = obs_d,
     obs_values    = obs_v,
     obs_detected  = obs_det,
@@ -432,12 +432,12 @@ test_that(".interpolate_analyte backfill extends before first obs", {
   obs_det <- TRUE
   targets <- seq(as.Date("2024-01-05"), as.Date("2024-01-15"), by = "day")
 
-  drop_res <- leachatetools:::.interpolate_analyte(
+  drop_res <- hydroSense:::.interpolate_analyte(
     obs_dates = obs_d, obs_values = obs_v, obs_detected = obs_det,
     target_dates = targets, interpolation = "forward_fill",
     leading_edge = "drop", log_space = FALSE
   )
-  back_res <- leachatetools:::.interpolate_analyte(
+  back_res <- hydroSense:::.interpolate_analyte(
     obs_dates = obs_d, obs_values = obs_v, obs_detected = obs_det,
     target_dates = targets, interpolation = "forward_fill",
     leading_edge = "backfill", log_space = FALSE

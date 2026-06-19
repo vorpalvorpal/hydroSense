@@ -47,7 +47,7 @@
 #' Models the anthropogenic increment `I = C_norm - ref_norm` (the ARA
 #' "added risk", i.e. `ara_summary()`'s `C_excess`) at a target site as a
 #' function of hydrology and a persistent latent state -- **never** of
-#' day-of-year.  Used by [amspaf_daily()] (`interpolation = "model"`) to fill
+#' day-of-year.  Used by [mspaf_daily()] (`interpolation = "model"`) to fill
 #' the gaps between grab samples with a chemistry-grounded impact estimate
 #' instead of a forward-filled concentration.
 #'
@@ -96,7 +96,7 @@
 #' @param method SSD method (`"multi"` or `"anzecc"`) used to derive each
 #'   analyte's HC5 transform scale when `analyte_c` is not supplied.
 #' @param guideline_dir Path to the ANZG guideline data folder (for the SSD
-#'   fits); falls back to `getOption("leachatetools.guideline_dir")`.
+#'   fits); falls back to `getOption("hydroSense.guideline_dir")`.
 #' @param transform `"pseudo_log"` (default) or `"additive"`. Controls the
 #'   variance-stabilising transform applied to the impact residual before
 #'   smoothing. `"pseudo_log"` uses `g = asinh(I / c)` with per-analyte scale
@@ -140,7 +140,7 @@
 #'     \item{`$fit_date`}{Date fitted.}
 #'   }
 #'
-#' @seealso [amspaf_daily()], [fit_reference_model()], [add_amspaf()],
+#' @seealso [mspaf_daily()], [fit_reference_model()], [add_mspaf()],
 #'   [ara_summary()]
 #'
 #' @references
@@ -166,7 +166,7 @@ fit_target_model <- function(
   conc_units = NULL,
   analyte_metadata = NULL,
   method = c("multi", "anzecc"),
-  guideline_dir = getOption("leachatetools.guideline_dir"),
+  guideline_dir = getOption("hydroSense.guideline_dir"),
   transform = c("pseudo_log", "additive"),
   analyte_c = NULL,
   api_tau_bounds_short = c(1, 30),
@@ -216,7 +216,7 @@ fit_target_model <- function(
   meta <- .load_analyte_metadata(analyte_metadata)
   ssd_analytes <- meta$analyte[
     !is.na(meta$ssd_available) & meta$ssd_available == TRUE &
-      !meta$analyte %in% .AMSPAF_EXCLUDED_ANALYTES
+      !meta$analyte %in% .MSPAF_EXCLUDED_ANALYTES
   ]
   target <- .convert_df_tox_to_ugL(target, ssd_analytes, conc_units, "target")
 
@@ -225,7 +225,7 @@ fit_target_model <- function(
   ## is proportional to concentration; c is the additive->proportional crossover.
   ## Computed once from the fitted SSDs (NA where an HC5 is unavailable -> that
   ## analyte keeps the additive model). The caller may supply `analyte_c`
-  ## directly (e.g. amspaf_daily, which already derives the SSD params).
+  ## directly (e.g. mspaf_daily, which already derives the SSD params).
   transform <- match.arg(transform)
   method <- match.arg(method)
   if (is.null(analyte_c)) {

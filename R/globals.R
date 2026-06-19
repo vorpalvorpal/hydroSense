@@ -3,10 +3,10 @@
 # dplyr/tidyr verbs (bare column names) and from host-environment functions.
 # These are not real bindings -- column names are resolved inside the data mask
 # at run time -- so we declare them here. The rlang `.data` / `.env` pronouns
-# are imported from rlang in leachatetools-package.R instead.
+# are imported from rlang in hydroSense-package.R instead.
 #
 # The list is the complete set reported by
-#   codetools::checkUsagePackage("leachatetools", all = FALSE)
+#   codetools::checkUsagePackage("hydroSense", all = FALSE)
 # (the same analysis R CMD check runs). Regenerate it if that check ever flags
 # a new name.
 ## ── Unit-resolution helpers ──────────────────────────────────────────────────
@@ -135,8 +135,8 @@ utils::globalVariables(c(
   "focal_date", "hydro_long", "hydro_short", "log_pred", "n_obs",
   "normalisation_formula", "null_aic", "rainfall_mm", "ref_norm",
   "ref_source", "ref_tier", "tau_long", "tau_short", "value_norm",
-  # amspaf_daily (amspaf_daily.R)
-  ".measured", "amspaf", "days_since_last_sample", "n_measured_analytes",
+  # mspaf_daily (mspaf_daily.R)
+  ".measured", "mspaf", "days_since_last_sample", "n_measured_analytes",
   # target_model (target_model.R)
   "I", "S", "impact", "impact_tier",
   # host-environment (dashboard) functions used only on add_lmf()'s non-override

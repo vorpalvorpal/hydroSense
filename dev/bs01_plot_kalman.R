@@ -24,8 +24,8 @@ suppressMessages({
 
 CACHE_V3   <- "test data/bs01_v3_cache.qs2"
 BASELINE   <- "dev/baseline_bs01_centreline.qs2"
-DRAWS_ARA  <- "dev/bs01_kalman_draws_ara.qs2"  # raw per-(day,draw) AmsPAF — LONG to build
-DRAWS_TOT  <- "dev/bs01_kalman_draws_tot.qs2"  #   (the add_amspaf cost; see issue #30)
+DRAWS_ARA  <- "dev/bs01_kalman_draws_ara.qs2"  # raw per-(day,draw) msPAF — LONG to build
+DRAWS_TOT  <- "dev/bs01_kalman_draws_tot.qs2"  #   (the add_mspaf cost; see issue #30)
 CENTRE     <- "dev/bs01_kalman_centre.qs2"     # deterministic centre lines — fast (point mode)
 CHRONIC_ARA <- "dev/bs01_kalman_chronic_ara.qs2" # chronic TWA of the daily draws (cached)
 CHRONIC_TOT <- "dev/bs01_kalman_chronic_tot.qs2"
@@ -41,7 +41,7 @@ TOX_RSD    <- 0    # grab-sample measurement error: 0 until real lab uncertainty
                    # is available. A fabricated CV (was 0.15) injects fake S6/S7
                    # spread AND decouples the band's smoother from the centre's
                    # (issue #42). Raise only when real per-sample uncertainty lands.
-options(leachatetools.guideline_dir = GUIDE)
+options(hydroSense.guideline_dir = GUIDE)
 
 stopifnot(file.exists(CACHE_V3), file.exists(BASELINE))
 cc   <- qs2::qs_read(CACHE_V3)
@@ -49,12 +49,12 @@ base <- qs2::qs_read(BASELINE)
 da   <- cc$daily_args
 START <- da$start; END <- da$end
 
-## ── NEW: state-space daily AmsPAF (ARA + non-ARA) ────────────────────────────
-## Cache the RAW per-(day, draw) AmsPAF once (return = "draws"); this is the slow
-## part (add_amspaf over N x days — issue #30). Any credible interval is then an
+## ── NEW: state-space daily msPAF (ARA + non-ARA) ────────────────────────────
+## Cache the RAW per-(day, draw) msPAF once (return = "draws"); this is the slow
+## part (add_mspaf over N x days — issue #30). Any credible interval is then an
 ## instant re-summarise of the cache. The deterministic centre line (which is
 ## interval-independent) comes from a fast point-mode run, cached separately.
-draws_run <- function(reference) suppressMessages(do.call(amspaf_daily, c(da, list(
+draws_run <- function(reference) suppressMessages(do.call(mspaf_daily, c(da, list(
   reference = reference, ndraws = N_DRAWS, seed = SEED, return = "draws",
   grab_cv = TOX_RSD))))
 if (!file.exists(DRAWS_ARA)) {
@@ -66,13 +66,13 @@ if (!file.exists(DRAWS_TOT)) {
 if (!file.exists(CENTRE)) {
   cat("deterministic centre lines (point mode, fast) ...\n")
   ctr <- function(reference)
-    suppressMessages(do.call(amspaf_daily, c(da, list(reference = reference))))
-  qs2::qs_save(list(ara   = ctr(da$reference_model)[, c("date", "amspaf")],
-                    total = ctr(NULL)[,              c("date", "amspaf")]), CENTRE)
+    suppressMessages(do.call(mspaf_daily, c(da, list(reference = reference))))
+  qs2::qs_save(list(ara   = ctr(da$reference_model)[, c("date", "mspaf")],
+                    total = ctr(NULL)[,              c("date", "mspaf")]), CENTRE)
 }
 
 ## Summarise the cached draws at INTERVAL (instant) and attach the deterministic
-## centre — equivalent to amspaf_daily(return = "summary", interval = INTERVAL),
+## centre — equivalent to mspaf_daily(return = "summary", interval = INTERVAL),
 ## but the interval is now a cheap post-hoc choice. (summarise_draws() would give
 ## the same lower/upper from this per-(day,draw) frame.)
 ctr_cache <- qs2::qs_read(CENTRE)
@@ -81,23 +81,23 @@ band <- function(draws_path, centre_df) {
   q  <- qs2::qs_read(draws_path) |>
     dplyr::group_by(.data$date) |>
     dplyr::summarise(
-      amspaf_median = stats::median(.data$amspaf, na.rm = TRUE),
-      amspaf_lower = stats::quantile(.data$amspaf, lo,     names = FALSE, na.rm = TRUE),
-      amspaf_upper = stats::quantile(.data$amspaf, 1 - lo, names = FALSE, na.rm = TRUE),
+      mspaf_median = stats::median(.data$mspaf, na.rm = TRUE),
+      mspaf_lower = stats::quantile(.data$mspaf, lo,     names = FALSE, na.rm = TRUE),
+      mspaf_upper = stats::quantile(.data$mspaf, 1 - lo, names = FALSE, na.rm = TRUE),
       .groups = "drop")
-  ## centre_df carries the deterministic point-mode centre (renamed amspaf_det)
-  dplyr::left_join(dplyr::rename(centre_df, amspaf_det = "amspaf"), q, by = "date")
+  ## centre_df carries the deterministic point-mode centre (renamed mspaf_det)
+  dplyr::left_join(dplyr::rename(centre_df, mspaf_det = "mspaf"), q, by = "date")
 }
 new_ara <- band(DRAWS_ARA, ctr_cache$ara)
 new_tot <- band(DRAWS_TOT, ctr_cache$total)
 
-## ── Chronic (time-weighted) AmsPAF ───────────────────────────────────────────
-## The chronic step is a weighted ARITHMETIC mean of the daily AmsPAF (the only
+## ── Chronic (time-weighted) msPAF ───────────────────────────────────────────
+## The chronic step is a weighted ARITHMETIC mean of the daily msPAF (the only
 ## linear summary for a bounded index — geom_mean would add a second Jensen gap
 ## inside the chronic step). It is run PER DRAW (each draw is a coherent daily
 ## path), then summarised. Because the aggregation is linear:
 ##   * the chronic MEAN = time-average of the daily means → the decision endpoint
-##     E[chronic AmsPAF], and it is robust to the #23 temporal-pairing choice
+##     E[chronic msPAF], and it is robust to the #23 temporal-pairing choice
 ##     (correlation changes a sum's variance, never its expectation);
 ##   * the chronic INTERVAL still inherits the #23 index-pairing approximation.
 ## We plot the chronic mean as the centre line and overlay the DETERMINISTIC
@@ -114,12 +114,12 @@ chronic_summary <- function(draws_path, centre_df, cache_path) {
       sample_id = paste0(id_prefix, .data$date),
       site_id   = if ("site_id" %in% names(d)) .data$site_id else site,
       datetime  = .data$date,
-      analyte   = "AmsPAF",
+      analyte   = "msPAF",
       value     = {{ val }},
       detected  = TRUE,
       draw_id   = if (with_draw) .data$draw_id else NA_integer_
     )
-  inp <- to_long(draws_df, .data$amspaf, "d", TRUE) |>
+  inp <- to_long(draws_df, .data$mspaf, "d", TRUE) |>
     dplyr::filter(is.finite(.data$value))
   focal <- sort(unique(inp$datetime))
 
@@ -130,19 +130,19 @@ chronic_summary <- function(draws_path, centre_df, cache_path) {
     summary = "arith_mean", return = "summary",
     interval = INTERVAL, central = "median"
   ) |>
-    dplyr::transmute(date = .data$focal_date, amspaf = .data$value,
-                     amspaf_lower = .data$value_lower,
-                     amspaf_upper = .data$value_upper)
+    dplyr::transmute(date = .data$focal_date, mspaf = .data$value,
+                     mspaf_lower = .data$value_lower,
+                     mspaf_upper = .data$value_upper)
 
   ## deterministic daily centre → chronic (reference, no draws)
-  det <- to_long(centre_df, .data$amspaf, "c", FALSE) |>
+  det <- to_long(centre_df, .data$mspaf, "c", FALSE) |>
     dplyr::filter(is.finite(.data$value)) |>
     dplyr::select(-"draw_id")
   cd <- time_weighted_aggregate(
     det, focal_dates = focal, tau = TAU, tau_units = "d",
     window = WINDOW, window_units = "d", summary = "arith_mean"
   ) |>
-    dplyr::transmute(date = .data$focal_date, amspaf_det = .data$value)
+    dplyr::transmute(date = .data$focal_date, mspaf_det = .data$value)
 
   out <- dplyr::left_join(cw, cd, by = "date")
   qs2::qs_save(out, cache_path)
@@ -171,11 +171,11 @@ ylab <- "% species affected"
 ## tail-dominated under the current uncertainty model — see issue #39); grey
 ## dashed = deterministic centre (point mode); band = credible interval.
 new_band <- function(dnew, ttl, sub) ggplot(dnew, aes(date)) +
-  geom_ribbon(aes(ymin = amspaf_lower, ymax = amspaf_upper),
+  geom_ribbon(aes(ymin = mspaf_lower, ymax = mspaf_upper),
               fill = "steelblue", alpha = 0.22) +
-  geom_line(aes(y = amspaf_det,    colour = "deterministic centre"),
+  geom_line(aes(y = mspaf_det,    colour = "deterministic centre"),
             linetype = "21", linewidth = 0.55) +
-  geom_line(aes(y = amspaf_median, colour = "posterior median"),
+  geom_line(aes(y = mspaf_median, colour = "posterior median"),
             linewidth = 0.7) +
   scale_colour_manual(values = c("deterministic centre" = "grey35",
                                  "posterior median" = "steelblue4"),
@@ -186,30 +186,30 @@ new_band <- function(dnew, ttl, sub) ggplot(dnew, aes(date)) +
 ci_lab <- sprintf("%g%% CI (%g-%g pct)", 100 * INTERVAL,
                   100 * (1 - INTERVAL) / 2, 100 * (1 - (1 - INTERVAL) / 2))
 pC <- new_band(new_tot,
-               sprintf("C. Daily AmsPAF + %s — no ARA (total mixture)", ci_lab),
+               sprintf("C. Daily msPAF + %s — no ARA (total mixture)", ci_lab),
                "Blue = posterior median; grey dashed = deterministic centre")
 pD <- new_band(new_ara,
-               sprintf("D. Daily AmsPAF + %s — Added Risk (ARA)", ci_lab),
+               sprintf("D. Daily msPAF + %s — Added Risk (ARA)", ci_lab),
                "Blue = posterior median; grey dashed = deterministic centre")
 
 ## Chronic panels: green = chronic MEDIAN (signal-tracking; the chronic mean is
 ## tail-dominated under the current uncertainty model — see #39); grey dashed =
 ## deterministic chronic (TWA of the point-mode centre).
 chronic_band <- function(d, ttl, sub) ggplot(d, aes(date)) +
-  geom_ribbon(aes(ymin = amspaf_lower, ymax = amspaf_upper),
+  geom_ribbon(aes(ymin = mspaf_lower, ymax = mspaf_upper),
               fill = "seagreen", alpha = 0.22) +
-  geom_line(aes(y = amspaf_det), colour = "grey55", linetype = "21",
+  geom_line(aes(y = mspaf_det), colour = "grey55", linetype = "21",
             linewidth = 0.5) +
-  geom_line(aes(y = amspaf), colour = "seagreen4", linewidth = 0.7) +
+  geom_line(aes(y = mspaf), colour = "seagreen4", linewidth = 0.7) +
   xlim + labs(title = ttl, subtitle = sub, x = NULL, y = ylab) + thm
 
 chr_sub <- sprintf("Chronic median (green) + %s vs deterministic chronic (grey dashed); tau=%gd, window=%gd",
                    ci_lab, TAU, WINDOW)
 pE <- chronic_band(chr_tot,
-               "E. Chronic (time-weighted) AmsPAF — no ARA (total mixture)",
+               "E. Chronic (time-weighted) msPAF — no ARA (total mixture)",
                chr_sub)
 pF <- chronic_band(chr_ara,
-               "F. Chronic (time-weighted) AmsPAF — Added Risk (ARA)",
+               "F. Chronic (time-weighted) msPAF — Added Risk (ARA)",
                chr_sub)
 
 pG <- ggplot(cc$lmf_ts, aes(datetime, lmf)) +

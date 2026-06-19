@@ -12,7 +12,7 @@ ssd_paf(
   hardness = NULL,
   hardness_units = NULL,
   hardness_cv = 0.05,
-  guideline_dir = getOption("leachatetools.guideline_dir"),
+  guideline_dir = getOption("hydroSense.guideline_dir"),
   nboot = 0L,
   level = 0.95
 )
@@ -47,7 +47,7 @@ to 0 to recover hard class cutoffs.}
 
 \item{guideline_dir}{Character. Path to the "guideline data" folder
 containing ANZG XLSX files. Falls back to
-getOption("leachatetools.guideline_dir").}
+getOption("hydroSense.guideline_dir").}
 
 \item{nboot}{Integer. Bootstrap replicates for CI. 0 = no CI.}
 
@@ -69,7 +69,7 @@ Estimate the fraction of species potentially affected at a concentration.
 \examples{
 # Fraction of species affected by 9.3 mg/L total ammonia-N at the pH 7.0 /
 # 20 degC index condition. Uses the package's bundled SSD data; set
-# options(leachatetools.guideline_dir=) to fit from the ANZG XLSX files.
+# options(hydroSense.guideline_dir=) to fit from the ANZG XLSX files.
 ssd_paf("NH3-N", conc = 9321, conc_units = "ug/L")
 
 # NO3-N needs hardness for automatic soft/moderate/hard SSD selection:

@@ -9,7 +9,7 @@
 #   Rscript dev/bs01_coupling_compare.R  (first run: slow — two draw sets)
 
 suppressMessages({ library(dplyr); library(ggplot2); devtools::load_all(".", quiet = TRUE) })
-options(leachatetools.guideline_dir = "guideline data")
+options(hydroSense.guideline_dir = "guideline data")
 
 CACHE        <- "test data/bs01_v3_cache.qs2"
 DRAWS_INDEP  <- "dev/bs01_kalman_draws_ara_indep.qs2"
@@ -31,7 +31,7 @@ run_draws <- function(couple) {
   args$return           <- "draws"
   args$couple_residuals <- couple
   args$grab_cv          <- 0.15
-  suppressMessages(do.call(amspaf_daily, args))
+  suppressMessages(do.call(mspaf_daily, args))
 }
 
 if (!file.exists(DRAWS_INDEP)) {
@@ -48,11 +48,11 @@ if (!file.exists(DRAWS_COUP)) {
 ## ── Deterministic centre ──────────────────────────────────────────────────────
 if (file.exists(CENTRE)) {
   ctr_cache <- qs2::qs_read(CENTRE)
-  centre    <- ctr_cache$ara |> dplyr::select("date", "amspaf")
+  centre    <- ctr_cache$ara |> dplyr::select("date", "mspaf")
 } else {
   cat("Computing deterministic centre (point mode) ...\n")
-  centre <- suppressMessages(do.call(amspaf_daily, da)) |>
-    dplyr::select("date", "amspaf")
+  centre <- suppressMessages(do.call(mspaf_daily, da)) |>
+    dplyr::select("date", "mspaf")
 }
 
 ## ── Summarise draws at 90% interval ──────────────────────────────────────────
@@ -60,9 +60,9 @@ summarise_draws <- function(path) {
   qs2::qs_read(path) |>
     dplyr::group_by(date) |>
     dplyr::summarise(
-      amspaf_median = median(amspaf, na.rm = TRUE),
-      amspaf_lower  = quantile(amspaf, 0.05, na.rm = TRUE),
-      amspaf_upper  = quantile(amspaf, 0.95, na.rm = TRUE),
+      mspaf_median = median(mspaf, na.rm = TRUE),
+      mspaf_lower  = quantile(mspaf, 0.05, na.rm = TRUE),
+      mspaf_upper  = quantile(mspaf, 0.95, na.rm = TRUE),
       .groups = "drop"
     )
 }
@@ -71,16 +71,16 @@ summ_indep <- summarise_draws(DRAWS_INDEP)
 summ_coup  <- summarise_draws(DRAWS_COUP)
 
 ## ── Width ratio (for caption) ─────────────────────────────────────────────────
-width_indep <- mean(summ_indep$amspaf_upper - summ_indep$amspaf_lower, na.rm = TRUE)
-width_coup  <- mean(summ_coup$amspaf_upper  - summ_coup$amspaf_lower,  na.rm = TRUE)
+width_indep <- mean(summ_indep$mspaf_upper - summ_indep$mspaf_lower, na.rm = TRUE)
+width_coup  <- mean(summ_coup$mspaf_upper  - summ_coup$mspaf_lower,  na.rm = TRUE)
 ratio       <- width_coup / width_indep
-shift       <- mean(summ_coup$amspaf_median - summ_indep$amspaf_median, na.rm = TRUE)
+shift       <- mean(summ_coup$mspaf_median - summ_indep$mspaf_median, na.rm = TRUE)
 
 ## ── Join centre ───────────────────────────────────────────────────────────────
-df_indep <- dplyr::left_join(summ_indep, dplyr::rename(centre, amspaf_centre = "amspaf"), by = "date")
-df_coup  <- dplyr::left_join(summ_coup,  dplyr::rename(centre, amspaf_centre = "amspaf"), by = "date")
+df_indep <- dplyr::left_join(summ_indep, dplyr::rename(centre, mspaf_centre = "mspaf"), by = "date")
+df_coup  <- dplyr::left_join(summ_coup,  dplyr::rename(centre, mspaf_centre = "mspaf"), by = "date")
 
-ymax <- max(c(df_indep$amspaf_upper, df_coup$amspaf_upper), na.rm = TRUE)
+ymax <- max(c(df_indep$mspaf_upper, df_coup$mspaf_upper), na.rm = TRUE)
 ylim <- ggplot2::ylim(0, ymax)
 
 START <- min(centre$date, na.rm = TRUE)
@@ -92,17 +92,17 @@ cap   <- sprintf("Mean CI width: independent = %.2f, coupled = %.2f — ratio %.
                  width_indep, width_coup, ratio, 100 * ratio)
 
 pA <- ggplot(df_indep, aes(date)) +
-  geom_ribbon(aes(ymin = amspaf_lower, ymax = amspaf_upper), fill = "steelblue", alpha = 0.22) +
-  geom_line(aes(y = amspaf_centre), colour = "grey35", linetype = "21", linewidth = 0.5) +
-  geom_line(aes(y = amspaf_median), colour = "steelblue4", linewidth = 0.7) +
+  geom_ribbon(aes(ymin = mspaf_lower, ymax = mspaf_upper), fill = "steelblue", alpha = 0.22) +
+  geom_line(aes(y = mspaf_centre), colour = "grey35", linetype = "21", linewidth = 0.5) +
+  geom_line(aes(y = mspaf_median), colour = "steelblue4", linewidth = 0.7) +
   xlim + ylim +
   labs(title = "A. Independent draws (90% CI)", x = NULL, y = ylab) +
   thm
 
 pB <- ggplot(df_coup, aes(date)) +
-  geom_ribbon(aes(ymin = amspaf_lower, ymax = amspaf_upper), fill = "steelblue3", alpha = 0.22) +
-  geom_line(aes(y = amspaf_centre), colour = "grey35", linetype = "21", linewidth = 0.5) +
-  geom_line(aes(y = amspaf_median), colour = "steelblue", linewidth = 0.7) +
+  geom_ribbon(aes(ymin = mspaf_lower, ymax = mspaf_upper), fill = "steelblue3", alpha = 0.22) +
+  geom_line(aes(y = mspaf_centre), colour = "grey35", linetype = "21", linewidth = 0.5) +
+  geom_line(aes(y = mspaf_median), colour = "steelblue", linewidth = 0.7) +
   xlim + ylim +
   labs(title = "B. Coupled draws (90% CI)", x = NULL, y = ylab, caption = cap) +
   thm

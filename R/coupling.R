@@ -331,7 +331,7 @@ NULL
 #' process innovations \eqn{\eta^+} are correlated: the smoother gain `L` is
 #' precomputed on the actual data, and the correction \eqn{\alpha^+ - L y^+}
 #' has expectation zero.  Correlating \eqn{\eta^+} across analytes widens only
-#' the *joint* distribution (i.e. the combined AmsPAF interval).
+#' the *joint* distribution (i.e. the combined msPAF interval).
 #'
 #' **Cholesky coupling**: `Z_raw %*% U_chol` (where `U_chol = chol(R)`, upper
 #' triangular) gives rows with covariance `R` when rows of `Z_raw` are iid
@@ -363,7 +363,7 @@ NULL
 #'   dimnames; must be supplied explicitly otherwise.
 #' @param seed Integer or `NULL`.  When non-`NULL`, `set.seed(seed)` is called
 #'   at the start of the function so results are reproducible.  In
-#'   `amspaf_daily()`, the seed is set by the caller (via its own `seed`
+#'   `mspaf_daily()`, the seed is set by the caller (via its own `seed`
 #'   argument) before this function is invoked, so `seed = NULL` is used there.
 #'
 #' @return Named list by analyte (same order as `modelled`).  Each element is

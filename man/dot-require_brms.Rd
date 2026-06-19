@@ -11,7 +11,7 @@ The Bayesian imputation step (\code{\link[=fit_imputation_model]{fit_imputation_
 \code{\link[=impute_chemistry]{impute_chemistry()}}) is the only part of the package that needs
 \pkg{brms}, so brms is an optional ("Suggests") dependency rather than a
 hard requirement.  This keeps the package quick to install for users who
-only need the LMF or AmsPAF tools.  When someone actually calls an
+only need the LMF or msPAF tools.  When someone actually calls an
 imputation function without brms installed, this guard explains — in plain
 language — what to install and why.
 }

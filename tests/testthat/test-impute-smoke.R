@@ -6,7 +6,7 @@
 ## Stan compilation.
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 make_impute_chem <- function(n = 20, n_bdl = 3, n_missing = 2) {
   set.seed(7)
@@ -53,7 +53,7 @@ test_that(".require_brms() passes when brms is installed (brms is Suggests)", {
   # The guard returns TRUE invisibly when present, else aborts with install
   # guidance (exercised in real use where brms is absent).
   skip_if_not_installed("brms")
-  expect_true(leachatetools:::.require_brms())
+  expect_true(hydroSense:::.require_brms())
 })
 
 test_that("fit_imputation_model errors when required_vars are missing entirely", {

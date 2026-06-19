@@ -7,7 +7,7 @@
 ## the mixing fraction (as a 0-100 percentage).
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 # Major-ion end-member concentrations (mg/L). Leachate >> reference so the
 # ions are informative. valence/atomic mass drive the meq conversion.

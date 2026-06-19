@@ -13,6 +13,6 @@ An object of class \code{environment} of length 0.
 \description{
 Reads the bundled CSV when \code{meta} is NULL. Returns a tibble. Caches the
 result in an internal environment to avoid re-reading on every
-\code{prepare_reference()} / \code{add_amspaf()} call within a session.
+\code{prepare_reference()} / \code{add_mspaf()} call within a session.
 }
 \keyword{internal}

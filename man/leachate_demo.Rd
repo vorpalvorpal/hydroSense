@@ -48,7 +48,7 @@ fraction relative to the reference.}
 Each site has six bi-monthly samples through 2024. The analyte panel carries
 the major ions used by \code{\link[=add_lmf]{add_lmf()}} / \code{\link[=to_meq]{to_meq()}} (\code{Na}, \code{K}, \code{Ca}, \code{Mg},
 \code{Cl}, sulfate, \code{F}, \code{NO3-N}, \code{NO2-N}, \code{CO3-CaCO3}, \code{HCO3-CaCO3}), the
-toxicants assessed by \code{\link[=ssd_paf]{ssd_paf()}} / \code{\link[=add_amspaf]{add_amspaf()}} (\code{Cu}, \code{Zn}, \code{NH3-N}),
+toxicants assessed by \code{\link[=ssd_paf]{ssd_paf()}} / \code{\link[=add_mspaf]{add_mspaf()}} (\code{Cu}, \code{Zn}, \code{NH3-N}),
 and the co-analytes needed for the ammonia and bioavailability
 normalisations (\code{pH}, \code{temperature}, \code{DOC}, \code{hardness}).
 }

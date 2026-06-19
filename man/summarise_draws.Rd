@@ -29,19 +29,19 @@ appear for callers that never produce draws.
 \details{
 \strong{Per-draw diagnostic columns} (\code{draw_id}, \code{dominant_analyte}, \code{max_paf},
 \code{analyte_pafs}) are dropped in draws mode; they are available by passing
-\code{return = "draws"} to \code{\link[=add_amspaf]{add_amspaf()}} or \code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}.
+\code{return = "draws"} to \code{\link[=add_mspaf]{add_mspaf()}} or \code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}.
 
 Exact cells (\code{draw_id = NA}) each collapse to a degenerate interval:
 \code{value_lower = value_upper = value}, \code{n_draws = 1}.
 }
 \examples{
 \dontrun{
-# Collapse AmsPAF draws to median + 90 \% CI
-amspaf_draws |>
-  add_amspaf(return = "draws") |>
+# Collapse msPAF draws to median + 90 \% CI
+mspaf_draws |>
+  add_mspaf(return = "draws") |>
   summarise_draws(interval = 0.90)
 }
 }
 \seealso{
-\code{\link[=add_amspaf]{add_amspaf()}}, \code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}
+\code{\link[=add_mspaf]{add_mspaf()}}, \code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}
 }

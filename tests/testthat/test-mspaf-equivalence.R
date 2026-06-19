@@ -1,8 +1,8 @@
-## Equivalence harness for issue #30 (vectorising compute_amspaf_per_sample()).
+## Equivalence harness for issue #30 (vectorising compute_mspaf_per_sample()).
 ##
 ## Compares the CURRENT engine output against a golden snapshot taken from the
-## pre-change code (dev/gen_amspaf_golden.R -> fixtures/amspaf_golden.qs2).
-## Acceptance gate for the rewrite: numeric AmsPAF/PAF/C_adj within relative
+## pre-change code (dev/gen_mspaf_golden.R -> fixtures/mspaf_golden.qs2).
+## Acceptance gate for the rewrite: numeric msPAF/PAF/C_adj within relative
 ## 1e-9; integer/categorical fields (n_analytes_used, dominant_analyte,
 ## ref_source, moa_group, analyte set) exact; per-analyte breakdown and
 ## ara_summary preserved.
@@ -12,14 +12,14 @@
 ## list-column (pre-change).
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
-golden <- qs2::qs_read(test_path("fixtures", "amspaf_golden.qs2"))
+golden <- qs2::qs_read(test_path("fixtures", "mspaf_golden.qs2"))
 
-## Normalise an add_amspaf() output to (scalars, breakdown, ara_summary),
-## matching dev/gen_amspaf_golden.R but preferring the new flat attribute.
+## Normalise an add_mspaf() output to (scalars, breakdown, ara_summary),
+## matching dev/gen_mspaf_golden.R but preferring the new flat attribute.
 norm_out <- function(out) {
-  rows <- dplyr::filter(out, .data$analyte == "AmsPAF")
+  rows <- dplyr::filter(out, .data$analyte == "msPAF")
   scal_cols <- intersect(c("sample_id", "draw_id", "value", "n_analytes_used",
                            "n_analytes_imputed", "dominant_analyte", "max_paf"),
                          names(rows))
@@ -40,7 +40,7 @@ norm_out <- function(out) {
 }
 
 run_case <- function(df, reference) suppressMessages(
-  add_amspaf(df, reference = reference, conc_units = "ug/L",
+  add_mspaf(df, reference = reference, conc_units = "ug/L",
              return = if ("draw_id" %in% names(df)) "draws" else "summary"))
 
 prep_ref <- suppressMessages(
@@ -84,19 +84,19 @@ expect_equiv <- function(new, gold, label) {
   }
 }
 
-test_that("add_amspaf point mode, ARA off — matches golden", {
+test_that("add_mspaf point mode, ARA off — matches golden", {
   expect_equiv(norm_out(run_case(golden$inputs$pt_df, NULL)),
                golden$pt_noara, "pt_noara")
 })
-test_that("add_amspaf point mode, ARA on — matches golden", {
+test_that("add_mspaf point mode, ARA on — matches golden", {
   expect_equiv(norm_out(run_case(golden$inputs$pt_df, prep_ref)),
                golden$pt_ara, "pt_ara")
 })
-test_that("add_amspaf draws mode, ARA off — matches golden", {
+test_that("add_mspaf draws mode, ARA off — matches golden", {
   expect_equiv(norm_out(run_case(golden$inputs$dr_df, NULL)),
                golden$dr_noara, "dr_noara")
 })
-test_that("add_amspaf draws mode, ARA on — matches golden", {
+test_that("add_mspaf draws mode, ARA on — matches golden", {
   expect_equiv(norm_out(run_case(golden$inputs$dr_df, prep_ref)),
                golden$dr_ara, "dr_ara")
 })

@@ -1,7 +1,7 @@
 ## Tests for time_weighted_aggregate() and expand_focal_dates()
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 # ── Helper: build a synthetic long-format chemistry df ────────────────────────
 make_synth_chem <- function(
@@ -186,15 +186,15 @@ test_that("expand_focal_dates single-day range returns one date", {
   expect_equal(dates, as.Date("2024-07-15"))
 })
 
-# ── Path B usage: time-aggregate AmsPAF (non-chemistry analyte) ──────────────
+# ── Path B usage: time-aggregate msPAF (non-chemistry analyte) ──────────────
 
-test_that("works on a non-chemistry value column (AmsPAF-style)", {
+test_that("works on a non-chemistry value column (msPAF-style)", {
   focal <- as.Date("2024-04-01")
   df <- tibble::tibble(
     sample_id = paste0("s", 1:4),
     site_id   = "f1",
     datetime  = focal - c(60, 30, 10, 5),
-    analyte   = "AmsPAF",
+    analyte   = "msPAF",
     value     = c(2.5, 5.0, 10.0, 4.0),
     detected  = TRUE
   )
@@ -204,7 +204,7 @@ test_that("works on a non-chemistry value column (AmsPAF-style)", {
     anchor_outside_window = FALSE
   )
   expect_equal(nrow(out), 1L)
-  expect_equal(out$analyte, "AmsPAF")
+  expect_equal(out$analyte, "msPAF")
   expect_true(out$value > 0)
   expect_true(out$value < max(df$value))
 })

@@ -2,7 +2,7 @@
 % Please edit documentation in R/chronic.R
 \name{expand_focal_dates}
 \alias{expand_focal_dates}
-\title{Generate a sequence of focal dates for chronic AmsPAF computation}
+\title{Generate a sequence of focal dates for chronic msPAF computation}
 \usage{
 expand_focal_dates(start, end, by = "day")
 }

@@ -13,7 +13,7 @@
 ##   8. draw_domain()   — output passes ragged-N validation
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 ## ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -70,7 +70,7 @@ make_test_setup <- function(n_samples       = 40L,
   # Build real nipals pca_obj using the internal helper — guarantees compatibility
   # with .compute_pca_scores().  pca_vars fed to the model includes "DOC" so that
   # impute_coanalytes() recognises it as an imputeable target.
-  pca_obj <- leachatetools:::.prepare_chem_pca(base_df, wq_vars = c("pH", "EC"))
+  pca_obj <- hydroSense:::.prepare_chem_pca(base_df, wq_vars = c("pH", "EC"))
 
   model <- structure(
     list(groups   = list(),
@@ -288,6 +288,6 @@ test_that("draws output passes .draw_domain() ragged-N validation", {
                       return = "draws", ndraws = 6L, seed = 7L)
   )
   # .draw_domain() aborts on ragged N — if this passes the domain is valid
-  expect_no_error(leachatetools:::.draw_domain(out))
-  expect_equal(leachatetools:::.draw_domain(out), 1:6)
+  expect_no_error(hydroSense:::.draw_domain(out))
+  expect_equal(hydroSense:::.draw_domain(out), 1:6)
 })

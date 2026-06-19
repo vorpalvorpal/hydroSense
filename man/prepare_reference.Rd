@@ -2,7 +2,7 @@
 % Please edit documentation in R/reference.R
 \name{prepare_reference}
 \alias{prepare_reference}
-\title{Prepare reference chemistry for AmsPAF background subtraction}
+\title{Prepare reference chemistry for msPAF background subtraction}
 \usage{
 prepare_reference(
   reference_data,
@@ -16,7 +16,7 @@ prepare_reference(
 }
 \arguments{
 \item{reference_data}{Long-format chemistry data frame for the reference
-(background) site(s). Same schema as the input to \code{add_amspaf()}:
+(background) site(s). Same schema as the input to \code{add_mspaf()}:
 \code{analyte}, \code{value}, \code{detected}. Toxicant concentrations must be in µg/L
 before normalisation; supply them either via a \code{units.analyte} column or
 via the \code{conc_units} argument. BDL (\code{detected == FALSE}) observations
@@ -66,12 +66,12 @@ reference observations.
 Applies chemistry normalisation (if formulas are populated in the metadata)
 and computes a per-analyte central-tendency summary from reference-site
 data, optionally with a bootstrap confidence interval.  The resulting
-object is passed as the \code{reference} argument to \code{add_amspaf()}.
+object is passed as the \code{reference} argument to \code{add_mspaf()}.
 }
 \details{
 This is a pure function — it has no side effects and no internal cache.
 In the chronic pipeline, call it once after computing chronic chemistry for
-the reference feature(s), then pass the object into \code{add_amspaf()} for
+the reference feature(s), then pass the object into \code{add_mspaf()} for
 every focal date.  In the per-sample pipeline, call it once on the raw
 reference chemistry.
 

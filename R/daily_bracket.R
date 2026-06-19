@@ -3,7 +3,7 @@
 ## bracket into a tidy frame (issue #50)
 ## ============================================================================
 ##
-## amspaf_daily() in draws mode produces, per (site, day, draw), the AmsPAF under
+## mspaf_daily() in draws mode produces, per (site, day, draw), the msPAF under
 ## two missingness assumptions:
 ##   * ignorable  (upper) -- the residual is drawn from the simulation smoother;
 ##                           its variance balloons across gaps (MAR/today).
@@ -16,11 +16,11 @@
 ## composite [lo_informative, hi_ignorable] (a *decision* bound, NOT a calibrated
 ## interval; its coverage exceeds nominal and is undefined).
 
-#' Summarise per-draw bracket AmsPAF into a tidy per-day frame
+#' Summarise per-draw bracket msPAF into a tidy per-day frame
 #'
 #' @param draws_df Long per-draw frame with `date`, `site_id`, `draw_id` and the
-#'   envelope value columns needed for `gap_uncertainty`: `amspaf_ignorable`
-#'   and/or `amspaf_informative`.
+#'   envelope value columns needed for `gap_uncertainty`: `mspaf_ignorable`
+#'   and/or `mspaf_informative`.
 #' @param interval Credible-interval width (default 0.9). The lower bound is the
 #'   `(1 - interval)/2` quantile, the upper the `1 - (1 - interval)/2` quantile
 #'   (type-7, matching the package's other draw summaries).
@@ -55,8 +55,8 @@
   }
 
   parts <- list()
-  if (want_ig) parts$ig <- summarise_one("amspaf_ignorable", "ignorable")
-  if (want_inf) parts$inf <- summarise_one("amspaf_informative", "informative")
+  if (want_ig) parts$ig <- summarise_one("mspaf_ignorable", "ignorable")
+  if (want_inf) parts$inf <- summarise_one("mspaf_informative", "informative")
 
   out <- Reduce(
     function(a, b) dplyr::full_join(a, b, by = c("date", "site_id")),
@@ -90,8 +90,8 @@
 #' @keywords internal
 .bracket_draw_cols <- function(gap_uncertainty = "bracket") {
   switch(gap_uncertainty,
-    ignorable   = "amspaf_ignorable",
-    informative = "amspaf_informative",
-    bracket     = c("amspaf_ignorable", "amspaf_informative")
+    ignorable   = "mspaf_ignorable",
+    informative = "mspaf_informative",
+    bracket     = c("mspaf_ignorable", "mspaf_informative")
   )
 }

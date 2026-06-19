@@ -22,7 +22,7 @@
 ##           generated_on
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 ## ── Shared setup helpers ──────────────────────────────────────────────────────
 
@@ -31,9 +31,9 @@ library(leachatetools)
 ## every it().
 .lookup_test_env <- local({
   e <- new.env(parent = emptyenv())
-  e$meta       <- leachatetools:::.load_analyte_metadata(NULL)
+  e$meta       <- hydroSense:::.load_analyte_metadata(NULL)
   e$ssd_params <- suppressMessages(
-    leachatetools:::derive_ssd_params(e$meta, method = "multi", guideline_dir = NULL)
+    hydroSense:::derive_ssd_params(e$meta, method = "multi", guideline_dir = NULL)
   )
   e
 })
@@ -54,7 +54,7 @@ ssd_hp_truth <- function(fit, cc) {
   res$est[match(cc, res$conc)]
 }
 
-## Build a minimal sample data frame suitable for add_amspaf().
+## Build a minimal sample data frame suitable for add_mspaf().
 ## Returns a long-format tibble with 'n_samples' samples, each with
 ## Cu, Zn, Ni at 'cu_conc', 'zn_conc', 'ni_conc' µg/L plus the co-analytes
 ## needed for chemistry normalisation (pH, DOC, Ca, Mg, hardness).
@@ -93,7 +93,7 @@ make_sample_df <- function(n_samples = 2, n_draws = NA_integer_,
 
 ## Clear the session lookup cache so tests start from a cold state.
 clear_lookup_cache <- function() {
-  env <- tryCatch(leachatetools:::.ssd_paf_lookup_env, error = function(e) NULL)
+  env <- tryCatch(hydroSense:::.ssd_paf_lookup_env, error = function(e) NULL)
   if (!is.null(env)) {
     rm(list = ls(envir = env, all.names = TRUE), envir = env)
   }
@@ -114,7 +114,7 @@ describe(".ssd_paf_lookup accuracy vs ssd_hp()", {
       ## transition band (1e-3 to 1e5 µg/L; the lookup grid covers this range).
       cc <- 10^stats::runif(5000L, -3, 5)
 
-      f <- leachatetools:::.ssd_paf_lookup(analyte, "multi", fit, NULL)
+      f <- hydroSense:::.ssd_paf_lookup(analyte, "multi", fit, NULL)
       expect_true(is.function(f),
                   info = paste(".ssd_paf_lookup should return a function for:", analyte))
 
@@ -135,7 +135,7 @@ describe(".ssd_paf_lookup monotone & bounded", {
     fit <- get_fit("Cu")
     cc  <- sort(10^stats::runif(1000L, -3, 5))
 
-    f <- leachatetools:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
+    f <- hydroSense:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
     vals <- pmin(pmax(f(log10(cc)), 0), 1)
 
     ## Bounded
@@ -152,7 +152,7 @@ describe(".ssd_paf_lookup monotone & bounded", {
 describe(".ssd_paf_lookup clamping at grid boundaries", {
   it("clamps extreme / degenerate concentrations to [0, 1e-9] and [1-1e-9, 1]", {
     fit <- get_fit("Cu")
-    f   <- leachatetools:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
+    f   <- hydroSense:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
 
     ## Well below grid lo (say, 1e-15 µg/L) → PAF near 0
     paf_lo <- pmin(pmax(f(log10(1e-15)), 0), 1)
@@ -166,7 +166,7 @@ describe(".ssd_paf_lookup clamping at grid boundaries", {
 
     ## .ssd_paf_vec() handles degenerate inputs before calling the spline:
     ## conc = 0 → PAF 0; negative → PAF 0; NA → PAF 0; Inf → PAF 0
-    degenerate_pafs <- leachatetools:::.ssd_paf_vec(
+    degenerate_pafs <- hydroSense:::.ssd_paf_vec(
       fit           = fit,
       conc          = c(0, -5, NA, Inf),
       analyte       = "Cu",
@@ -197,7 +197,7 @@ describe(".ssd_paf_vec breakeven exact-path fallback", {
     ## threshold, triggering the exact-fallback path.
     conc_small <- c(1, 5, 10)
 
-    result_vec <- leachatetools:::.ssd_paf_vec(
+    result_vec <- hydroSense:::.ssd_paf_vec(
       fit           = fit,
       conc          = conc_small,
       analyte       = "Cu",
@@ -211,31 +211,31 @@ describe(".ssd_paf_vec breakeven exact-path fallback", {
   })
 })
 
-describe("add_amspaf draws-mode end-to-end with lookup", {
-  it("returns finite AmsPAF in [0, 100] for 30 samples x 8 draws", {
+describe("add_mspaf draws-mode end-to-end with lookup", {
+  it("returns finite msPAF in [0, 100] for 30 samples x 8 draws", {
     ## We cannot easily force the exact lookup vs direct path, so we assert
     ## the weaker (but meaningful) property: the result is finite and within
-    ## the valid AmsPAF range.  A tighter 1e-7 cross-run comparison is
+    ## the valid msPAF range.  A tighter 1e-7 cross-run comparison is
     ## deferred until Stage 3 benchmarks can hold the lookup table constant.
     set.seed(123L)
     df <- make_sample_df(n_samples = 30L, n_draws = 8L,
                          cu_conc = 5, zn_conc = 10, ni_conc = 0.3)
     out <- suppressMessages(
-      add_amspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
+      add_mspaf(df, reference = NULL, conc_units = "ug/L", return = "draws")
     )
-    amspaf_rows <- dplyr::filter(out, .data$analyte == "AmsPAF")
+    mspaf_rows <- dplyr::filter(out, .data$analyte == "msPAF")
 
-    expect_true(nrow(amspaf_rows) > 0L,
-                info = "at least one AmsPAF row must be returned")
-    expect_true(all(is.finite(amspaf_rows$value)),
-                info = "all AmsPAF values must be finite")
-    expect_true(all(amspaf_rows$value >= 0),
-                info = "AmsPAF values must be non-negative")
-    ## AmsPAF is a percentage; in extreme cases > 100 is possible
+    expect_true(nrow(mspaf_rows) > 0L,
+                info = "at least one msPAF row must be returned")
+    expect_true(all(is.finite(mspaf_rows$value)),
+                info = "all msPAF values must be finite")
+    expect_true(all(mspaf_rows$value >= 0),
+                info = "msPAF values must be non-negative")
+    ## msPAF is a percentage; in extreme cases > 100 is possible
     ## (IA combination of PAFs), but for these modest concentrations it
     ## should be well within [0, 100].
-    expect_true(all(amspaf_rows$value <= 100),
-                info = "AmsPAF values must be <= 100 for low test concentrations")
+    expect_true(all(mspaf_rows$value <= 100),
+                info = "msPAF values must be <= 100 for low test concentrations")
   })
 })
 
@@ -244,8 +244,8 @@ describe(".ssd_paf_lookup session cache", {
     clear_lookup_cache()
     fit <- get_fit("Cu")
 
-    f1 <- leachatetools:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
-    f2 <- leachatetools:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
+    f1 <- hydroSense:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
+    f2 <- hydroSense:::.ssd_paf_lookup("Cu", "multi", fit, NULL)
 
     ## Pointer identity — the second call must return the cached closure,
     ## not rebuild a new one.
@@ -257,8 +257,8 @@ describe(".ssd_paf_lookup session cache", {
 describe(".ssd_paf_vec NULL-fit fallback", {
   it("returns numeric[3] in [0,1] when fit is NULL, via scalar ssd_paf()", {
     result <- withr::with_options(
-      list(leachatetools.suppress_ssd_messages = TRUE),
-      leachatetools:::.ssd_paf_vec(
+      list(hydroSense.suppress_ssd_messages = TRUE),
+      hydroSense:::.ssd_paf_vec(
         fit           = NULL,
         conc          = c(1, 5, 10),
         analyte       = "Cu",
@@ -280,7 +280,7 @@ describe("drift guard: rebuilt table matches shipped table", {
   it("max|rebuilt - shipped paf| < 1e-6 for Cu and NH3-N on a dense grid", {
     shipped_path <- system.file(
       "extdata", "ssd_paf_lookup.qs2",
-      package = "leachatetools"
+      package = "hydroSense"
     )
     skip_if(
       !nzchar(shipped_path) || !file.exists(shipped_path),
@@ -301,7 +301,7 @@ describe("drift guard: rebuilt table matches shipped table", {
       ## Rebuild the spline from scratch (clear cache first).
       clear_lookup_cache()
       fit <- get_fit(analyte)
-      f_rebuilt <- leachatetools:::.ssd_paf_lookup(analyte, "multi", fit, NULL)
+      f_rebuilt <- hydroSense:::.ssd_paf_lookup(analyte, "multi", fit, NULL)
 
       rebuilt_paf <- pmin(pmax(f_rebuilt(log10_grid), 0), 1)
 
@@ -327,8 +327,8 @@ describe("drift guard: rebuilt table matches shipped table", {
 })
 
 describe("#30 equivalence preserved after #36 rewrite", {
-  it("point-mode add_amspaf() on 2 samples matches a fresh reference call within 1e-9", {
-    ## Run add_amspaf() twice (not against a stored fixture, since the fixture
+  it("point-mode add_mspaf() on 2 samples matches a fresh reference call within 1e-9", {
+    ## Run add_mspaf() twice (not against a stored fixture, since the fixture
     ## tolerance was set under the old engine).  Both calls use the same inputs;
     ## numerical identity confirms the lookup rewrite is deterministic and
     ## reproduces itself, which is a weaker but sufficient proxy for the golden
@@ -340,20 +340,20 @@ describe("#30 equivalence preserved after #36 rewrite", {
                          cu_conc = 5, zn_conc = 10, ni_conc = 0.3)
 
     run1 <- suppressMessages(
-      add_amspaf(df, reference = NULL, conc_units = "ug/L", return = "summary")
+      add_mspaf(df, reference = NULL, conc_units = "ug/L", return = "summary")
     )
     run2 <- suppressMessages(
-      add_amspaf(df, reference = NULL, conc_units = "ug/L", return = "summary")
+      add_mspaf(df, reference = NULL, conc_units = "ug/L", return = "summary")
     )
 
-    amspaf1 <- dplyr::filter(run1, .data$analyte == "AmsPAF")
-    amspaf2 <- dplyr::filter(run2, .data$analyte == "AmsPAF")
+    mspaf1 <- dplyr::filter(run1, .data$analyte == "msPAF")
+    mspaf2 <- dplyr::filter(run2, .data$analyte == "msPAF")
 
-    expect_equal(amspaf1$value, amspaf2$value, tolerance = 1e-9,
-                 info = "two identical calls must produce identical AmsPAF values")
-    expect_true(all(is.finite(amspaf1$value)),
-                info = "AmsPAF must be finite")
-    expect_true(all(amspaf1$value >= 0 & amspaf1$value <= 100),
-                info = "AmsPAF must be in [0, 100] for these concentrations")
+    expect_equal(mspaf1$value, mspaf2$value, tolerance = 1e-9,
+                 info = "two identical calls must produce identical msPAF values")
+    expect_true(all(is.finite(mspaf1$value)),
+                info = "msPAF must be finite")
+    expect_true(all(mspaf1$value >= 0 & mspaf1$value <= 100),
+                info = "msPAF must be in [0, 100] for these concentrations")
   })
 })

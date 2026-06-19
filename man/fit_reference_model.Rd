@@ -106,7 +106,7 @@ all analytes.}
 }
 \description{
 Fits per-analyte temporal models on reference-site chemistry so that
-\code{\link[=add_amspaf]{add_amspaf()}} can subtract a \emph{contemporaneous} background (what the
+\code{\link[=add_mspaf]{add_mspaf()}} can subtract a \emph{contemporaneous} background (what the
 reference site would have shown at the same moment as the target sample)
 rather than a static time-average.
 }
@@ -171,6 +171,6 @@ ref_model2 <- fit_reference_model(
 }
 }
 \seealso{
-\code{\link[=add_amspaf]{add_amspaf()}}, \code{\link[=get_silo_rainfall]{get_silo_rainfall()}}, \code{\link[=prepare_reference]{prepare_reference()}},
+\code{\link[=add_mspaf]{add_mspaf()}}, \code{\link[=get_silo_rainfall]{get_silo_rainfall()}}, \code{\link[=prepare_reference]{prepare_reference()}},
 \code{\link[=ara_summary]{ara_summary()}}
 }

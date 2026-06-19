@@ -10,7 +10,7 @@
 #' `analyte` and `value` columns and it will compute one time-weighted value
 #' per (focal_date × site_id × analyte).  Use it to aggregate raw chemistry
 #' (`analyte` = chemical species, `summary = "geom_mean"`) or per-sample
-#' AmsPAF values (`analyte = "AmsPAF"`, `summary = "arith_mean"`) into a
+#' msPAF values (`analyte = "msPAF"`, `summary = "arith_mean"`) into a
 #' chronic predictor.
 #'
 #' **Forward-step duration weighting** treats each sample as representing the
@@ -43,18 +43,18 @@
 #'   and a non-linear SSD response, this underestimates the time-averaged
 #'   risk metric (Jensen's inequality on the upper tail of the SSD).
 #' - `"arith_mean"`: weighted arithmetic mean.  Use for bounded indices
-#'   like AmsPAF percentages, or for chemistry when comparison against an
+#'   like msPAF percentages, or for chemistry when comparison against an
 #'   arithmetic-mean compliance trigger is wanted.
 #' - `"p90"`: 90th percentile (duration-weighted empirical CDF).  Diagnostic
 #'   for "what's the upper-end exposure the community sees most of the
 #'   time."
 #'
-#' For chronic AmsPAF specifically, the recommended pipeline is
-#' `add_amspaf()` on per-sample chemistry, then `time_weighted_aggregate()`
-#' on the resulting AmsPAF rows with `summary = "arith_mean"`.  This
-#' computes the time-averaged AmsPAF, which integrates the toxic response
+#' For chronic msPAF specifically, the recommended pipeline is
+#' `add_mspaf()` on per-sample chemistry, then `time_weighted_aggregate()`
+#' on the resulting msPAF rows with `summary = "arith_mean"`.  This
+#' computes the time-averaged msPAF, which integrates the toxic response
 #' over time (consistent with how biological communities respond to
-#' fluctuating exposure) — rather than the AmsPAF computed at a single
+#' fluctuating exposure) — rather than the msPAF computed at a single
 #' time-averaged chemistry, which can substantially under-state risk for
 #' pulsed exposures.
 #'
@@ -328,7 +328,7 @@ time_weighted_aggregate <- function(
 
 # ── expand_focal_dates ────────────────────────────────────────────────────────
 
-#' Generate a sequence of focal dates for chronic AmsPAF computation
+#' Generate a sequence of focal dates for chronic msPAF computation
 #'
 #' A thin convenience wrapper around [base::seq.Date()] for generating the
 #' `focal_dates` vector passed to [time_weighted_aggregate()].  The most

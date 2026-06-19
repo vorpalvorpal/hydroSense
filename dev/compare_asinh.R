@@ -14,7 +14,7 @@
 #   Rscript dev/compare_asinh.R
 
 suppressMessages({ library(dplyr); devtools::load_all(".", quiet = TRUE) })
-options(leachatetools.guideline_dir = "guideline data")
+options(hydroSense.guideline_dir = "guideline data")
 B <- "dev/before_asinh"
 GAP <- as.Date(c("2023-12-18", "2024-02-17"))   # the Jan-2024 baseline gap
 EVT <- as.Date(c("2024-08-15", "2024-10-15"))   # the 2024 impact event
@@ -24,23 +24,23 @@ bad <- function(x) cat(sprintf("  [DIFF] %s\n", x))
 
 cat("== 1. INVARIANTS (must be unchanged) ==\n")
 
-## 1a. Engine: add_amspaf on the grabs (R/mspaf.R is untouched by #15).
+## 1a. Engine: add_mspaf on the grabs (R/mspaf.R is untouched by #15).
 inv <- qs2::qs_read(file.path(B, "engine_invariant.qs2"))
 cc  <- qs2::qs_read("test data/bs01_v3_cache.qs2")
-eng_now <- suppressMessages(add_amspaf(cc$target_chem, reference = NULL)) |>
-  dplyr::filter(.data$analyte == "AmsPAF") |>
+eng_now <- suppressMessages(add_mspaf(cc$target_chem, reference = NULL)) |>
+  dplyr::filter(.data$analyte == "msPAF") |>
   dplyr::select(sample_id, value) |> dplyr::arrange(sample_id)
-d_eng <- max(abs(eng_now$value - inv$engine_amspaf_total$value), na.rm = TRUE)
-if (isTRUE(d_eng < 1e-9)) ok(sprintf("per-sample add_amspaf identical (max|d|=%.2g)", d_eng)) else
-  bad(sprintf("per-sample add_amspaf CHANGED (max|d|=%.3g)", d_eng))
+d_eng <- max(abs(eng_now$value - inv$engine_mspaf_total$value), na.rm = TRUE)
+if (isTRUE(d_eng < 1e-9)) ok(sprintf("per-sample add_mspaf identical (max|d|=%.2g)", d_eng)) else
+  bad(sprintf("per-sample add_mspaf CHANGED (max|d|=%.3g)", d_eng))
 
 ## 1b. Anchor-exactness: deterministic centre at grab dates unchanged.
 c_old <- qs2::qs_read(file.path(B, "bs01_kalman_centre.qs2"))
 c_new <- qs2::qs_read("dev/bs01_kalman_centre.qs2")
 for (which in c("ara", "total")) {
   j <- dplyr::inner_join(
-    dplyr::rename(c_old[[which]], old = "amspaf"),
-    dplyr::rename(c_new[[which]], new = "amspaf"), by = "date") |>
+    dplyr::rename(c_old[[which]], old = "mspaf"),
+    dplyr::rename(c_new[[which]], new = "mspaf"), by = "date") |>
     dplyr::filter(date %in% inv$grab_dates)
   d <- max(abs(j$old - j$new), na.rm = TRUE)
   if (isTRUE(d < 1e-2)) ok(sprintf("deterministic centre at grabs (%s) unchanged (max|d|=%.3g)", which, d)) else
@@ -51,10 +51,10 @@ cat("\n== 2. IMPROVEMENT (band vs old band vs deterministic) ==\n")
 
 band_summary <- function(path) {
   qs2::qs_read(path) |> dplyr::group_by(date) |>
-    dplyr::summarise(median = median(amspaf, na.rm = TRUE),
-                     mean = mean(amspaf, na.rm = TRUE),
-                     iqr = quantile(amspaf, .75, names = FALSE, na.rm = TRUE) -
-                           quantile(amspaf, .25, names = FALSE, na.rm = TRUE),
+    dplyr::summarise(median = median(mspaf, na.rm = TRUE),
+                     mean = mean(mspaf, na.rm = TRUE),
+                     iqr = quantile(mspaf, .75, names = FALSE, na.rm = TRUE) -
+                           quantile(mspaf, .25, names = FALSE, na.rm = TRUE),
                      .groups = "drop")
 }
 win <- function(df, w) dplyr::filter(df, date >= w[1], date <= w[2])
@@ -63,7 +63,7 @@ for (which in c("ara", "tot")) {
   cat(sprintf("\n-- %s --\n", toupper(which)))
   old <- band_summary(file.path(B, sprintf("bs01_kalman_draws_%s.qs2", which)))
   new <- band_summary(sprintf("dev/bs01_kalman_draws_%s.qs2", which))
-  det <- (if (which == "tot") c_new$total else c_new$ara) |> dplyr::rename(det = "amspaf")
+  det <- (if (which == "tot") c_new$total else c_new$ara) |> dplyr::rename(det = "mspaf")
   for (lab in c("baseline gap", "2024 event")) {
     w <- if (lab == "baseline gap") GAP else EVT
     o <- win(old, w); n <- win(new, w); dd <- win(det, w)

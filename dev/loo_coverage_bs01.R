@@ -7,7 +7,7 @@
 # checks whether the held-out residual falls inside the state-posterior interval.
 # Coverage is in LATENT residual space (what the bridge models), so this isolates
 # the bridge-variance calibration from the convex-SSD/floor transform (#15):
-#   * coverage ~ nominal at scale=1  -> bridge variance OK; AmsPAF inflation is
+#   * coverage ~ nominal at scale=1  -> bridge variance OK; msPAF inflation is
 #     the transform (#15), not the variance.
 #   * coverage > nominal (over-covered) -> bridge too wide -> lower ou_scale.
 # block >= 2 probes mid-gap width (plain LOO mostly tests the pinch zone).
@@ -15,7 +15,7 @@
 #   Rscript dev/loo_coverage_bs01.R
 
 suppressMessages({ library(dplyr); devtools::load_all(".", quiet = TRUE) })
-options(leachatetools.guideline_dir = "guideline data")
+options(hydroSense.guideline_dir = "guideline data")
 
 cc <- qs2::qs_read("test data/bs01_v3_cache.qs2")
 da <- cc$daily_args

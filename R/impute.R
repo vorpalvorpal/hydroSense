@@ -42,7 +42,7 @@
   # `setdiff(all_analytes, union(pca_vars, exclude))` guard in
   # fit_imputation_model() consequently removes them from the imputation
   # *targets* (they predict the other metals instead of being imputed) — the
-  # same dual role NH3-N already plays. They remain assessed by add_amspaf()
+  # same dual role NH3-N already plays. They remain assessed by add_mspaf()
   # whenever measured.
   "Fe", "Mn"
 )
@@ -91,7 +91,7 @@
 #' Co-analytes required by ANZECC/ANZG metal normalisation formulas
 #'
 #' These are imputed separately (after metals/organics imputation) via
-#' [impute_coanalytes()] so that [add_amspaf()] has values to normalise
+#' [impute_coanalytes()] so that [add_mspaf()] has values to normalise
 #' against.  pH and EC are excluded — they are always present (required vars).
 #' @keywords internal
 .COANALYTE_TARGETS <- c("DOC", "Ca", "Mg", "hardness")
@@ -123,7 +123,7 @@
 #' [impute_chemistry()]) is the only part of the package that needs
 #' \pkg{brms}, so brms is an optional ("Suggests") dependency rather than a
 #' hard requirement.  This keeps the package quick to install for users who
-#' only need the LMF or AmsPAF tools.  When someone actually calls an
+#' only need the LMF or msPAF tools.  When someone actually calls an
 #' imputation function without brms installed, this guard explains — in plain
 #' language — what to install and why.
 #' @keywords internal

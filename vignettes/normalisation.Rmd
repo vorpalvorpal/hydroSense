@@ -1,8 +1,8 @@
 ---
-title: "Analyte normalisation: bioavailability adjustments in leachatetools"
+title: "Analyte normalisation: bioavailability adjustments in hydroSense"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Analyte normalisation: bioavailability adjustments in leachatetools}
+  %\VignetteIndexEntry{Analyte normalisation: bioavailability adjustments in hydroSense}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -16,7 +16,7 @@ knitr::opts_chunk$set(
 
 ## Overview
 
-The ANZG freshwater toxicant guideline values are derived at a specific **index water-chemistry condition**. When ambient water chemistry differs from that condition, the guideline — and therefore the effective toxicity — changes. leachatetools adjusts measured concentrations to index-condition equivalents before computing PAF values so that all samples are compared on the same basis.
+The ANZG freshwater toxicant guideline values are derived at a specific **index water-chemistry condition**. When ambient water chemistry differs from that condition, the guideline — and therefore the effective toxicity — changes. hydroSense adjusts measured concentrations to index-condition equivalents before computing PAF values so that all samples are compared on the same basis.
 
 The adjustment is:
 
@@ -24,7 +24,7 @@ $$C_\text{norm} = C_\text{field} \times \frac{\text{EC10}_\text{index}}{\text{EC
 
 This normalised concentration is what enters the SSD lookup. A value of $C_\text{norm} > C_\text{field}$ means the measured concentration is *more toxic* at site conditions than the same concentration would be at index conditions; $C_\text{norm} < C_\text{field}$ means it is less toxic.
 
-Normalisation formulas are stored in the bundled analyte metadata CSV (`inst/extdata/anzecc_analyte_metadata.csv`). You can inspect or override them by supplying your own CSV via the `analyte_metadata` argument to `prepare_reference()` and `add_amspaf()`.
+Normalisation formulas are stored in the bundled analyte metadata CSV (`inst/extdata/anzecc_analyte_metadata.csv`). You can inspect or override them by supplying your own CSV via the `analyte_metadata` argument to `prepare_reference()` and `add_mspaf()`.
 
 ---
 
@@ -136,7 +136,7 @@ The following metals have chemistry-dependent toxicity but normalisation formula
 To override any formula — or add normalisation for analytes not listed above — supply your own metadata CSV via the `analyte_metadata` argument:
 
 ```r
-add_amspaf(
+add_mspaf(
   chemistry_df,
   reference      = prep_ref,
   analyte_metadata = "path/to/my_metadata.csv"

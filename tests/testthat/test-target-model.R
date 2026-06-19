@@ -3,10 +3,10 @@
 ## All Stan-free: the imputation (tier-2) front-end is gated and not exercised
 ## here. Covers fit_target_model(), the season-blind property, the
 ## perfect-management invariant, the elevated-site contrast, the residual
-## bridge interpolation, and the amspaf_daily(interpolation = "model") path.
+## bridge interpolation, and the mspaf_daily(interpolation = "model") path.
 
 library(testthat)
-library(leachatetools)
+library(hydroSense)
 
 
 ## ── Helpers ───────────────────────────────────────────────────────────────────
@@ -106,8 +106,8 @@ test_that("clean site -> impact centred near zero; elevated site -> positive", {
                                rm, conc_units = "ug/L", min_obs_model = 8L,
                                api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
 
-  cu_clean <- leachatetools:::.resolve_target_impact(tm_clean, q)
-  cu_hot   <- leachatetools:::.resolve_target_impact(tm_hot,   q)
+  cu_clean <- hydroSense:::.resolve_target_impact(tm_clean, q)
+  cu_hot   <- hydroSense:::.resolve_target_impact(tm_hot,   q)
   cu_clean <- cu_clean[cu_clean$analyte == "Cu", ]
   cu_hot   <- cu_hot[cu_hot$analyte == "Cu", ]
 
@@ -148,7 +148,7 @@ test_that(".resolve_target_impact() returns C_norm = max(ref_norm + impact, 0)",
   tm    <- fit_target_model(make_chem("target", dates, mult = 10, seed = 2),
                             rm, conc_units = "ug/L", min_obs_model = 8L,
                             api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
-  res <- leachatetools:::.resolve_target_impact(
+  res <- hydroSense:::.resolve_target_impact(
     tm, tibble::tibble(date = seq(as.Date("2021-02-01"),
                                   as.Date("2021-06-01"), by = "week"))
   )
@@ -159,13 +159,13 @@ test_that(".resolve_target_impact() returns C_norm = max(ref_norm + impact, 0)",
 })
 
 
-## ── amspaf_daily(interpolation = "model") end-to-end ──────────────────────────
+## ── mspaf_daily(interpolation = "model") end-to-end ──────────────────────────
 
-test_that("amspaf_daily(interpolation='model') requires a reference_model", {
+test_that("mspaf_daily(interpolation='model') requires a reference_model", {
   dates <- seq(as.Date("2021-01-01"), by = "2 weeks", length.out = 10)
   tgt   <- make_chem("target", dates)
   expect_error(
-    amspaf_daily(tgt, interpolation = "model", conc_units = "ug/L",
+    mspaf_daily(tgt, interpolation = "model", conc_units = "ug/L",
                  require_temperature = FALSE),
     regexp = "reference_model"
   )
@@ -192,7 +192,7 @@ make_wq_chem <- function(site, dates, mult = 1, seed = 1) {
 
 # A Stan-free PCA-only imputation_model (same shape the bs01 script builds).
 make_pca_model <- function(chem, wq = c("pH", "EC", "DOC", "Ca", "Mg", "hardness")) {
-  pca <- leachatetools:::.prepare_chem_pca(chem, wq_vars = wq)
+  pca <- hydroSense:::.prepare_chem_pca(chem, wq_vars = wq)
   structure(list(pca = pca, pca_vars = wq), class = "imputation_model")
 }
 
@@ -234,7 +234,7 @@ test_that(".resolve_target_impact() uses the 'wq' tier when wq is supplied", {
     analyte   = rep(c("EC", "pH"), times = 2),
     value     = c(550, 7.2, 120, 7.2)     # day 1 high EC, day 2 low EC
   )
-  res <- leachatetools:::.resolve_target_impact(
+  res <- hydroSense:::.resolve_target_impact(
     tm, tibble::tibble(date = qdates), analytes = "Cu", wq = wq
   )
   expect_true(all(res$impact_tier == "wq"))
@@ -251,7 +251,7 @@ test_that("without a wq argument the resolver falls back to the impact tiers", {
   tm <- fit_target_model(tgt, rm, imputation_model = make_pca_model(tgt),
                          conc_units = "ug/L", min_obs_model = 10L,
                          api_tau_bounds_short = c(7, 7), api_tau_bounds_long = c(30, 30))
-  res <- leachatetools:::.resolve_target_impact(
+  res <- hydroSense:::.resolve_target_impact(
     tm, tibble::tibble(date = as.Date("2021-04-07")), analytes = "Cu"  # no wq
   )
   expect_true(all(res$impact_tier %in% c("model", "bridge")))
@@ -265,7 +265,7 @@ test_that("without a wq argument the resolver falls back to the impact tiers", {
 make_hydro_driven <- function(site, dates, hydro, mult = 1, seed = 5) {
   set.seed(seed)
   analytes <- c("Cu", "Zn", "Ni", "pH", "DOC", "hardness", "Ca", "Mg")
-  api7 <- leachatetools:::.compute_api(hydro$value, hydro$date, dates, 7L)
+  api7 <- hydroSense:::.compute_api(hydro$value, hydro$date, dates, 7L)
   api7 <- (api7 - mean(api7)) / (stats::sd(api7) + 1e-9)
   purrr::pmap_dfr(list(dates, api7), function(d, a) {
     flush <- exp(0.8 * a)   # metals rise with antecedent rainfall
@@ -289,7 +289,7 @@ test_that("pool = TRUE produces a valid model and finite predictions", {
                          pool = TRUE, api_tau_bounds_short = c(7, 14),
                          api_tau_bounds_long = c(30, 90))
   expect_s3_class(tm, "target_model")
-  res <- leachatetools:::.resolve_target_impact(
+  res <- hydroSense:::.resolve_target_impact(
     tm, tibble::tibble(date = seq(as.Date("2021-03-01"), as.Date("2021-09-01"),
                                   by = "month"))
   )
@@ -331,7 +331,7 @@ test_that("pool = TRUE with a single modelled analyte falls back gracefully", {
 # analyte toward it.  All share the same first-flush shape so they pool.
 make_multi_scale <- function(site, dates, hydro, big_mult, ni_mult, seed = 7) {
   set.seed(seed)
-  api7 <- leachatetools:::.compute_api(hydro$value, hydro$date, dates, 7L)
+  api7 <- hydroSense:::.compute_api(hydro$value, hydro$date, dates, 7L)
   api7 <- (api7 - mean(api7)) / (stats::sd(api7) + 1e-9)
   bases <- c(Cu = 0.5, Zn = 5, Pb = 0.8, Cr = 1.0)           # large toxicants
   purrr::pmap_dfr(list(dates, api7), function(d, a) {
@@ -354,7 +354,7 @@ test_that("pool = TRUE preserves per-analyte magnitude (no cross-contamination)"
   # impact shrank each analyte's response toward the population: with several
   # large-signal toxicants present, a near-zero analyte (Ni) was dragged up
   # toward their high-amplitude hydro response (on the real B.S01 data Ni's
-  # daily AmsPAF share jumped from ~0% to ~40% while Cu collapsed from ~45% to
+  # daily msPAF share jumped from ~0% to ~40% while Cu collapsed from ~45% to
   # 0%).  The fix pools the standardised (z) SHAPE and restores each analyte's
   # own magnitude.
   #
@@ -377,7 +377,7 @@ test_that("pool = TRUE preserves per-analyte magnitude (no cross-contamination)"
 
   q   <- tibble::tibble(date = seq(as.Date("2021-02-03"), as.Date("2021-11-01"),
                                    by = "day"))
-  res <- leachatetools:::.resolve_target_impact(tm, q)
+  res <- hydroSense:::.resolve_target_impact(tm, q)
   big <- stats::sd(res$impact[res$analyte == "Cu"])
   ni  <- stats::sd(res$impact[res$analyte == "Ni"])
   # Ni's pooled hydro-response swing must stay far below the big toxicants'.
@@ -388,10 +388,10 @@ test_that("pool = TRUE preserves per-analyte magnitude (no cross-contamination)"
 
 ## ── impact_tier surfaced in ara_summary() (issue #14, item A) ─────────────────
 
-test_that("amspaf_daily(interpolation='model') surfaces impact_tier in ara_summary()", {
+test_that("mspaf_daily(interpolation='model') surfaces impact_tier in ara_summary()", {
   dates <- seq(as.Date("2021-01-01"), by = "2 weeks", length.out = 40)
   rm    <- fit_rm(make_chem("reference", dates), make_hydro())
-  d     <- amspaf_daily(make_chem("target", dates, mult = 10, seed = 2),
+  d     <- mspaf_daily(make_chem("target", dates, mult = 10, seed = 2),
                         reference = rm, reference_model = rm,
                         interpolation = "model", conc_units = "ug/L",
                         require_temperature = FALSE, min_analytes = 1)
@@ -449,25 +449,25 @@ test_that("impute-first enriches reference & target anchors (brms smoke test)", 
 })
 
 
-test_that("amspaf_daily(interpolation='model'): ARA <= no-ARA, daily series", {
+test_that("mspaf_daily(interpolation='model'): ARA <= no-ARA, daily series", {
   dates <- seq(as.Date("2021-01-01"), by = "2 weeks", length.out = 40)
   ref   <- make_chem("reference", dates)
   hydro <- make_hydro()
   rm    <- fit_rm(ref, hydro)
   tgt   <- make_chem("target", dates, mult = 10, seed = 2)
 
-  d_ara <- amspaf_daily(tgt, reference = rm, reference_model = rm,
+  d_ara <- mspaf_daily(tgt, reference = rm, reference_model = rm,
                         interpolation = "model", conc_units = "ug/L",
                         require_temperature = FALSE, min_analytes = 1)
-  d_tot <- amspaf_daily(tgt, reference = NULL, reference_model = rm,
+  d_tot <- mspaf_daily(tgt, reference = NULL, reference_model = rm,
                         interpolation = "model", conc_units = "ug/L",
                         require_temperature = FALSE, min_analytes = 1)
 
   expect_s3_class(d_ara, "tbl_df")
   expect_true(nrow(d_ara) > 100L)           # genuinely daily
-  expect_true(all(c("date", "site_id", "amspaf") %in% names(d_ara)))
+  expect_true(all(c("date", "site_id", "mspaf") %in% names(d_ara)))
   # Impact (ARA) cannot exceed total (no ARA), on average
-  expect_lte(mean(d_ara$amspaf), mean(d_tot$amspaf) + 1e-6)
+  expect_lte(mean(d_ara$mspaf), mean(d_tot$mspaf) + 1e-6)
   # ara_summary attribute survives
   expect_false(is.null(attr(d_ara, "ara_summary")))
 })
