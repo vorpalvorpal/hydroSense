@@ -28,6 +28,7 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Imports:
     assertr,
+    brms (>= 2.20.0),
     checkmate,
     cli,
     dplyr,
@@ -53,7 +54,6 @@ Imports:
     uuid
 SystemRequirements: Stan (rstan or cmdstanr); required by brms for Bayesian imputation
 Suggests:
-    brms (>= 2.20.0),
     future,
     future.apply,
     ggplot2,
