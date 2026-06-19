@@ -2,10 +2,10 @@
 
 Models the anthropogenic increment `I = C_norm - ref_norm` (the ARA
 "added risk", i.e.
-[`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md)'s
+[`ara_summary()`](https://vorpalvorpal.github.io/hydroSense/reference/ara_summary.md)'s
 `C_excess`) at a target site as a function of hydrology and a persistent
 latent state – **never** of day-of-year. Used by
-[`amspaf_daily()`](https://vorpalvorpal.github.io/leachatetools/reference/amspaf_daily.md)
+[`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)
 (`interpolation = "model"`) to fill the gaps between grab samples with a
 chemistry-grounded impact estimate instead of a forward-filled
 concentration.
@@ -22,7 +22,7 @@ fit_target_model(
   conc_units = NULL,
   analyte_metadata = NULL,
   method = c("multi", "anzecc"),
-  guideline_dir = getOption("leachatetools.guideline_dir"),
+  guideline_dir = getOption("hydroSense.guideline_dir"),
   transform = c("pseudo_log", "additive"),
   analyte_c = NULL,
   api_tau_bounds_short = c(1, 30),
@@ -46,7 +46,7 @@ fit_target_model(
 - reference_model:
 
   A `reference_model` from
-  [`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md).
+  [`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md).
   Supplies `ref_norm(t)` and (by default) the catchment hydrology
   series.
 
@@ -65,7 +65,7 @@ fit_target_model(
 - imputation_model:
 
   Optional `imputation_model` from
-  [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
+  [`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md)
   (fit on the target's chemistry). When supplied, missing analytes are
   imputed in raw concentration space before the impact is computed,
   adding more anchor days (tier 2). Requires **brms**.
@@ -87,7 +87,7 @@ fit_target_model(
 - guideline_dir:
 
   Path to the ANZG guideline data folder (for the SSD fits); falls back
-  to `getOption("leachatetools.guideline_dir")`.
+  to `getOption("hydroSense.guideline_dir")`.
 
 - transform:
 
@@ -197,10 +197,10 @@ Godsey SE, Kirchner JW, Clow DW (2009) Hydrological Processes
 
 ## See also
 
-[`amspaf_daily()`](https://vorpalvorpal.github.io/leachatetools/reference/amspaf_daily.md),
-[`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md),
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md),
-[`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md)
+[`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md),
+[`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md),
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md),
+[`ara_summary()`](https://vorpalvorpal.github.io/hydroSense/reference/ara_summary.md)
 
 ## Examples
 

@@ -32,7 +32,7 @@ correlation length.
 - theta, gamma:
 
   OU parameters from
-  [`.estimate_ou_kalman_params()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-estimate_ou_kalman_params.md).
+  [`.estimate_ou_kalman_params()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-estimate_ou_kalman_params.md).
 
 - r_vec:
 

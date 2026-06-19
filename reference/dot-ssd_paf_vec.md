@@ -6,7 +6,7 @@ Returns the proportion of species affected at each concentration in
 spline lookup (fast path) or a single
 [`ssdtools::ssd_hp()`](https://bcgov.github.io/ssdtools/reference/ssd_hp.html)
 call (exact fallback); otherwise it falls back to a per-value
-[`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md)
+[`ssd_paf()`](https://vorpalvorpal.github.io/hydroSense/reference/ssd_paf.md)
 lookup.
 
 ## Usage
@@ -28,7 +28,7 @@ lookup.
 - analyte:
 
   Analyte name (fallback
-  [`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md)
+  [`ssd_paf()`](https://vorpalvorpal.github.io/hydroSense/reference/ssd_paf.md)
   lookup only).
 
 - method:

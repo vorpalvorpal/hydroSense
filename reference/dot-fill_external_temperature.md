@@ -16,7 +16,7 @@ unchanged.
 - daily_long:
 
   Output of
-  [`.build_daily_chem()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-build_daily_chem.md).
+  [`.build_daily_chem()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-build_daily_chem.md).
 
 - temperature_df:
 

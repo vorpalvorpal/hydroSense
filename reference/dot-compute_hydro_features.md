@@ -1,9 +1,9 @@
 # Compute hydrology features (hydro_short, hydro_long) at target dates
 
 Dispatches to
-[`.compute_api()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-compute_api.md)
+[`.compute_api()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-compute_api.md)
 for rainfall or
-[`.compute_antecedent_mean()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-compute_antecedent_mean.md)
+[`.compute_antecedent_mean()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-compute_antecedent_mean.md)
 for stage/discharge, at both the short and long tau values.
 
 ## Usage

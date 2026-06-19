@@ -1,9 +1,9 @@
-# Per-analyte PAF breakdown from add_amspaf()
+# Per-analyte PAF breakdown from add_mspaf()
 
 After calling
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md),
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md),
 this accessor returns the per-analyte contribution breakdown behind each
-AmsPAF value: the ARA-adjusted concentration, single-substance PAF, MOA
+msPAF value: the ARA-adjusted concentration, single-substance PAF, MOA
 group and reference source for every assessed (sample × draw × analyte).
 It replaces the former `analyte_pafs` list-column with a flat, tidy
 frame (filter/join directly).
@@ -19,7 +19,7 @@ analyte_pafs(x)
 - x:
 
   A data frame returned by
-  [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md).
+  [`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md).
 
 ## Value
 
@@ -30,10 +30,10 @@ only), `analyte`, `C_adj`, `PAF`, `moa_group`, `ref_source`. Returns
 ## Details
 
 The attribute is stored by
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
 and is dropped by most dplyr verbs, so read it before further wrangling.
 
 ## See also
 
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md),
-[`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md),
+[`ara_summary()`](https://vorpalvorpal.github.io/hydroSense/reference/ara_summary.md)

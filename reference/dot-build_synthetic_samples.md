@@ -2,9 +2,9 @@
 
 Assigns `sample_id = "daily_{YYYY-MM-DD}_{site}"` per day. Keeps `.date`
 as a column (the caller extracts it before passing to
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)).
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)).
 No `focal_date` column is added – this is deliberate so
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
 uses the instant (pointwise) ARA path, not the chronic integrated path.
 
 ## Usage
@@ -18,7 +18,7 @@ uses the instant (pointwise) ARA path, not the chronic integrated path.
 - daily_long:
 
   Output of
-  [`.build_daily_chem()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-build_daily_chem.md)
+  [`.build_daily_chem()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-build_daily_chem.md)
   (after temperature fill).
 
 - site:
@@ -28,5 +28,5 @@ uses the instant (pointwise) ARA path, not the chronic integrated path.
 ## Value
 
 Long-format tibble ready for
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
 (after removing `.date`).

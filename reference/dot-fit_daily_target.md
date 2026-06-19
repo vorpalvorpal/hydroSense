@@ -1,12 +1,12 @@
 # Fit-once scaffold for the season-blind daily target model (issue \#16)
 
 Calls
-[`fit_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_target_model.md)
+[`fit_target_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_target_model.md)
 once, builds the static scaffolding needed for per-draw prediction, and
 precomputes the OU bridge Cholesky factors for every analyte over the
 full daily date grid. The result ("fitted daily model", `fdm`) is the
 input to
-[`.predict_daily_tox()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-predict_daily_tox.md);
+[`.predict_daily_tox()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-predict_daily_tox.md);
 call `.predict_daily_tox(fdm)` once for point mode or N times (with a
 perturbed target model and OU-sampled `eps_paths`) for draw mode.
 
@@ -39,7 +39,7 @@ perturbed target model and OU-sampled `eps_paths`) for draw mode.
 - reference_model, imputation_model, conc_units, meta, tox_analytes:
 
   Forwarded to
-  [`fit_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_target_model.md).
+  [`fit_target_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_target_model.md).
 
 - daily_long:
 

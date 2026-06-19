@@ -7,7 +7,7 @@ returning the frame with a `value_norm` column added. BDL rows
 callers are responsible for setting `value = 0` for BDL rows *before*
 calling this if they want BDL to contribute zero to downstream summaries
 (as
-[`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md)
+[`prepare_reference()`](https://vorpalvorpal.github.io/hydroSense/reference/prepare_reference.md)
 does).
 
 ## Usage

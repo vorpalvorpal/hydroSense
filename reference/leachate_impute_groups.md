@@ -1,14 +1,14 @@
 # Leachate imputation-group preset
 
 Returns the default
-[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)
+[`impute_group()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_group.md)
 specification used by
-[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md)
 for landfill-leachate monitoring chemistry: a **metals** group (hurdled
 on metal presence) and a catch-all **organics** group (hurdled on
 dissolved-organic-carbon presence). This is the leachate domain layer on
 top of the otherwise domain-agnostic engine — pass your own list of
-[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)
+[`impute_group()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_group.md)
 objects to model a different chemistry.
 
 ## Usage
@@ -24,14 +24,14 @@ A list of two `"impute_group"` objects (`metals`, `organics`).
 ## Details
 
 The metals set is
-[.METAL_ANALYTES](https://vorpalvorpal.github.io/leachatetools/reference/dot-METAL_ANALYTES.md)
+[.METAL_ANALYTES](https://vorpalvorpal.github.io/hydroSense/reference/dot-METAL_ANALYTES.md)
 and the organic-carbon hurdle set is
-[.DOC_LIKE_ANALYTES](https://vorpalvorpal.github.io/leachatetools/reference/dot-DOC_LIKE_ANALYTES.md).
+[.DOC_LIKE_ANALYTES](https://vorpalvorpal.github.io/hydroSense/reference/dot-DOC_LIKE_ANALYTES.md).
 
 ## See also
 
-[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md),
-[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
+[`impute_group()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_group.md),
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md)
 
 ## Examples
 

@@ -19,7 +19,7 @@ catch-all group (`targets = NULL`) then takes whatever remains.
 - groups:
 
   A validated list of
-  [`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)
+  [`impute_group()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_group.md)
   objects.
 
 ## Value

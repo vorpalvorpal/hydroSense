@@ -4,9 +4,9 @@ Turns observed, detected, exact (`draw_id = NA`, `!imputed`) cells that
 carry a per-measurement uncertainty column into N lognormal draws,
 propagating analytical error through the pipeline alongside imputation
 uncertainty from
-[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
+[`impute_chemistry()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.md)
 /
-[`impute_coanalytes()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_coanalytes.md).
+[`impute_coanalytes()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_coanalytes.md).
 
 ## Usage
 
@@ -35,7 +35,7 @@ draw_measurement_error(
 
   `"cv"` (default): `error_col` contains coefficients of variation (e.g.
   `0.05` = 5 % RSD, matching the
-  [`add_lmf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md)
+  [`add_lmf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_lmf.md)
   convention). `"sd"`: `error_col` contains absolute standard deviations
   on the natural concentration scale; CV is derived as `sd / value`.
 
@@ -79,15 +79,15 @@ as independent of imputation error (cross-source index-pairing) and
 independent across analytes within a sample.
 
 **Call order:**
-[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
+[`impute_chemistry()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.md)
 →
-[`impute_coanalytes()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_coanalytes.md)
+[`impute_coanalytes()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_coanalytes.md)
 → `draw_measurement_error()` →
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md).
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md).
 Imputation establishes the draw count N; this function reuses it.
 
 ## See also
 
-[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md),
-[`impute_coanalytes()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_coanalytes.md),
-[`summarise_draws()`](https://vorpalvorpal.github.io/leachatetools/reference/summarise_draws.md)
+[`impute_chemistry()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.md),
+[`impute_coanalytes()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_coanalytes.md),
+[`summarise_draws()`](https://vorpalvorpal.github.io/hydroSense/reference/summarise_draws.md)

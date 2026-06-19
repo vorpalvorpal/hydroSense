@@ -94,7 +94,7 @@ time_weighted_aggregate(
 - return:
 
   Output mode for draw-carrier input (see
-  [`summarise_draws()`](https://vorpalvorpal.github.io/leachatetools/reference/summarise_draws.md)).
+  [`summarise_draws()`](https://vorpalvorpal.github.io/hydroSense/reference/summarise_draws.md)).
   `"summary"` (default) collapses posterior draws to a central estimate
   plus a credible interval (`value`, `value_lower`, `value_upper`,
   `n_draws`); `"draws"` returns the raw per-draw chronic rows
@@ -141,8 +141,8 @@ This function is value-agnostic: pass any long-format data frame with
 `analyte` and `value` columns and it will compute one time-weighted
 value per (focal_date × site_id × analyte). Use it to aggregate raw
 chemistry (`analyte` = chemical species, `summary = "geom_mean"`) or
-per-sample AmsPAF values (`analyte = "AmsPAF"`,
-`summary = "arith_mean"`) into a chronic predictor.
+per-sample msPAF values (`analyte = "msPAF"`, `summary = "arith_mean"`)
+into a chronic predictor.
 
 **Forward-step duration weighting** treats each sample as representing
 the period from its collection date to the next sample's date (or to
@@ -175,20 +175,20 @@ rather than swapping the kernel.
   risk metric (Jensen's inequality on the upper tail of the SSD).
 
 - `"arith_mean"`: weighted arithmetic mean. Use for bounded indices like
-  AmsPAF percentages, or for chemistry when comparison against an
+  msPAF percentages, or for chemistry when comparison against an
   arithmetic-mean compliance trigger is wanted.
 
 - `"p90"`: 90th percentile (duration-weighted empirical CDF). Diagnostic
   for "what's the upper-end exposure the community sees most of the
   time."
 
-For chronic AmsPAF specifically, the recommended pipeline is
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+For chronic msPAF specifically, the recommended pipeline is
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
 on per-sample chemistry, then `time_weighted_aggregate()` on the
-resulting AmsPAF rows with `summary = "arith_mean"`. This computes the
-time-averaged AmsPAF, which integrates the toxic response over time
+resulting msPAF rows with `summary = "arith_mean"`. This computes the
+time-averaged msPAF, which integrates the toxic response over time
 (consistent with how biological communities respond to fluctuating
-exposure) — rather than the AmsPAF computed at a single time-averaged
+exposure) — rather than the msPAF computed at a single time-averaged
 chemistry, which can substantially under-state risk for pulsed
 exposures.
 

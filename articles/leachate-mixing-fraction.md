@@ -2,7 +2,7 @@
 
 ## What the LMF answers
 
-[`add_lmf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md)
+[`add_lmf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_lmf.md)
 asks a single question of each water sample:
 
 > *What fraction of this sample’s chemistry can be explained as a
@@ -23,7 +23,7 @@ the major-ion signature is used to estimate the blend ratio.
 ## The method in brief
 
 For each sample,
-[`add_lmf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md):
+[`add_lmf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_lmf.md):
 
 1.  **Converts to milliequivalents.** Concentrations are converted to
     meq/L with \[to_meq()\] so that ions combine on a charge-equivalent

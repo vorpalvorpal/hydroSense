@@ -1,7 +1,7 @@
-# Retrieve per-cell ARA diagnostics from an `add_amspaf()` result
+# Retrieve per-cell ARA diagnostics from an `add_mspaf()` result
 
 After calling
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
 with a `reference_model` (or any reference), this accessor returns a
 tibble describing what happened in the ARA subtraction for every (sample
 × analyte) that was assessed. This is the primary tool for auditing the
@@ -19,7 +19,7 @@ ara_summary(x)
 - x:
 
   A data frame returned by
-  [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md).
+  [`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md).
 
 ## Value
 
@@ -69,11 +69,11 @@ Returns `NULL` (with a message) if the attribute is absent.
 ## Details
 
 The attribute is stored by
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
 and is dropped by most dplyr verbs, so read the summary before further
 wrangling.
 
 ## See also
 
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md),
-[`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md),
+[`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md)

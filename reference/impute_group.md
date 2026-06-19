@@ -1,13 +1,13 @@
 # Declare an imputation group
 
 The imputation engine
-([`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md))
+([`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md))
 is domain-agnostic: it imputes one or more **groups** of target analytes
 from a shared PCA-compressed chemistry context, with cross-target
 residual correlation within each group. `impute_group()` describes a
 single group — which analytes it models and which (if any) presence
 hurdle gates it. Pass a list of these as the `groups` argument of
-[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md).
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md).
 
 ## Usage
 
@@ -53,8 +53,8 @@ together in a plume).
 
 ## See also
 
-[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md),
-[`leachate_impute_groups()`](https://vorpalvorpal.github.io/leachatetools/reference/leachate_impute_groups.md)
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md),
+[`leachate_impute_groups()`](https://vorpalvorpal.github.io/hydroSense/reference/leachate_impute_groups.md)
 
 ## Examples
 

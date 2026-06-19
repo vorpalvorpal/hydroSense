@@ -1,6 +1,6 @@
 # Compute per-day diagnostics: n_measured_analytes, days_since_last_sample
 
-Operates on SSD-eligible rows only (toxicants drive the AmsPAF;
+Operates on SSD-eligible rows only (toxicants drive the msPAF;
 co-analyte sampling frequency is generally higher and not the
 bottleneck).
 
@@ -15,7 +15,7 @@ bottleneck).
 - daily_long:
 
   Output of
-  [`.build_daily_chem()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-build_daily_chem.md)
+  [`.build_daily_chem()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-build_daily_chem.md)
   (possibly augmented).
 
 - tox_analytes:

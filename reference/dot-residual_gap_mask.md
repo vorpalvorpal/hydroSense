@@ -22,7 +22,7 @@ days, a densely-sampled series with no real gaps, and a degenerate
 - sm:
 
   A smoother list with `grid_dates` and `var` (e.g. from
-  [`.residual_smoother()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-residual_smoother.md)
+  [`.residual_smoother()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-residual_smoother.md)
   or the per-analyte scaffold).
 
 - anchor_dates:

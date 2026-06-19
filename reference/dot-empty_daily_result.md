@@ -1,6 +1,6 @@
-# Empty tibble matching the amspaf_daily() return schema
+# Empty tibble matching the mspaf_daily() return schema
 
-Empty tibble matching the amspaf_daily() return schema
+Empty tibble matching the mspaf_daily() return schema
 
 ## Usage
 

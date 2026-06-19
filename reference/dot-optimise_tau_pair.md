@@ -8,9 +8,9 @@ optimised (two passes). The fast/slow separation
 bound at `tau_long/1.5` and lifting tau_long's lower bound to
 `1.5*tau_short`. A degenerate bound `lo == hi` pins that store. Shared
 by the reference
-([`.select_api_tau()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-select_api_tau.md))
+([`.select_api_tau()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-select_api_tau.md))
 and impact
-([`.fit_impact_response()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-fit_impact_response.md))
+([`.fit_impact_response()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-fit_impact_response.md))
 hydrology fits. No RNG.
 
 ## Usage

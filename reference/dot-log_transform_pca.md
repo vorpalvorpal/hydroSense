@@ -2,14 +2,14 @@
 
 Applies [`log10()`](https://rdrr.io/r/base/Log.html) to every column
 whose name is not in
-[.PCA_NO_LOG_VARS](https://vorpalvorpal.github.io/leachatetools/reference/dot-PCA_NO_LOG_VARS.md),
+[.PCA_NO_LOG_VARS](https://vorpalvorpal.github.io/hydroSense/reference/dot-PCA_NO_LOG_VARS.md),
 leaving pH / temperature / ORP / DO on their native scale. `NA` cells
 are preserved (so NIPALS can still handle within-sample missingness),
 and a small floor guards against `log10(0)` for genuine zeros. Both the
 training PCA
-([`.prepare_chem_pca()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-prepare_chem_pca.md))
+([`.prepare_chem_pca()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-prepare_chem_pca.md))
 and the scoring projection
-([`.compute_pca_scores()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-compute_pca_scores.md))
+([`.compute_pca_scores()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-compute_pca_scores.md))
 call this so the transform is identical on both paths.
 
 ## Usage
@@ -27,7 +27,7 @@ call this so the transform is identical on both paths.
 - no_log_vars:
 
   Column names to leave on their native scale. Default
-  [.PCA_NO_LOG_VARS](https://vorpalvorpal.github.io/leachatetools/reference/dot-PCA_NO_LOG_VARS.md).
+  [.PCA_NO_LOG_VARS](https://vorpalvorpal.github.io/hydroSense/reference/dot-PCA_NO_LOG_VARS.md).
 
 - eps:
 

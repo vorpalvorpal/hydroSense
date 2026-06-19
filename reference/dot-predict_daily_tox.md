@@ -6,7 +6,7 @@ precomputed static scaffolding from `fdm`; accepts an
 optionally-perturbed target model (`tm_p`) and a per-analyte residual
 path (`residual_paths`) for draw mode. Pass overrides to `co_split` and
 `wq_long` (from
-[`.perturb_co_split()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-perturb_co_split.md))
+[`.perturb_co_split()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-perturb_co_split.md))
 for S7 co-analyte measurement-error draws.
 
 ## Usage
@@ -26,13 +26,13 @@ for S7 co-analyte measurement-error draws.
 - fdm:
 
   Output of
-  [`.fit_daily_target()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-fit_daily_target.md).
+  [`.fit_daily_target()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-fit_daily_target.md).
 
 - tm_p:
 
   Target model to predict with (default: `fdm$tm`). For draw mode, pass
   a GAM-perturbed copy from
-  [`.perturb_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-perturb_target_model.md).
+  [`.perturb_target_model()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-perturb_target_model.md).
 
 - residual_paths:
 

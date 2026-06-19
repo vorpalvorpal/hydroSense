@@ -19,7 +19,7 @@ running KFS on unit vectors (Durbin & Koopman 2002, Biometrika 89(3),
 - model:
 
   A KFAS `SSModel` from
-  [`.build_kalman_model()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-build_kalman_model.md).
+  [`.build_kalman_model()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-build_kalman_model.md).
 
 ## Value
 
@@ -61,7 +61,7 @@ A list with components:
 
 The returned `x_hat` is in **original (un-standardised) units** to match
 the output of
-[`.kalman_smooth()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-kalman_smooth.md).
+[`.kalman_smooth()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-kalman_smooth.md).
 
 ## References
 

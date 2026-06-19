@@ -12,7 +12,7 @@ ssd_hc50(
   method = c("multi", "anzecc"),
   hardness = NULL,
   hardness_units = NULL,
-  guideline_dir = getOption("leachatetools.guideline_dir")
+  guideline_dir = getOption("hydroSense.guideline_dir")
 )
 ```
 
@@ -44,7 +44,7 @@ ssd_hc50(
 - guideline_dir:
 
   Character. Path to the "guideline data" folder containing ANZG XLSX
-  files. Falls back to getOption("leachatetools.guideline_dir").
+  files. Falls back to getOption("hydroSense.guideline_dir").
 
 ## Value
 

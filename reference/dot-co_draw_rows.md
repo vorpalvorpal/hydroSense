@@ -3,11 +3,11 @@
 Creates a copy of the exact co-analyte rows from `daily_long_exact` with
 values replaced by the corresponding perturbed values from
 `co_pert_split` (output of
-[`.perturb_co_split()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-perturb_co_split.md)),
+[`.perturb_co_split()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-perturb_co_split.md)),
 and tags the result with `draw_id`. Analytes absent from `co_pert_split`
 (e.g. non-modelled toxicants) are left unchanged. The resulting rows go
 into the synthetic frame so that
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)'s
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)'s
 normalisation sees the per-draw co-analyte perturbation.
 
 ## Usage
@@ -26,7 +26,7 @@ normalisation sees the per-draw co-analyte perturbation.
 - co_pert_split:
 
   Named list (date-string → data.frame(analyte, value)) from
-  [`.perturb_co_split()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-perturb_co_split.md).
+  [`.perturb_co_split()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-perturb_co_split.md).
 
 - draw_id:
 

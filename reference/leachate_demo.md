@@ -49,7 +49,7 @@ row per sample x analyte and the columns:
 - valence.analyte:
 
   Numeric. Ionic charge (for the meq conversion in
-  [`to_meq()`](https://vorpalvorpal.github.io/leachatetools/reference/to_meq.md));
+  [`to_meq()`](https://vorpalvorpal.github.io/hydroSense/reference/to_meq.md));
   `NA` for non-ionic analytes.
 
 - atomic_mass.analyte:
@@ -80,14 +80,14 @@ Three sites are included:
 
 Each site has six bi-monthly samples through 2024. The analyte panel
 carries the major ions used by
-[`add_lmf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md)
+[`add_lmf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_lmf.md)
 /
-[`to_meq()`](https://vorpalvorpal.github.io/leachatetools/reference/to_meq.md)
+[`to_meq()`](https://vorpalvorpal.github.io/hydroSense/reference/to_meq.md)
 (`Na`, `K`, `Ca`, `Mg`, `Cl`, sulfate, `F`, `NO3-N`, `NO2-N`,
 `CO3-CaCO3`, `HCO3-CaCO3`), the toxicants assessed by
-[`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md)
+[`ssd_paf()`](https://vorpalvorpal.github.io/hydroSense/reference/ssd_paf.md)
 /
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
 (`Cu`, `Zn`, `NH3-N`), and the co-analytes needed for the ammonia and
 bioavailability normalisations (`pH`, `temperature`, `DOC`, `hardness`).
 

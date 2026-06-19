@@ -1,6 +1,6 @@
-# Summarise per-draw bracket AmsPAF into a tidy per-day frame
+# Summarise per-draw bracket msPAF into a tidy per-day frame
 
-Summarise per-draw bracket AmsPAF into a tidy per-day frame
+Summarise per-draw bracket msPAF into a tidy per-day frame
 
 ## Usage
 
@@ -18,8 +18,8 @@ Summarise per-draw bracket AmsPAF into a tidy per-day frame
 - draws_df:
 
   Long per-draw frame with `date`, `site_id`, `draw_id` and the envelope
-  value columns needed for `gap_uncertainty`: `amspaf_ignorable` and/or
-  `amspaf_informative`.
+  value columns needed for `gap_uncertainty`: `mspaf_ignorable` and/or
+  `mspaf_informative`.
 
 - interval:
 

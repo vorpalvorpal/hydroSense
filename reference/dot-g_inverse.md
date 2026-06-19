@@ -1,7 +1,7 @@
 # Inverse variance-stabilising transform
 
 Inverts
-[`.g_transform()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-g_transform.md):
+[`.g_transform()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-g_transform.md):
 `g_inverse(g_transform(I, c), c) == I`.
 
 ## Usage
@@ -19,7 +19,7 @@ Inverts
 - scale_c:
 
   Single positive scale `c` (must match the value used in
-  [`.g_transform()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-g_transform.md)).
+  [`.g_transform()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-g_transform.md)).
 
 ## Value
 

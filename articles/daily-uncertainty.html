@@ -5,14 +5,14 @@
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<title>Daily AmsPAF with uncertainty quantification • leachatetools</title>
+<title>Daily msPAF with uncertainty quantification • hydroSense</title>
 <script src="../deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <link href="../deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
 <script src="../deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="../deps/Source_Sans_Pro-0.4.10/font.css" rel="stylesheet">
 <link href="../deps/JetBrains_Mono-0.4.10/font.css" rel="stylesheet">
 <link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Daily AmsPAF with uncertainty quantification">
+<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Daily msPAF with uncertainty quantification">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -20,7 +20,7 @@
 
     <nav class="navbar navbar-expand-lg fixed-top bg-light" data-bs-theme="light" aria-label="Site navigation"><div class="container">
 
-    <a class="navbar-brand me-2" href="../index.html">leachatetools</a>
+    <a class="navbar-brand me-2" href="../index.html">hydroSense</a>
 
     <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.2.0</small>
 
@@ -38,7 +38,7 @@
 <li><a class="dropdown-item" href="../articles/leachate-mixing-fraction.html">Detecting leachate with the LMF</a></li>
     <li><a class="dropdown-item" href="../articles/imputation.html">Imputing missing and below-detection chemistry</a></li>
     <li><a class="dropdown-item" href="../articles/normalisation.html">Analyte normalisation</a></li>
-    <li><a class="dropdown-item" href="../articles/chronic-amspaf-interpretation.html">Interpreting chronic AmsPAF outputs</a></li>
+    <li><a class="dropdown-item" href="../articles/chronic-mspaf-interpretation.html">Interpreting chronic msPAF outputs</a></li>
   </ul>
 </li>
       </ul>
@@ -46,7 +46,7 @@
 <li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json">
 </form></li>
-<li class="nav-item"><a class="external-link nav-link" href="https://github.com/vorpalvorpal/leachatetools/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://github.com/vorpalvorpal/hydroSense/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
       </ul>
 </div>
 
@@ -60,25 +60,25 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
 
-      <h1>Daily AmsPAF with uncertainty quantification</h1>
+      <h1>Daily msPAF with uncertainty quantification</h1>
             
       
-      <small class="dont-index">Source: <a href="https://github.com/vorpalvorpal/leachatetools/blob/main/vignettes/daily-uncertainty.Rmd" class="external-link"><code>vignettes/daily-uncertainty.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/vorpalvorpal/hydroSense/blob/main/vignettes/daily-uncertainty.Rmd" class="external-link"><code>vignettes/daily-uncertainty.Rmd</code></a></small>
       <div class="d-none name"><code>daily-uncertainty.Rmd</code></div>
     </div>
 
     
     
-<p><code><a href="../reference/amspaf_daily.html">amspaf_daily()</a></code> can propagate uncertainty through the
+<p><code><a href="../reference/mspaf_daily.html">mspaf_daily()</a></code> can propagate uncertainty through the
 entire daily interpolation pipeline, producing a credible envelope
-around each daily AmsPAF estimate that <strong>balloons between grab
+around each daily msPAF estimate that <strong>balloons between grab
 samples and pinches to near-zero width on sampled days</strong>. This
 vignette explains the model, shows how to use it, and describes how to
 interpret the output.</p>
 <div class="section level2">
 <h2 id="why-a-credible-interval-matters">Why a credible interval matters<a class="anchor" aria-label="anchor" href="#why-a-credible-interval-matters"></a>
 </h2>
-<p>The daily AmsPAF series is constructed by interpolating sparse grab
+<p>The daily msPAF series is constructed by interpolating sparse grab
 samples (typically fortnightly or monthly) onto a daily grid. Between
 grabs, concentrations are unknown: the impact model predicts a
 best-guess trajectory driven by hydrology, but that prediction carries
@@ -206,7 +206,7 @@ not attempted), so coverage can be ragged across analytes.</p>
 <h3 id="minimal-example">Minimal example<a class="anchor" aria-label="anchor" href="#minimal-example"></a>
 </h3>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://vorpalvorpal.github.io/leachatetools/">leachatetools</a></span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://vorpalvorpal.github.io/hydroSense/">hydroSense</a></span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">demo</span>   <span class="op">&lt;-</span> <span class="fu"><a href="../reference/leachate_demo.html">leachate_demo</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="va">target</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">demo</span>, <span class="va">site_id</span> <span class="op">==</span> <span class="st">"downstream"</span><span class="op">)</span></span>
@@ -216,7 +216,7 @@ not attempted), so coverage can be ragged across analytes.</p>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># 50 stochastic draws; return the 90% credible interval summary</span></span>
-<span><span class="va">out</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/amspaf_daily.html">amspaf_daily</a></span><span class="op">(</span></span>
+<span><span class="va">out</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mspaf_daily.html">mspaf_daily</a></span><span class="op">(</span></span>
 <span>  <span class="va">target</span>,</span>
 <span>  reference_model     <span class="op">=</span> <span class="va">ref_m</span>,</span>
 <span>  interpolation       <span class="op">=</span> <span class="st">"model"</span>,</span>
@@ -227,24 +227,22 @@ not attempted), so coverage can be ragged across analytes.</p>
 <span>  require_temperature <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">out</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"date"</span>, <span class="st">"amspaf"</span>, <span class="st">"amspaf_lower"</span>, <span class="st">"amspaf_upper"</span><span class="op">)</span><span class="op">]</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">out</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"date"</span>, <span class="st">"mspaf"</span>, <span class="st">"mspaf_lower"</span>, <span class="st">"mspaf_upper"</span><span class="op">)</span><span class="op">]</span><span class="op">)</span></span></code></pre></div>
 <p>With <code>return = "summary"</code> (the default when
 <code>ndraws</code> is supplied) you get one row per day with three
 columns:</p>
 <ul>
 <li>
-<code>amspaf</code> — the draws’ own central tendency
+<code>mspaf</code> — the draws’ own central tendency
 (<code>central = "median"</code> by default, or <code>"mean"</code>), so
 it is a summary <em>of the same posterior</em> as the band and always
 lies inside it</li>
 <li>
-<code>amspaf_lower</code> — lower bound of the credible
-interval</li>
+<code>mspaf_lower</code> — lower bound of the credible interval</li>
 <li>
-<code>amspaf_upper</code> — upper bound of the credible
-interval</li>
+<code>mspaf_upper</code> — upper bound of the credible interval</li>
 </ul>
-<p>This <code>amspaf</code> is <strong>not</strong> the deterministic
+<p>This <code>mspaf</code> is <strong>not</strong> the deterministic
 point estimate — see <a href="#two-products">Two products: deterministic
 vs draws</a> below.</p>
 </div>
@@ -255,7 +253,7 @@ vs draws</a> below.</p>
 scalar applies the same CV to all analytes; a named vector sets
 analyte-specific CVs.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">out_cv</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/amspaf_daily.html">amspaf_daily</a></span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="va">out_cv</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mspaf_daily.html">mspaf_daily</a></span><span class="op">(</span></span>
 <span>  <span class="va">target</span>,</span>
 <span>  reference_model     <span class="op">=</span> <span class="va">ref_m</span>,</span>
 <span>  interpolation       <span class="op">=</span> <span class="st">"model"</span>,</span>
@@ -290,7 +288,7 @@ envelope; the default <code>0.5</code> makes a ~95th-percentile flow day
 carry about 3× the base process variance. It is a structural prior on
 volatility, not a fitted quantity.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">out_wide</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/amspaf_daily.html">amspaf_daily</a></span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="va">out_wide</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mspaf_daily.html">mspaf_daily</a></span><span class="op">(</span></span>
 <span>  <span class="va">target</span>,</span>
 <span>  reference_model <span class="op">=</span> <span class="va">ref_m</span>,</span>
 <span>  interpolation   <span class="op">=</span> <span class="st">"model"</span>,</span>
@@ -308,7 +306,7 @@ volatility, not a fitted quantity.</p>
 allowing you to build custom summaries, correlate with other variables,
 or feed the draws into a downstream chronic aggregate.</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">draws</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/amspaf_daily.html">amspaf_daily</a></span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="va">draws</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mspaf_daily.html">mspaf_daily</a></span><span class="op">(</span></span>
 <span>  <span class="va">target</span>,</span>
 <span>  reference_model <span class="op">=</span> <span class="va">ref_m</span>,</span>
 <span>  interpolation   <span class="op">=</span> <span class="st">"model"</span>,</span>
@@ -330,7 +328,7 @@ The <strong>future.apply</strong> package must be installed.</p>
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://future.futureverse.org" class="external-link">future</a></span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://future.futureverse.org/reference/plan.html" class="external-link">plan</a></span><span class="op">(</span><span class="va">multisession</span>, workers <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">out_par</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/amspaf_daily.html">amspaf_daily</a></span><span class="op">(</span></span>
+<span><span class="va">out_par</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mspaf_daily.html">mspaf_daily</a></span><span class="op">(</span></span>
 <span>  <span class="va">target</span>,</span>
 <span>  reference_model <span class="op">=</span> <span class="va">ref_m</span>,</span>
 <span>  interpolation   <span class="op">=</span> <span class="st">"model"</span>,</span>
@@ -353,12 +351,12 @@ sequential run with the same seed, but are themselves reproducible.</p>
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://ggplot2.tidyverse.org" class="external-link">ggplot2</a></span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="va">out</span>, <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span><span class="va">date</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
-<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_ribbon.html" class="external-link">geom_ribbon</a></span><span class="op">(</span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>ymin <span class="op">=</span> <span class="va">amspaf_lower</span>, ymax <span class="op">=</span> <span class="va">amspaf_upper</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_ribbon.html" class="external-link">geom_ribbon</a></span><span class="op">(</span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>ymin <span class="op">=</span> <span class="va">mspaf_lower</span>, ymax <span class="op">=</span> <span class="va">mspaf_upper</span><span class="op">)</span>,</span>
 <span>              fill <span class="op">=</span> <span class="st">"steelblue"</span>, alpha <span class="op">=</span> <span class="fl">0.25</span><span class="op">)</span> <span class="op">+</span></span>
-<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_path.html" class="external-link">geom_line</a></span><span class="op">(</span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>y <span class="op">=</span> <span class="va">amspaf</span><span class="op">)</span>, colour <span class="op">=</span> <span class="st">"steelblue"</span>, linewidth <span class="op">=</span> <span class="fl">0.8</span><span class="op">)</span> <span class="op">+</span></span>
+<span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_path.html" class="external-link">geom_line</a></span><span class="op">(</span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>y <span class="op">=</span> <span class="va">mspaf</span><span class="op">)</span>, colour <span class="op">=</span> <span class="st">"steelblue"</span>, linewidth <span class="op">=</span> <span class="fl">0.8</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/scale_continuous.html" class="external-link">scale_y_continuous</a></span><span class="op">(</span>labels <span class="op">=</span> <span class="fu">scales</span><span class="fu">::</span><span class="fu"><a href="https://scales.r-lib.org/reference/label_percent.html" class="external-link">label_percent</a></span><span class="op">(</span>scale <span class="op">=</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span></span>
-<span>    title    <span class="op">=</span> <span class="st">"Daily AmsPAF with 90% credible interval"</span>,</span>
+<span>    title    <span class="op">=</span> <span class="st">"Daily msPAF with 90% credible interval"</span>,</span>
 <span>    subtitle <span class="op">=</span> <span class="st">"Ribbon balloons mid-gap, pinches at grab-sample dates"</span>,</span>
 <span>    x <span class="op">=</span> <span class="cn">NULL</span>, y <span class="op">=</span> <span class="st">"% species affected"</span></span>
 <span>  <span class="op">)</span> <span class="op">+</span></span>
@@ -379,12 +377,12 @@ estimated
 the hydrology over the gap, so a gap spanning a storm balloons faster
 than a quiet one of equal length. A site with infrequent, irregular
 sampling shows a wider envelope than one with fortnightly grabs.</p>
-<p><strong>Asymmetric ribbon</strong>: the AmsPAF response to
+<p><strong>Asymmetric ribbon</strong>: the msPAF response to
 concentration is nonlinear (SSD-based) and the impact is floored at
 zero, so the ribbon is skewed even though the underlying concentration
 draws are symmetric. The <em>direction</em> of the skew is
 data-dependent: symmetric concentration draws map through the SSD
-curvature, which can make the AmsPAF band wider above <em>or</em> below
+curvature, which can make the msPAF band wider above <em>or</em> below
 the centre line depending on where on the SSD the site sits.</p>
 <p><strong>Envelope does not cover the centre line</strong>: this should
 never happen in practice, but if your <code>ndraws</code> is very small
@@ -453,7 +451,7 @@ inflation; &gt; 1 widens the whole envelope</td>
 <div class="section level2">
 <h2 id="two-products">Two products: deterministic vs draws<a class="anchor" aria-label="anchor" href="#two-products"></a>
 </h2>
-<p><code><a href="../reference/amspaf_daily.html">amspaf_daily()</a></code> gives you <strong>one of two distinct
+<p><code><a href="../reference/mspaf_daily.html">mspaf_daily()</a></code> gives you <strong>one of two distinct
 products</strong>, selected by <code>ndraws</code>. They answer
 different questions and are not expected to coincide.</p>
 <p><strong>Deterministic</strong> (<code>ndraws = NULL</code>, the
@@ -477,12 +475,12 @@ when <code>grab_cv</code> is set — grab measurement uncertainty.
 <ul>
 <li>
 <em>Pro</em> — honest uncertainty quantification; the summary
-<code>amspaf</code> is the band’s own centre (it always lies inside
-<code>[amspaf_lower, amspaf_upper]</code>).</li>
+<code>mspaf</code> is the band’s own centre (it always lies inside
+<code>[mspaf_lower, mspaf_upper]</code>).</li>
 <li>
 <em>Con</em> — the central estimate now depends on
 <code>ndraws</code>/<code>seed</code>, and by Jensen’s inequality on the
-bounded AmsPAF index it generally sits <em>above</em> the deterministic
+bounded msPAF index it generally sits <em>above</em> the deterministic
 line; adding <code>ndraws</code> therefore changes the point
 estimate.</li>
 </ul>
@@ -506,28 +504,28 @@ to thread the reported values.</p>
 </h2>
 <p>The <code>return = "draws"</code> output can be passed into
 <code><a href="../reference/time_weighted_aggregate.html">time_weighted_aggregate()</a></code> to propagate daily uncertainty
-through to the chronic AmsPAF (via the draw-carrier contract). The
+through to the chronic msPAF (via the draw-carrier contract). The
 chronic draws can then be summarised with
 <code><a href="../reference/summarise_draws.html">summarise_draws()</a></code>.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">draws_daily</span>  <span class="op">&lt;-</span> <span class="fu"><a href="../reference/amspaf_daily.html">amspaf_daily</a></span><span class="op">(</span><span class="va">...</span>, return <span class="op">=</span> <span class="st">"draws"</span><span class="op">)</span></span>
-<span><span class="va">draws_amspaf</span> <span class="op">&lt;-</span> <span class="fu">dplyr</span><span class="fu">::</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span><span class="va">draws_daily</span>, <span class="cn">FALSE</span><span class="op">)</span>  <span class="co"># placeholder</span></span>
-<span><span class="co"># See vignette("chronic-amspaf-interpretation") for the chronic pathway</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">draws_daily</span>  <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mspaf_daily.html">mspaf_daily</a></span><span class="op">(</span><span class="va">...</span>, return <span class="op">=</span> <span class="st">"draws"</span><span class="op">)</span></span>
+<span><span class="va">draws_mspaf</span> <span class="op">&lt;-</span> <span class="fu">dplyr</span><span class="fu">::</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span><span class="va">draws_daily</span>, <span class="cn">FALSE</span><span class="op">)</span>  <span class="co"># placeholder</span></span>
+<span><span class="co"># See vignette("chronic-mspaf-interpretation") for the chronic pathway</span></span></code></pre></div>
 <p>See the <em>Uncertainty propagation</em> section of
-<code><a href="../articles/chronic-amspaf-interpretation.html">vignette("chronic-amspaf-interpretation")</a></code> for the
-end-to-end workflow.</p>
+<code><a href="../articles/chronic-mspaf-interpretation.html">vignette("chronic-mspaf-interpretation")</a></code> for the end-to-end
+workflow.</p>
 </div>
 <div class="section level2">
 <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a>
 </h2>
 <ul>
-<li>[amspaf_daily()] — full parameter reference</li>
+<li>[mspaf_daily()] — full parameter reference</li>
 <li>[fit_reference_model()] — fitting the reference/impact model</li>
 <li>[summarise_draws()] — collapse draws to median + credible
 interval</li>
 <li>
-<code><a href="../articles/chronic-amspaf-interpretation.html">vignette("chronic-amspaf-interpretation")</a></code> —
-interpreting chronic AmsPAF</li>
+<code><a href="../articles/chronic-mspaf-interpretation.html">vignette("chronic-mspaf-interpretation")</a></code> — interpreting
+chronic msPAF</li>
 </ul>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

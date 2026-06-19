@@ -2,7 +2,7 @@
 
 Returns `NA` for query dates outside the analyte's clipped grab span –
 those rows are dropped by
-[`.resolve_target_impact()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-resolve_target_impact.md)
+[`.resolve_target_impact()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-resolve_target_impact.md)
 (per-analyte clipping).
 
 ## Usage

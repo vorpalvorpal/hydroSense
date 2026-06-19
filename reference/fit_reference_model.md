@@ -1,7 +1,7 @@
 # Fit a temporal reference model for contemporaneous ARA background subtraction
 
 Fits per-analyte temporal models on reference-site chemistry so that
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
 can subtract a *contemporaneous* background (what the reference site
 would have shown at the same moment as the target sample) rather than a
 static time-average.
@@ -68,7 +68,7 @@ fit_reference_model(
 - imputation_model:
 
   Optional `imputation_model` from
-  [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
+  [`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md)
   (fit on the reference site's own chemistry). When supplied, missing
   analytes are imputed in raw concentration space *before* the
   per-analyte models are fitted, so a well-sampled analyte lifts a
@@ -124,7 +124,7 @@ fit_reference_model(
 - silo_api_key:
 
   Passed to
-  [`get_silo_rainfall()`](https://vorpalvorpal.github.io/leachatetools/reference/get_silo_rainfall.md)
+  [`get_silo_rainfall()`](https://vorpalvorpal.github.io/hydroSense/reference/get_silo_rainfall.md)
   when `hydro = NULL`.
 
 - eps:
@@ -196,7 +196,7 @@ paired with a downstream target in the same sub-catchment.
 
 3.  **Tier 3 — static fallback.** Geometric mean of all normalised
     reference observations (identical to
-    [`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md)
+    [`prepare_reference()`](https://vorpalvorpal.github.io/hydroSense/reference/prepare_reference.md)
     with `summary = "geom_mean"`).
 
 **Hydrology input** — supply exactly one of:
@@ -208,15 +208,15 @@ paired with a downstream target in the same sub-catchment.
 
 - `latitude` + `longitude`: if `hydro = NULL`, SILO daily rainfall is
   fetched automatically via
-  [`get_silo_rainfall()`](https://vorpalvorpal.github.io/leachatetools/reference/get_silo_rainfall.md).
+  [`get_silo_rainfall()`](https://vorpalvorpal.github.io/hydroSense/reference/get_silo_rainfall.md).
   Requires the **weatherOz** package and a valid SILO API key.
 
 ## See also
 
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md),
-[`get_silo_rainfall()`](https://vorpalvorpal.github.io/leachatetools/reference/get_silo_rainfall.md),
-[`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md),
-[`ara_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/ara_summary.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md),
+[`get_silo_rainfall()`](https://vorpalvorpal.github.io/hydroSense/reference/get_silo_rainfall.md),
+[`prepare_reference()`](https://vorpalvorpal.github.io/hydroSense/reference/prepare_reference.md),
+[`ara_summary()`](https://vorpalvorpal.github.io/hydroSense/reference/ara_summary.md)
 
 ## Examples
 

@@ -37,25 +37,25 @@ estimate), `value_lower`, `value_upper` (interval bounds), and
 **Per-draw diagnostic columns** (`draw_id`, `dominant_analyte`,
 `max_paf`, `analyte_pafs`) are dropped in draws mode; they are available
 by passing `return = "draws"` to
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
 or
-[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md).
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/hydroSense/reference/time_weighted_aggregate.md).
 
 Exact cells (`draw_id = NA`) each collapse to a degenerate interval:
 `value_lower = value_upper = value`, `n_draws = 1`.
 
 ## See also
 
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md),
-[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md),
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/hydroSense/reference/time_weighted_aggregate.md)
 
 ## Examples
 
 ``` r
 if (FALSE) { # \dontrun{
-# Collapse AmsPAF draws to median + 90 % CI
-amspaf_draws |>
-  add_amspaf(return = "draws") |>
+# Collapse msPAF draws to median + 90 % CI
+mspaf_draws |>
+  add_mspaf(return = "draws") |>
   summarise_draws(interval = 0.90)
 } # }
 ```

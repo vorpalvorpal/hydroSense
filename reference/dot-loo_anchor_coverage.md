@@ -24,7 +24,7 @@ Per-analyte and pooled LOO coverage over a fitted target model
 - interval, block, n_fit_min, scale:
 
   Passed to
-  [`.loo_coverage_series()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-loo_coverage_series.md).
+  [`.loo_coverage_series()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-loo_coverage_series.md).
 
 ## Value
 

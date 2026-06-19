@@ -1,7 +1,7 @@
 # Impute missing and BDL chemistry using a fitted imputation model
 
 Applies the models fitted by
-[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md)
 to `df`, returning posterior estimates for below-detection-limit (BDL)
 and missing observations in every fitted group.
 
@@ -28,7 +28,7 @@ impute_chemistry(
 - model:
 
   Fitted model from
-  [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md).
+  [`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md).
 
 - apply_hurdles:
 
@@ -70,7 +70,7 @@ posterior mean estimates, plus columns:
 When `bdl_cap = TRUE` and any imputed BDL cell exceeded its detection
 limit, a per-cell audit of the cap activations is attached as the
 `"bdl_cap_summary"` attribute; retrieve it with
-[`bdl_cap_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/bdl_cap_summary.md).
+[`bdl_cap_summary()`](https://vorpalvorpal.github.io/hydroSense/reference/bdl_cap_summary.md).
 
 ## Details
 
@@ -95,7 +95,7 @@ further model (e.g. the reference/target GAMs).
 **Hurdles**
 
 Each fitted group may carry a presence hurdle (see
-[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)).
+[`impute_group()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_group.md)).
 When `apply_hurdles = TRUE`, imputed values for a group are only
 returned for samples carrying at least one of that group's hurdle
 analytes (detected or BDL) — e.g. under the leachate preset, a sample
@@ -106,8 +106,8 @@ BDL values remain flagged as BDL).
 
 ## See also
 
-[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md),
-[`bdl_cap_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/bdl_cap_summary.md)
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md),
+[`bdl_cap_summary()`](https://vorpalvorpal.github.io/hydroSense/reference/bdl_cap_summary.md)
 
 ## Examples
 

@@ -2,7 +2,7 @@
 
 Returns the analyte's 5% hazard concentration (HC5) from the fitted SSD,
 used as the additive-\>proportional crossover `c` in
-[`.g_transform()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-g_transform.md).
+[`.g_transform()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-g_transform.md).
 HC5 is a self-scaling toxicological anchor in the same normalised
 concentration space as the impact `I` (normalisation maps measured
 concentration onto the SSD scale), and it lies within the species data

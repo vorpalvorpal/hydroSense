@@ -17,7 +17,7 @@ every per-analyte marginal distribution unchanged.
 - setup:
 
   Return value of
-  [`.kalman_sim_smoother_setup()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-kalman_sim_smoother_setup.md).
+  [`.kalman_sim_smoother_setup()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-kalman_sim_smoother_setup.md).
 
 - eta_std:
 

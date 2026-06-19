@@ -3,9 +3,9 @@
 Pools data from all reference features to compute per-ion mean and
 standard deviation. Used exclusively for computing ion informativeness
 scores in
-[`add_lmf`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md);
+[`add_lmf`](https://vorpalvorpal.github.io/hydroSense/reference/add_lmf.md);
 per-feature reference end-members are built by
-[`build_reference_endmember`](https://vorpalvorpal.github.io/leachatetools/reference/build_reference_endmember.md).
+[`build_reference_endmember`](https://vorpalvorpal.github.io/hydroSense/reference/build_reference_endmember.md).
 
 ## Usage
 

@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<title>Imputing missing and below-detection chemistry • leachatetools</title>
+<title>Imputing missing and below-detection chemistry • hydroSense</title>
 <script src="../deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <link href="../deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
 <script src="../deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="../deps/Source_Sans_Pro-0.4.10/font.css" rel="stylesheet">
@@ -20,7 +20,7 @@
 
     <nav class="navbar navbar-expand-lg fixed-top bg-light" data-bs-theme="light" aria-label="Site navigation"><div class="container">
 
-    <a class="navbar-brand me-2" href="../index.html">leachatetools</a>
+    <a class="navbar-brand me-2" href="../index.html">hydroSense</a>
 
     <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.2.0</small>
 
@@ -38,7 +38,7 @@
 <li><a class="dropdown-item" href="../articles/leachate-mixing-fraction.html">Detecting leachate with the LMF</a></li>
     <li><a class="dropdown-item" href="../articles/imputation.html">Imputing missing and below-detection chemistry</a></li>
     <li><a class="dropdown-item" href="../articles/normalisation.html">Analyte normalisation</a></li>
-    <li><a class="dropdown-item" href="../articles/chronic-amspaf-interpretation.html">Interpreting chronic AmsPAF outputs</a></li>
+    <li><a class="dropdown-item" href="../articles/chronic-mspaf-interpretation.html">Interpreting chronic msPAF outputs</a></li>
   </ul>
 </li>
       </ul>
@@ -46,7 +46,7 @@
 <li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json">
 </form></li>
-<li class="nav-item"><a class="external-link nav-link" href="https://github.com/vorpalvorpal/leachatetools/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://github.com/vorpalvorpal/hydroSense/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
       </ul>
 </div>
 
@@ -63,7 +63,7 @@
       <h1>Imputing missing and below-detection chemistry</h1>
             
       
-      <small class="dont-index">Source: <a href="https://github.com/vorpalvorpal/leachatetools/blob/main/vignettes/imputation.Rmd" class="external-link"><code>vignettes/imputation.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/vorpalvorpal/hydroSense/blob/main/vignettes/imputation.Rmd" class="external-link"><code>vignettes/imputation.Rmd</code></a></small>
       <div class="d-none name"><code>imputation.Rmd</code></div>
     </div>
 
@@ -86,7 +86,7 @@ of the bias depends on which fix you picked.</li>
 <strong>Missing.</strong> The analyte was not measured at that
 sample at all, so there is no value and no detection limit.</li>
 </ul>
-<p>Both gaps matter for mixture toxicity: <code><a href="../reference/add_amspaf.html">add_amspaf()</a></code> sums
+<p>Both gaps matter for mixture toxicity: <code><a href="../reference/add_mspaf.html">add_mspaf()</a></code> sums
 the potentially affected fraction across analytes, so a sample where Cu
 was never measured and Zn came back BDL is not automatically “clean” —
 it is <em>under-determined</em>. The imputation tools fill these gaps
@@ -96,7 +96,7 @@ analytes that <em>were</em> measured.</p>
 <div class="section level2">
 <h2 id="the-approach-in-brief">The approach in brief<a class="anchor" aria-label="anchor" href="#the-approach-in-brief"></a>
 </h2>
-<p>leachatetools imputes chemistry with a <strong>Bayesian multivariate
+<p>hydroSense imputes chemistry with a <strong>Bayesian multivariate
 model</strong> fitted once on your monitoring history and then applied
 to new samples. The design has three ideas at its core:</p>
 <ol style="list-style-type: decimal">
@@ -371,7 +371,7 @@ no row).</li>
 (<code>return = "point"</code>). For uncertainty propagation, request
 the full posterior with <code>return = "draws"</code> to get one row per
 sample × analyte × draw — feed those draws through
-<code><a href="../reference/add_amspaf.html">add_amspaf()</a></code> to obtain a posterior distribution of mixture
+<code><a href="../reference/add_mspaf.html">add_mspaf()</a></code> to obtain a posterior distribution of mixture
 PAF rather than a point estimate. Draws can be memory-heavy (especially
 for <code>"rescor_mi"</code>); <code>ndraws =</code> subsamples the
 posterior and <code>batch_size =</code> predicts the samples in batches,
@@ -403,7 +403,7 @@ wrangling):</p>
 <div class="section level2">
 <h2 id="imputing-normalisation-co-analytes">Imputing normalisation co-analytes<a class="anchor" aria-label="anchor" href="#imputing-normalisation-co-analytes"></a>
 </h2>
-<p>The bioavailability normalisations in <code><a href="../reference/add_amspaf.html">add_amspaf()</a></code> need
+<p>The bioavailability normalisations in <code><a href="../reference/add_mspaf.html">add_mspaf()</a></code> need
 co-analytes — DOC, Ca, Mg, and hardness — to convert field
 concentrations to the SSD index condition (see the <em>Analyte
 normalisation</em> article). When one of these is missing,
@@ -435,10 +435,43 @@ aggregation:</p>
 <span><span class="va">result</span> <span class="op">&lt;-</span> <span class="va">monitoring_long</span> <span class="op">|&gt;</span></span>
 <span>  <span class="fu"><a href="../reference/impute_chemistry.html">impute_chemistry</a></span><span class="op">(</span><span class="va">model</span><span class="op">)</span> <span class="op">|&gt;</span>     <span class="co"># BDL + missing metals/organics</span></span>
 <span>  <span class="fu"><a href="../reference/impute_coanalytes.html">impute_coanalytes</a></span><span class="op">(</span><span class="va">model</span><span class="op">)</span> <span class="op">|&gt;</span>    <span class="co"># missing DOC / Ca / Mg / hardness</span></span>
-<span>  <span class="fu"><a href="../reference/add_amspaf.html">add_amspaf</a></span><span class="op">(</span>reference <span class="op">=</span> <span class="va">prep_ref</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="fu"><a href="../reference/add_mspaf.html">add_mspaf</a></span><span class="op">(</span>reference <span class="op">=</span> <span class="va">prep_ref</span><span class="op">)</span> <span class="op">|&gt;</span></span>
 <span>  <span class="fu"><a href="../reference/time_weighted_aggregate.html">time_weighted_aggregate</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
 <p>Fit once on the longest, richest history you have; impute repeatedly
 as new data arrive.</p>
+<div class="section level3">
+<h3 id="one-call-mspaf_pipeline">One call: <code>mspaf_pipeline()</code><a class="anchor" aria-label="anchor" href="#one-call-mspaf_pipeline"></a>
+</h3>
+<p>The daily version of that whole flow — fit an imputation model, fit
+the reference/impact model, then compute the daily msPAF for a target
+site — is bundled into <code><a href="../reference/mspaf_pipeline.html">mspaf_pipeline()</a></code>, with imputation
+<strong>on by default</strong>:</p>
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">out</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mspaf_pipeline.html">mspaf_pipeline</a></span><span class="op">(</span></span>
+<span>  target     <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">monitoring_long</span>, <span class="va">site_id</span> <span class="op">==</span> <span class="st">"downstream"</span><span class="op">)</span>,</span>
+<span>  reference  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">monitoring_long</span>, <span class="va">site_id</span> <span class="op">==</span> <span class="st">"reference"</span><span class="op">)</span>,</span>
+<span>  hydro      <span class="op">=</span> <span class="va">rainfall</span>,</span>
+<span>  daily_args <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>require_temperature <span class="op">=</span> <span class="cn">FALSE</span>, ndraws <span class="op">=</span> <span class="fl">50L</span>, seed <span class="op">=</span> <span class="fl">1L</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>A single imputation model is fitted (on the reference chemistry by
+default; <code>impute_on = "target"</code> to fit on the target instead)
+and threaded into both <code><a href="../reference/fit_reference_model.html">fit_reference_model()</a></code> and
+<code><a href="../reference/mspaf_daily.html">mspaf_daily()</a></code>. Extra arguments go through
+<code>reference_args</code> and <code>daily_args</code>; the fitted
+reference and imputation models are attached to the result as the
+<code>"reference_model"</code> and <code>"imputation_model"</code>
+attributes.</p>
+<p>Because it imputes by default, the orchestrator <strong>moves the
+msPAF result</strong> relative to the non-imputed calculation: imputing
+below-detection cells (replacing detection-limit values with modelled
+sub-limit estimates) and fabricating entirely-absent analytes both
+change the mixture, and in practice the net effect can be sizeable. That
+is a missingness (MAR/MNAR) judgement, not a neutral default — pass
+<code>impute = FALSE</code> to reproduce the non-imputed behaviour of
+chaining <code><a href="../reference/fit_reference_model.html">fit_reference_model()</a></code> and
+<code><a href="../reference/mspaf_daily.html">mspaf_daily()</a></code> directly. See <em>When not to impute</em>
+below.</p>
+</div>
 </div>
 <div class="section level2">
 <h2 id="when-not-to-impute">When not to impute<a class="anchor" aria-label="anchor" href="#when-not-to-impute"></a>
@@ -479,18 +512,17 @@ decision is sensitive to the gaps.</li>
 <div class="section level2">
 <h2 id="installation-note">Installation note<a class="anchor" aria-label="anchor" href="#installation-note"></a>
 </h2>
-<p>The Bayesian step is the only part of leachatetools that needs
-<strong>brms</strong>, so brms is an optional dependency rather than a
-hard requirement — the LMF and AmsPAF tools install and run without it.
-To use <code><a href="../reference/fit_imputation_model.html">fit_imputation_model()</a></code> and
-<code><a href="../reference/impute_chemistry.html">impute_chemistry()</a></code>, install brms and a working Stan engine
-once:</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<p><strong>brms</strong> is a hard dependency of hydroSense (it is
+listed under <code>Imports</code>), so it is installed automatically
+with the package. The Bayesian step additionally needs a working
+<strong>Stan</strong> engine, which is <em>not</em> pulled in
+automatically. Set it up once:</p>
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"brms"</span><span class="op">)</span></span></code></pre></div>
 <p>If the install alone is not enough, follow the short Stan toolchain
 setup at <a href="https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started" class="external-link uri">https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started</a>.
 <code><a href="../reference/impute_coanalytes.html">impute_coanalytes()</a></code> uses <code>mgcv</code> (already a hard
-dependency) and does <strong>not</strong> require brms or Stan.</p>
+dependency) and does <strong>not</strong> require Stan.</p>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>

@@ -26,7 +26,7 @@ only the *joint* distribution across analytes is affected.
   Named list by analyte. Each element is a list with `grid_dates` (Date
   vector), `mean` (numeric vector, KFS posterior mean), and `draw_model`
   (KFAS model from
-  [`.build_kalman_model()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-build_kalman_model.md),
+  [`.build_kalman_model()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-build_kalman_model.md),
   or `NULL` for a degenerate / non-modelled analyte).
 
 - modelled:
@@ -42,7 +42,7 @@ only the *joint* distribution across analytes is affected.
 
   `[p × p]` numeric positive-definite correlation matrix (no dimnames
   required). Typically the `$R` component from
-  [`.anchor_residual_cor()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-anchor_residual_cor.md).
+  [`.anchor_residual_cor()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-anchor_residual_cor.md).
 
 - cor_analytes:
 
@@ -54,7 +54,7 @@ only the *joint* distribution across analytes is affected.
 
   Integer or `NULL`. When non-`NULL`, `set.seed(seed)` is called at the
   start of the function so results are reproducible. In
-  [`amspaf_daily()`](https://vorpalvorpal.github.io/leachatetools/reference/amspaf_daily.md),
+  [`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md),
   the seed is set by the caller (via its own `seed` argument) before
   this function is invoked, so `seed = NULL` is used there.
 
@@ -76,7 +76,7 @@ marginal distribution is unchanged when the process innovations
 \\\eta^+\\ are correlated: the smoother gain `L` is precomputed on the
 actual data, and the correction \\\alpha^+ - L y^+\\ has expectation
 zero. Correlating \\\eta^+\\ across analytes widens only the *joint*
-distribution (i.e. the combined AmsPAF interval).
+distribution (i.e. the combined msPAF interval).
 
 **Cholesky coupling**: `Z_raw %*% U_chol` (where `U_chol = chol(R)`,
 upper triangular) gives rows with covariance `R` when rows of `Z_raw`

@@ -17,7 +17,7 @@ filled days that came from the same grab receive the same perturbation.
 - fdm:
 
   Fitted daily scaffold from
-  [`.fit_daily_target()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-fit_daily_target.md).
+  [`.fit_daily_target()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-fit_daily_target.md).
 
 - grab_cv_co:
 

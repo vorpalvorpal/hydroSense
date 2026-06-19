@@ -17,10 +17,10 @@ Resolve the appropriate NO3-N hardness-class analyte name.
 - hardness_cv:
 
   Numeric. Accepted for signature parity with
-  [`ssd_paf()`](https://vorpalvorpal.github.io/leachatetools/reference/ssd_paf.md);
+  [`ssd_paf()`](https://vorpalvorpal.github.io/hydroSense/reference/ssd_paf.md);
   not used here (this helper applies hard cutoffs). The probabilistic
   blend lives in
-  [`.no3_weights()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-no3_weights.md).
+  [`.no3_weights()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-no3_weights.md).
 
 ## Value
 

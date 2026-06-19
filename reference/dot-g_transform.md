@@ -4,9 +4,9 @@ Maps the signed impact `impact` (`I` = `C_norm - ref_norm`, normalised
 concentration units) onto the `asinh(I / c)` scale, on which the daily
 residual smoother's process variance is proportional to concentration
 rather than constant. See
-[`.g_inverse()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-g_inverse.md)
+[`.g_inverse()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-g_inverse.md)
 for the inverse and
-[`.analyte_c()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-analyte_c.md)
+[`.analyte_c()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-analyte_c.md)
 for the per-analyte scale `c`.
 
 ## Usage
@@ -26,7 +26,7 @@ for the per-analyte scale `c`.
 
   Single positive scale `c` (the additive-\>proportional crossover; the
   per-analyte SSD HC5, see
-  [`.analyte_c()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-analyte_c.md)).
+  [`.analyte_c()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-analyte_c.md)).
 
 ## Value
 

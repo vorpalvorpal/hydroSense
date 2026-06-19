@@ -1,7 +1,7 @@
 # Compute LMF for a single sample
 
 Internal function called once per sample by
-[`add_lmf`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md).
+[`add_lmf`](https://vorpalvorpal.github.io/hydroSense/reference/add_lmf.md).
 Computes the inverse-variance weighted mixing fraction and associated
 quality metrics, applying admission and quality gates before returning.
 
@@ -65,12 +65,12 @@ compute_lmf_for_sample(
 - robust_iterations:
 
   Number of Huber reweighting passes. Inherited from
-  [`add_lmf`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md).
+  [`add_lmf`](https://vorpalvorpal.github.io/hydroSense/reference/add_lmf.md).
 
 - robust_threshold_k:
 
   MAD multiplier for Huber downweighting. Inherited from
-  [`add_lmf`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md).
+  [`add_lmf`](https://vorpalvorpal.github.io/hydroSense/reference/add_lmf.md).
 
 - verbose:
 
@@ -78,7 +78,7 @@ compute_lmf_for_sample(
   [`cli::cli_inform()`](https://cli.r-lib.org/reference/cli_abort.html)
   showing observed concentration, end-member values, per-ion mixing
   fraction, original and robust weights. Inherited from
-  [`add_lmf`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md).
+  [`add_lmf`](https://vorpalvorpal.github.io/hydroSense/reference/add_lmf.md).
   Default `FALSE`.
 
 - datetime_sample:

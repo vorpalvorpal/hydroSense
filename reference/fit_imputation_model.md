@@ -1,15 +1,15 @@
 # Fit the Bayesian multivariate imputation model(s)
 
 Fits a `brms` multivariate GAM for each **imputation group** (see
-[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)),
+[`impute_group()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_group.md)),
 using a PCA-compressed water-quality (WQ) block as additional
 environmental predictors. The engine itself is domain-agnostic: the
 leachate-specific groups (a `metals` group and a catch-all `organics`
 group) are supplied by the default `groups = leachate_impute_groups()`
 and can be swapped for any other chemistry by passing your own list of
-[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)
+[`impute_group()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_group.md)
 objects. The returned model object is passed to
-[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
+[`impute_chemistry()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.md)
 for prediction on new data.
 
 ## Usage
@@ -62,10 +62,10 @@ fit_imputation_model(
 - groups:
 
   A list of
-  [`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)
+  [`impute_group()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_group.md)
   objects describing which analytes to impute and how each group is
   hurdled. Default `NULL` uses
-  [`leachate_impute_groups()`](https://vorpalvorpal.github.io/leachatetools/reference/leachate_impute_groups.md)
+  [`leachate_impute_groups()`](https://vorpalvorpal.github.io/hydroSense/reference/leachate_impute_groups.md)
   (a `metals` group plus a catch-all `organics` group). Supply your own
   list to impute a different chemistry.
 
@@ -73,14 +73,14 @@ fit_imputation_model(
 
   Analyte names that must never be modelled as response variables in any
   group (e.g. counts, qualitative descriptors). Default `NULL` uses
-  [.IMPUTE_EXCLUDED](https://vorpalvorpal.github.io/leachatetools/reference/dot-IMPUTE_EXCLUDED.md).
+  [.IMPUTE_EXCLUDED](https://vorpalvorpal.github.io/hydroSense/reference/dot-IMPUTE_EXCLUDED.md).
 
 - no_log_vars:
 
   Analyte names that must **not** be log-transformed before the
   chemistry PCA (interval-scale or already-logarithmic variables such as
   pH and temperature). Default `NULL` uses
-  [.PCA_NO_LOG_VARS](https://vorpalvorpal.github.io/leachatetools/reference/dot-PCA_NO_LOG_VARS.md).
+  [.PCA_NO_LOG_VARS](https://vorpalvorpal.github.io/hydroSense/reference/dot-PCA_NO_LOG_VARS.md).
 
 - min_detect_freq:
 
@@ -123,7 +123,7 @@ fit_imputation_model(
   :   (default) Residual correlation across analytes (`rescor = TRUE`)
       with BDL/missing treated as imputable (`mi()`); the imputed BDL
       cells are capped at the detection limit post-hoc by
-      [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
+      [`impute_chemistry()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.md)
       (brms cannot combine `rescor` with `cens()`). Most accurate
       recovery, but the `mi()` + correlation geometry is funnel-prone,
       so `adapt_delta = 0.95` and an `lkj(2)` prior on the residual
@@ -147,7 +147,7 @@ fit_imputation_model(
       factor's mild funnel (override via `control` in `...`).
 
   See
-  [`vignette("imputation")`](https://vorpalvorpal.github.io/leachatetools/articles/imputation.md)
+  [`vignette("imputation")`](https://vorpalvorpal.github.io/hydroSense/articles/imputation.md)
   and the package benchmark for guidance on which to prefer.
 
 - iter, warmup, chains, cores:
@@ -178,7 +178,7 @@ A named list of class `"imputation_model"`:
   modellable analytes.
 
 - `$group_specs`: the input list of
-  [`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)
+  [`impute_group()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_group.md)
   objects
 
 - `$required_vars`, `$pca_vars`, `$exclude`, `$impute_method`
@@ -214,7 +214,7 @@ makes multivariate imputation borrow strength across analytes.
 **Costs of `rescor = TRUE`** — brms cannot combine `set_rescor(TRUE)`
 with `cens("left")`, so this implementation uses `mi()` for BDL values
 and applies a post-hoc cap (see
-[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)).
+[`impute_chemistry()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.md)).
 The cap clips imputed BDL cells to the original detection limit when the
 model predicts above DL. For sites where the chemistry context
 legitimately suggests high concentrations the cap can fire frequently;
@@ -249,10 +249,10 @@ explained reaches `min_var_explained` or `max_pcs` is reached. A minimum
 of two PCs is always used.
 
 **Hurdles (applied at prediction time by
-[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md))**
+[`impute_chemistry()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.md))**
 
 Each group may carry a *presence hurdle* (see
-[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)):
+[`impute_group()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_group.md)):
 a sample is only imputed for that group if it carries at least one of
 the hurdle analytes (detected or BDL). Under the leachate preset the
 metals group is hurdled on metal presence and the organics group on
@@ -267,9 +267,9 @@ retained.
 
 ## See also
 
-[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md),
-[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md),
-[`leachate_impute_groups()`](https://vorpalvorpal.github.io/leachatetools/reference/leachate_impute_groups.md)
+[`impute_chemistry()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.md),
+[`impute_group()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_group.md),
+[`leachate_impute_groups()`](https://vorpalvorpal.github.io/hydroSense/reference/leachate_impute_groups.md)
 
 ## Examples
 

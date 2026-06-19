@@ -1,15 +1,15 @@
-# Daily AmsPAF with uncertainty quantification
+# Daily msPAF with uncertainty quantification
 
-[`amspaf_daily()`](https://vorpalvorpal.github.io/leachatetools/reference/amspaf_daily.md)
+[`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)
 can propagate uncertainty through the entire daily interpolation
-pipeline, producing a credible envelope around each daily AmsPAF
-estimate that **balloons between grab samples and pinches to near-zero
-width on sampled days**. This vignette explains the model, shows how to
-use it, and describes how to interpret the output.
+pipeline, producing a credible envelope around each daily msPAF estimate
+that **balloons between grab samples and pinches to near-zero width on
+sampled days**. This vignette explains the model, shows how to use it,
+and describes how to interpret the output.
 
 ## Why a credible interval matters
 
-The daily AmsPAF series is constructed by interpolating sparse grab
+The daily msPAF series is constructed by interpolating sparse grab
 samples (typically fortnightly or monthly) onto a daily grid. Between
 grabs, concentrations are unknown: the impact model predicts a
 best-guess trajectory driven by hydrology, but that prediction carries
@@ -78,7 +78,7 @@ attempted), so coverage can be ragged across analytes.
 
 ``` r
 
-library(leachatetools)
+library(hydroSense)
 
 demo   <- leachate_demo()
 target <- subset(demo, site_id == "downstream")
@@ -88,7 +88,7 @@ ref_m  <- fit_reference_model(
 )
 
 # 50 stochastic draws; return the 90% credible interval summary
-out <- amspaf_daily(
+out <- mspaf_daily(
   target,
   reference_model     = ref_m,
   interpolation       = "model",
@@ -99,19 +99,19 @@ out <- amspaf_daily(
   require_temperature = FALSE
 )
 
-head(out[, c("date", "amspaf", "amspaf_lower", "amspaf_upper")])
+head(out[, c("date", "mspaf", "mspaf_lower", "mspaf_upper")])
 ```
 
 With `return = "summary"` (the default when `ndraws` is supplied) you
 get one row per day with three columns:
 
-- `amspaf` — the draws’ own central tendency (`central = "median"` by
+- `mspaf` — the draws’ own central tendency (`central = "median"` by
   default, or `"mean"`), so it is a summary *of the same posterior* as
   the band and always lies inside it
-- `amspaf_lower` — lower bound of the credible interval
-- `amspaf_upper` — upper bound of the credible interval
+- `mspaf_lower` — lower bound of the credible interval
+- `mspaf_upper` — upper bound of the credible interval
 
-This `amspaf` is **not** the deterministic point estimate — see [Two
+This `mspaf` is **not** the deterministic point estimate — see [Two
 products: deterministic vs draws](#two-products) below.
 
 ### Including measurement error (S6 + S7)
@@ -121,7 +121,7 @@ the same CV to all analytes; a named vector sets analyte-specific CVs.
 
 ``` r
 
-out_cv <- amspaf_daily(
+out_cv <- mspaf_daily(
   target,
   reference_model     = ref_m,
   interpolation       = "model",
@@ -153,7 +153,7 @@ is a structural prior on volatility, not a fitted quantity.
 
 ``` r
 
-out_wide <- amspaf_daily(
+out_wide <- mspaf_daily(
   target,
   reference_model = ref_m,
   interpolation   = "model",
@@ -173,7 +173,7 @@ draws into a downstream chronic aggregate.
 
 ``` r
 
-draws <- amspaf_daily(
+draws <- mspaf_daily(
   target,
   reference_model = ref_m,
   interpolation   = "model",
@@ -196,7 +196,7 @@ For large `ndraws` or multi-year grids, use `parallel = TRUE` with a
 library(future)
 plan(multisession, workers = 4)
 
-out_par <- amspaf_daily(
+out_par <- mspaf_daily(
   target,
   reference_model = ref_m,
   interpolation   = "model",
@@ -220,12 +220,12 @@ run with the same seed, but are themselves reproducible.
 library(ggplot2)
 
 ggplot(out, aes(date)) +
-  geom_ribbon(aes(ymin = amspaf_lower, ymax = amspaf_upper),
+  geom_ribbon(aes(ymin = mspaf_lower, ymax = mspaf_upper),
               fill = "steelblue", alpha = 0.25) +
-  geom_line(aes(y = amspaf), colour = "steelblue", linewidth = 0.8) +
+  geom_line(aes(y = mspaf), colour = "steelblue", linewidth = 0.8) +
   scale_y_continuous(labels = scales::label_percent(scale = 1)) +
   labs(
-    title    = "Daily AmsPAF with 90% credible interval",
+    title    = "Daily msPAF with 90% credible interval",
     subtitle = "Ribbon balloons mid-gap, pinches at grab-sample dates",
     x = NULL, y = "% species affected"
   ) +
@@ -246,13 +246,12 @@ hydrology over the gap, so a gap spanning a storm balloons faster than a
 quiet one of equal length. A site with infrequent, irregular sampling
 shows a wider envelope than one with fortnightly grabs.
 
-**Asymmetric ribbon**: the AmsPAF response to concentration is nonlinear
+**Asymmetric ribbon**: the msPAF response to concentration is nonlinear
 (SSD-based) and the impact is floored at zero, so the ribbon is skewed
 even though the underlying concentration draws are symmetric. The
 *direction* of the skew is data-dependent: symmetric concentration draws
-map through the SSD curvature, which can make the AmsPAF band wider
-above *or* below the centre line depending on where on the SSD the site
-sits.
+map through the SSD curvature, which can make the msPAF band wider above
+*or* below the centre line depending on where on the SSD the site sits.
 
 **Envelope does not cover the centre line**: this should never happen in
 practice, but if your `ndraws` is very small (e.g., 5) and the interval
@@ -273,7 +272,7 @@ is wide (e.g., 0.99), quantile estimates can be noisy. Increase
 
 ## Two products: deterministic vs draws
 
-[`amspaf_daily()`](https://vorpalvorpal.github.io/leachatetools/reference/amspaf_daily.md)
+[`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)
 gives you **one of two distinct products**, selected by `ndraws`. They
 answer different questions and are not expected to coincide.
 
@@ -292,11 +291,11 @@ measurement uncertainty. `return = "summary"` reports the draws’ central
 tendency (`central`) plus a credible band; `return = "draws"` returns
 the raw per-draw paths.
 
-- *Pro* — honest uncertainty quantification; the summary `amspaf` is the
+- *Pro* — honest uncertainty quantification; the summary `mspaf` is the
   band’s own centre (it always lies inside
-  `[amspaf_lower, amspaf_upper]`).
+  `[mspaf_lower, mspaf_upper]`).
 - *Con* — the central estimate now depends on `ndraws`/`seed`, and by
-  Jensen’s inequality on the bounded AmsPAF index it generally sits
+  Jensen’s inequality on the bounded msPAF index it generally sits
   *above* the deterministic line; adding `ndraws` therefore changes the
   point estimate.
 
@@ -316,26 +315,26 @@ two summarise different posteriors.
 ## Connection to the chronic pipeline
 
 The `return = "draws"` output can be passed into
-[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md)
-to propagate daily uncertainty through to the chronic AmsPAF (via the
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/hydroSense/reference/time_weighted_aggregate.md)
+to propagate daily uncertainty through to the chronic msPAF (via the
 draw-carrier contract). The chronic draws can then be summarised with
-[`summarise_draws()`](https://vorpalvorpal.github.io/leachatetools/reference/summarise_draws.md).
+[`summarise_draws()`](https://vorpalvorpal.github.io/hydroSense/reference/summarise_draws.md).
 
 ``` r
 
-draws_daily  <- amspaf_daily(..., return = "draws")
-draws_amspaf <- dplyr::filter(draws_daily, FALSE)  # placeholder
-# See vignette("chronic-amspaf-interpretation") for the chronic pathway
+draws_daily  <- mspaf_daily(..., return = "draws")
+draws_mspaf <- dplyr::filter(draws_daily, FALSE)  # placeholder
+# See vignette("chronic-mspaf-interpretation") for the chronic pathway
 ```
 
 See the *Uncertainty propagation* section of
-[`vignette("chronic-amspaf-interpretation")`](https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.md)
+[`vignette("chronic-mspaf-interpretation")`](https://vorpalvorpal.github.io/hydroSense/articles/chronic-mspaf-interpretation.md)
 for the end-to-end workflow.
 
 ## See also
 
-- \[amspaf_daily()\] — full parameter reference
+- \[mspaf_daily()\] — full parameter reference
 - \[fit_reference_model()\] — fitting the reference/impact model
 - \[summarise_draws()\] — collapse draws to median + credible interval
-- [`vignette("chronic-amspaf-interpretation")`](https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.md)
-  — interpreting chronic AmsPAF
+- [`vignette("chronic-mspaf-interpretation")`](https://vorpalvorpal.github.io/hydroSense/articles/chronic-mspaf-interpretation.md)
+  — interpreting chronic msPAF

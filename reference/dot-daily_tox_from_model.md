@@ -1,9 +1,9 @@
 # Model-based daily toxicant interpolation (season-blind impact model)
 
 Thin wrapper: calls
-[`.fit_daily_target()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-fit_daily_target.md)
+[`.fit_daily_target()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-fit_daily_target.md)
 once then
-[`.predict_daily_tox()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-predict_daily_tox.md)
+[`.predict_daily_tox()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-predict_daily_tox.md)
 once (point mode, no ε). Modelled-toxicant rows in `daily_long` are
 replaced; co-analytes and non-modelled toxicants are left untouched. On
 any failure the input is returned unchanged.
@@ -30,7 +30,7 @@ any failure the input is returned unchanged.
 - daily_long:
 
   Output of
-  [`.build_daily_chem()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-build_daily_chem.md)
+  [`.build_daily_chem()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-build_daily_chem.md)
   (+ temperature fill).
 
 - site_rows:
@@ -65,6 +65,6 @@ any failure the input is returned unchanged.
 
 For draw-mode orchestration (Chunk E), call the two underlying helpers
 directly: fit once with
-[`.fit_daily_target()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-fit_daily_target.md),
+[`.fit_daily_target()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-fit_daily_target.md),
 then loop N times over
 `.predict_daily_tox(fdm, perturbed_tm, eps_paths)`.

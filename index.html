@@ -5,14 +5,14 @@
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<title>leachatetools • leachatetools</title>
+<title>hydroSense • hydroSense</title>
 <script src="deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <link href="deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
 <script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/Source_Sans_Pro-0.4.10/font.css" rel="stylesheet">
 <link href="deps/JetBrains_Mono-0.4.10/font.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="leachatetools">
+<script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="hydroSense">
 <meta name="description" content="Species-sensitivity-distribution toxicity, multi-substance PAF with local background adjustment, and end-member mixing for leachate-impacted freshwaters.
 ">
 <meta property="og:description" content="Species-sensitivity-distribution toxicity, multi-substance PAF with local background adjustment, and end-member mixing for leachate-impacted freshwaters.
@@ -24,7 +24,7 @@
 
     <nav class="navbar navbar-expand-lg fixed-top bg-light" data-bs-theme="light" aria-label="Site navigation"><div class="container">
 
-    <a class="navbar-brand me-2" href="index.html">leachatetools</a>
+    <a class="navbar-brand me-2" href="index.html">hydroSense</a>
 
     <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.2.0</small>
 
@@ -42,7 +42,7 @@
 <li><a class="dropdown-item" href="articles/leachate-mixing-fraction.html">Detecting leachate with the LMF</a></li>
     <li><a class="dropdown-item" href="articles/imputation.html">Imputing missing and below-detection chemistry</a></li>
     <li><a class="dropdown-item" href="articles/normalisation.html">Analyte normalisation</a></li>
-    <li><a class="dropdown-item" href="articles/chronic-amspaf-interpretation.html">Interpreting chronic AmsPAF outputs</a></li>
+    <li><a class="dropdown-item" href="articles/chronic-mspaf-interpretation.html">Interpreting chronic msPAF outputs</a></li>
   </ul>
 </li>
       </ul>
@@ -50,7 +50,7 @@
 <li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="search.json">
 </form></li>
-<li class="nav-item"><a class="external-link nav-link" href="https://github.com/vorpalvorpal/leachatetools/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://github.com/vorpalvorpal/hydroSense/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
       </ul>
 </div>
 
@@ -59,11 +59,11 @@
 </nav><div class="container template-home">
 <div class="row">
   <main id="main" class="col-md-9"><div class="section level1">
-<div class="page-header"><h1 id="leachatetools">leachatetools<a class="anchor" aria-label="anchor" href="#leachatetools"></a>
+<div class="page-header"><h1 id="hydrosense">hydroSense<a class="anchor" aria-label="anchor" href="#hydrosense"></a>
 </h1></div>
 <!-- badges: start -->
 
-<p><strong>leachatetools</strong> analyses water quality in freshwater systems potentially impacted by landfill leachate. It turns routine monitoring chemistry into ecologically interpretable, mixture-aware risk estimates, with explicit handling of below-detection data and local background conditions.</p>
+<p><strong>hydroSense</strong> analyses water quality in freshwater systems potentially impacted by landfill leachate. It turns routine monitoring chemistry into ecologically interpretable, mixture-aware risk estimates, with explicit handling of below-detection data and local background conditions.</p>
 <p>The package has three pillars:</p>
 <ul>
 <li>
@@ -71,29 +71,29 @@
 <li>
 <strong>Leachate detection (LMF).</strong> End-member mixing analysis (<code><a href="reference/add_lmf.html">add_lmf()</a></code>) estimates the <em>leachate-mixing fraction</em> of each sample from its major-ion signature, distinguishing leachate influence from natural variation.</li>
 <li>
-<strong>Multi-substance toxicity (AmsPAF).</strong> Species sensitivity distributions (<code><a href="reference/ssd_paf.html">ssd_paf()</a></code>) feed a multi-substance potentially-affected-fraction (<code><a href="reference/add_amspaf.html">add_amspaf()</a></code>) that combines toxicants by concentration- and response-addition and subtracts the <em>local</em> background via the Added Risk Approach. The background can be a static reference or a <em>contemporaneous</em> one (<code><a href="reference/fit_reference_model.html">fit_reference_model()</a></code>) that predicts what the reference site would have shown at each sample’s moment from hydrology and season; a season-blind companion (<code><a href="reference/fit_target_model.html">fit_target_model()</a></code>) predicts the impacted site between grabs, so <code><a href="reference/amspaf_daily.html">amspaf_daily()</a></code> can return a continuous daily risk series.</li>
+<strong>Multi-substance toxicity (msPAF).</strong> Species sensitivity distributions (<code><a href="reference/ssd_paf.html">ssd_paf()</a></code>) feed a multi-substance potentially-affected-fraction (<code><a href="reference/add_mspaf.html">add_mspaf()</a></code>) that combines toxicants by concentration- and response-addition and subtracts the <em>local</em> background via the Added Risk Approach. The background can be a static reference or a <em>contemporaneous</em> one (<code><a href="reference/fit_reference_model.html">fit_reference_model()</a></code>) that predicts what the reference site would have shown at each sample’s moment from hydrology and season; a season-blind companion (<code><a href="reference/fit_target_model.html">fit_target_model()</a></code>) predicts the impacted site between grabs, so <code><a href="reference/mspaf_daily.html">mspaf_daily()</a></code> can return a continuous daily risk series.</li>
 </ul>
 <p>Toxicity is grounded in the ANZECC/ANZG freshwater guideline datasets, with bioavailability and physicochemical normalisations (hardness, pH, DOC, temperature) applied so that every sample is compared on the same index-condition basis.</p>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
-<p>You can install the development version from <a href="https://github.com/vorpalvorpal/leachatetools" class="external-link">GitHub</a>:</p>
+<p>You can install the development version from <a href="https://github.com/vorpalvorpal/hydroSense" class="external-link">GitHub</a>:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># install.packages("pak")</span></span>
-<span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"vorpalvorpal/leachatetools"</span><span class="op">)</span></span></code></pre></div>
-<p>Bayesian imputation additionally requires a working <a href="https://mc-stan.org/" class="external-link">Stan</a> toolchain via <strong>brms</strong> (a <code>Suggests</code> dependency); the toxicity and LMF pillars do not.</p>
+<span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"vorpalvorpal/hydroSense"</span><span class="op">)</span></span></code></pre></div>
+<p><strong>brms</strong> is a hard dependency (<code>Imports</code>) and installs with the package, but the Bayesian imputation step additionally needs a working <a href="https://mc-stan.org/" class="external-link">Stan</a> toolchain, which is not pulled in automatically; the toxicity and LMF pillars do not need Stan.</p>
 </div>
 <div class="section level2">
 <h2 id="usage">Usage<a class="anchor" aria-label="anchor" href="#usage"></a>
 </h2>
-<p>A typical AmsPAF assessment takes long-format monitoring data (one row per sample × analyte) and returns a per-sample multi-substance PAF, adjusted for local background:</p>
+<p>A typical msPAF assessment takes long-format monitoring data (one row per sample × analyte) and returns a per-sample multi-substance PAF, adjusted for local background:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://vorpalvorpal.github.io/leachatetools/">leachatetools</a></span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://vorpalvorpal.github.io/hydroSense/">hydroSense</a></span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># Point the toxicity engine at the ANZG guideline-data folder once per session.</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">options</a></span><span class="op">(</span>leachatetools.guideline_dir <span class="op">=</span> <span class="st">"path/to/guideline data"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">options</a></span><span class="op">(</span>hydroSense.guideline_dir <span class="op">=</span> <span class="st">"path/to/guideline data"</span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">amspaf</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/add_amspaf.html">add_amspaf</a></span><span class="op">(</span></span>
+<span><span class="va">mspaf</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/add_mspaf.html">add_mspaf</a></span><span class="op">(</span></span>
 <span>  df        <span class="op">=</span> <span class="va">monitoring_long</span>,   <span class="co"># sample_id, site_id, analyte, value, ...</span></span>
 <span>  reference <span class="op">=</span> <span class="va">reference_long</span>     <span class="co"># local upstream / background chemistry</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -111,15 +111,15 @@
 </h2>
 <ul>
 <li>
-<a href="https://vorpalvorpal.github.io/leachatetools/articles/leachate-mixing-fraction.html">Leachate Mixing Fraction</a> — what fraction of a sample’s chemistry can be explained as a mixture of local reference water and landfill leachate.</li>
+<a href="https://vorpalvorpal.github.io/hydroSense/articles/leachate-mixing-fraction.html">Leachate Mixing Fraction</a> — what fraction of a sample’s chemistry can be explained as a mixture of local reference water and landfill leachate.</li>
 <li>
-<a href="https://vorpalvorpal.github.io/leachatetools/articles/imputation.html">Imputation</a> — how missing and below-detection values are imputed.</li>
+<a href="https://vorpalvorpal.github.io/hydroSense/articles/imputation.html">Imputation</a> — how missing and below-detection values are imputed.</li>
 <li>
-<a href="https://vorpalvorpal.github.io/leachatetools/articles/normalisation.html">Analyte normalisation</a> — how bioavailability and physicochemical corrections bring concentrations to the SSD index condition.</li>
+<a href="https://vorpalvorpal.github.io/hydroSense/articles/normalisation.html">Analyte normalisation</a> — how bioavailability and physicochemical corrections bring concentrations to the SSD index condition.</li>
 <li>
-<a href="https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.html">AmsPAF</a> — what the returned PAF values mean for an environmental assessment.</li>
+<a href="https://vorpalvorpal.github.io/hydroSense/articles/chronic-mspaf-interpretation.html">msPAF</a> — what the returned PAF values mean for an environmental assessment.</li>
 <li>
-<a href="https://vorpalvorpal.github.io/leachatetools/reference/index.html">Function reference</a> — all exported functions, grouped by pillar.</li>
+<a href="https://vorpalvorpal.github.io/hydroSense/reference/index.html">Function reference</a> — all exported functions, grouped by pillar.</li>
 </ul>
 </div>
 <div class="section level2">
@@ -131,8 +131,8 @@
   </main><aside class="col-md-3"><div class="links">
 <h2 data-toc-skip>Links</h2>
 <ul class="list-unstyled">
-<li><a href="https://github.com/vorpalvorpal/leachatetools/" class="external-link">Browse source code</a></li>
-<li><a href="https://github.com/vorpalvorpal/leachatetools/issues" class="external-link">Report a bug</a></li>
+<li><a href="https://github.com/vorpalvorpal/hydroSense/" class="external-link">Browse source code</a></li>
+<li><a href="https://github.com/vorpalvorpal/hydroSense/issues" class="external-link">Report a bug</a></li>
 </ul>
 </div>
 
@@ -148,7 +148,7 @@
 <div class="citation">
 <h2 data-toc-skip>Citation</h2>
 <ul class="list-unstyled">
-<li><a href="authors.html#citation">Citing leachatetools</a></li>
+<li><a href="authors.html#citation">Citing hydroSense</a></li>
 </ul>
 </div>
 
@@ -163,9 +163,9 @@
 <h2 data-toc-skip>Dev status</h2>
 <ul class="list-unstyled">
 <li><a href="https://lifecycle.r-lib.org/articles/stages.html#experimental" class="external-link"><img src="https://img.shields.io/badge/lifecycle-experimental-orange.svg" alt="Lifecycle: experimental"></a></li>
-<li><a href="https://github.com/vorpalvorpal/leachatetools/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/vorpalvorpal/leachatetools/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
-<li><a href="https://github.com/vorpalvorpal/leachatetools/actions/workflows/pkgdown.yaml" class="external-link"><img src="https://github.com/vorpalvorpal/leachatetools/actions/workflows/pkgdown.yaml/badge.svg" alt="pkgdown"></a></li>
-<li><a href="https://github.com/vorpalvorpal/leachatetools/actions/workflows/brms-smoke.yaml" class="external-link"><img src="https://github.com/vorpalvorpal/leachatetools/actions/workflows/brms-smoke.yaml/badge.svg" alt="brms-smoke"></a></li>
+<li><a href="https://github.com/vorpalvorpal/hydroSense/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/vorpalvorpal/hydroSense/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
+<li><a href="https://github.com/vorpalvorpal/hydroSense/actions/workflows/pkgdown.yaml" class="external-link"><img src="https://github.com/vorpalvorpal/hydroSense/actions/workflows/pkgdown.yaml/badge.svg" alt="pkgdown"></a></li>
+<li><a href="https://github.com/vorpalvorpal/hydroSense/actions/workflows/brms-smoke.yaml" class="external-link"><img src="https://github.com/vorpalvorpal/hydroSense/actions/workflows/brms-smoke.yaml/badge.svg" alt="brms-smoke"></a></li>
 <li><a href="https://opensource.org/licenses/MIT" class="external-link"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a></li>
 </ul>
 </div>

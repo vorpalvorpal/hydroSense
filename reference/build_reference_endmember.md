@@ -3,7 +3,7 @@
 Computes mean (`R_i`) and standard deviation (`sigma_R_i`) for each ion
 in the collapsed LMF panel from reference samples within the calibration
 window. Called once per feature by
-[`add_lmf`](https://vorpalvorpal.github.io/leachatetools/reference/add_lmf.md).
+[`add_lmf`](https://vorpalvorpal.github.io/hydroSense/reference/add_lmf.md).
 
 ## Usage
 

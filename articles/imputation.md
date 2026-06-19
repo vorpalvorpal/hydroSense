@@ -15,7 +15,7 @@ dominate:
   there is no value and no detection limit.
 
 Both gaps matter for mixture toxicity:
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
 sums the potentially affected fraction across analytes, so a sample
 where Cu was never measured and Zn came back BDL is not automatically
 “clean” — it is *under-determined*. The imputation tools fill these gaps
@@ -24,7 +24,7 @@ analytes that *were* measured.
 
 ## The approach in brief
 
-leachatetools imputes chemistry with a **Bayesian multivariate model**
+hydroSense imputes chemistry with a **Bayesian multivariate model**
 fitted once on your monitoring history and then applied to new samples.
 The design has three ideas at its core:
 
@@ -59,9 +59,9 @@ The design has three ideas at its core:
 The engine itself is **domain-agnostic**: it imputes an arbitrary set of
 analyte *groups* (each a joint model with its own optional presence
 hurdle), described with
-[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md).
+[`impute_group()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_group.md).
 The metals/organics structure above is just the leachate preset,
-[`leachate_impute_groups()`](https://vorpalvorpal.github.io/leachatetools/reference/leachate_impute_groups.md),
+[`leachate_impute_groups()`](https://vorpalvorpal.github.io/hydroSense/reference/leachate_impute_groups.md),
 supplied as the default — swap in your own groups to impute a different
 chemistry (see *Imputing in another domain*).
 
@@ -69,10 +69,10 @@ The work is split across three functions:
 
 | Function | Role | Engine |
 |----|----|----|
-| [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md) | Fit one model per group once on training data | `brms` (Stan) |
-| [`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md) / [`leachate_impute_groups()`](https://vorpalvorpal.github.io/leachatetools/reference/leachate_impute_groups.md) | Describe the groups to impute (or use the leachate preset) | — |
-| [`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md) | Fill BDL and missing group analytes on new data | `brms` posterior |
-| [`impute_coanalytes()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_coanalytes.md) | Fill missing normalisation co-analytes (DOC, Ca, Mg, hardness) | [`mgcv::gam`](https://rdrr.io/pkg/mgcv/man/gam.html) |
+| [`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md) | Fit one model per group once on training data | `brms` (Stan) |
+| [`impute_group()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_group.md) / [`leachate_impute_groups()`](https://vorpalvorpal.github.io/hydroSense/reference/leachate_impute_groups.md) | Describe the groups to impute (or use the leachate preset) | — |
+| [`impute_chemistry()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.md) | Fill BDL and missing group analytes on new data | `brms` posterior |
+| [`impute_coanalytes()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_coanalytes.md) | Fill missing normalisation co-analytes (DOC, Ca, Mg, hardness) | [`mgcv::gam`](https://rdrr.io/pkg/mgcv/man/gam.html) |
 
 ## The data contract
 
@@ -111,7 +111,7 @@ conservative stand-in and the sample is kept.
 
 ## Fitting the model
 
-[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md)
 assigns analytes to the groups it was given (the leachate preset by
 default): the `metals` group claims anything in the built-in metals
 list, the catch-all `organics` group takes the remaining non-excluded
@@ -151,7 +151,7 @@ mostly-undetected organics this filter is what keeps the fit tractable.
 
 The metals/organics split is a *preset*, not a hard-coded assumption. To
 impute a different chemistry, pass your own list of
-[`impute_group()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_group.md)
+[`impute_group()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_group.md)
 objects. Each group is fitted as its own joint model (analytes in the
 same group borrow residual correlation from one another; separate groups
 do not), and each may carry a presence hurdle. A group with
@@ -172,7 +172,7 @@ model <- fit_imputation_model(
 )
 ```
 
-[`leachate_impute_groups()`](https://vorpalvorpal.github.io/leachatetools/reference/leachate_impute_groups.md)
+[`leachate_impute_groups()`](https://vorpalvorpal.github.io/hydroSense/reference/leachate_impute_groups.md)
 returns the default preset, so you can inspect or extend it rather than
 starting from scratch.
 
@@ -221,7 +221,7 @@ model <- fit_imputation_model(monitoring_long, impute_method = "cens_factor")
 
 ## Imputing new chemistry
 
-[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
+[`impute_chemistry()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.md)
 applies the fitted model, returning the input frame with BDL and missing
 metals/organics cells replaced by posterior estimates and two new
 columns:
@@ -242,7 +242,7 @@ By default the result is a **posterior mean per cell**
 (`return = "point"`). For uncertainty propagation, request the full
 posterior with `return = "draws"` to get one row per sample × analyte ×
 draw — feed those draws through
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
 to obtain a posterior distribution of mixture PAF rather than a point
 estimate. Draws can be memory-heavy (especially for `"rescor_mi"`);
 `ndraws =` subsamples the posterior and `batch_size =` predicts the
@@ -252,7 +252,7 @@ samples in batches, both of which bound peak memory.
 
 An imputed below-detection value must never exceed its detection limit.
 The posterior prediction is not itself constrained below the DL, so
-[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md)
+[`impute_chemistry()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.md)
 **caps** any imputed BDL cell at its original detection limit
 (`bdl_cap = TRUE`, the default) and warns when the cap fires, with a
 per-analyte breakdown (how many cells, and the worst exceedance ratio)
@@ -264,7 +264,7 @@ For a full per-cell audit, the result carries a `"bdl_cap_summary"`
 attribute — one row per capped (`sample_id`, `analyte`) cell with its
 detection limit, the uncapped estimate, and the exceedance ratio.
 Retrieve it with
-[`bdl_cap_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/bdl_cap_summary.md)
+[`bdl_cap_summary()`](https://vorpalvorpal.github.io/hydroSense/reference/bdl_cap_summary.md)
 on the frame as returned (plain attributes are dropped by most dplyr
 verbs, so read it before further wrangling):
 
@@ -277,11 +277,11 @@ bdl_cap_summary(filled)   # NULL (with a message) if nothing was capped
 ## Imputing normalisation co-analytes
 
 The bioavailability normalisations in
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
 need co-analytes — DOC, Ca, Mg, and hardness — to convert field
 concentrations to the SSD index condition (see the *Analyte
 normalisation* article). When one of these is missing,
-[`impute_coanalytes()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_coanalytes.md)
+[`impute_coanalytes()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_coanalytes.md)
 fills it with a fast, deterministic log-Gaussian GAM
 ([`mgcv::gam`](https://rdrr.io/pkg/mgcv/man/gam.html)) on the *same* PC
 scores the metals model used, so the co-analyte estimate is conditioned
@@ -314,12 +314,52 @@ model  <- fit_imputation_model(monitoring_long)
 result <- monitoring_long |>
   impute_chemistry(model) |>     # BDL + missing metals/organics
   impute_coanalytes(model) |>    # missing DOC / Ca / Mg / hardness
-  add_amspaf(reference = prep_ref) |>
+  add_mspaf(reference = prep_ref) |>
   time_weighted_aggregate()
 ```
 
 Fit once on the longest, richest history you have; impute repeatedly as
 new data arrive.
+
+### One call: `mspaf_pipeline()`
+
+The daily version of that whole flow — fit an imputation model, fit the
+reference/impact model, then compute the daily msPAF for a target site —
+is bundled into
+[`mspaf_pipeline()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_pipeline.md),
+with imputation **on by default**:
+
+``` r
+
+out <- mspaf_pipeline(
+  target     = subset(monitoring_long, site_id == "downstream"),
+  reference  = subset(monitoring_long, site_id == "reference"),
+  hydro      = rainfall,
+  daily_args = list(require_temperature = FALSE, ndraws = 50L, seed = 1L)
+)
+```
+
+A single imputation model is fitted (on the reference chemistry by
+default; `impute_on = "target"` to fit on the target instead) and
+threaded into both
+[`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md)
+and
+[`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md).
+Extra arguments go through `reference_args` and `daily_args`; the fitted
+reference and imputation models are attached to the result as the
+`"reference_model"` and `"imputation_model"` attributes.
+
+Because it imputes by default, the orchestrator **moves the msPAF
+result** relative to the non-imputed calculation: imputing
+below-detection cells (replacing detection-limit values with modelled
+sub-limit estimates) and fabricating entirely-absent analytes both
+change the mixture, and in practice the net effect can be sizeable. That
+is a missingness (MAR/MNAR) judgement, not a neutral default — pass
+`impute = FALSE` to reproduce the non-imputed behaviour of chaining
+[`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md)
+and
+[`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)
+directly. See *When not to impute* below.
 
 ## When not to impute
 
@@ -351,13 +391,10 @@ restraint:
 
 ## Installation note
 
-The Bayesian step is the only part of leachatetools that needs **brms**,
-so brms is an optional dependency rather than a hard requirement — the
-LMF and AmsPAF tools install and run without it. To use
-[`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
-and
-[`impute_chemistry()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_chemistry.md),
-install brms and a working Stan engine once:
+**brms** is a hard dependency of hydroSense (it is listed under
+`Imports`), so it is installed automatically with the package. The
+Bayesian step additionally needs a working **Stan** engine, which is
+*not* pulled in automatically. Set it up once:
 
 ``` r
 
@@ -366,6 +403,5 @@ install.packages("brms")
 
 If the install alone is not enough, follow the short Stan toolchain
 setup at <https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started>.
-[`impute_coanalytes()`](https://vorpalvorpal.github.io/leachatetools/reference/impute_coanalytes.md)
-uses `mgcv` (already a hard dependency) and does **not** require brms or
-Stan.
+[`impute_coanalytes()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_coanalytes.md)
+uses `mgcv` (already a hard dependency) and does **not** require Stan.

@@ -5,7 +5,7 @@ observed water temperature, then predicts water temperature for a set of
 target dates. The result can be added to a chemistry data frame as
 `analyte = "temperature"` rows, enabling the NH₃-N pH/temperature
 normalisation in
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md).
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md).
 
 ## Usage
 
@@ -210,9 +210,9 @@ quarters.
 
 ## See also
 
-[`get_silo_air_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/get_silo_air_temp.md)
+[`get_silo_air_temp()`](https://vorpalvorpal.github.io/hydroSense/reference/get_silo_air_temp.md)
 to source `air_temp_df` from SILO for an Australian location;
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md),
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md),
 which requires the resulting water `temperature` rows for ammonia.
 
 ## Examples

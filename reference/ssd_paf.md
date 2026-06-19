@@ -14,7 +14,7 @@ ssd_paf(
   hardness = NULL,
   hardness_units = NULL,
   hardness_cv = 0.05,
-  guideline_dir = getOption("leachatetools.guideline_dir"),
+  guideline_dir = getOption("hydroSense.guideline_dir"),
   nboot = 0L,
   level = 0.95
 )
@@ -65,7 +65,7 @@ ssd_paf(
 - guideline_dir:
 
   Character. Path to the "guideline data" folder containing ANZG XLSX
-  files. Falls back to getOption("leachatetools.guideline_dir").
+  files. Falls back to getOption("hydroSense.guideline_dir").
 
 - nboot:
 
@@ -87,7 +87,7 @@ upper CI % \$note character vector — caveats
 ``` r
 # Fraction of species affected by 9.3 mg/L total ammonia-N at the pH 7.0 /
 # 20 degC index condition. Uses the package's bundled SSD data; set
-# options(leachatetools.guideline_dir=) to fit from the ANZG XLSX files.
+# options(hydroSense.guideline_dir=) to fit from the ANZG XLSX files.
 ssd_paf("NH3-N", conc = 9321, conc_units = "ug/L")
 #> $analyte
 #> [1] "NH3-N"

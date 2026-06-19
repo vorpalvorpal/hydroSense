@@ -31,7 +31,7 @@ the near-zero ones in turn.
 ## Value
 
 Named list (per analyte) of
-[`.fit_impact_response()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-fit_impact_response.md)-shaped
+[`.fit_impact_response()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-fit_impact_response.md)-shaped
 objects; pooled analytes additionally carry `pooled = TRUE`, `analyte`,
 `pool_levels`, and the de-standardisation pair `pool_center` (`mu_a`)
 and `pool_scale` (`sd_a`) for prediction.

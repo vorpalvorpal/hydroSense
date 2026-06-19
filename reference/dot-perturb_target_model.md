@@ -17,12 +17,12 @@ Non-pooled `impact_fit`s and all `wq_fit`s are perturbed independently.
 - tm:
 
   A `target_model` from
-  [`fit_target_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_target_model.md).
+  [`fit_target_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_target_model.md).
 
 - perturb_reference:
 
   Logical; when `TRUE`, also perturb the embedded `reference_model`'s
-  GAMs (use only when `amspaf_daily(reference = NULL)` —
+  GAMs (use only when `mspaf_daily(reference = NULL)` —
   total-concentration mode — so that `ref_norm` uncertainty is not
   inadvertently cancelled by a downstream subtraction).
 

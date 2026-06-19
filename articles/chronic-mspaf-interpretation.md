@@ -1,0 +1,500 @@
+# Interpreting chronic msPAF outputs
+
+This vignette covers how to interpret the values returned by
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
+and
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/hydroSense/reference/time_weighted_aggregate.md)
+in the context of an environmental assessment. The package deliberately
+stops short of providing regulatory tier breaks — those depend on the
+assessment context and are a consumer decision. This document gives you
+the conceptual tools to make those decisions.
+
+## msPAF is not a single-substance trigger value
+
+The “5%” threshold in ANZG/ANZECC guidelines (the 95% species protection
+level) is derived from a **single-substance** species sensitivity
+distribution (SSD). It says: “if a water body contains only this
+substance at this concentration, 5% of species would be affected.”
+
+msPAF outputs a number on the same 0–100% scale but with a different
+denominator: “given the *mixture* of substances present at observed
+concentrations, what fraction of species would be affected by *the
+entire mixture*?”
+
+The implications:
+
+1.  A 5% msPAF and a 5% single-substance PAF do not correspond to the
+    same “level of impact.” A mixture of 10 substances each at their 1%
+    PAF contributes a combined msPAF substantially larger than any
+    single substance’s 1%.
+
+2.  The denominator depends on which substances enter the calculation. A
+    site with Cu and Zn measured will have a different msPAF than the
+    same site with Cu, Zn, and Pb measured — even if Pb is well below
+    its single-substance trigger.
+
+3.  **You cannot directly compare an msPAF value to an ANZG
+    single-substance protection level.** They are different metrics on
+    the same scale.
+
+What you *can* do:
+
+- Compare msPAF across sites to identify relative impact.
+- Compare msPAF over time at one site to detect trends.
+- Calibrate msPAF against biological response data (e.g.
+  macroinvertebrate community state) to derive site-relevant
+  interpretive thresholds.
+
+## How the mixture is combined (and the log-normal assumption)
+
+msPAF combines substances in two stages, following De Zwart & Posthuma
+(2005). Substances thought to act by the same mechanism are combined
+within a group by **concentration addition (CA)**; the groups are then
+combined across by **independent action (IA)**. The two stages make
+different assumptions about the underlying species sensitivity
+distributions, and it is worth knowing which is which.
+
+- **Independent action across groups is shape-agnostic.** IA combines
+  groups as `msPAF = 1 − ∏(1 − PAF_i)`. It only needs each component’s
+  PAF, which the package reads off the full model-averaged SSD (all six
+  BCANZ distributions, weighted) — so this step holds whatever shape the
+  SSDs take.
+
+- **Concentration addition within a group assumes a log-normal.** CA
+  sums the toxic units (`TU_i = C_i / HC50_i`) and reads the combined
+  fraction off a *single* log-normal curve whose slope is the average of
+  the component slopes. This is the standard msPAF-CA method, and it is
+  **exact when the component SSDs are log-normal** (or log-logistic).
+  When the best-fitting SSD for a substance is some other shape, the CA
+  step approximates it with a log-normal matched at its HC50 and HC05.
+  For the metals that dominate leachate assessments this approximation
+  is small — their SSDs sit close to log-normal — but it is a modelling
+  choice, not an identity.
+
+A future release will add a shape-faithful numerical CA (which makes no
+log-normal assumption) as an option; until then, if a substance’s SSD is
+strongly non-log-normal, treat its contribution to the within-group CA
+as approximate.
+
+## Chronic vs per-sample msPAF
+
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
+operates on a chemistry data frame regardless of whether each row is a
+single field sample or a chronic-aggregated value — it treats every row
+as a snapshot of exposure and computes the msPAF that snapshot implies.
+
+For chronic interpretation (i.e. comparing msPAF against community state
+that integrates exposure over weeks to months), there are two pathways:
+
+**Path A — concentration averaging.** Time-aggregate chemistry first,
+then compute msPAF on the aggregated chemistry:
+
+``` r
+
+chr_chem <- time_weighted_aggregate(imp, focal_dates, summary = "geom_mean")
+prep_ref <- prepare_reference(chr_ref)
+chr_mspaf <- add_mspaf(chr_chem, reference = prep_ref)
+```
+
+This gives “msPAF at the geometric-mean chronic chemistry.” For sites
+with stable chemistry it is acceptable, but for sites with pulsed
+exposures (storm events, mobilisation pulses) it can substantially
+under-state the toxic burden — see *Pulsed exposures* below.
+
+**Path B — response averaging (recommended).** Compute per-sample msPAF
+first, then time-aggregate the msPAF values:
+
+``` r
+
+prep_ref       <- prepare_reference(ref_chem)
+ps_mspaf      <- add_mspaf(imp, reference = prep_ref)
+chr_mspaf     <- time_weighted_aggregate(
+  dplyr::filter(ps_mspaf, analyte == "msPAF"),
+  focal_dates    = focal_dates,
+  summary        = "arith_mean"
+)
+```
+
+This time-averages the toxic-response signal directly. It is more
+biologically defensible (the community integrates the effect over time,
+not the concentration) and is the default in the bundled
+`run_mspaf_pipeline.R` script.
+
+### Pulsed exposures and Jensen’s inequality
+
+For a log-normal SSD with HC50 = 100 µg/L and σ_log10 = 0.5, consider
+100 days of exposure with 99 days at 1 µg/L (baseline) and 1 day at 1000
+µg/L (storm pulse):
+
+| Aggregation                   | Concentration | PAF    |
+|-------------------------------|---------------|--------|
+| Geometric mean concentration  | 1.99 µg/L     | 0.03 % |
+| Arithmetic mean concentration | 11.0 µg/L     | 2.7 %  |
+| Mean of per-sample PAFs       | —             | 0.91 % |
+| Max concentration             | 1000 µg/L     | 97.7 % |
+
+PAF at the geometric mean concentration under-states the time-averaged
+PAF by an order of magnitude. This is Jensen’s inequality acting on the
+concave upper tail of the SSD: a brief excursion to high concentration
+contributes much more to the integrated response than its concentration-
+space weight suggests.
+
+For chronic assessment of pulsed exposures, Path B (mean of per-sample
+msPAF values) is the correct aggregation.
+
+## Choosing `tau`
+
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/hydroSense/reference/time_weighted_aggregate.md)
+uses exponential-decay temporal weighting with parameter `tau` (default
+`NULL` → 90 days; pass e.g. `tau = 90, tau_units = "d"`). The effective
+half-life is `tau * log(2)` ≈ 62 days at the default.
+
+Choose `tau` to match the response time of the target biology:
+
+| Target | Typical response timescale | Suggested `tau` (days) |
+|----|----|----|
+| Periphyton / algae | days to weeks | 14–30 |
+| Macroinvertebrates (general) | weeks to months | 60–120 |
+| Fish (sublethal effects) | months to years | 180–365 |
+| Long-lived benthic communities | seasonal to multi-year | 365+ |
+
+These are starting points, not prescriptions. For a calibration exercise
+the right move is to test a range of `tau` values and pick the one that
+maximises explanatory power against your biological response data —
+within a range that is mechanistically defensible.
+
+## Contemporaneous (temporal) ARA reference
+
+The default ARA path subtracts a *static* background — a geometric mean
+(or another summary statistic) computed once from all available
+reference observations. This is appropriate when the reference dataset
+is large, well distributed across seasons and flow regimes, and the key
+question is long-run chronic risk.
+
+However, in flashy catchments or sites with strong seasonal chemistry,
+subtracting a static mean can mismatch the target sample: if the target
+was collected during a storm flush and the reference background used is
+the dry-weather mean, the ARA will either over-correct (geogenic
+storm-flush metals exceeding the dry-weather mean are erroneously
+attributed to site impact) or under-correct, depending on the season.
+
+[`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md)
+addresses this by fitting **per-analyte seasonal + hydrological models**
+on the reference chemistry. Given a daily hydrology series (rainfall →
+API, or stage/discharge → antecedent mean), the function trains a GAM
+with a cyclic day-of-year term and two Antecedent Precipitation Index
+(API) terms with different memory lengths:
+
+    log(ref_norm) ~ s(doy, bs="cc") + s(API_short) + s(API_long)
+
+When you pass the resulting `reference_model` to
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md),
+the *contemporaneous* reference norm is resolved per (sample × analyte)
+via a three-tier ladder:
+
+1.  **Tier 1 — direct match.** A reference grab within
+    `±match_window_days` days of the target sample *and* within an
+    API-tolerance gate (hydrologically similar moment) is used directly.
+    The API gate prevents using a dry-weather reference observation next
+    to a storm-event target.
+
+2.  **Tier 2 — GAM prediction.** If no matched grab exists, the
+    per-analyte GAM predicts the expected reference at the target’s
+    hydrology + season. Only used when the model beats a null
+    (intercept-only) baseline on AIC; the window lengths (short and long
+    API memory) are auto-selected by AIC over a candidate grid.
+
+3.  **Tier 3 — static fallback.** If the GAM is not better than the null
+    (e.g., reference chemistry shows no seasonal or hydrological pattern
+    — common for conservative analytes), the geometric mean of all
+    reference observations is used, matching the static
+    [`prepare_reference()`](https://vorpalvorpal.github.io/hydroSense/reference/prepare_reference.md)
+    path.
+
+**Chronic integration.** For chronic samples produced by
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/hydroSense/reference/time_weighted_aggregate.md),
+the temporal path integrates at daily resolution across the `window`
+look-back period using the same exponential-decay kernel (`tau`). This
+makes the chronic reference consistent with the chronic target.
+
+**Quick start:**
+
+``` r
+
+# Fetch SILO daily rainfall automatically from lat/lon
+ref_model <- fit_reference_model(
+  reference  = reference_chemistry,   # long-format, detected = TRUE
+  latitude   = -33.87,
+  longitude  = 151.21,
+  conc_units = "ug/L"
+)
+
+# Pass to add_mspaf() in place of a static reference
+out <- add_mspaf(target_chem, reference = ref_model, conc_units = "ug/L")
+
+# Inspect per-cell ARA diagnostics (ref tier, floor events, etc.)
+ara_summary(out)
+```
+
+Supply your own gauge record when you have stage or discharge data:
+
+``` r
+
+stage_df  <- data.frame(date = ..., value = ...)   # daily stage in m
+ref_model <- fit_reference_model(
+  reference  = reference_chemistry,
+  hydro      = stage_df,
+  hydro_type = "stage",
+  conc_units = "ug/L"
+)
+```
+
+**[`ara_summary()`](https://vorpalvorpal.github.io/hydroSense/reference/ara_summary.md)
+diagnostic.** Every
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
+call (regardless of reference type) stores a per-(sample × analyte)
+diagnostic tibble as an attribute. `ara_summary(out)` returns it:
+
+| column | meaning |
+|----|----|
+| `C_norm` | Normalised target concentration |
+| `ref_norm` | Normalised reference subtracted |
+| `C_adj` | `max(C_norm − ref_norm, 0)` (the floored ARA increment) |
+| `C_excess` | Signed `C_norm − ref_norm` (negative = reference exceeded target) |
+| `floor_fired` | `TRUE` when `C_excess < 0` — reference higher than target |
+| `ref_tier` | `"matched"`, `"model"`, `"model_integrated"`, or `"static"` |
+
+The `floor_fired` rows are the most ecologically interesting: they
+indicate analytes where the reference site is *more* contaminated than
+the target. This typically happens for pH-mobile metals (Zn, Ni, Cu)
+when a low-pH headwater reference releases metals that precipitate at
+the higher-pH target — a real geogenic effect, not a data error. These
+cells are correctly zeroed in the ARA, but
+[`ara_summary()`](https://vorpalvorpal.github.io/hydroSense/reference/ara_summary.md)
+surfaces them so you can document the reason.
+
+**Package invariant (shared catchment).**
+[`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md)
+assumes reference and target share the same catchment hydrology. One
+hydrology series drives the API computation for both. This is
+appropriate for the canonical leachate-assessment design (headwater
+reference, downstream target, same sub-catchment) and should be stated
+explicitly in any report.
+
+------------------------------------------------------------------------
+
+## Predicting the target site between grabs
+
+[`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md)
+predicts the *background*.
+[`fit_target_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_target_model.md)
+is its counterpart for the *impacted* site: it predicts the
+leachate-attributable increment
+
+``` math
+I(t) = C_\text{norm}(t) - \text{ref}_\text{norm}(t)
+```
+
+— the very quantity
+[`ara_summary()`](https://vorpalvorpal.github.io/hydroSense/reference/ara_summary.md)
+reports as `C_excess` — so that `mspaf_daily(interpolation = "model")`
+can fill the days between grab samples with a chemistry-grounded
+estimate instead of a forward-filled concentration.
+
+**The crucial asymmetry: the target model is season-blind.** This is the
+one place where the target and reference logic must *differ*. Natural
+background chemistry genuinely follows the calendar (leaf litter,
+baseflow recession, snowmelt), so the reference model legitimately
+carries a cyclic day-of-year term. Site impacts do not. They are driven
+by **management failure** — a leachate breach — not by the season. Heavy
+summer rain *enables* an existing breach to escape; it does not *cause*
+one. A year of perfect management has zero impact despite identical
+rainfall. Letting day-of-year predict impact would hallucinate a breach
+from the calendar — for example, forecasting elevated metals every
+February simply because past Februaries happened to coincide with
+breaches. The target model therefore excludes day-of-year entirely.
+Hydrology enters only as a *modulator* of how an already-present impact
+expresses itself (first-flush mobilisation, dilution, antecedent
+memory), never as a generator:
+
+``` math
+I(t) = \beta \cdot f(\text{hydro}_t) + S(t)
+```
+
+`f(hydro)` is a thin-plate GAM on the short- and long-window antecedent
+indices (no seasonal term), kept only when it beats an intercept-only
+null by AIC. `S(t)` is a persistent latent state interpolated between
+observation anchors by a hydrology-weighted bridge: it pinches to the
+observed residual on each sampling day, and between two grabs it leans
+toward whichever bracketing sample’s antecedent hydrology more closely
+matches the day being predicted. The **perfect-management invariant**
+falls out by construction — when every observed impact is ≈ 0, the
+fitted response is flat and the interpolated state stays ≈ 0, so no
+impact is invented on un-sampled high-rainfall days.
+
+This is, in effect, a season-blind, hydrology-modulated variant of
+**WRTDS-Kalman** (Zhang & Hirsch 2019) applied to the ARA impact
+residual; the hydrological response `f(hydro)` follows
+**concentration–discharge** theory (Godsey, Kirchner & Clow 2009), which
+is why `\beta` is left free-signed per analyte (a first-flush metal
+rises with antecedent rainfall; a dilution-controlled one falls).
+
+``` r
+
+ref_model <- fit_reference_model(reference_chem, latitude = -33.8,
+                                 longitude = 151.2, conc_units = "ug/L")
+
+# Daily msPAF (leachate-attributable increment) — model interpolation + ARA
+daily_ara <- mspaf_daily(
+  target_chem,
+  reference       = ref_model,   # subtract background (ARA on)
+  reference_model = ref_model,   # season-blind impact model interpolates toxicants
+  interpolation   = "model"
+)
+
+# Daily total msPAF — same interpolation, ARA off (reference = NULL)
+daily_total <- mspaf_daily(
+  target_chem,
+  reference       = NULL,
+  reference_model = ref_model,
+  interpolation   = "model"
+)
+```
+
+Note that `reference` and `reference_model` play distinct roles:
+`reference_model` is what *interpolates* the toxicants (it is required
+for the `"model"` path), while `reference` independently controls
+whether the background is *subtracted*. Passing the same model to both
+gives the added-risk increment; passing `reference = NULL` assesses the
+total concentration. Using one interpolation for both panels keeps the
+with/without-ARA comparison apples-to-apples.
+
+**Optional impute-first.** Both
+[`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md)
+and
+[`fit_target_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_target_model.md)
+accept an `imputation_model` (from
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md),
+fit on that site’s own chemistry). When supplied, missing analytes are
+imputed in raw concentration space *before* modelling, so a well-sampled
+analyte lifts a sparsely-sampled one into a richer spread of
+hydrological regimes (e.g. 100 zinc observations turn 20 copper
+observations into 100 copper anchors via the Cu–Zn relationship). This
+requires **brms**.
+
+**The water-quality layer (predicting from cheap indicators).** On days
+where the cheap water-quality suite (pH, EC, redox indicators) was
+measured but the metals were not, the metal can be predicted directly
+from water quality. Because the cross-metal coupling in the imputation
+model only acts when *sibling* metals are observed, a metals-absent
+prediction reduces to a plain regression on the chemistry PCA — cheap
+and not Bayesian.
+[`fit_target_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_target_model.md)
+exploits this: when the supplied `imputation_model` carries a fitted PCA
+(a full brms model, or a lightweight PCA-only one), each analyte gets a
+GAM of concentration on the PCA scores, and only the *residual* of that
+regression is interpolated between grabs. A water-quality-bearing day is
+then anchored by *today’s* chemistry (tier `"wq"` in
+[`ara_summary()`](https://vorpalvorpal.github.io/hydroSense/reference/ara_summary.md))
+rather than by pure interpolation from neighbouring grabs — the sharper
+estimate, because conductivity and the like are contemporaneous evidence
+of a leachate excursion.
+
+**Partial pooling (`pool = TRUE`, the default).** A single factor-smooth
+GAM is fitted jointly across analytes. Crucially, it pools each
+analyte’s impact only after *standardising it to a per-analyte z-score*
+(`z = (I - mu_a) / sd_a`), so the shared smooth borrows the response
+**shape** across analytes while each analyte keeps its own **magnitude**
+(restored by de-standardising the fitted shape). This matters because
+the `bs = "fs"` penalty shrinks each analyte’s level, not just its
+wiggliness: pooling the raw impact would drag a large-signal analyte
+(say Cu) toward a population dominated by near-zero ones and inflate the
+near-zero ones (say Ni) in turn. Standardised pooling *regularises*
+noisy, low-signal analytes by lending them a shape without distorting
+magnitudes; it does not add hydrological coverage, since co-sampled
+metals already see the same flow regimes. In leachate datasets,
+BDL-heavy analytes with sparse detections are the norm rather than the
+exception, so pooled regularisation is almost always preferable. Set
+`pool = FALSE` only when all analytes are densely and reliably detected,
+making independent fits with their AIC flat-bridge fallback fully
+adequate.
+
+------------------------------------------------------------------------
+
+## Reference summary statistic
+
+The Added Risk Approach (ARA) subtracts a background “reference”
+concentration before evaluating the SSD, so the msPAF reflects only the
+*increment above* what the local community is already adapted to. The
+summary statistic used to define that background is chosen by the
+`summary` argument to
+[`prepare_reference()`](https://vorpalvorpal.github.io/hydroSense/reference/prepare_reference.md).
+
+The package default is `"geom_mean"`. Rationale:
+
+- For log-normal concentration distributions (the typical case for
+  aquatic chemistry), the geometric mean is the maximum-likelihood
+  central tendency.
+- It uses every reference observation, making it more robust to small
+  reference datasets than a fixed quantile.
+- It is consistent with the PICT (pollution-induced community tolerance)
+  interpretation: the community has been integrated against the typical
+  exposure, not the upper tail.
+
+Alternatives:
+
+- `"median"` — most robust to outliers; good when reference data may be
+  contaminated.
+- `"arith_mean"` — uses every observation but is sensitive to outliers.
+- `"p80"`, `"p90"`, `"p95"` — quantiles. Use when the assessment
+  framework specifies an upper-percentile reference (e.g., some ANZG
+  compliance protocols).
+
+Set `bootstrap_ci = TRUE` to compute a 95% bootstrap CI on the chosen
+summary statistic per analyte. Useful when the reference dataset is
+small (n \< 20 per analyte) and you want to propagate that uncertainty
+visually into downstream interpretation.
+
+## Known caveats
+
+**Mercury and methylation.** The Hg SSD bundled with this package is for
+inorganic Hg. Methylmercury (MeHg), which forms in low-redox aquatic
+sediments and is the form most toxic to vertebrates, is not separately
+handled — ANZG does not publish a methylmercury SSD. At sites where
+reductive conditions are expected (leachate plumes, anaerobic sediment),
+the inorganic Hg PAF will under-state the actual biological risk by
+several orders of magnitude. This is a limitation in upstream guideline
+data, not in the package.
+
+**Mode-of-action grouping.** The current metadata places all metals into
+a single `ionoregulatory` group (Concentration Addition within the
+group). This is the conservative choice — it produces a higher msPAF
+than independent action across the metals — but it is mechanistically
+imprecise. Different metals act on different molecular targets (Cu/Zn on
+gill Na⁺/K⁺-ATPase, Pb on calcium signalling, Cd on metallothionein, Hg
+on thiol groups, As on phosphate metabolism). A more accurate treatment
+would use multiple MOA groups with CA within and IA across. This
+requires evidence-based assignment from the ANZG/ANZECC technical
+briefs, which is tracked as a future task.
+
+**Biological validation.** The SSDs are validated against published ANZG
+DGVs (see HANDOVER.md §4) but the msPAF as a community-state predictor
+is not yet calibrated. Until macroinvertebrate calibration is complete,
+msPAF outputs are best-effort predictions of chronic toxicity; they have
+not been empirically tied to observed community impact.
+
+**Below-detection handling in imputation.**
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md)
+offers three `impute_method` options for BDL cells and cross-analyte
+coupling: `"rescor_mi"` (default — full residual correlation with `mi()`
+imputation), `"cens"` (proper left-censoring, no coupling), and
+`"cens_factor"` (left-censoring plus a shared latent factor). The
+default cannot use `cens("left")` because brms does not support censored
+likelihoods together with multivariate residual correlation
+(`rescor = TRUE`), so it imputes BDL cells via `mi()`. In all methods an
+imputed BDL value is capped at its detection limit (`bdl_cap = TRUE`);
+frequent capping signals tension between the modelled chemistry and the
+reported limits and should be inspected. See the *Imputing missing and
+below-detection chemistry* article and the
+[`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md)
+docs for the trade-offs.

@@ -2,13 +2,13 @@
 
 ### All vignettes
 
-- [Interpreting chronic AmsPAF
-  outputs](https://vorpalvorpal.github.io/leachatetools/articles/chronic-amspaf-interpretation.md):
-- [Daily AmsPAF with uncertainty
-  quantification](https://vorpalvorpal.github.io/leachatetools/articles/daily-uncertainty.md):
+- [Interpreting chronic msPAF
+  outputs](https://vorpalvorpal.github.io/hydroSense/articles/chronic-mspaf-interpretation.md):
+- [Daily msPAF with uncertainty
+  quantification](https://vorpalvorpal.github.io/hydroSense/articles/daily-uncertainty.md):
 - [Imputing missing and below-detection
-  chemistry](https://vorpalvorpal.github.io/leachatetools/articles/imputation.md):
+  chemistry](https://vorpalvorpal.github.io/hydroSense/articles/imputation.md):
 - [Detecting leachate with the Leachate Mixing Fraction
-  (LMF)](https://vorpalvorpal.github.io/leachatetools/articles/leachate-mixing-fraction.md):
+  (LMF)](https://vorpalvorpal.github.io/hydroSense/articles/leachate-mixing-fraction.md):
 - [Analyte normalisation: bioavailability adjustments in
-  leachatetools](https://vorpalvorpal.github.io/leachatetools/articles/normalisation.md):
+  hydroSense](https://vorpalvorpal.github.io/hydroSense/articles/normalisation.md):

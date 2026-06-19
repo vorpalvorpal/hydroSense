@@ -4,7 +4,7 @@ Retrieves daily rainfall from the SILO Data Drill (a ~5 km gridded,
 spatially interpolated climate surface covering Australia, 1889–present)
 for a single latitude/longitude. The result is the input hydrology
 series accepted by
-[`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md)
+[`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md)
 when no gauge record is available.
 
 ## Usage
@@ -42,7 +42,7 @@ get_silo_rainfall(
 - cache:
 
   Logical; cache the result on disk under
-  `tools::R_user_dir("leachatetools", "cache")/silo`. Default `TRUE`.
+  `tools::R_user_dir("hydroSense", "cache")/silo`. Default `TRUE`.
 
 - refresh:
 
@@ -56,13 +56,13 @@ A tibble with one row per day:
 - `date` (`Date`)
 
 - `rainfall_mm` (numeric, mm/day) Ready to pass as `hydro` to
-  [`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md)
+  [`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md)
   with `hydro_type = "rainfall"`.
 
 ## Details
 
 This function is the rainfall sibling of
-[`get_silo_air_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/get_silo_air_temp.md)
+[`get_silo_air_temp()`](https://vorpalvorpal.github.io/hydroSense/reference/get_silo_air_temp.md)
 and uses the same API, cache, and key mechanism.
 
 ## Attribution
@@ -80,8 +80,8 @@ it is auto-detected via
 
 ## See also
 
-[`fit_reference_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_reference_model.md),
-[`get_silo_air_temp()`](https://vorpalvorpal.github.io/leachatetools/reference/get_silo_air_temp.md)
+[`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md),
+[`get_silo_air_temp()`](https://vorpalvorpal.github.io/hydroSense/reference/get_silo_air_temp.md)
 
 ## Examples
 

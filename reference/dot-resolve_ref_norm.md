@@ -1,14 +1,14 @@
 # Resolve reference norms for a block of target samples
 
 Dispatches to
-[`.resolve_ref_norm_instant()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-resolve_ref_norm_instant.md)
+[`.resolve_ref_norm_instant()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-resolve_ref_norm_instant.md)
 or
-[`.resolve_ref_norm_chronic()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-resolve_ref_norm_chronic.md)
+[`.resolve_ref_norm_chronic()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-resolve_ref_norm_chronic.md)
 depending on whether `df` contains a `focal_date` column. Returns a
 tibble `(sample_id, analyte, ref_norm, ref_tier)` that
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
 uses instead of the static `(analyte, ref_norm)` table produced by
-[`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md).
+[`prepare_reference()`](https://vorpalvorpal.github.io/hydroSense/reference/prepare_reference.md).
 
 ## Usage
 
@@ -25,7 +25,7 @@ uses instead of the static `(analyte, ref_norm)` table produced by
 - df:
 
   Target chemistry data frame (as passed to
-  [`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)).
+  [`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)).
 
 - tau_days:
 

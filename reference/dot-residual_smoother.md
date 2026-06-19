@@ -43,7 +43,7 @@ posterior. For degenerate series returns a flat mean with zero variance.
 - n_fit_min, scale:
 
   Passed to
-  [`.estimate_ou_kalman_params()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-estimate_ou_kalman_params.md).
+  [`.estimate_ou_kalman_params()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-estimate_ou_kalman_params.md).
 
 - r_vec:
 

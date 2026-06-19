@@ -2,9 +2,9 @@
 
 Reads the bundled CSV when `meta` is NULL. Returns a tibble. Caches the
 result in an internal environment to avoid re-reading on every
-[`prepare_reference()`](https://vorpalvorpal.github.io/leachatetools/reference/prepare_reference.md)
+[`prepare_reference()`](https://vorpalvorpal.github.io/hydroSense/reference/prepare_reference.md)
 /
-[`add_amspaf()`](https://vorpalvorpal.github.io/leachatetools/reference/add_amspaf.md)
+[`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
 call within a session.
 
 ## Usage

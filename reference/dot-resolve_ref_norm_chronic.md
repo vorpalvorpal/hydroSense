@@ -4,7 +4,7 @@ For each chronic sample (`focal_date` column), integrates the predicted
 reference at daily resolution over
 `[focal_date - window_days, focal_date]` using the same
 exponential-decay kernel as
-[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/leachatetools/reference/time_weighted_aggregate.md).
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/hydroSense/reference/time_weighted_aggregate.md).
 Tier 1 does not apply to chronic targets (no single reference grab is a
 proxy for an entire integration window).
 

@@ -1,7 +1,7 @@
 # Construct a standardised LMF output row
 
 Internal helper that builds the one-row tibble returned by
-[`compute_lmf_for_sample`](https://vorpalvorpal.github.io/leachatetools/reference/compute_lmf_for_sample.md)
+[`compute_lmf_for_sample`](https://vorpalvorpal.github.io/hydroSense/reference/compute_lmf_for_sample.md)
 for both successful and failed computations. All paths call this
 function so the output schema is guaranteed consistent.
 

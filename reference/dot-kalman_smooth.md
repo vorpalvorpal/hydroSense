@@ -13,7 +13,7 @@ Posterior (smoothed) mean and variance of the residual on the grid
 - model:
 
   A KFAS model from
-  [`.build_kalman_model()`](https://vorpalvorpal.github.io/leachatetools/reference/dot-build_kalman_model.md).
+  [`.build_kalman_model()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-build_kalman_model.md).
 
 ## Value
 

@@ -175,9 +175,9 @@ Christophersen N, Hooper RP (1992) Water Resources Research
 
 ## See also
 
-[`build_leachate_endmember`](https://vorpalvorpal.github.io/leachatetools/reference/build_leachate_endmember.md),
-[`build_reference_endmember`](https://vorpalvorpal.github.io/leachatetools/reference/build_reference_endmember.md),
-[`compute_lmf_for_sample`](https://vorpalvorpal.github.io/leachatetools/reference/compute_lmf_for_sample.md)
+[`build_leachate_endmember`](https://vorpalvorpal.github.io/hydroSense/reference/build_leachate_endmember.md),
+[`build_reference_endmember`](https://vorpalvorpal.github.io/hydroSense/reference/build_reference_endmember.md),
+[`compute_lmf_for_sample`](https://vorpalvorpal.github.io/hydroSense/reference/compute_lmf_for_sample.md)
 
 ## Examples
 
