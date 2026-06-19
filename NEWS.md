@@ -1,5 +1,16 @@
 # leachatetools (development)
 
+## Imputation completes the analyte panel (issue #53)
+
+* `impute_chemistry()` now imputes analytes that are **entirely absent** for an
+  eligible sample, not just BDL/censored cells on rows that already exist. Each
+  fabricated cell becomes a new row tagged `imputed_kind = "missing"`,
+  `detected = TRUE`, carrying the sample's `site_id`/`datetime`. This activates
+  the documented "anchor a sparse analyte from a well-sampled one" behaviour
+  (e.g. Zn-only samples gain a model-predicted Cu row) that the merge had
+  silently dropped. Prefer `return = "draws"` when these values feed a further
+  model, so the imputation uncertainty propagates.
+
 ## Daily gap-uncertainty bracket: informative vs ignorable envelopes (issue #50)
 
 * `amspaf_daily()` gains a `gap_uncertainty` argument
