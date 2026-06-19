@@ -2,8 +2,8 @@
 
 Applies the models fitted by
 [`fit_imputation_model()`](https://vorpalvorpal.github.io/leachatetools/reference/fit_imputation_model.md)
-to `df`, returning posterior mean estimates for missing and
-below-detection-limit (BDL) observations in every fitted group.
+to `df`, returning posterior estimates for below-detection-limit (BDL)
+and missing observations in every fitted group.
 
 ## Usage
 
@@ -73,6 +73,24 @@ limit, a per-cell audit of the cap activations is attached as the
 [`bdl_cap_summary()`](https://vorpalvorpal.github.io/leachatetools/reference/bdl_cap_summary.md).
 
 ## Details
+
+**Completing the panel**
+
+For each eligible sample (see *Hurdles*), every target analyte the group
+models is filled: BDL cells are replaced with their posterior estimate,
+and analytes that are **entirely absent** for a sample gain a new
+model-anchored row (`imputed_kind = "missing"`, `detected = TRUE`). This
+is what lets a well-sampled analyte lift a sparsely-sampled one — e.g. a
+sample with Zn but no Cu gains a Cu row predicted from the fitted Cu–Zn
+relationship. Fabricated rows carry the originating sample's `site_id`,
+`datetime`, and any other sample-level columns.
+
+Fabricated rows are model predictions, not measurements. With
+`return = "draws"` the imputation-model uncertainty propagates through
+the draw carrier; with `return = "point"` the single anchor enters any
+downstream model as if observed, which can understate that model's
+uncertainty. Prefer `return = "draws"` when the imputed values feed a
+further model (e.g. the reference/target GAMs).
 
 **Hurdles**
 
