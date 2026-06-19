@@ -1,5 +1,22 @@
 # hydroSense (development)
 
+## Rename, dependency, and a one-call pipeline (breaking)
+
+* **Package renamed `leachatetools` → `hydroSense`.** Update `library()` calls
+  and the option `leachatetools.guideline_dir` → `hydroSense.guideline_dir`.
+* **`AmsPAF` renamed to `msPAF` throughout** — function names
+  (`add_amspaf()` → `add_mspaf()`, `amspaf_daily()` → `mspaf_daily()`,
+  `classify_amspaf_tier()` → `classify_mspaf_tier()`), the emitted analyte
+  label (`"AmsPAF"` → `"msPAF"`), and result columns (`amspaf*` → `mspaf*`).
+  No backwards-compatibility shims.
+* **`brms` moved from `Suggests` to `Imports`** — it now installs with the
+  package (a working Stan toolchain is still required separately for fitting).
+* **New `mspaf_pipeline()`** bundles `fit_imputation_model()` →
+  `fit_reference_model()` → `mspaf_daily()` into one call, with imputation
+  **on by default**. It threads one imputation model through both downstream
+  steps. Imputation moves the msPAF result (a MAR/MNAR modelling choice), so
+  pass `impute = FALSE` for the non-imputed calculation.
+
 ## Imputation completes the analyte panel (issue #53)
 
 * `impute_chemistry()` now imputes analytes that are **entirely absent** for an

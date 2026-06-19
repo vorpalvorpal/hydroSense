@@ -64,9 +64,10 @@ You can install the development version from
 pak::pak("vorpalvorpal/hydroSense")
 ```
 
-Bayesian imputation additionally requires a working
-[Stan](https://mc-stan.org/) toolchain via **brms** (a `Suggests` dependency);
-the toxicity and LMF pillars do not.
+**brms** is a hard dependency (`Imports`) and installs with the package, but
+the Bayesian imputation step additionally needs a working
+[Stan](https://mc-stan.org/) toolchain, which is not pulled in automatically;
+the toxicity and LMF pillars do not need Stan.
 
 ## Usage
 
