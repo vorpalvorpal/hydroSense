@@ -34,3 +34,6 @@ vignettes/*.html
 *.Rcheck/
 *.tar.gz
 .claude/
+
+# Exploratory / scratch — never tracked
+dev/
