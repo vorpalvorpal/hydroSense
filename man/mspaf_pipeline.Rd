@@ -2,7 +2,7 @@
 % Please edit documentation in R/mspaf_pipeline.R
 \name{mspaf_pipeline}
 \alias{mspaf_pipeline}
-\title{Run the full daily msPAF pipeline end to end}
+\title{Run the full chronic msPAF pipeline end to end}
 \usage{
 mspaf_pipeline(
   target,
@@ -14,7 +14,13 @@ mspaf_pipeline(
   impute_groups = NULL,
   impute_seed = NULL,
   reference_args = list(),
-  daily_args = list()
+  daily_args = list(),
+  chronic = TRUE,
+  focal_dates = NULL,
+  focal_by = "day",
+  tau = NULL,
+  window = NULL,
+  chronic_summary = "arith_mean"
 )
 }
 \arguments{
@@ -49,24 +55,73 @@ forwarded to \code{\link[=fit_reference_model]{fit_reference_model()}} and \code
 not include arguments the orchestrator sets itself (\code{reference}/\code{hydro}/
 \code{imputation_model} for the reference fit; \code{df}/\code{reference_model}/
 \code{imputation_model} for the daily call). \code{daily_args} may override the
-\code{interpolation = "model"} default.}
+\code{interpolation = "model"} default. When \code{chronic = TRUE} and \code{daily_args}
+requests draws (\code{ndraws}), \code{return = "draws"} is forced so per-draw rows
+can be propagated into the chronic summary; the \code{gap_uncertainty},
+\code{interval} and \code{central} values from \code{daily_args} (or \code{\link[=mspaf_daily]{mspaf_daily()}}'s
+defaults \code{"bracket"}, \code{0.9}, \code{"median"}) shape the chronic envelope.}
+
+\item{chronic}{Logical. Aggregate the daily series into chronic time-weighted
+msPAF as a final step? Default \code{TRUE}. When \code{FALSE}, the daily
+\code{\link[=mspaf_daily]{mspaf_daily()}} result is returned unchanged (with model attributes only).}
+
+\item{focal_dates}{Focal dates for the chronic aggregation, passed to
+\code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}. \code{NULL} (default) derives a sequence spanning
+the daily date range via \code{\link[=expand_focal_dates]{expand_focal_dates()}} (spacing \code{focal_by}). May
+also be a \code{Date} vector or a \code{focal_date}/\code{site_id} data frame.}
+
+\item{focal_by}{Spacing for the derived \code{focal_dates} when \code{focal_dates} is
+\code{NULL}; passed to \code{\link[=expand_focal_dates]{expand_focal_dates()}}'s \code{by} (\code{\link[base:seq.Date]{base::seq.Date()}}
+semantics): \code{"day"} (default), \code{7} (weekly), \code{"week"}, \code{"month"}, etc.
+Ignored when \code{focal_dates} is supplied.}
+
+\item{tau}{Exponential-decay parameter in days for the chronic kernel,
+forwarded to \code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}. \code{NULL} (default) uses its default
+of 90 days.}
+
+\item{window}{Look-back window in days for the chronic aggregation, forwarded
+to \code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}. \code{NULL} (default) uses its default of 365
+days.}
+
+\item{chronic_summary}{Aggregation method for the chronic step, passed to
+\code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}'s \code{summary}. Default \code{"arith_mean"} (the
+recommended aggregation for bounded msPAF percentages).}
 }
 \value{
-The \code{\link[=mspaf_daily]{mspaf_daily()}} result, with the fitted models attached as
-attributes \code{"reference_model"} and \code{"imputation_model"} (the latter \code{NULL}
-when \code{impute = FALSE} or the fit was skipped). Note that most \pkg{dplyr}
-verbs drop attributes, so read them off the returned frame directly.
+When \code{chronic = TRUE} (default), the chronic msPAF frame, one row per
+(focal date × site):
+\itemize{
+\item \strong{point mode} (\code{ndraws} absent): columns \code{focal_date}, \code{site_id},
+\code{sample_id}, \code{analyte}, \code{value}, \code{detected}, \code{n_samples_in_window},
+\code{n_imputed_in_window} (a single chronic \code{value}, no interval columns).
+\item \strong{draws mode} (\code{ndraws} set): columns \code{focal_date}, \code{site_id} plus the
+bracket envelope summary (\verb{median_*}/\verb{lo_*}/\verb{hi_*} per envelope, and
+\code{precautionary_lo}/\code{precautionary_hi} in \code{"bracket"} mode).
+The chronic frame carries the daily frame it was built from as attribute
+\code{"daily"}. When \code{chronic = FALSE}, the \code{\link[=mspaf_daily]{mspaf_daily()}} result is returned
+unchanged. In all cases the fitted models are attached as attributes
+\code{"reference_model"} and \code{"imputation_model"} (the latter \code{NULL} when
+\code{impute = FALSE} or the fit was skipped). Note that most \pkg{dplyr} verbs
+drop attributes, so read them off the returned frame directly.
+}
 }
 \description{
-Orchestrates the three steps a daily msPAF analysis usually chains by hand:
+Orchestrates the four steps a chronic msPAF analysis usually chains by hand:
 optionally fit a Bayesian imputation model (\code{\link[=fit_imputation_model]{fit_imputation_model()}}), fit
-the reference/impact model (\code{\link[=fit_reference_model]{fit_reference_model()}}), then compute the daily
-multi-substance PAF (\code{\link[=mspaf_daily]{mspaf_daily()}}) for the target site. The fitted
-imputation model is threaded into \strong{both} downstream steps so that
-below-detection and entirely-absent analytes are filled before the toxicity
-calculation.
+the reference/impact model (\code{\link[=fit_reference_model]{fit_reference_model()}}), compute the daily
+multi-substance PAF (\code{\link[=mspaf_daily]{mspaf_daily()}}) for the target site, then aggregate the
+daily series into a \strong{chronic} time-weighted msPAF
+(\code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}). The fitted imputation model is threaded into
+\strong{both} downstream chemistry steps so that below-detection and
+entirely-absent analytes are filled before the toxicity calculation.
 }
 \details{
+The chronic step "smears" the daily msPAF line with an exponential-decay
+memory kernel: because the daily series is equally spaced, forward-step
+duration weighting is uniform (Δt = 1 day) and the chronic value is shaped
+only by the \code{tau} decay. Set \code{chronic = FALSE} to stop at the daily series
+and reproduce the previous (daily) return.
+
 \strong{Imputation is on by default here.} The individual functions treat
 imputation as opt-in (you must fit a model and pass it). This orchestrator
 flips that default: with \code{impute = TRUE} it fits an imputation model and
@@ -89,5 +144,6 @@ out <- mspaf_pipeline(
 }
 }
 \seealso{
-\code{\link[=fit_imputation_model]{fit_imputation_model()}}, \code{\link[=fit_reference_model]{fit_reference_model()}}, \code{\link[=mspaf_daily]{mspaf_daily()}}
+\code{\link[=fit_imputation_model]{fit_imputation_model()}}, \code{\link[=fit_reference_model]{fit_reference_model()}}, \code{\link[=mspaf_daily]{mspaf_daily()}},
+\code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}, \code{\link[=expand_focal_dates]{expand_focal_dates()}}
 }
