@@ -181,7 +181,7 @@ background adjustment. Includes the static and temporal
 (contemporaneous) ARA reference paths.
 
 - [`mspaf_pipeline()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_pipeline.md)
-  : Run the full daily msPAF pipeline end to end
+  : Run the full chronic msPAF pipeline end to end
 
 - [`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
   : Compute the Adjusted multi-substance PAF (msPAF) for water quality

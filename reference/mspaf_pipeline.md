@@ -1,15 +1,18 @@
-# Run the full daily msPAF pipeline end to end
+# Run the full chronic msPAF pipeline end to end
 
-Orchestrates the three steps a daily msPAF analysis usually chains by
+Orchestrates the four steps a chronic msPAF analysis usually chains by
 hand: optionally fit a Bayesian imputation model
 ([`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md)),
 fit the reference/impact model
 ([`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md)),
-then compute the daily multi-substance PAF
+compute the daily multi-substance PAF
 ([`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md))
-for the target site. The fitted imputation model is threaded into
-**both** downstream steps so that below-detection and entirely-absent
-analytes are filled before the toxicity calculation.
+for the target site, then aggregate the daily series into a **chronic**
+time-weighted msPAF
+([`time_weighted_aggregate()`](https://vorpalvorpal.github.io/hydroSense/reference/time_weighted_aggregate.md)).
+The fitted imputation model is threaded into **both** downstream
+chemistry steps so that below-detection and entirely-absent analytes are
+filled before the toxicity calculation.
 
 ## Usage
 
@@ -24,7 +27,13 @@ mspaf_pipeline(
   impute_groups = NULL,
   impute_seed = NULL,
   reference_args = list(),
-  daily_args = list()
+  daily_args = list(),
+  chronic = TRUE,
+  focal_dates = NULL,
+  focal_by = "day",
+  tau = NULL,
+  window = NULL,
+  chronic_summary = "arith_mean"
 )
 ```
 
@@ -87,18 +96,87 @@ mspaf_pipeline(
   respectively. Do not include arguments the orchestrator sets itself
   (`reference`/`hydro`/ `imputation_model` for the reference fit;
   `df`/`reference_model`/ `imputation_model` for the daily call).
-  `daily_args` may override the `interpolation = "model"` default.
+  `daily_args` may override the `interpolation = "model"` default. When
+  `chronic = TRUE` and `daily_args` requests draws (`ndraws`),
+  `return = "draws"` is forced so per-draw rows can be propagated into
+  the chronic summary; the `gap_uncertainty`, `interval` and `central`
+  values from `daily_args` (or
+  [`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)'s
+  defaults `"bracket"`, `0.9`, `"median"`) shape the chronic envelope.
+
+- chronic:
+
+  Logical. Aggregate the daily series into chronic time-weighted msPAF
+  as a final step? Default `TRUE`. When `FALSE`, the daily
+  [`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)
+  result is returned unchanged (with model attributes only).
+
+- focal_dates:
+
+  Focal dates for the chronic aggregation, passed to
+  [`time_weighted_aggregate()`](https://vorpalvorpal.github.io/hydroSense/reference/time_weighted_aggregate.md).
+  `NULL` (default) derives a sequence spanning the daily date range via
+  [`expand_focal_dates()`](https://vorpalvorpal.github.io/hydroSense/reference/expand_focal_dates.md)
+  (spacing `focal_by`). May also be a `Date` vector or a
+  `focal_date`/`site_id` data frame.
+
+- focal_by:
+
+  Spacing for the derived `focal_dates` when `focal_dates` is `NULL`;
+  passed to
+  [`expand_focal_dates()`](https://vorpalvorpal.github.io/hydroSense/reference/expand_focal_dates.md)'s
+  `by` ([`base::seq.Date()`](https://rdrr.io/r/base/seq.Date.html)
+  semantics): `"day"` (default), `7` (weekly), `"week"`, `"month"`, etc.
+  Ignored when `focal_dates` is supplied.
+
+- tau:
+
+  Exponential-decay parameter in days for the chronic kernel, forwarded
+  to
+  [`time_weighted_aggregate()`](https://vorpalvorpal.github.io/hydroSense/reference/time_weighted_aggregate.md).
+  `NULL` (default) uses its default of 90 days.
+
+- window:
+
+  Look-back window in days for the chronic aggregation, forwarded to
+  [`time_weighted_aggregate()`](https://vorpalvorpal.github.io/hydroSense/reference/time_weighted_aggregate.md).
+  `NULL` (default) uses its default of 365 days.
+
+- chronic_summary:
+
+  Aggregation method for the chronic step, passed to
+  [`time_weighted_aggregate()`](https://vorpalvorpal.github.io/hydroSense/reference/time_weighted_aggregate.md)'s
+  `summary`. Default `"arith_mean"` (the recommended aggregation for
+  bounded msPAF percentages).
 
 ## Value
 
-The
-[`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)
-result, with the fitted models attached as attributes
-`"reference_model"` and `"imputation_model"` (the latter `NULL` when
-`impute = FALSE` or the fit was skipped). Note that most dplyr verbs
-drop attributes, so read them off the returned frame directly.
+When `chronic = TRUE` (default), the chronic msPAF frame, one row per
+(focal date × site):
+
+- **point mode** (`ndraws` absent): columns `focal_date`, `site_id`,
+  `sample_id`, `analyte`, `value`, `detected`, `n_samples_in_window`,
+  `n_imputed_in_window` (a single chronic `value`, no interval columns).
+
+- **draws mode** (`ndraws` set): columns `focal_date`, `site_id` plus
+  the bracket envelope summary (`median_*`/`lo_*`/`hi_*` per envelope,
+  and `precautionary_lo`/`precautionary_hi` in `"bracket"` mode). The
+  chronic frame carries the daily frame it was built from as attribute
+  `"daily"`. When `chronic = FALSE`, the
+  [`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)
+  result is returned unchanged. In all cases the fitted models are
+  attached as attributes `"reference_model"` and `"imputation_model"`
+  (the latter `NULL` when `impute = FALSE` or the fit was skipped). Note
+  that most dplyr verbs drop attributes, so read them off the returned
+  frame directly.
 
 ## Details
+
+The chronic step "smears" the daily msPAF line with an exponential-decay
+memory kernel: because the daily series is equally spaced, forward-step
+duration weighting is uniform (Δt = 1 day) and the chronic value is
+shaped only by the `tau` decay. Set `chronic = FALSE` to stop at the
+daily series and reproduce the previous (daily) return.
 
 **Imputation is on by default here.** The individual functions treat
 imputation as opt-in (you must fit a model and pass it). This
@@ -119,7 +197,9 @@ directly.
 
 [`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md),
 [`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md),
-[`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)
+[`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md),
+[`time_weighted_aggregate()`](https://vorpalvorpal.github.io/hydroSense/reference/time_weighted_aggregate.md),
+[`expand_focal_dates()`](https://vorpalvorpal.github.io/hydroSense/reference/expand_focal_dates.md)
 
 ## Examples
 
