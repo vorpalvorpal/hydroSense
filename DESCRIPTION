@@ -31,6 +31,7 @@ Imports:
     brms (>= 2.20.0),
     checkmate,
     cli,
+    collapse,
     dplyr,
     glue,
     KFAS,
@@ -54,6 +55,7 @@ Imports:
     uuid
 SystemRequirements: Stan (rstan or cmdstanr); required by brms for Bayesian imputation
 Suggests:
+    cmdstanr,
     future,
     future.apply,
     ggplot2,
@@ -62,5 +64,6 @@ Suggests:
     testthat (>= 3.0.0),
     weatherOz,
     withr
+Additional_repositories: https://stan-dev.r-universe.dev
 VignetteBuilder: knitr
 Config/testthat/edition: 3

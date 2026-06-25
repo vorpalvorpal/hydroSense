@@ -101,7 +101,12 @@ which to prefer.}
 \item{save_dir}{If non-NULL, save the returned model object as a \code{.qs} file
 in this directory using \code{qs2::qs_save()}.}
 
-\item{...}{Additional arguments passed to \code{brms::brm()}.}
+\item{...}{Additional arguments passed to \code{brms::brm()}.  The Stan
+\strong{\code{backend}} defaults to \code{"cmdstanr"} when the \pkg{cmdstanr} package and a
+CmdStan install are both available (cached compiled binaries + faster
+sampling, statistically equivalent to rstan), otherwise \code{"rstan"}; pass
+\code{backend = ...} here or set \code{options(hydroSense.brms_backend = ...)} to
+override.}
 }
 \value{
 A named list of class \code{"imputation_model"}:

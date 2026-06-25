@@ -173,3 +173,31 @@ test_that("print.imputation_model summarises the fit", {
   expect_output(print(m), "imputation_model")
   expect_output(print(m), "metals:")
 })
+
+# ── .brms_backend() selection ─────────────────────────────────────────────────
+
+test_that(".brms_backend() honours the option override", {
+  withr::with_options(list(hydroSense.brms_backend = "rstan"), {
+    expect_identical(hydroSense:::.brms_backend(), "rstan")
+  })
+  withr::with_options(list(hydroSense.brms_backend = "cmdstanr"), {
+    expect_identical(hydroSense:::.brms_backend(), "cmdstanr")
+  })
+})
+
+test_that(".brms_backend() rejects an invalid option", {
+  withr::with_options(list(hydroSense.brms_backend = "nope"), {
+    expect_error(hydroSense:::.brms_backend(), "should be one of")
+  })
+})
+
+test_that(".brms_backend() default is valid and falls back to rstan without CmdStan", {
+  withr::with_options(list(hydroSense.brms_backend = NULL), {
+    be <- hydroSense:::.brms_backend()
+    expect_true(be %in% c("rstan", "cmdstanr"))
+    cmdstan_ok <- requireNamespace("cmdstanr", quietly = TRUE) &&
+      !is.null(tryCatch(suppressMessages(cmdstanr::cmdstan_version()),
+                        error = function(e) NULL))
+    if (!cmdstan_ok) expect_identical(be, "rstan")
+  })
+})

@@ -758,31 +758,63 @@ compute_mspaf_per_sample <- function(
   ## NB: rows with NA moa_group contribute 0 here, reproducing the previous
   ## per-group behaviour (`filter(moa_group == NA)` selected nothing) — see the
   ## implementation note raised on issue #30.
-  ca <- tox |>
-    dplyr::filter(.data$C_adj > 0, !is.na(.data$moa_group),
-                  is.finite(.data$hc50), .data$hc50 > 0,
-                  is.finite(.data$sigma), .data$sigma > 0) |>
-    dplyr::mutate(TU = .data$C_adj / .data$hc50) |>
-    dplyr::group_by(.data$sample_id, .data$draw_id, .data$moa_group) |>
-    dplyr::summarise(TU_mix = sum(.data$TU), sigma_mix = mean(.data$sigma),
-                     .groups = "drop") |>
-    dplyr::mutate(msPAF = ifelse(.data$TU_mix > 0,
-                    stats::pnorm(log10(.data$TU_mix) / .data$sigma_mix), 0))
-  ia <- ca |>
-    dplyr::group_by(.data$sample_id, .data$draw_id) |>
-    dplyr::summarise(mspaf = 1 - prod(1 - .data$msPAF), .groups = "drop")
-
-  ## Per-block scalars over the kept (post-drop) tox rows.
-  scal <- tox |>
-    dplyr::group_by(.data$sample_id, .data$draw_id) |>
-    dplyr::summarise(
-      n_analytes_used    = dplyr::n(),
-      n_analytes_imputed = as.integer(sum(.data$imp_n)),
-      dominant_analyte   = if (any(!is.na(.data$PAF)))
-                             .data$analyte[which.max(.data$PAF)] else NA_character_,
-      max_paf            = max(.data$PAF, na.rm = TRUE),
-      .groups = "drop"
+  ## collapse grouped reductions: fsum/fmean over (sample x draw x MOA group),
+  ## then fprod over (sample x draw) for IA. Rows stay in their filtered order
+  ## within groups, so the reductions match the previous dplyr summarise to
+  ## floating-point (fsum exact; fmean/fprod differ only at the last ULP over the
+  ## handful of analytes per group). (issue #30)
+  ca_keep <- tox$C_adj > 0 & !is.na(tox$moa_group) &
+    is.finite(tox$hc50) & tox$hc50 > 0 &
+    is.finite(tox$sigma) & tox$sigma > 0
+  ca_in <- tox[ca_keep, , drop = FALSE]
+  if (nrow(ca_in) > 0L) {
+    g_ca <- collapse::GRP(ca_in, c("sample_id", "draw_id", "moa_group"),
+                          sort = TRUE, return.groups = TRUE)
+    TU_mix    <- collapse::fsum(ca_in$C_adj / ca_in$hc50, g_ca, use.g.names = FALSE)
+    sigma_mix <- collapse::fmean(ca_in$sigma, g_ca, use.g.names = FALSE)
+    ca <- tibble::tibble(
+      sample_id = g_ca$groups$sample_id,
+      draw_id   = g_ca$groups$draw_id,
+      msPAF     = ifelse(TU_mix > 0,
+                         stats::pnorm(log10(TU_mix) / sigma_mix), 0)
     )
+    g_ia <- collapse::GRP(ca, c("sample_id", "draw_id"),
+                          sort = TRUE, return.groups = TRUE)
+    ia <- tibble::tibble(
+      sample_id = g_ia$groups$sample_id,
+      draw_id   = g_ia$groups$draw_id,
+      mspaf     = 1 - collapse::fprod(1 - ca$msPAF, g_ia, use.g.names = FALSE)
+    )
+  } else {
+    ia <- tibble::tibble(
+      sample_id = character(0L), draw_id = integer(0L), mspaf = numeric(0L)
+    )
+  }
+
+  ## Per-block scalars over the kept (post-drop) tox rows (collapse grouped
+  ## reductions; issue #30). Two base semantics are preserved exactly:
+  ##  * dominant_analyte = analyte[which.max(PAF)] — first max, NA if all-NA —
+  ##    via a stable radix order on (-PAF) within each group;
+  ##  * max_paf = max(PAF, na.rm = TRUE) — base returns -Inf (not NA) for an
+  ##    all-NA-PAF block, so restore -Inf where no PAF is observed.
+  g_s <- collapse::GRP(tox, c("sample_id", "draw_id"), sort = TRUE,
+                       return.groups = TRUE)
+  n_paf   <- collapse::fsum(as.integer(!is.na(tox$PAF)), g_s, use.g.names = FALSE)
+  max_paf <- collapse::fmax(tox$PAF, g_s, use.g.names = FALSE)
+  max_paf[n_paf == 0L] <- -Inf
+  gid       <- g_s$group.id
+  ord       <- order(gid, -tox$PAF, method = "radix", na.last = TRUE)
+  first_row <- ord[!duplicated(gid[ord])]
+  dom       <- tox$analyte[first_row]
+  dom[n_paf == 0L] <- NA_character_
+  scal <- tibble::tibble(
+    sample_id          = g_s$groups$sample_id,
+    draw_id            = g_s$groups$draw_id,
+    n_analytes_used    = g_s$group.sizes,
+    n_analytes_imputed = as.integer(collapse::fsum(tox$imp_n, g_s, use.g.names = FALSE)),
+    dominant_analyte   = dom,
+    max_paf            = max_paf
+  )
 
   result <- scal |>
     dplyr::left_join(ia, by = c("sample_id", "draw_id")) |>

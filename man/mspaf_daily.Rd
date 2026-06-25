@@ -147,14 +147,19 @@ flow (capped at ±4 SD).  \code{kappa = 0} disables hydrological modulation;
 larger values widen the credible band more aggressively across high-flow
 gaps.  Requires a hydrology column in \code{df}.}
 
-\item{parallel}{Logical (default \code{FALSE}).  When \code{TRUE}, the per-draw loop
-for each site is parallelised via \code{\link[future.apply:future_lapply]{future.apply::future_lapply()}}, which
-honours whatever \code{\link[future:plan]{future::plan()}} the caller has established.  Requires
-the \strong{future.apply} package.  Set a parallel plan before calling, e.g.
-\code{future::plan(future::multisession, workers = 4)}.  In parallel mode the
-RNG stream for each draw is managed by \code{future.apply} (L'Ecuyer-CMRG),
-so draws will differ from sequential mode even with the same \code{seed}, but
-are themselves reproducible.}
+\item{parallel}{Logical (default \code{FALSE}).  When \code{TRUE}, the per-\strong{site} loop
+(interpolation + impact-model fit + residual-draw generation for each site)
+is parallelised via \code{\link[future.apply:future_lapply]{future.apply::future_lapply()}}, which honours whatever
+\code{\link[future:plan]{future::plan()}} the caller has established.  This is the
+embarrassingly-parallel level; the cross-site toxicity combine downstream is
+a single vectorised pass and runs once.  Only speeds up multi-site \code{df}
+(one site = one task).  Requires the \strong{future.apply} package and a parallel
+plan, e.g. \code{future::plan(future::multisession, workers = 4)}; note workers
+need the \strong{installed} package (use \code{future::multicore} to parallelise a
+\code{devtools::load_all()} session).  In parallel mode \code{future.apply} manages a
+reproducible per-site L'Ecuyer-CMRG stream from \code{seed}, so draws differ from
+the sequential stream (point mode is deterministic and identical either
+way), but are themselves reproducible.}
 
 \item{couple_residuals}{Logical (default \code{TRUE}).  When \code{TRUE} and >= 2
 analytes have fitted residual smoothers, daily residual draws are

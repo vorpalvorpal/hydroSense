@@ -40,7 +40,13 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::rcmdcheck
+          # cmdstanr is a Suggests on a non-CRAN repo (Additional_repositories),
+          # which pak's solver doesn't resolve here — install it from its GitHub
+          # remote, as the brms-smoke workflow does. No CmdStan toolchain is set
+          # up in this job, so the package falls back to the rstan backend.
+          extra-packages: |
+            any::rcmdcheck
+            stan-dev/cmdstanr
           needs: check
 
       - uses: r-lib/actions/check-r-package@v2

@@ -149,6 +149,28 @@
   ))
 }
 
+#' Choose the brms/Stan backend for imputation fits
+#'
+#' Prefers **cmdstanr** when both the package and a working CmdStan install are
+#' present, otherwise falls back to **rstan**.  cmdstanr caches compiled model
+#' binaries (a warm refit skips compilation: ~3x faster in the package
+#' benchmark) and samples faster, while being statistically equivalent to rstan
+#' (posterior-mean correlation 0.99999, max standardized difference ~0.12 SD on
+#' the imputation model; see `dev/bench-backend.R`).  Override with
+#' `options(hydroSense.brms_backend = "rstan")` (or `"cmdstanr"`).  An explicit
+#' `backend` passed through `...` to [fit_imputation_model()] always wins.
+#' @keywords internal
+.brms_backend <- function() {
+  opt <- getOption("hydroSense.brms_backend", NULL)
+  if (!is.null(opt)) {
+    return(match.arg(opt, c("cmdstanr", "rstan")))
+  }
+  has_cmdstan <- requireNamespace("cmdstanr", quietly = TRUE) &&
+    !is.null(tryCatch(suppressMessages(cmdstanr::cmdstan_version()),
+                      error = function(e) NULL))
+  if (has_cmdstan) "cmdstanr" else "rstan"
+}
+
 
 # ── Imputation group specification ────────────────────────────────────────────
 
@@ -454,7 +476,12 @@ leachate_impute_groups <- function() {
 #' @param iter,warmup,chains,cores brms MCMC settings.
 #' @param save_dir If non-NULL, save the returned model object as a `.qs` file
 #'   in this directory using `qs2::qs_save()`.
-#' @param ... Additional arguments passed to `brms::brm()`.
+#' @param ... Additional arguments passed to `brms::brm()`.  The Stan
+#'   **`backend`** defaults to `"cmdstanr"` when the \pkg{cmdstanr} package and a
+#'   CmdStan install are both available (cached compiled binaries + faster
+#'   sampling, statistically equivalent to rstan), otherwise `"rstan"`; pass
+#'   `backend = ...` here or set `options(hydroSense.brms_backend = ...)` to
+#'   override.
 #'
 #' @return A named list of class `"imputation_model"`:
 #'   - `$pca`: PCA fit + metadata (loadings, training medians, n_pcs,
@@ -1491,6 +1518,9 @@ impute_coanalytes <- function(
     cores   = cores,
     ...
   )
+  # Default to cmdstanr (cached binaries + faster sampling, statistically
+  # equivalent to rstan) when available; an explicit backend in `...` wins.
+  if (is.null(brm_args$backend)) brm_args$backend <- .brms_backend()
   # The cens_factor hierarchical model benefits from a higher adapt_delta to
   # clear the residual divergences from the per-sample factor's mild funnel.
   # Default it here; a user-supplied `control` (via ...) takes precedence.
