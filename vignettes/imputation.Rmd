@@ -181,26 +181,54 @@ fits a single long-format model with a shared per-sample factor:
 | `"cens"` | `cens("left")` (proper censoring) | none | fastest; cleanest convergence; no borrowing across metals |
 | `"cens_factor"` | `cens("left")` | shared per-sample latent factor | proper censoring **and** coupling; calibrated, cheap uncertainty |
 
-The trade-off is accuracy versus the cost of uncertainty. `brms` cannot combine
-a full residual correlation (`rescor = TRUE`) with proper left-censoring, so the
-default pairs residual correlation with `mi()` imputation and a post-hoc cap.
-A hold-out benchmark on real data found `"rescor_mi"` recovers masked metals most
-accurately (the full residual-correlation matrix is the strongest coupling),
-which is why it is the default — but its posterior **draws** are expensive and
-can exhaust memory.
+The trade-off is **point accuracy versus trustworthy uncertainty**. `brms` cannot
+combine a full residual correlation (`rescor = TRUE`) with proper left-censoring,
+so the default pairs residual correlation with `mi()` imputation and a post-hoc
+cap.
 
-`"cens"` and `"cens_factor"` give well-calibrated intervals cheaply. They differ
-in coupling: `"cens"` treats the metals independently, while `"cens_factor"`
-adds a single per-sample latent factor shared across all analytes — fitted in
-long format, so the factor is well-identified (each sample contributes several
-analyte observations) and genuinely lets an observed metal inform the
-unobserved/BDL ones at that sample. In the B.S01 hold-out this coupling places
-`"cens_factor"` between `"cens"` and `"rescor_mi"` on accuracy (RMSE 0.43 vs
-0.53 and 0.25) while converging best of the three (R̂ 1.006). Prefer a cens
-method when you need
-uncertainty (`return = "draws"`) or hit memory limits — `"cens_factor"` when you
-also want cross-analyte borrowing, `"cens"` when you want the simplest, fastest
-fit; prefer the default `"rescor_mi"` for the most accurate point estimates.
+A hold-out benchmark on real B.S01 data — masking ~10% of detected routine-metal
+cells, pooled over three mask seeds (57 held-out cells), scored on the log₁₀
+scale — gives:
+
+| `impute_method` | RMSE | bias | 90% coverage | max R̂ | sampler health |
+|-----------------|-----:|-----:|-------------:|------:|----------------|
+| `"rescor_mi"`   | **0.30** | −0.05 | 1.00 | 1.63 | 72–99% treedepth-saturated, E-BFMI < 0.3 |
+| `"cens_factor"` | 0.75 | −0.44 | **0.93** | 1.59 | up to 28% divergent on a hard mask |
+| `"cens"`        | 0.92 | −0.58 | 0.90 | **1.04** | clean, but one seed took ~2 h to fit |
+
+Two things stand out, and they pull in opposite directions:
+
+* **`"rescor_mi"` recovers the masked values by far the most accurately** (RMSE
+  0.30 vs 0.75 and 0.92, with near-zero bias) — the full residual-correlation
+  matrix is the strongest coupling, and the `mi()` likelihood is not pulled down
+  by the censoring bound the way the cens methods are. This is why it remains the
+  default **for point estimates**.
+* **But `"rescor_mi"`'s posterior is hard to sample**: the `mi()` + full-rescor
+  geometry saturates the NUTS tree depth and trips E-BFMI even at
+  `adapt_delta = 0.95` with an `lkj(2)` prior on `rescor`, and its 90% intervals
+  over-cover (1.00, i.e. too wide). Treat its **point estimate** as reliable but
+  its **draws/uncertainty with caution** — check `brms::rhat()` /
+  `bayesplot::mcmc_*` on the returned fit, and consider raising `max_treedepth`
+  and `iter` for production runs.
+
+The cens methods sample more honestly but recover less well here: censoring at
+the (inflated) hold-out detection limit pulls their estimates *below* the truth,
+which is the source of their strong negative bias in this masked-detect setup
+(in genuine BDL cells, where the truth really is sub-limit, that conservatism is
+correct). Of the two, **`"cens_factor"` gives the best-calibrated intervals**
+(90% coverage 0.93) thanks to a single per-sample latent factor shared across
+analytes — fitted in long format, so the factor is well-identified (each sample
+contributes several analyte observations) and genuinely lets an observed metal
+inform the unobserved/BDL ones at that sample. Its sampling is usually clean but
+not bullet-proof (one hard mask hit 28% divergences). `"cens"` drops the coupling
+entirely; it is the simplest and best-converging model, at the cost of accuracy.
+
+Bottom line: **prefer the default `"rescor_mi"` for the most accurate point
+estimates; prefer `"cens_factor"` when you need well-calibrated uncertainty
+(`return = "draws"`), hit memory limits, or want a posterior you can trust
+without per-fit diagnostic checks.** (Single-seed runs can reorder the R̂ column —
+the convergence numbers above are the worst case across seeds, not a typical
+fit.)
 
 ```{r method, eval = FALSE}
 # Proper censoring + cross-analyte coupling, with cheap calibrated uncertainty:
