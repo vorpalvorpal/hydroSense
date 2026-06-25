@@ -202,7 +202,12 @@ in this directory using <code><a href="https://rdrr.io/pkg/qs2/man/qs_save.html"
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>Additional arguments passed to <code><a href="https://paulbuerkner.com/brms/reference/brm.html" class="external-link">brms::brm()</a></code>.</p></dd>
+<dd><p>Additional arguments passed to <code><a href="https://paulbuerkner.com/brms/reference/brm.html" class="external-link">brms::brm()</a></code>.  The Stan
+<strong><code>backend</code></strong> defaults to <code>"cmdstanr"</code> when the <span class="pkg">cmdstanr</span> package and a
+CmdStan install are both available (cached compiled binaries + faster
+sampling, statistically equivalent to rstan), otherwise <code>"rstan"</code>; pass
+<code>backend = ...</code> here or set <code>options(hydroSense.brms_backend = ...)</code> to
+override.</p></dd>
 
 </dl></div>
     <div class="section level2">

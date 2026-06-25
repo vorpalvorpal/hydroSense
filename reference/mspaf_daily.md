@@ -215,17 +215,24 @@ mspaf_daily(
 
 - parallel:
 
-  Logical (default `FALSE`). When `TRUE`, the per-draw loop for each
-  site is parallelised via
+  Logical (default `FALSE`). When `TRUE`, the per-**site** loop
+  (interpolation + impact-model fit + residual-draw generation for each
+  site) is parallelised via
   [`future.apply::future_lapply()`](https://future.apply.futureverse.org/reference/future_lapply.html),
   which honours whatever
   [`future::plan()`](https://future.futureverse.org/reference/plan.html)
-  the caller has established. Requires the **future.apply** package. Set
-  a parallel plan before calling, e.g.
-  `future::plan(future::multisession, workers = 4)`. In parallel mode
-  the RNG stream for each draw is managed by `future.apply`
-  (L'Ecuyer-CMRG), so draws will differ from sequential mode even with
-  the same `seed`, but are themselves reproducible.
+  the caller has established. This is the embarrassingly-parallel level;
+  the cross-site toxicity combine downstream is a single vectorised pass
+  and runs once. Only speeds up multi-site `df` (one site = one task).
+  Requires the **future.apply** package and a parallel plan, e.g.
+  `future::plan(future::multisession, workers = 4)`; note workers need
+  the **installed** package (use
+  [`future::multicore`](https://future.futureverse.org/reference/multicore.html)
+  to parallelise a `devtools::load_all()` session). In parallel mode
+  `future.apply` manages a reproducible per-site L'Ecuyer-CMRG stream
+  from `seed`, so draws differ from the sequential stream (point mode is
+  deterministic and identical either way), but are themselves
+  reproducible.
 
 - couple_residuals:
 

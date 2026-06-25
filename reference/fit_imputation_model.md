@@ -163,7 +163,12 @@ fit_imputation_model(
 - ...:
 
   Additional arguments passed to
-  [`brms::brm()`](https://paulbuerkner.com/brms/reference/brm.html).
+  [`brms::brm()`](https://paulbuerkner.com/brms/reference/brm.html). The
+  Stan **`backend`** defaults to `"cmdstanr"` when the cmdstanr package
+  and a CmdStan install are both available (cached compiled binaries +
+  faster sampling, statistically equivalent to rstan), otherwise
+  `"rstan"`; pass `backend = ...` here or set
+  `options(hydroSense.brms_backend = ...)` to override.
 
 ## Value
 

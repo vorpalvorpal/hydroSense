@@ -248,14 +248,19 @@ gaps.  Requires a hydrology column in <code>df</code>.</p></dd>
 
 
 <dt id="arg-parallel">parallel<a class="anchor" aria-label="anchor" href="#arg-parallel"></a></dt>
-<dd><p>Logical (default <code>FALSE</code>).  When <code>TRUE</code>, the per-draw loop
-for each site is parallelised via <code><a href="https://future.apply.futureverse.org/reference/future_lapply.html" class="external-link">future.apply::future_lapply()</a></code>, which
-honours whatever <code><a href="https://future.futureverse.org/reference/plan.html" class="external-link">future::plan()</a></code> the caller has established.  Requires
-the <strong>future.apply</strong> package.  Set a parallel plan before calling, e.g.
-<code>future::plan(future::multisession, workers = 4)</code>.  In parallel mode the
-RNG stream for each draw is managed by <code>future.apply</code> (L'Ecuyer-CMRG),
-so draws will differ from sequential mode even with the same <code>seed</code>, but
-are themselves reproducible.</p></dd>
+<dd><p>Logical (default <code>FALSE</code>).  When <code>TRUE</code>, the per-<strong>site</strong> loop
+(interpolation + impact-model fit + residual-draw generation for each site)
+is parallelised via <code><a href="https://future.apply.futureverse.org/reference/future_lapply.html" class="external-link">future.apply::future_lapply()</a></code>, which honours whatever
+<code><a href="https://future.futureverse.org/reference/plan.html" class="external-link">future::plan()</a></code> the caller has established.  This is the
+embarrassingly-parallel level; the cross-site toxicity combine downstream is
+a single vectorised pass and runs once.  Only speeds up multi-site <code>df</code>
+(one site = one task).  Requires the <strong>future.apply</strong> package and a parallel
+plan, e.g. <code>future::plan(future::multisession, workers = 4)</code>; note workers
+need the <strong>installed</strong> package (use <code><a href="https://future.futureverse.org/reference/multicore.html" class="external-link">future::multicore</a></code> to parallelise a
+<code>devtools::load_all()</code> session).  In parallel mode <code>future.apply</code> manages a
+reproducible per-site L'Ecuyer-CMRG stream from <code>seed</code>, so draws differ from
+the sequential stream (point mode is deterministic and identical either
+way), but are themselves reproducible.</p></dd>
 
 
 <dt id="arg-couple-residuals">couple_residuals<a class="anchor" aria-label="anchor" href="#arg-couple-residuals"></a></dt>
