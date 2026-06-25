@@ -163,14 +163,19 @@
 #'   flow (capped at ±4 SD).  `kappa = 0` disables hydrological modulation;
 #'   larger values widen the credible band more aggressively across high-flow
 #'   gaps.  Requires a hydrology column in `df`.
-#' @param parallel Logical (default `FALSE`).  When `TRUE`, the per-draw loop
-#'   for each site is parallelised via [future.apply::future_lapply()], which
-#'   honours whatever [future::plan()] the caller has established.  Requires
-#'   the **future.apply** package.  Set a parallel plan before calling, e.g.
-#'   `future::plan(future::multisession, workers = 4)`.  In parallel mode the
-#'   RNG stream for each draw is managed by `future.apply` (L'Ecuyer-CMRG),
-#'   so draws will differ from sequential mode even with the same `seed`, but
-#'   are themselves reproducible.
+#' @param parallel Logical (default `FALSE`).  When `TRUE`, the per-**site** loop
+#'   (interpolation + impact-model fit + residual-draw generation for each site)
+#'   is parallelised via [future.apply::future_lapply()], which honours whatever
+#'   [future::plan()] the caller has established.  This is the
+#'   embarrassingly-parallel level; the cross-site toxicity combine downstream is
+#'   a single vectorised pass and runs once.  Only speeds up multi-site `df`
+#'   (one site = one task).  Requires the **future.apply** package and a parallel
+#'   plan, e.g. `future::plan(future::multisession, workers = 4)`; note workers
+#'   need the **installed** package (use `future::multicore` to parallelise a
+#'   `devtools::load_all()` session).  In parallel mode `future.apply` manages a
+#'   reproducible per-site L'Ecuyer-CMRG stream from `seed`, so draws differ from
+#'   the sequential stream (point mode is deterministic and identical either
+#'   way), but are themselves reproducible.
 #' @param couple_residuals Logical (default `TRUE`).  When `TRUE` and >= 2
 #'   analytes have fitted residual smoothers, daily residual draws are
 #'   correlated across analytes using the empirical anchor-residual correlation
@@ -454,7 +459,7 @@ mspaf_daily <- function(
   ## both sides.  When reference = reference_model, ref cancels in C_excess.
   perturb_ref <- draws_mode && is.null(reference)
 
-  site_results <- lapply(sites, function(site) {
+  .site_fn <- function(site) {
     site_rows <- dplyr::filter(df, .data$site_id == .env$site)
 
     ## Step 1: Interpolate each analyte onto the daily grid.  For the "model"
@@ -693,14 +698,10 @@ mspaf_daily <- function(
           }
         })
 
-        draw_results <- if (parallel) {
-          future.apply::future_lapply(
-            seq_len(ndraws), .draw_fn,
-            future.seed = if (!is.null(seed)) as.integer(seed) else TRUE
-          )
-        } else {
-          lapply(seq_len(ndraws), .draw_fn)
-        }
+        ## Draws run sequentially within the site; parallelism is at the site
+        ## level (see the site_results dispatch). When the site loop is itself a
+        ## future, the worker's reproducible L'Ecuyer stream seeds these draws.
+        draw_results <- lapply(seq_len(ndraws), .draw_fn)
 
         tox_draw_rows <- lapply(draw_results, `[[`, "tox_rows")
         co_draw_rows <- if (!is.null(grab_cv)) {
@@ -780,7 +781,23 @@ mspaf_daily <- function(
       synth = synth, synth_inf = synth_inf, synth_det = synth_det,
       diag = diag, tiers = impact_tiers, site = site
     )
-  })
+  }
+
+  ## Sites are independent units of work (per-site interpolation + impact-model
+  ## fit + residual-draw generation), so this is the embarrassingly-parallel
+  ## level. The cross-site add_mspaf() combine downstream is a single vectorised
+  ## pass and is not parallelised here. Draws run sequentially within each site
+  ## worker; in parallel mode future.apply manages a reproducible per-site
+  ## L'Ecuyer stream from `seed`, so parallel draws differ from the sequential
+  ## stream (point mode is deterministic and identical either way). (issue #28)
+  site_results <- if (parallel) {
+    future.apply::future_lapply(
+      sites, .site_fn,
+      future.seed = if (!is.null(seed)) as.integer(seed) else TRUE
+    )
+  } else {
+    lapply(sites, .site_fn)
+  }
 
   site_results <- Filter(Negate(is.null), site_results)
   if (length(site_results) == 0L) {
