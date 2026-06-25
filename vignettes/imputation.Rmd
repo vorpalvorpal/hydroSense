@@ -230,6 +230,23 @@ without per-fit diagnostic checks.** (Single-seed runs can reorder the R̂ colum
 the convergence numbers above are the worst case across seeds, not a typical
 fit.)
 
+**How much does this matter downstream?** Usually less than the cell-level RMSE
+gap suggests. Running the full B.S01 daily-msPAF pipeline (`mspaf_daily`,
+deterministic line + gap-uncertainty bracket) under each method, with everything
+else held fixed, the two give an *almost identical* result — both for Total and
+reference-adjusted (ARA) msPAF. The **central estimates** (deterministic line and
+both envelope medians) differ by a day-to-day median of ~0.005 percentage points
+and well under 1 pp overall: `"rescor_mi"` gives a marginally better central
+estimate, but the difference is tiny. The only systematic difference is in the
+**band width**: `"rescor_mi"`'s 90% bands run a little *too wide* (about 5–15 %
+wider than `"cens_factor"`'s), exactly as its over-coverage on the hold-out
+predicts. The reason the choice washes out is that on a panel site, where the
+metals are usually measured, imputation only fills a handful of cells, and the
+gap-uncertainty bracket (informative vs ignorable) dwarfs the imputation effect.
+So: **use the default `"rescor_mi"` for the better central estimate, but read its
+uncertainty bands as slightly conservative (a bit too wide); switch to
+`"cens_factor"` when the band width itself is the decision variable.**
+
 ```{r method, eval = FALSE}
 # Proper censoring + cross-analyte coupling, with cheap calibrated uncertainty:
 model <- fit_imputation_model(monitoring_long, impute_method = "cens_factor")
