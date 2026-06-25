@@ -486,3 +486,69 @@ describe("mspaf_daily(gap_uncertainty=)", {
     expect_equal(r1$mspaf_informative, r2$mspaf_informative)
   })
 })
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## D. Graceful degradation when the daily target model cannot be fitted
+## ═══════════════════════════════════════════════════════════════════════════
+## When .fit_daily_target() returns NULL in draws mode (e.g. every tox analyte
+## has fewer than min_obs_model anchors), the site must contribute exact
+## forward-fill rows with zero-width intervals — the bracket collapses. The
+## fallback previously omitted the `draw_id` carrier, so the draws assembler
+## crashed ("Column `draw_id` doesn't exist") instead of degrading. This guards
+## that regression.
+
+describe("mspaf_daily() draws-mode graceful degradation (NULL target fit)", {
+  ## All metals below detection -> no impact anchors -> no daily impact model
+  ## fits -> .fit_daily_target() returns NULL for the site.
+  bdl_target <- function() {
+    tgt <- make_chem_b("target", .bf$dates, mult = 5, seed = 7L)
+    tgt$detected[tgt$analyte %in% c("Cu", "Zn", "Ni")] <- FALSE
+    tgt
+  }
+
+  it("returns collapsed zero-width bracket instead of erroring", {
+    skip_if(is.null(.bf$rm), "Reference model not fitted")
+
+    warns <- character()
+    out <- withCallingHandlers(
+      suppressMessages(
+        mspaf_daily(bdl_target(),
+          reference_model = .bf$rm, interpolation = "model",
+          require_temperature = FALSE, conc_units = "ug/L",
+          gap_uncertainty = "bracket", ndraws = 8L, seed = 1L,
+          return = "summary"
+        )
+      ),
+      warning = function(w) {
+        warns <<- c(warns, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    )
+
+    expect_true(any(grepl("Target model fit failed", warns)))
+    expect_s3_class(out, "tbl_df")
+    expect_gt(nrow(out), 0L)
+    ## Bracket collapsed: both envelopes zero-width and equal to the centre.
+    expect_true(all(out$hi_ignorable - out$lo_ignorable < 1e-8, na.rm = TRUE))
+    expect_true(all(out$hi_informative - out$lo_informative < 1e-8, na.rm = TRUE))
+    expect_equal(out$median_ignorable, out$deterministic, tolerance = 1e-6)
+    expect_equal(out$median_informative, out$median_ignorable, tolerance = 1e-6)
+  })
+
+  it("carries a draw_id and degrades without erroring in return = 'draws' mode", {
+    skip_if(is.null(.bf$rm), "Reference model not fitted")
+
+    out <- suppressWarnings(suppressMessages(
+      mspaf_daily(bdl_target(),
+        reference_model = .bf$rm, interpolation = "model",
+        require_temperature = FALSE, conc_units = "ug/L",
+        gap_uncertainty = "bracket", ndraws = 8L, seed = 1L,
+        return = "draws"
+      )
+    ))
+    expect_s3_class(out, "tbl_df")
+    expect_true("draw_id" %in% names(out))
+    expect_gt(nrow(out), 0L)
+  })
+})

@@ -519,8 +519,17 @@ mspaf_daily <- function(
             "i" = "This site will contribute exact forward-fill rows with \\
                    zero-width credible intervals."
           ))
-          synth <- .build_synthetic_samples(daily_long, site)
-          ## No model -> the bracket collapses: all three frames coincide.
+          ## No model -> the bracket collapses: all three frames coincide. Draws
+          ## mode still needs a `draw_id` carrier on the synthetic frame, so
+          ## replicate the deterministic forward-fill across the requested draws:
+          ## every draw is identical, yielding zero-width intervals. Without this
+          ## the downstream draws assembler errors ("Column `draw_id` doesn't
+          ## exist") instead of degrading gracefully.
+          synth0 <- .build_synthetic_samples(daily_long, site)
+          synth <- dplyr::bind_rows(lapply(
+            seq_len(ndraws),
+            function(d) dplyr::mutate(synth0, draw_id = as.integer(d))
+          ))
           return(list(
             synth = synth, synth_inf = synth, synth_det = synth,
             diag = diag, tiers = NULL, site = site
