@@ -33,7 +33,12 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::pkgdown, local::.
+          # cmdstanr (Suggests, non-CRAN) isn't resolved by pak from
+          # Additional_repositories here — install from its GitHub remote.
+          extra-packages: |
+            any::pkgdown
+            stan-dev/cmdstanr
+            local::.
           needs: website
 
       - name: Build site
