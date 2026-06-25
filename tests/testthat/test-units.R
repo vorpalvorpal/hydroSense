@@ -83,6 +83,20 @@ test_that(".convert_df_tox_to_ugL() errors when no units.analyte column and no c
   )
 })
 
+test_that(".convert_df_tox_to_ugL() maps each distinct unit correctly when rows mix units", {
+  # Exercises the per-distinct-unit factor + match() vectorisation: the same
+  # analyte appears with three different source units and an interleaved order,
+  # so a correct implementation must key the factor on each row's own unit.
+  df <- tibble::tibble(
+    analyte       = "Cu",
+    value         = c(1, 500, 2000, 0.5),
+    units.analyte = c("mg/L", "ug/L", "ng/L", "mg/L"),
+    detected      = TRUE
+  )
+  out <- hydroSense:::.convert_df_tox_to_ugL(df, ssd_analytes = "Cu")
+  expect_equal(out$value, c(1000, 500, 2, 500))
+})
+
 test_that(".convert_df_tox_to_ugL() does not convert non-SSD-eligible rows", {
   df <- tibble::tibble(
     analyte       = c("Cu", "pH"),
