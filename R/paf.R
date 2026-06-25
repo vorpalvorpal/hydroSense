@@ -147,6 +147,25 @@
   fit
 }
 
+# Memoised HC point estimate. `ssd_hc(fit, proportion)` is deterministic on a
+# cached fit, but derive_ssd_params() recomputes it on every add_mspaf pass
+# (2-3x per bracket mspaf_daily) and twice per analyte within a pass (ssd_hc50()
+# and .ssd_sigma() both need HC50). It was ~36% of draws-mode runtime. Cache the
+# scalar per (stem, method, proportion); bit-identical to the direct call.
+# (issue #30)
+.ssd_hc_point <- function(stem, fit, method, proportion) {
+  key <- paste0(.cache_key(stem, method), "__hc", proportion)
+  if (exists(key, envir = .paf_mem_cache)) {
+    return(get(key, envir = .paf_mem_cache))
+  }
+  val <- tryCatch(
+    ssdtools::ssd_hc(fit, proportion = proportion, ci = FALSE)$est,
+    error = function(e) NA_real_
+  )
+  assign(key, val, envir = .paf_mem_cache)
+  val
+}
+
 .fit_model <- function(analyte, stem, method, guideline_dir) {
   # Load the fitting infrastructure from ssd_fit.R
   meta_path <- system.file("extdata", "anzecc_analyte_metadata.csv",
@@ -429,10 +448,7 @@ ssd_hc50 <- function(analyte,
   )
   if (is.null(fit)) return(NA_real_)
 
-  tryCatch(
-    ssdtools::ssd_hc(fit, proportion = 0.5, ci = FALSE)$est,
-    error = function(e) NA_real_
-  )
+  .ssd_hc_point(stem, fit, method, 0.5)
 }
 
 #' Quick point-estimate only (no CI, no bootstrapping).
@@ -470,14 +486,8 @@ ssd_pct <- function(analyte, conc, conc_units = NULL, method = "multi",
   )
   if (is.null(fit)) return(NA_real_)
 
-  hc50 <- tryCatch(
-    ssdtools::ssd_hc(fit, proportion = 0.5, ci = FALSE)$est,
-    error = function(e) NA_real_
-  )
-  hc05 <- tryCatch(
-    ssdtools::ssd_hc(fit, proportion = 0.05, ci = FALSE)$est,
-    error = function(e) NA_real_
-  )
+  hc50 <- .ssd_hc_point(stem, fit, method, 0.5)
+  hc05 <- .ssd_hc_point(stem, fit, method, 0.05)
 
   if (anyNA(c(hc50, hc05)) || hc05 <= 0 || hc50 <= 0) return(NA_real_)
   (log10(hc50) - log10(hc05)) / (-stats::qnorm(0.05))
