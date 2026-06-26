@@ -85,3 +85,39 @@ test_that("L5: .loo_anchor_coverage returns per-analyte + pooled rows", {
   expect_true("Cu" %in% res$analyte && "Zn" %in% res$analyte)
   expect_true(any(res$analyte == "(pooled)"))
 })
+
+
+## ── L6: .resolve_tier_scale (tier-aware ou_scale) ────────────────────────────
+
+test_that("L6: .resolve_tier_scale picks per-tier scales or falls back to 1", {
+  rs <- hydroSense:::.resolve_tier_scale
+  expect_equal(rs(2, "model"), 2)                              # scalar -> all
+  expect_equal(rs(c(model = 1, bridge = 3), "bridge"), 3)      # named -> tier
+  expect_equal(rs(c(model = 1, bridge = 3), "model"), 1)
+  expect_equal(rs(c(bridge = 3), "model"), 1)                  # absent tier -> 1
+  expect_equal(rs(c(model = 2), NA_character_), 1)             # NA tier -> 1
+})
+
+
+## ── L7: public loo_anchor_coverage() ─────────────────────────────────────────
+
+test_that("L7: loo_anchor_coverage() validates input and returns the table", {
+  expect_error(loo_anchor_coverage(list()), "target_model")
+
+  mk_anch <- function(seed) {
+    s <- sim_ou(anchor_every = 12L, seed = seed)
+    tibble::tibble(date = s$anchor_dates, S = s$anchor_S)
+  }
+  tm <- structure(list(models = list(
+    Cu = list(tier = "model",  anchors = mk_anch(21L)),
+    Zn = list(tier = "bridge", anchors = mk_anch(22L))
+  )), class = "target_model")
+
+  res <- loo_anchor_coverage(tm, interval = 0.9)
+  expect_s3_class(res, "tbl_df")
+  expect_true(all(c("analyte", "tier", "n", "coverage", "mean_width") %in%
+                    names(res)))
+  expect_true(any(res$analyte == "(pooled)"))
+  expect_setequal(stats::na.omit(res$tier), c("model", "bridge"))
+  expect_error(loo_anchor_coverage(tm, interval = 2), "interval")
+})

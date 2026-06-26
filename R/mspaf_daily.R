@@ -153,10 +153,17 @@
 #'   applies analyte-specific CVs.  Controls two uncertainty sources:
 #'   S6 (anchor S-value spread at measured dates) and S7 (co-analyte
 #'   normalisation spread).  `NULL` (default) disables S6 and S7.
-#' @param ou_scale Positive numeric scale factor for the OU bridge envelope
-#'   (default `1`).  Multiplies \eqn{\sigma^2} and \eqn{\gamma} (marginal
-#'   variance) without changing \eqn{\theta} (correlation length).  Use values
-#'   > 1 to widen the between-grab uncertainty bands.
+#' @param ou_scale Scale factor for the OU bridge envelope (default `1`).
+#'   Multiplies \eqn{\sigma^2} and \eqn{\gamma} (marginal variance) without
+#'   changing \eqn{\theta} (correlation length); values > 1 widen the
+#'   between-grab uncertainty bands.  Either a single number applied to every
+#'   analyte, **or** a numeric vector named by impact tier to scale the tiers
+#'   independently, e.g. `c(model = 1, bridge = 2.5)` (a tier not named falls
+#'   back to `1`).  Measure each tier's calibration with
+#'   [loo_anchor_coverage()] and raise the scale of an under-covered tier — the
+#'   sparse-anchor **bridge** tier is typically the under-covered one, and a
+#'   per-tier scale widens it without inflating the well-calibrated **model**
+#'   tier.  See `vignette("daily-uncertainty")`.
 #' @param kappa Non-negative numeric (default `0.5`).  Hydrological modulation
 #'   exponent: the smoother's process variance is multiplied by
 #'   \eqn{\exp(\kappa \cdot z_h)} where \eqn{z_h} is the standardised daily
@@ -332,7 +339,13 @@ mspaf_daily <- function(
   checkmate::assert_int(min_analytes, lower = 1L)
   checkmate::assert_string(by, min.chars = 1L)
   checkmate::assert_number(interval, lower = 0, upper = 1)
-  checkmate::assert_number(ou_scale, lower = 0, finite = TRUE)
+  # ou_scale: a single number, or a numeric vector named by impact tier.
+  if (length(ou_scale) == 1L && is.null(names(ou_scale))) {
+    checkmate::assert_number(ou_scale, lower = 0, finite = TRUE)
+  } else {
+    checkmate::assert_numeric(ou_scale, lower = 0, finite = TRUE,
+                              any.missing = FALSE, min.len = 1L, names = "named")
+  }
   checkmate::assert_number(kappa, lower = 0, finite = TRUE)
   if (!is.null(ndraws)) checkmate::assert_count(ndraws, positive = TRUE)
   if (!is.null(grab_cv)) {
@@ -1302,6 +1315,19 @@ mspaf_daily <- function(
     dplyr::select(-".measured")
 }
 
+#' Resolve a per-analyte OU variance scale from `ou_scale` and a tier
+#'
+#' `ou_scale` may be a single number (applied to every analyte) or a named
+#' numeric keyed by impact tier, e.g. `c(model = 1, bridge = 2.5)`. A tier
+#' absent from a named vector falls back to `1`.
+#' @keywords internal
+.resolve_tier_scale <- function(ou_scale, tier) {
+  if (length(ou_scale) == 1L && is.null(names(ou_scale))) {
+    return(as.numeric(ou_scale))
+  }
+  if (!is.na(tier) && tier %in% names(ou_scale)) as.numeric(ou_scale[[tier]]) else 1
+}
+
 #' Fit-once scaffold for the season-blind daily target model (issue #16)
 #'
 #' Calls [fit_target_model()] once, builds the static scaffolding needed for
@@ -1428,6 +1454,11 @@ mspaf_daily <- function(
   smoothers <- stats::setNames(
     lapply(modelled, function(nm) {
       m <- tm$models[[nm]]
+      ## Per-analyte OU variance scale: tier-aware when `ou_scale` is a named
+      ## vector (e.g. c(model = 1, bridge = 2.5)), else the scalar for all. Lets
+      ## users widen the under-covered bridge tier without inflating the model
+      ## tier (see loo_anchor_coverage() and the @param ou_scale notes).
+      a_scale <- .resolve_tier_scale(ou_scale, m$tier)
       has_wq <- !is.null(m$wq_fit) && !is.null(m$d_anchors) &&
         nrow(m$d_anchors) >= 2L
       anch <- if (has_wq) m$d_anchors else m$anchors
@@ -1443,7 +1474,7 @@ mspaf_daily <- function(
       ## Centre smoother (r -> 0): posterior mean = deterministic centre line.
       sm_c <- .analyte_residual_smoother(m, tm, qdates,
         kappa = kappa,
-        scale = ou_scale, r_vec = NULL
+        scale = a_scale, r_vec = NULL
       )
       if (is.null(sm_c)) {
         return(empty)
@@ -1502,7 +1533,7 @@ mspaf_daily <- function(
           }
           sm_d <- .analyte_residual_smoother(m, tm, qdates,
             kappa = kappa,
-            scale = ou_scale, r_vec = r_vec
+            scale = a_scale, r_vec = r_vec
           )
           if (!is.null(sm_d) && !is.null(sm_d$model)) draw_model <- sm_d$model
         }

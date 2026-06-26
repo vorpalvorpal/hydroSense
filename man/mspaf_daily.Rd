@@ -136,9 +136,17 @@ applies analyte-specific CVs.  Controls two uncertainty sources:
 S6 (anchor S-value spread at measured dates) and S7 (co-analyte
 normalisation spread).  \code{NULL} (default) disables S6 and S7.}
 
-\item{ou_scale}{Positive numeric scale factor for the OU bridge envelope
-(default \code{1}).  Multiplies \eqn{\sigma^2} and \eqn{\gamma} (marginal
-variance) without changing \eqn{\theta} (correlation length).  Use values1 to widen the between-grab uncertainty bands.}
+\item{ou_scale}{Scale factor for the OU bridge envelope (default \code{1}).
+Multiplies \eqn{\sigma^2} and \eqn{\gamma} (marginal variance) without
+changing \eqn{\theta} (correlation length); values > 1 widen the
+between-grab uncertainty bands.  Either a single number applied to every
+analyte, \strong{or} a numeric vector named by impact tier to scale the tiers
+independently, e.g. \code{c(model = 1, bridge = 2.5)} (a tier not named falls
+back to \code{1}).  Measure each tier's calibration with
+\code{\link[=loo_anchor_coverage]{loo_anchor_coverage()}} and raise the scale of an under-covered tier — the
+sparse-anchor \strong{bridge} tier is typically the under-covered one, and a
+per-tier scale widens it without inflating the well-calibrated \strong{model}
+tier.  See \code{vignette("daily-uncertainty")}.}
 
 \item{kappa}{Non-negative numeric (default \code{0.5}).  Hydrological modulation
 exponent: the smoother's process variance is multiplied by

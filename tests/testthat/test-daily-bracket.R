@@ -552,3 +552,43 @@ describe("mspaf_daily() draws-mode graceful degradation (NULL target fit)", {
     expect_gt(nrow(out), 0L)
   })
 })
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## E. Tier-aware ou_scale (#62) + public loo_anchor_coverage()
+## ═══════════════════════════════════════════════════════════════════════════
+
+describe("tier-aware ou_scale + loo_anchor_coverage()", {
+  it("loo_anchor_coverage() returns a per-analyte + pooled table from a target fit", {
+    skip_if(is.null(.bf$rm), "Reference model not fitted")
+    tm <- suppressWarnings(suppressMessages(
+      fit_target_model(.bf$tgt, reference_model = .bf$rm, conc_units = "ug/L")
+    ))
+    cov <- loo_anchor_coverage(tm, interval = 0.9)
+    expect_s3_class(cov, "tbl_df")
+    expect_true(all(c("analyte", "tier", "n", "coverage", "mean_width") %in%
+                      names(cov)))
+    expect_true("(pooled)" %in% cov$analyte)
+    fin <- cov$coverage[!is.na(cov$coverage)]
+    expect_true(all(fin >= 0 & fin <= 1))
+  })
+
+  it("a tier-named ou_scale covering all tiers equals the scalar form", {
+    skip_if(is.null(.bf$rm), "Reference model not fitted")
+    # The fixture's tox analytes are all model tier, so naming every tier with
+    # the same value must reproduce the scalar ou_scale exactly (same seed).
+    s_scalar <- run_daily(ndraws = 6L, seed = 5L, ou_scale = 2)
+    s_named  <- run_daily(ndraws = 6L, seed = 5L,
+                          ou_scale = c(model = 2, bridge = 2))
+    expect_equal(s_named$lo_ignorable, s_scalar$lo_ignorable)
+    expect_equal(s_named$hi_ignorable, s_scalar$hi_ignorable)
+  })
+
+  it("rejects an unnamed multi-element ou_scale", {
+    skip_if(is.null(.bf$rm), "Reference model not fitted")
+    expect_error(
+      suppressWarnings(run_daily(ndraws = 4L, seed = 1L, ou_scale = c(1, 2))),
+      "name"
+    )
+  })
+})

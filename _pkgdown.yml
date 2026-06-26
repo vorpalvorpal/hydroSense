@@ -78,6 +78,7 @@ reference:
       - prepare_reference
       - fit_reference_model
       - fit_target_model
+      - loo_anchor_coverage
       - ara_summary
       - analyte_pafs
       - summarise_draws
