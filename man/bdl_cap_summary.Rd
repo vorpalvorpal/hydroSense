@@ -14,7 +14,10 @@ A tibble with one row per (\code{sample_id}, \code{analyte}) cell that exceeded
 its detection limit, with columns \code{detection_limit}, \code{n_rows} (rows over
 the DL — one per draw when \code{return = "draws"}), \code{max_imputed}, \code{max_ratio}
 (\code{max_imputed / detection_limit}) and \code{capped} (whether the cap was
-applied).  Returns \code{NULL} invisibly when no cell exceeded its DL.
+applied).  The tibble carries the overall \strong{\code{fire_rate}} (fraction of
+capable BDL cells that were clipped) and \strong{\code{n_bdl_cells}} as attributes,
+also reported via a message.  Returns \code{NULL} invisibly when no cell
+exceeded its DL.
 }
 \description{
 An imputed below-detection (BDL) cell must not exceed its detection limit

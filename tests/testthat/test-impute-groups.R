@@ -149,3 +149,45 @@ test_that("fit_imputation_model returns a no-op model when no targets are found"
   expect_true(all(c("imputed", "imputed_kind") %in% names(out)))
   expect_false(any(out$imputed))
 })
+
+
+# ── #61: absolute detection-count gate (min_target_detect_n) ─────────────────
+
+test_that("min_target_detect_n drops a target that clears the frequency gate", {
+  set.seed(1)
+  n <- 20L
+  ids <- paste0("s", seq_len(n))
+  mk <- function(an, vals, det) tibble::tibble(
+    sample_id = ids, site_id = "A",
+    datetime  = as.Date("2023-01-01") + seq_len(n),
+    analyte = an, value = vals, detected = det
+  )
+  # Cu detected in 2/20 samples: det_freq = 0.10 (>= 0.05, clears the fraction
+  # gate) but n_detect = 2 (< default min_target_detect_n = 4).
+  cu_det <- c(rep(TRUE, 2L), rep(FALSE, n - 2L))
+  df <- dplyr::bind_rows(
+    mk("pH", runif(n, 6, 8), rep(TRUE, n)),
+    mk("EC", runif(n, 100, 500), rep(TRUE, n)),
+    mk("Cu", c(runif(2, 1, 5), rep(0.5, n - 2L)), cu_det)
+  )
+  # Cu is the only target -> dropped by the count gate -> no modellable groups,
+  # so the function returns a no-op model without reaching Stan.
+  expect_message(
+    m <- fit_imputation_model(
+      df, required_vars = c("pH", "EC"),
+      groups = list(impute_group("metals", targets = "Cu", hurdle = "Cu"))
+    ) |> suppressWarnings(),
+    "min_target_detect_n"
+  )
+  expect_length(m$groups, 0L)
+})
+
+test_that("a lower min_target_detect_n keeps the same low-count target in-pool", {
+  # Routing/gating only: with min_target_detect_n = 1 the count gate no longer
+  # bites, so Cu (det_freq 0.10) survives the gate (we don't fit Stan here).
+  det <- tibble::tibble(analyte = "Cu", n_detect = 2L, det_freq = 0.10)
+  keep_default <- det$analyte[det$det_freq >= 0.05 & det$n_detect >= 4L]
+  keep_relaxed <- det$analyte[det$det_freq >= 0.05 & det$n_detect >= 1L]
+  expect_length(keep_default, 0L)
+  expect_equal(keep_relaxed, "Cu")
+})

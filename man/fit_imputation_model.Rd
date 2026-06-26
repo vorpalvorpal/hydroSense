@@ -13,6 +13,7 @@ fit_imputation_model(
   no_log_vars = NULL,
   min_detect_freq = 0.05,
   min_target_detect_freq = 0.05,
+  min_target_detect_n = 4L,
   min_samples = 10L,
   min_var_explained = 0.75,
   max_pcs = 6L,
@@ -58,7 +59,16 @@ retained.  Default \code{0.05}.  Required vars are always retained regardless.}
 samples in which the analyte is \emph{detected}) for a metal/organic to be
 included as an imputation target. Targets below this are dropped (they have
 too few detections to model and would otherwise inflate the model on
-near-all-BDL panels). Default \code{0.05}.}
+near-all-BDL panels). Default \code{0.05}. Combined with \code{min_target_detect_n}
+(both gates must pass).}
+
+\item{min_target_detect_n}{Minimum \strong{absolute} number of distinct samples in
+which a metal/organic is detected for it to be included as an imputation
+target. The fraction gate above already implies a count floor of
+\code{min_target_detect_freq * n_samples}, but that scales with dataset size and
+collapses on small datasets; this absolute floor guarantees enough anchors
+to constrain the fit regardless of dataset size. Default \code{4L} (non-binding
+on typical panels, where the fraction gate dominates).}
 
 \item{min_samples}{Minimum training samples after required-var filtering.}
 
