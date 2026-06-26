@@ -28,7 +28,10 @@ A tibble with one row per (`sample_id`, `analyte`) cell that exceeded
 its detection limit, with columns `detection_limit`, `n_rows` (rows over
 the DL — one per draw when `return = "draws"`), `max_imputed`,
 `max_ratio` (`max_imputed / detection_limit`) and `capped` (whether the
-cap was applied). Returns `NULL` invisibly when no cell exceeded its DL.
+cap was applied). The tibble carries the overall **`fire_rate`**
+(fraction of capable BDL cells that were clipped) and **`n_bdl_cells`**
+as attributes, also reported via a message. Returns `NULL` invisibly
+when no cell exceeded its DL.
 
 ## Details
 

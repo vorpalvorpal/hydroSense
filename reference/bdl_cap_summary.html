@@ -77,7 +77,10 @@ cap are worth auditing rather than trusting blindly.</p>
 its detection limit, with columns <code>detection_limit</code>, <code>n_rows</code> (rows over
 the DL — one per draw when <code>return = "draws"</code>), <code>max_imputed</code>, <code>max_ratio</code>
 (<code>max_imputed / detection_limit</code>) and <code>capped</code> (whether the cap was
-applied).  Returns <code>NULL</code> invisibly when no cell exceeded its DL.</p>
+applied).  The tibble carries the overall <strong><code>fire_rate</code></strong> (fraction of
+capable BDL cells that were clipped) and <strong><code>n_bdl_cells</code></strong> as attributes,
+also reported via a message.  Returns <code>NULL</code> invisibly when no cell
+exceeded its DL.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>

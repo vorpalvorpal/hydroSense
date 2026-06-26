@@ -24,6 +24,7 @@ fit_imputation_model(
   no_log_vars = NULL,
   min_detect_freq = 0.05,
   min_target_detect_freq = 0.05,
+  min_target_detect_n = 4L,
   min_samples = 10L,
   min_var_explained = 0.75,
   max_pcs = 6L,
@@ -93,7 +94,19 @@ fit_imputation_model(
   is *detected*) for a metal/organic to be included as an imputation
   target. Targets below this are dropped (they have too few detections
   to model and would otherwise inflate the model on near-all-BDL
-  panels). Default `0.05`.
+  panels). Default `0.05`. Combined with `min_target_detect_n` (both
+  gates must pass).
+
+- min_target_detect_n:
+
+  Minimum **absolute** number of distinct samples in which a
+  metal/organic is detected for it to be included as an imputation
+  target. The fraction gate above already implies a count floor of
+  `min_target_detect_freq * n_samples`, but that scales with dataset
+  size and collapses on small datasets; this absolute floor guarantees
+  enough anchors to constrain the fit regardless of dataset size.
+  Default `4L` (non-binding on typical panels, where the fraction gate
+  dominates).
 
 - min_samples:
 

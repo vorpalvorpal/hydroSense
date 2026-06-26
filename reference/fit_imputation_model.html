@@ -75,6 +75,7 @@ can be swapped for any other chemistry by passing your own list of
 <span>  no_log_vars <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  min_detect_freq <span class="op">=</span> <span class="fl">0.05</span>,</span>
 <span>  min_target_detect_freq <span class="op">=</span> <span class="fl">0.05</span>,</span>
+<span>  min_target_detect_n <span class="op">=</span> <span class="fl">4L</span>,</span>
 <span>  min_samples <span class="op">=</span> <span class="fl">10L</span>,</span>
 <span>  min_var_explained <span class="op">=</span> <span class="fl">0.75</span>,</span>
 <span>  max_pcs <span class="op">=</span> <span class="fl">6L</span>,</span>
@@ -139,7 +140,18 @@ retained.  Default <code>0.05</code>.  Required vars are always retained regardl
 samples in which the analyte is <em>detected</em>) for a metal/organic to be
 included as an imputation target. Targets below this are dropped (they have
 too few detections to model and would otherwise inflate the model on
-near-all-BDL panels). Default <code>0.05</code>.</p></dd>
+near-all-BDL panels). Default <code>0.05</code>. Combined with <code>min_target_detect_n</code>
+(both gates must pass).</p></dd>
+
+
+<dt id="arg-min-target-detect-n">min_target_detect_n<a class="anchor" aria-label="anchor" href="#arg-min-target-detect-n"></a></dt>
+<dd><p>Minimum <strong>absolute</strong> number of distinct samples in
+which a metal/organic is detected for it to be included as an imputation
+target. The fraction gate above already implies a count floor of
+<code>min_target_detect_freq * n_samples</code>, but that scales with dataset size and
+collapses on small datasets; this absolute floor guarantees enough anchors
+to constrain the fit regardless of dataset size. Default <code>4L</code> (non-binding
+on typical panels, where the fraction gate dominates).</p></dd>
 
 
 <dt id="arg-min-samples">min_samples<a class="anchor" aria-label="anchor" href="#arg-min-samples"></a></dt>
