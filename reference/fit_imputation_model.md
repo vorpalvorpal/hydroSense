@@ -125,10 +125,15 @@ fit_imputation_model(
       cells are capped at the detection limit post-hoc by
       [`impute_chemistry()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.md)
       (brms cannot combine `rescor` with `cens()`). Most accurate
-      recovery, but the `mi()` + correlation geometry is funnel-prone,
-      so `adapt_delta = 0.95` and an `lkj(2)` prior on the residual
-      correlation are set by default to control divergences (override
-      via `control` / `prior` in `...`).
+      recovery (best hold-out RMSE by a wide margin), but the `mi()` +
+      correlation geometry is funnel-prone, so `adapt_delta = 0.95` and
+      an `lkj(2)` prior on the residual correlation are set by default
+      (override via `control` / `prior` in `...`). Even so the geometry
+      stays hard (tree-depth saturation, low E-BFMI, worst-case R̂ ≈ 1.6
+      on a hard mask): trust the **point estimate**, but check
+      [`brms::rhat()`](https://mc-stan.org/posterior/reference/rhat.html)
+      before relying on the **draws** — for well-calibrated uncertainty
+      prefer `"cens_factor"`.
 
   `"cens"`
 

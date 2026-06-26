@@ -318,31 +318,121 @@ uncertainty</td>
 </tr>
 </tbody>
 </table>
-<p>The trade-off is accuracy versus the cost of uncertainty.
-<code>brms</code> cannot combine a full residual correlation
-(<code>rescor = TRUE</code>) with proper left-censoring, so the default
-pairs residual correlation with <code>mi()</code> imputation and a
-post-hoc cap. A hold-out benchmark on real data found
-<code>"rescor_mi"</code> recovers masked metals most accurately (the
-full residual-correlation matrix is the strongest coupling), which is
-why it is the default — but its posterior <strong>draws</strong> are
-expensive and can exhaust memory.</p>
-<p><code>"cens"</code> and <code>"cens_factor"</code> give
-well-calibrated intervals cheaply. They differ in coupling:
-<code>"cens"</code> treats the metals independently, while
-<code>"cens_factor"</code> adds a single per-sample latent factor shared
-across all analytes — fitted in long format, so the factor is
-well-identified (each sample contributes several analyte observations)
-and genuinely lets an observed metal inform the unobserved/BDL ones at
-that sample. In the B.S01 hold-out this coupling places
-<code>"cens_factor"</code> between <code>"cens"</code> and
-<code>"rescor_mi"</code> on accuracy (RMSE 0.43 vs 0.53 and 0.25) while
-converging best of the three (R̂ 1.006). Prefer a cens method when you
-need uncertainty (<code>return = "draws"</code>) or hit memory limits —
-<code>"cens_factor"</code> when you also want cross-analyte borrowing,
-<code>"cens"</code> when you want the simplest, fastest fit; prefer the
-default <code>"rescor_mi"</code> for the most accurate point
-estimates.</p>
+<p>The trade-off is <strong>point accuracy versus trustworthy
+uncertainty</strong>. <code>brms</code> cannot combine a full residual
+correlation (<code>rescor = TRUE</code>) with proper left-censoring, so
+the default pairs residual correlation with <code>mi()</code> imputation
+and a post-hoc cap.</p>
+<p>A hold-out benchmark on real B.S01 data — masking ~10% of detected
+routine-metal cells, pooled over three mask seeds (57 held-out cells),
+scored on the log₁₀ scale — gives:</p>
+<table class="table">
+<colgroup>
+<col width="25%">
+<col width="9%">
+<col width="9%">
+<col width="21%">
+<col width="10%">
+<col width="24%">
+</colgroup>
+<thead><tr class="header">
+<th><code>impute_method</code></th>
+<th align="right">RMSE</th>
+<th align="right">bias</th>
+<th align="right">90% coverage</th>
+<th align="right">max R̂</th>
+<th>sampler health</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td><code>"rescor_mi"</code></td>
+<td align="right"><strong>0.30</strong></td>
+<td align="right">−0.05</td>
+<td align="right">1.00</td>
+<td align="right">1.63</td>
+<td>72–99% treedepth-saturated, E-BFMI &lt; 0.3</td>
+</tr>
+<tr class="even">
+<td><code>"cens_factor"</code></td>
+<td align="right">0.75</td>
+<td align="right">−0.44</td>
+<td align="right"><strong>0.93</strong></td>
+<td align="right">1.59</td>
+<td>up to 28% divergent on a hard mask</td>
+</tr>
+<tr class="odd">
+<td><code>"cens"</code></td>
+<td align="right">0.92</td>
+<td align="right">−0.58</td>
+<td align="right">0.90</td>
+<td align="right"><strong>1.04</strong></td>
+<td>clean, but one seed took ~2 h to fit</td>
+</tr>
+</tbody>
+</table>
+<p>Two things stand out, and they pull in opposite directions:</p>
+<ul>
+<li>
+<strong><code>"rescor_mi"</code> recovers the masked values by far
+the most accurately</strong> (RMSE 0.30 vs 0.75 and 0.92, with near-zero
+bias) — the full residual-correlation matrix is the strongest coupling,
+and the <code>mi()</code> likelihood is not pulled down by the censoring
+bound the way the cens methods are. This is why it remains the default
+<strong>for point estimates</strong>.</li>
+<li>
+<strong>But <code>"rescor_mi"</code>’s posterior is hard to
+sample</strong>: the <code>mi()</code> + full-rescor geometry saturates
+the NUTS tree depth and trips E-BFMI even at
+<code>adapt_delta = 0.95</code> with an <code>lkj(2)</code> prior on
+<code>rescor</code>, and its 90% intervals over-cover (1.00, i.e. too
+wide). Treat its <strong>point estimate</strong> as reliable but its
+<strong>draws/uncertainty with caution</strong> — check
+<code><a href="https://mc-stan.org/posterior/reference/rhat.html" class="external-link">brms::rhat()</a></code> / <code>bayesplot::mcmc_*</code> on the
+returned fit, and consider raising <code>max_treedepth</code> and
+<code>iter</code> for production runs.</li>
+</ul>
+<p>The cens methods sample more honestly but recover less well here:
+censoring at the (inflated) hold-out detection limit pulls their
+estimates <em>below</em> the truth, which is the source of their strong
+negative bias in this masked-detect setup (in genuine BDL cells, where
+the truth really is sub-limit, that conservatism is correct). Of the
+two, <strong><code>"cens_factor"</code> gives the best-calibrated
+intervals</strong> (90% coverage 0.93) thanks to a single per-sample
+latent factor shared across analytes — fitted in long format, so the
+factor is well-identified (each sample contributes several analyte
+observations) and genuinely lets an observed metal inform the
+unobserved/BDL ones at that sample. Its sampling is usually clean but
+not bullet-proof (one hard mask hit 28% divergences).
+<code>"cens"</code> drops the coupling entirely; it is the simplest and
+best-converging model, at the cost of accuracy.</p>
+<p>Bottom line: <strong>prefer the default <code>"rescor_mi"</code> for
+the most accurate point estimates; prefer <code>"cens_factor"</code>
+when you need well-calibrated uncertainty
+(<code>return = "draws"</code>), hit memory limits, or want a posterior
+you can trust without per-fit diagnostic checks.</strong> (Single-seed
+runs can reorder the R̂ column — the convergence numbers above are the
+worst case across seeds, not a typical fit.)</p>
+<p><strong>How much does this matter downstream?</strong> Usually less
+than the cell-level RMSE gap suggests. Running the full B.S01
+daily-msPAF pipeline (<code>mspaf_daily</code>, deterministic line +
+gap-uncertainty bracket) under each method, with everything else held
+fixed, the two give an <em>almost identical</em> result — both for Total
+and reference-adjusted (ARA) msPAF. The <strong>central
+estimates</strong> (deterministic line and both envelope medians) differ
+by a day-to-day median of ~0.005 percentage points and well under 1 pp
+overall: <code>"rescor_mi"</code> gives a marginally better central
+estimate, but the difference is tiny. The only systematic difference is
+in the <strong>band width</strong>: <code>"rescor_mi"</code>’s 90% bands
+run a little <em>too wide</em> (about 5–15 % wider than
+<code>"cens_factor"</code>’s), exactly as its over-coverage on the
+hold-out predicts. The reason the choice washes out is that on a panel
+site, where the metals are usually measured, imputation only fills a
+handful of cells, and the gap-uncertainty bracket (informative vs
+ignorable) dwarfs the imputation effect. So: <strong>use the default
+<code>"rescor_mi"</code> for the better central estimate, but read its
+uncertainty bands as slightly conservative (a bit too wide); switch to
+<code>"cens_factor"</code> when the band width itself is the decision
+variable.</strong></p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Proper censoring + cross-analyte coupling, with cheap calibrated uncertainty:</span></span>
 <span><span class="va">model</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fit_imputation_model.html">fit_imputation_model</a></span><span class="op">(</span><span class="va">monitoring_long</span>, impute_method <span class="op">=</span> <span class="st">"cens_factor"</span><span class="op">)</span></span></code></pre></div>

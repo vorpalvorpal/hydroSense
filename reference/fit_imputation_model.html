@@ -168,10 +168,13 @@ coupling are handled. One of:</p><dl><dt><code>"rescor_mi"</code></dt>
 (<code>rescor = TRUE</code>) with BDL/missing treated as imputable (<code>mi()</code>); the
 imputed BDL cells are capped at the detection limit post-hoc by
 <code><a href="impute_chemistry.html">impute_chemistry()</a></code> (brms cannot combine <code>rescor</code> with <code>cens()</code>). Most
-accurate recovery, but the <code>mi()</code> + correlation geometry is funnel-prone,
-so <code>adapt_delta = 0.95</code> and an <code>lkj(2)</code> prior on the residual
-correlation are set by default to control divergences (override via
-<code>control</code> / <code>prior</code> in <code>...</code>).</p></dd>
+accurate recovery (best hold-out RMSE by a wide margin), but the <code>mi()</code> +
+correlation geometry is funnel-prone, so <code>adapt_delta = 0.95</code> and an
+<code>lkj(2)</code> prior on the residual correlation are set by default (override
+via <code>control</code> / <code>prior</code> in <code>...</code>). Even so the geometry stays hard
+(tree-depth saturation, low E-BFMI, worst-case R̂ ≈ 1.6 on a hard mask):
+trust the <strong>point estimate</strong>, but check <code><a href="https://mc-stan.org/posterior/reference/rhat.html" class="external-link">brms::rhat()</a></code> before relying on
+the <strong>draws</strong> — for well-calibrated uncertainty prefer <code>"cens_factor"</code>.</p></dd>
 
 <dt><code>"cens"</code></dt>
 <dd><p>Proper left-censoring of BDL at the detection limit
