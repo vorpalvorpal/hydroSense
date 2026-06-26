@@ -1971,7 +1971,7 @@ bdl_cap_summary <- function(x) {
   if (!is.null(fr) && !is.null(nb)) {
     cli::cli_inform(c(
       "i" = "BDL-cap fire-rate: {nrow(s)}/{nb} capable BDL cell{?s} \\
-             ({round(100 * fr)}%) exceeded the DL{if (fr >= 0.5) ' — high; consider impute_method = \"cens_factor\"' else ''}."
+             ({round(100 * fr)}%) exceeded the DL{if (fr >= 0.5) ' - high; consider impute_method = \"cens_factor\"' else ''}."
     ))
   }
   s
