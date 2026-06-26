@@ -161,6 +161,41 @@ test_that(".check_bdl_imputed is a no-op with an empty DL table or no exceedance
   expect_identical(hydroSense:::.check_bdl_imputed(result, dl), result)
 })
 
+test_that(".check_bdl_imputed reports a cap fire-rate over capable BDL cells (#63)", {
+  # 4 censored-left cells with a DL; 2 (s1, s3) exceed -> fire_rate = 0.5.
+  result <- tibble::tibble(
+    sample_id    = c("s1", "s2", "s3", "s4"),
+    analyte      = "Cu",
+    value        = c(5, 0.4, 8, 0.3),
+    imputed_kind = "censored_left"
+  )
+  dl <- tibble::tibble(sample_id = c("s1", "s2", "s3", "s4"), analyte = "Cu",
+                       detection_limit = 1)
+  expect_warning(
+    out <- hydroSense:::.check_bdl_imputed(result, dl, cap = TRUE),
+    "50%"                                   # fire-rate surfaced in the warning
+  )
+  s <- suppressMessages(bdl_cap_summary(out))
+  expect_equal(attr(s, "fire_rate"), 0.5)
+  expect_equal(attr(s, "n_bdl_cells"), 4L)
+  # bdl_cap_summary() echoes the fire-rate as a message.
+  expect_message(bdl_cap_summary(out), "fire-rate")
+})
+
+test_that(".check_bdl_imputed fire-rate counts cells not draws (#63)", {
+  # One BDL cell, 3 draws, all exceed -> 1/1 capable cell capped (fire_rate 1).
+  result <- tibble::tibble(
+    sample_id    = "s1", analyte = "Cu", .draw = 1:3,
+    value        = c(5, 6, 7),
+    imputed_kind = "censored_left"
+  )
+  dl <- tibble::tibble(sample_id = "s1", analyte = "Cu", detection_limit = 1)
+  suppressWarnings(out <- hydroSense:::.check_bdl_imputed(result, dl, cap = TRUE))
+  s <- suppressMessages(bdl_cap_summary(out))
+  expect_equal(attr(s, "n_bdl_cells"), 1L)
+  expect_equal(attr(s, "fire_rate"), 1)
+})
+
 test_that("print.imputation_model summarises the fit", {
   m <- structure(
     list(fit_date = "2023-01-01", n_samples = 30L,

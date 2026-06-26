@@ -439,7 +439,15 @@ leachate_impute_groups <- function() {
 #'   samples in which the analyte is *detected*) for a metal/organic to be
 #'   included as an imputation target. Targets below this are dropped (they have
 #'   too few detections to model and would otherwise inflate the model on
-#'   near-all-BDL panels). Default `0.05`.
+#'   near-all-BDL panels). Default `0.05`. Combined with `min_target_detect_n`
+#'   (both gates must pass).
+#' @param min_target_detect_n Minimum **absolute** number of distinct samples in
+#'   which a metal/organic is detected for it to be included as an imputation
+#'   target. The fraction gate above already implies a count floor of
+#'   `min_target_detect_freq * n_samples`, but that scales with dataset size and
+#'   collapses on small datasets; this absolute floor guarantees enough anchors
+#'   to constrain the fit regardless of dataset size. Default `4L` (non-binding
+#'   on typical panels, where the fraction gate dominates).
 #' @param min_detect_freq Minimum detection frequency for a PCA variable to be
 #'   retained.  Default `0.05`.  Required vars are always retained regardless.
 #' @param min_samples Minimum training samples after required-var filtering.
@@ -522,6 +530,7 @@ fit_imputation_model <- function(
     no_log_vars       = NULL,
     min_detect_freq   = 0.05,
     min_target_detect_freq = 0.05,
+    min_target_detect_n = 4L,
     min_samples       = 10L,
     min_var_explained = 0.75,
     max_pcs           = 6L,
@@ -552,6 +561,8 @@ fit_imputation_model <- function(
   checkmate::assert_character(exclude, any.missing = FALSE, null.ok = FALSE)
   checkmate::assert_character(no_log_vars, any.missing = FALSE, null.ok = FALSE)
   checkmate::assert_count(min_samples)
+  checkmate::assert_number(min_target_detect_freq, lower = 0, upper = 1)
+  checkmate::assert_count(min_target_detect_n)
 
   # ── 1. BDL required-variable handling ────────────────────────────────────
   # For required vars (pH, EC) where a value is BDL, use the stored DL value.
@@ -644,23 +655,40 @@ fit_imputation_model <- function(
   # Drop target analytes detected too rarely to model. A brms regression needs
   # enough *detected* observations; near-/all-BDL analytes (e.g. ~100 organics
   # in a leachate panel) carry no signal and otherwise explode the model size.
+  # A target must clear BOTH gates: a detection *fraction* and an *absolute*
+  # detection count. The fraction (`det_freq = n_detect / n_samples_total`)
+  # already implies a count floor of `min_target_detect_freq * n_samples_total`,
+  # but that scales with dataset size and collapses on small datasets; the
+  # absolute `min_target_detect_n` guarantees a minimum number of anchors to
+  # constrain the fit regardless of dataset size. (#59 item 4 / #61.)
   all_targets <- unlist(group_targets, use.names = FALSE)
-  det_freq <- df |>
+  det_tbl <- df |>
     dplyr::filter(.data$analyte %in% .env$all_targets) |>
     dplyr::group_by(.data$analyte) |>
     dplyr::summarise(
+      n_detect = dplyr::n_distinct(.data$sample_id[.data$detected]),
       det_freq = dplyr::n_distinct(.data$sample_id[.data$detected]) / n_samples_total,
       .groups  = "drop"
     )
-  keep_targets  <- det_freq$analyte[det_freq$det_freq >= min_target_detect_freq]
+  pass_freq  <- det_tbl$det_freq  >= min_target_detect_freq
+  pass_n     <- det_tbl$n_detect  >= min_target_detect_n
+  keep_targets  <- det_tbl$analyte[pass_freq & pass_n]
   dropped       <- setdiff(all_targets, keep_targets)
   group_targets <- lapply(group_targets, intersect, keep_targets)
-  if (length(dropped) > 0L)
+  if (length(dropped) > 0L) {
+    # Attribute each drop to the gate(s) it failed, for an auditable message.
+    drop_n_only <- det_tbl$analyte[pass_freq & !pass_n]
+    why <- if (length(drop_n_only))
+      sprintf(" (%s below min_target_detect_n = %d)",
+              paste(sort(drop_n_only), collapse = ", "), min_target_detect_n)
+    else ""
     cli::cli_inform(c(
       "i" = "Dropping {length(dropped)} target{?s} below \\
-             min_target_detect_freq = {min_target_detect_freq}: \\
-             {.val {sort(dropped)}}."
+             min_target_detect_freq = {min_target_detect_freq} / \\
+             min_target_detect_n = {min_target_detect_n}: \\
+             {.val {sort(dropped)}}{why}."
     ))
+  }
 
   for (nm in names(group_targets)) {
     cli::cli_inform(c(
@@ -1926,7 +1954,10 @@ impute_coanalytes <- function(
 #'   its detection limit, with columns `detection_limit`, `n_rows` (rows over
 #'   the DL — one per draw when `return = "draws"`), `max_imputed`, `max_ratio`
 #'   (`max_imputed / detection_limit`) and `capped` (whether the cap was
-#'   applied).  Returns `NULL` invisibly when no cell exceeded its DL.
+#'   applied).  The tibble carries the overall **`fire_rate`** (fraction of
+#'   capable BDL cells that were clipped) and **`n_bdl_cells`** as attributes,
+#'   also reported via a message.  Returns `NULL` invisibly when no cell
+#'   exceeded its DL.
 #' @seealso [impute_chemistry()]
 #' @export
 bdl_cap_summary <- function(x) {
@@ -1934,6 +1965,14 @@ bdl_cap_summary <- function(x) {
   if (is.null(s)) {
     cli::cli_inform(c("v" = "No detection-limit cap activations recorded."))
     return(invisible(NULL))
+  }
+  fr <- attr(s, "fire_rate", exact = TRUE)
+  nb <- attr(s, "n_bdl_cells", exact = TRUE)
+  if (!is.null(fr) && !is.null(nb)) {
+    cli::cli_inform(c(
+      "i" = "BDL-cap fire-rate: {nrow(s)}/{nb} capable BDL cell{?s} \\
+             ({round(100 * fr)}%) exceeded the DL{if (fr >= 0.5) ' — high; consider impute_method = \"cens_factor\"' else ''}."
+    ))
   }
   s
 }
@@ -1949,9 +1988,15 @@ bdl_cap_summary <- function(x) {
   joined <- dplyr::left_join(result, dl_join, by = c("sample_id", "analyte"))
   if (!"detection_limit" %in% names(joined)) return(result)
 
-  exceed <- joined$imputed_kind == "censored_left" &
-            !is.na(joined$detection_limit) &
-            joined$value > joined$detection_limit
+  # BDL cells that *could* be capped (censored-left with a known DL) — the
+  # denominator for the fire-rate. Counted per distinct (sample, analyte) cell
+  # so draws-mode (many rows per cell) is not double-counted.
+  bdl_at_risk <- joined$imputed_kind == "censored_left" &
+                 !is.na(joined$detection_limit)
+  n_bdl_cells <- dplyr::n_distinct(
+    joined$sample_id[bdl_at_risk], joined$analyte[bdl_at_risk])
+
+  exceed <- bdl_at_risk & joined$value > joined$detection_limit
 
   if (!any(exceed)) return(result)
 
@@ -1984,12 +2029,24 @@ bdl_cap_summary <- function(x) {
     rep("*", nrow(by_analyte))
   )
 
-  n_cells <- nrow(summary_tbl)
+  n_cells   <- nrow(summary_tbl)
+  fire_rate <- n_cells / max(n_bdl_cells, 1L)
+  attr(summary_tbl, "fire_rate")   <- fire_rate
+  attr(summary_tbl, "n_bdl_cells") <- n_bdl_cells
+  # A high fire-rate is diagnostic: the model is over-predicting BDL cells. This
+  # is characteristic of `rescor_mi` (mi() + post-hoc cap rather than respecting
+  # the censoring bound); proper left-censoring (`cens` / `cens_factor`) barely
+  # fires the cap. (#59 item 4 / #63.)
+  high <- fire_rate >= 0.5
   cli::cli_warn(c(
-    "!" = "{n_cells} imputed below-detection cell{?s} exceeded the detection limit.",
+    "!" = "{n_cells} of {n_bdl_cells} imputed below-detection cell{?s} \\
+           ({round(100 * fire_rate)}%) exceeded the detection limit.",
     analyte_lines,
     "i" = "The posterior is not constrained below the DL, so some BDL cells \\
            came out above it.",
+    if (high) c("!" = "A high cap fire-rate signals systematic over-prediction \\
+                       of BDL cells; consider {.code impute_method = \"cens_factor\"} \\
+                       (proper left-censoring) on BDL-heavy chemistry."),
     if (cap) c("i" = "Capped at DL ({.code bdl_cap = TRUE}).")
     else     c("i" = "NOT capped ({.code bdl_cap = FALSE})."),
     "i" = "Per-cell detail: {.run bdl_cap_summary(x)} on the returned frame."
