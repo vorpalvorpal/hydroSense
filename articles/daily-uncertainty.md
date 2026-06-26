@@ -165,6 +165,63 @@ out_wide <- mspaf_daily(
 )
 ```
 
+### Checking calibration, and tuning `ou_scale` by tier
+
+Are the bands the right width? Don’t guess — **measure**, with
+[`loo_anchor_coverage()`](https://vorpalvorpal.github.io/hydroSense/reference/loo_anchor_coverage.md).
+It holds out each grab anchor (or a run of consecutive anchors), refits
+the smoother on the rest, and checks how often the held-out value falls
+inside the nominal band. Run it on the same target model
+[`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)
+fits internally:
+
+``` r
+
+tm  <- fit_target_model(target, reference_model = ref_m)
+cov <- loo_anchor_coverage(tm, interval = 0.9)
+cov
+#>   analyte   tier      n  coverage  mean_width
+#>   Cu        model    38     0.895        0.71
+#>   Pb        bridge   10     0.500        1.62   # under-covered
+#>   (pooled)  <NA>    194     0.85          ...
+```
+
+Coverage is reported **per impact tier**, and the two tiers usually
+behave differently:
+
+- **`model`** analytes (enough detected anchors to fit a hydrology
+  impact model) are normally close to nominal.
+- **`bridge`** analytes (too sparse for their own fit, interpolated from
+  a shared shape) tend to be **under-covered** — their bands are too
+  narrow, because the smoother treats an OU variance estimated from a
+  handful of anchors as if it were known.
+
+If a tier is under-covered, raise *that tier’s* scale — `ou_scale`
+accepts a vector **named by tier**, so you can widen the sparse `bridge`
+tier without inflating the well-calibrated `model` tier:
+
+``` r
+
+# Sweep the bridge scale until its coverage reaches the nominal interval …
+loo_anchor_coverage(tm, scale = 2)        # re-measure under a wider scale
+
+# … then apply it in the pipeline, per tier:
+out <- mspaf_daily(
+  target,
+  reference_model = ref_m,
+  interpolation   = "model",
+  ndraws          = 200L,
+  ou_scale        = c(model = 1, bridge = 2)   # widen bridge only
+)
+```
+
+A plain number (`ou_scale = 2`) still scales every analyte equally, as
+before.
+
+Coverage from a single site — especially the sparse bridge tier — is a
+noisy, finite-sample estimate, so **pool across several sites before
+committing to a scale** rather than over-fitting one record.
+
 ### Getting raw draws
 
 With `return = "draws"` you get one row per (day × draw), allowing you
@@ -265,7 +322,7 @@ is wide (e.g., 0.99), quantile estimates can be noisy. Increase
 | `ndraws` | Number of Monte Carlo draws; more → smoother CI | 50–200 for exploratory work; 500+ for publication |
 | `interval` | Nominal coverage of the credible interval | 0.9 (default), 0.95, 0.80 |
 | `grab_cv` | Relative analytical uncertainty on grab concentrations | 0.10–0.20 for routine ICP-MS; 0.05 for reference standards |
-| `ou_scale` | Global marginal-variance ($`\gamma`$) inflation; \> 1 widens the whole envelope | 1 (default); try 2–4 for sparse sampling |
+| `ou_scale` | Marginal-variance ($`\gamma`$) inflation; \> 1 widens the envelope. A single number scales every analyte; a vector named by tier (`c(model = 1, bridge = 2)`) scales the tiers independently — see [Checking calibration](#calibration) | 1 (default); try 2–4 for sparse sampling, or raise just the `bridge` tier |
 | `kappa` | Hydrology-modulated mid-gap widening ($`q_t = q_{\text{base}}e^{\kappa z_t}`$) | 0.5 (default); 0 = stationary |
 | `seed` | RNG seed for reproducibility | Any integer |
 | `parallel` | Use `future.apply` for concurrent draws | `FALSE` (default); `TRUE` with a [`future::plan()`](https://future.futureverse.org/reference/plan.html) |
@@ -335,6 +392,8 @@ for the end-to-end workflow.
 
 - \[mspaf_daily()\] — full parameter reference
 - \[fit_reference_model()\] — fitting the reference/impact model
+- \[loo_anchor_coverage()\] — measure band calibration by tier, to tune
+  `ou_scale`
 - \[summarise_draws()\] — collapse draws to median + credible interval
 - [`vignette("chronic-mspaf-interpretation")`](https://vorpalvorpal.github.io/hydroSense/articles/chronic-mspaf-interpretation.md)
   — interpreting chronic msPAF

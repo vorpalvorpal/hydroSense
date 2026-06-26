@@ -199,10 +199,19 @@ mspaf_daily(
 
 - ou_scale:
 
-  Positive numeric scale factor for the OU bridge envelope (default
-  `1`). Multiplies \\\sigma^2\\ and \\\gamma\\ (marginal variance)
-  without changing \\\theta\\ (correlation length). Use values1 to widen
-  the between-grab uncertainty bands.
+  Scale factor for the OU bridge envelope (default `1`). Multiplies
+  \\\sigma^2\\ and \\\gamma\\ (marginal variance) without changing
+  \\\theta\\ (correlation length); values \> 1 widen the between-grab
+  uncertainty bands. Either a single number applied to every analyte,
+  **or** a numeric vector named by impact tier to scale the tiers
+  independently, e.g. `c(model = 1, bridge = 2.5)` (a tier not named
+  falls back to `1`). Measure each tier's calibration with
+  [`loo_anchor_coverage()`](https://vorpalvorpal.github.io/hydroSense/reference/loo_anchor_coverage.md)
+  and raise the scale of an under-covered tier — the sparse-anchor
+  **bridge** tier is typically the under-covered one, and a per-tier
+  scale widens it without inflating the well-calibrated **model** tier.
+  See
+  [`vignette("daily-uncertainty")`](https://vorpalvorpal.github.io/hydroSense/articles/daily-uncertainty.md).
 
 - kappa:
 

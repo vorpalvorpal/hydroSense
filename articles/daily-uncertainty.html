@@ -300,12 +300,66 @@ volatility, not a fitted quantity.</p>
 <span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level3">
+<h3 id="calibration">Checking calibration, and tuning <code>ou_scale</code> by tier<a class="anchor" aria-label="anchor" href="#calibration"></a>
+</h3>
+<p>Are the bands the right width? Don’t guess —
+<strong>measure</strong>, with <code><a href="../reference/loo_anchor_coverage.html">loo_anchor_coverage()</a></code>. It
+holds out each grab anchor (or a run of consecutive anchors), refits the
+smoother on the rest, and checks how often the held-out value falls
+inside the nominal band. Run it on the same target model
+<code><a href="../reference/mspaf_daily.html">mspaf_daily()</a></code> fits internally:</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">tm</span>  <span class="op">&lt;-</span> <span class="fu"><a href="../reference/fit_target_model.html">fit_target_model</a></span><span class="op">(</span><span class="va">target</span>, reference_model <span class="op">=</span> <span class="va">ref_m</span><span class="op">)</span></span>
+<span><span class="va">cov</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/loo_anchor_coverage.html">loo_anchor_coverage</a></span><span class="op">(</span><span class="va">tm</span>, interval <span class="op">=</span> <span class="fl">0.9</span><span class="op">)</span></span>
+<span><span class="va">cov</span></span>
+<span><span class="co">#&gt;   analyte   tier      n  coverage  mean_width</span></span>
+<span><span class="co">#&gt;   Cu        model    38     0.895        0.71</span></span>
+<span><span class="co">#&gt;   Pb        bridge   10     0.500        1.62   # under-covered</span></span>
+<span><span class="co">#&gt;   (pooled)  &lt;NA&gt;    194     0.85          ...</span></span></code></pre></div>
+<p>Coverage is reported <strong>per impact tier</strong>, and the two
+tiers usually behave differently:</p>
+<ul>
+<li>
+<strong><code>model</code></strong> analytes (enough detected
+anchors to fit a hydrology impact model) are normally close to
+nominal.</li>
+<li>
+<strong><code>bridge</code></strong> analytes (too sparse for their
+own fit, interpolated from a shared shape) tend to be
+<strong>under-covered</strong> — their bands are too narrow, because the
+smoother treats an OU variance estimated from a handful of anchors as if
+it were known.</li>
+</ul>
+<p>If a tier is under-covered, raise <em>that tier’s</em> scale —
+<code>ou_scale</code> accepts a vector <strong>named by tier</strong>,
+so you can widen the sparse <code>bridge</code> tier without inflating
+the well-calibrated <code>model</code> tier:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Sweep the bridge scale until its coverage reaches the nominal interval …</span></span>
+<span><span class="fu"><a href="../reference/loo_anchor_coverage.html">loo_anchor_coverage</a></span><span class="op">(</span><span class="va">tm</span>, scale <span class="op">=</span> <span class="fl">2</span><span class="op">)</span>        <span class="co"># re-measure under a wider scale</span></span>
+<span></span>
+<span><span class="co"># … then apply it in the pipeline, per tier:</span></span>
+<span><span class="va">out</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mspaf_daily.html">mspaf_daily</a></span><span class="op">(</span></span>
+<span>  <span class="va">target</span>,</span>
+<span>  reference_model <span class="op">=</span> <span class="va">ref_m</span>,</span>
+<span>  interpolation   <span class="op">=</span> <span class="st">"model"</span>,</span>
+<span>  ndraws          <span class="op">=</span> <span class="fl">200L</span>,</span>
+<span>  ou_scale        <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>model <span class="op">=</span> <span class="fl">1</span>, bridge <span class="op">=</span> <span class="fl">2</span><span class="op">)</span>   <span class="co"># widen bridge only</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>A plain number (<code>ou_scale = 2</code>) still scales every analyte
+equally, as before.</p>
+<p>Coverage from a single site — especially the sparse bridge tier — is
+a noisy, finite-sample estimate, so <strong>pool across several sites
+before committing to a scale</strong> rather than over-fitting one
+record.</p>
+</div>
+<div class="section level3">
 <h3 id="getting-raw-draws">Getting raw draws<a class="anchor" aria-label="anchor" href="#getting-raw-draws"></a>
 </h3>
 <p>With <code>return = "draws"</code> you get one row per (day × draw),
 allowing you to build custom summaries, correlate with other variables,
 or feed the draws into a downstream chronic aggregate.</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">draws</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mspaf_daily.html">mspaf_daily</a></span><span class="op">(</span></span>
 <span>  <span class="va">target</span>,</span>
 <span>  reference_model <span class="op">=</span> <span class="va">ref_m</span>,</span>
@@ -324,7 +378,7 @@ or feed the draws into a downstream chronic aggregate.</p>
 <p>For large <code>ndraws</code> or multi-year grids, use
 <code>parallel = TRUE</code> with a <code>future</code> parallel plan.
 The <strong>future.apply</strong> package must be installed.</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://future.futureverse.org" class="external-link">future</a></span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://future.futureverse.org/reference/plan.html" class="external-link">plan</a></span><span class="op">(</span><span class="va">multisession</span>, workers <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
 <span></span>
@@ -347,7 +401,7 @@ sequential run with the same seed, but are themselves reproducible.</p>
 <div class="section level2">
 <h2 id="plotting-the-credible-envelope">Plotting the credible envelope<a class="anchor" aria-label="anchor" href="#plotting-the-credible-envelope"></a>
 </h2>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://ggplot2.tidyverse.org" class="external-link">ggplot2</a></span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="va">out</span>, <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span><span class="va">date</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
@@ -421,10 +475,15 @@ be noisy. Increase <code>ndraws</code>.</p>
 </tr>
 <tr class="even">
 <td><code>ou_scale</code></td>
-<td>Global marginal-variance
+<td>Marginal-variance
 (<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>γ</mi><annotation encoding="application/x-tex">\gamma</annotation></semantics></math>)
-inflation; &gt; 1 widens the whole envelope</td>
-<td>1 (default); try 2–4 for sparse sampling</td>
+inflation; &gt; 1 widens the envelope. A single number scales every
+analyte; a vector named by tier (<code>c(model = 1, bridge = 2)</code>)
+scales the tiers independently — see <a href="#calibration">Checking
+calibration</a>
+</td>
+<td>1 (default); try 2–4 for sparse sampling, or raise just the
+<code>bridge</code> tier</td>
 </tr>
 <tr class="odd">
 <td><code>kappa</code></td>
@@ -507,7 +566,7 @@ to thread the reported values.</p>
 through to the chronic msPAF (via the draw-carrier contract). The
 chronic draws can then be summarised with
 <code><a href="../reference/summarise_draws.html">summarise_draws()</a></code>.</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">draws_daily</span>  <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mspaf_daily.html">mspaf_daily</a></span><span class="op">(</span><span class="va">...</span>, return <span class="op">=</span> <span class="st">"draws"</span><span class="op">)</span></span>
 <span><span class="va">draws_mspaf</span> <span class="op">&lt;-</span> <span class="fu">dplyr</span><span class="fu">::</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span><span class="va">draws_daily</span>, <span class="cn">FALSE</span><span class="op">)</span>  <span class="co"># placeholder</span></span>
 <span><span class="co"># See vignette("chronic-mspaf-interpretation") for the chronic pathway</span></span></code></pre></div>
@@ -521,6 +580,9 @@ workflow.</p>
 <ul>
 <li>[mspaf_daily()] — full parameter reference</li>
 <li>[fit_reference_model()] — fitting the reference/impact model</li>
+<li>[loo_anchor_coverage()] — measure band calibration by tier, to tune
+<code>ou_scale</code>
+</li>
 <li>[summarise_draws()] — collapse draws to median + credible
 interval</li>
 <li>

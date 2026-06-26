@@ -200,6 +200,9 @@ background adjustment. Includes the static and temporal
 - [`fit_target_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_target_model.md)
   : Fit a season-blind predictive model of the site impact
 
+- [`loo_anchor_coverage()`](https://vorpalvorpal.github.io/hydroSense/reference/loo_anchor_coverage.md)
+  : Leave-one-anchor-out coverage of the daily Kalman bands
+
 - [`ara_summary()`](https://vorpalvorpal.github.io/hydroSense/reference/ara_summary.md)
   :
 

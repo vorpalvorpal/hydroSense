@@ -233,9 +233,17 @@ normalisation spread).  <code>NULL</code> (default) disables S6 and S7.</p></dd>
 
 
 <dt id="arg-ou-scale">ou_scale<a class="anchor" aria-label="anchor" href="#arg-ou-scale"></a></dt>
-<dd><p>Positive numeric scale factor for the OU bridge envelope
-(default <code>1</code>).  Multiplies \(\sigma^2\) and \(\gamma\) (marginal
-variance) without changing \(\theta\) (correlation length).  Use values1 to widen the between-grab uncertainty bands.</p></dd>
+<dd><p>Scale factor for the OU bridge envelope (default <code>1</code>).
+Multiplies \(\sigma^2\) and \(\gamma\) (marginal variance) without
+changing \(\theta\) (correlation length); values &gt; 1 widen the
+between-grab uncertainty bands.  Either a single number applied to every
+analyte, <strong>or</strong> a numeric vector named by impact tier to scale the tiers
+independently, e.g. <code>c(model = 1, bridge = 2.5)</code> (a tier not named falls
+back to <code>1</code>).  Measure each tier's calibration with
+<code><a href="loo_anchor_coverage.html">loo_anchor_coverage()</a></code> and raise the scale of an under-covered tier — the
+sparse-anchor <strong>bridge</strong> tier is typically the under-covered one, and a
+per-tier scale widens it without inflating the well-calibrated <strong>model</strong>
+tier.  See <code><a href="../articles/daily-uncertainty.html">vignette("daily-uncertainty")</a></code>.</p></dd>
 
 
 <dt id="arg-kappa">kappa<a class="anchor" aria-label="anchor" href="#arg-kappa"></a></dt>
