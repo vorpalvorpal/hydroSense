@@ -15,7 +15,7 @@
 #'
 #' Uses the k x k Woodbury form (posterior over the latent factor `f`) rather
 #' than inverting the full J x J residual covariance `Sigma = Lambda %*% t(Lambda)
-#' + diag(psi)` — the whole reason for the low-rank structure. Stable even
+#' + diag(psi)` -- the whole reason for the low-rank structure. Stable even
 #' from a single observed analyte.
 #'
 #' @param y Named or positional length-J vector: observed residual (or raw
@@ -151,7 +151,7 @@ rhat.route_c_stanfit <- function(x, ...) {
 
 
 ## ----------------------------------------------------------------------------
-## Fit — the two-stage censored factor model
+## Fit -- the two-stage censored factor model
 ## ----------------------------------------------------------------------------
 
 #' Fit the Route C two-stage censored factor group model
@@ -181,7 +181,7 @@ rhat.route_c_stanfit <- function(x, ...) {
 
   rhs <- paste(paste0("s(", pc_cols, ")"), collapse = " + ")
 
-  # ── Stage 1: per-analyte GAM mean + residuals/censoring bounds ────────────
+  # -- Stage 1: per-analyte GAM mean + residuals/censoring bounds ------------
   gams       <- stats::setNames(vector("list", J), target_analytes)
   resid_rows <- vector("list", J)
 
@@ -219,7 +219,7 @@ rhat.route_c_stanfit <- function(x, ...) {
 
   resid_long <- dplyr::bind_rows(resid_rows)
 
-  # ── Stage 2: censored factor model on the residuals ───────────────────────
+  # -- Stage 2: censored factor model on the residuals -----------------------
   sample_levels <- sort(unique(resid_long$sample_id))
   N <- length(sample_levels)
   row_idx <- match(resid_long$sample_id, sample_levels)
@@ -250,7 +250,7 @@ rhat.route_c_stanfit <- function(x, ...) {
   sample_args$data <- standata
 
   cli::cli_inform(c(
-    "i" = "Stan {group_name} (factor, k = {k}): {J} analyte{?s} × {N} \\
+    "i" = "Stan {group_name} (factor, k = {k}): {J} analyte{?s} x {N} \\
            sample{?s}. This may take a few minutes."
   ))
 
@@ -263,7 +263,7 @@ rhat.route_c_stanfit <- function(x, ...) {
   )
   class(fit) <- c("route_c_stanfit", class(fit))
 
-  # ── Posterior-mean point summaries (diagnostics; draws live in `fit`) ──────
+  # -- Posterior-mean point summaries (diagnostics; draws live in `fit`) ------
   Lambda_point <- matrix(0, nrow = J, ncol = k,
                         dimnames = list(safe_vec, paste0("F", seq_len(k))))
   lam_summary <- fit$summary("Lambda")
@@ -295,7 +295,7 @@ rhat.route_c_stanfit <- function(x, ...) {
 
 
 ## ----------------------------------------------------------------------------
-## Prediction — closed-form conditional draws from the fitted factor model
+## Prediction -- closed-form conditional draws from the fitted factor model
 ## ----------------------------------------------------------------------------
 
 #' Extract per-draw (Lambda, Psi) pairs from a fitted Route C group
@@ -347,7 +347,7 @@ rhat.route_c_stanfit <- function(x, ...) {
 #' For each eligible sample, builds the residual vector `y` (observed minus
 #' the Stage-1 GAM mean for detected target cells; `NA` for BDL/missing
 #' cells), then applies `.factor_condition()` / `.factor_condition_draw()`
-#' per posterior draw of `(Lambda, Psi)` to predict the missing cells —
+#' per posterior draw of `(Lambda, Psi)` to predict the missing cells --
 #' conditioned on this sample's *own* observed analytes (finding 3), with any
 #' BDL target truncated at `log(DL)` (findings 1-2). Mirrors
 #' `.predict_factor_long()`'s `pm_long` return shape so
@@ -405,7 +405,7 @@ rhat.route_c_stanfit <- function(x, ...) {
     upper_wide[[s]][idx[!det]] <- rows_a$lv[!det] - mu_a[!det]
   }
 
-  # ── Posterior draws of (Lambda, Psi) ───────────────────────────────────────
+  # -- Posterior draws of (Lambda, Psi) ---------------------------------------
   params <- .route_c_draw_params(group, ndraws)
   n_draws <- params$n
 
