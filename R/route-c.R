@@ -292,3 +292,180 @@ rhat.route_c_stanfit <- function(x, ...) {
     log_floors      = log_floors
   )
 }
+
+
+## ----------------------------------------------------------------------------
+## Prediction — closed-form conditional draws from the fitted factor model
+## ----------------------------------------------------------------------------
+
+#' Extract per-draw (Lambda, Psi) pairs from a fitted Route C group
+#'
+#' @param group A fitted `factor`-method group (from `.fit_group_model_factor()`).
+#' @param ndraws Optional cap on the number of posterior draws to use (the
+#'   first `ndraws`); `NULL` uses every draw.
+#' @return `list(Lambda = list of J x k matrices, Psi = list of length-J
+#'   vectors)`, one entry per used draw, plus `n` (the number used).
+#' @keywords internal
+.route_c_draw_params <- function(group, ndraws = NULL) {
+  J <- length(group$analytes)
+  k <- group$k
+  safe_vec <- unname(group$safe_names[group$analytes])
+
+  draws_mat <- posterior::as_draws_matrix(group$fit$draws(c("Lambda", "psi")))
+  vars <- colnames(draws_mat)
+  lam_cols <- grep("^Lambda\\[", vars)
+  psi_cols <- grep("^psi\\[", vars)
+
+  lam_ij <- regmatches(vars[lam_cols],
+                       regexpr("(?<=\\[)[0-9]+,[0-9]+(?=\\])", vars[lam_cols], perl = TRUE))
+  lam_ij <- do.call(rbind, strsplit(lam_ij, ","))
+  lam_i  <- as.integer(lam_ij[, 1]); lam_j <- as.integer(lam_ij[, 2])
+
+  psi_idx <- as.integer(regmatches(vars[psi_cols],
+                       regexpr("(?<=\\[)[0-9]+(?=\\])", vars[psi_cols], perl = TRUE)))
+
+  D_total  <- nrow(draws_mat)
+  draw_idx <- if (is.null(ndraws)) seq_len(D_total) else seq_len(min(as.integer(ndraws), D_total))
+
+  Lambda_list <- vector("list", length(draw_idx))
+  Psi_list    <- vector("list", length(draw_idx))
+  for (dd in seq_along(draw_idx)) {
+    d <- draw_idx[dd]
+    Lam_d <- matrix(0, nrow = J, ncol = k, dimnames = list(safe_vec, NULL))
+    Lam_d[cbind(lam_i, lam_j)] <- draws_mat[d, lam_cols]
+    Lambda_list[[dd]] <- Lam_d
+    psi_d <- stats::setNames(numeric(J), safe_vec)
+    psi_d[psi_idx] <- draws_mat[d, psi_cols]
+    Psi_list[[dd]] <- psi_d
+  }
+
+  list(Lambda = Lambda_list, Psi = Psi_list, n = length(draw_idx))
+}
+
+#' Closed-form conditional prediction for the Route C factor model
+#'
+#' For each eligible sample, builds the residual vector `y` (observed minus
+#' the Stage-1 GAM mean for detected target cells; `NA` for BDL/missing
+#' cells), then applies `.factor_condition()` / `.factor_condition_draw()`
+#' per posterior draw of `(Lambda, Psi)` to predict the missing cells —
+#' conditioned on this sample's *own* observed analytes (finding 3), with any
+#' BDL target truncated at `log(DL)` (findings 1-2). Mirrors
+#' `.predict_factor_long()`'s `pm_long` return shape so
+#' `.predict_and_merge()`'s merge/fabricate logic is unchanged; only rows for
+#' cells that actually need prediction (BDL or entirely absent) are emitted.
+#' @param group A fitted `factor`-method group.
+#' @param pc_wide Per-sample PC scores for the eligible samples (`sample_id`
+#'   + `PC*` columns).
+#' @param df_eligible The long-format input rows for the eligible samples
+#'   (supplies each sample's own observed target values).
+#' @inheritParams .predict_factor_long
+#' @keywords internal
+.predict_factor_conditional <- function(group, pc_wide, df_eligible, return,
+                                        ndraws, batch_size) {
+  target_analytes <- group$analytes
+  safe_vec  <- unname(group$safe_names[target_analytes])
+  J         <- length(target_analytes)
+  log_floors <- group$log_floors
+
+  # mu_j(X_i) for every eligible sample x target analyte, from the Stage-1 GAMs.
+  mu_wide <- pc_wide["sample_id"]
+  for (i in seq_len(J)) {
+    mu_wide[[safe_vec[i]]] <- as.numeric(
+      stats::predict(group$gams[[target_analytes[i]]], newdata = pc_wide, type = "response")
+    )
+  }
+
+  # Observed residual (detected) / censoring bound (BDL) per (sample, analyte);
+  # NA (unobserved -> to predict) for cells with no detected value.
+  obs_wide   <- mu_wide["sample_id"]
+  upper_wide <- mu_wide["sample_id"]
+  for (s in safe_vec) { obs_wide[[s]] <- NA_real_; upper_wide[[s]] <- NA_real_ }
+
+  target_vals <- df_eligible |>
+    dplyr::filter(.data$analyte %in% .env$target_analytes) |>
+    dplyr::select("sample_id", "analyte", "value", "detected") |>
+    dplyr::group_by(.data$sample_id, .data$analyte) |>
+    dplyr::slice(1L) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(
+      safe = unname(group$safe_names[.data$analyte]),
+      lv   = log(pmax(.data$value, log_floors[.data$analyte]))
+    )
+
+  for (i in seq_len(J)) {
+    a <- target_analytes[i]; s <- safe_vec[i]
+    rows_a <- target_vals[target_vals$analyte == a, ]
+    idx <- match(rows_a$sample_id, mu_wide$sample_id)
+    keep <- !is.na(idx)
+    idx <- idx[keep]; rows_a <- rows_a[keep, ]
+    mu_a <- mu_wide[[s]][idx]
+
+    det <- rows_a$detected
+    obs_wide[[s]][idx[det]]   <- rows_a$lv[det]  - mu_a[det]
+    upper_wide[[s]][idx[!det]] <- rows_a$lv[!det] - mu_a[!det]
+  }
+
+  # ── Posterior draws of (Lambda, Psi) ───────────────────────────────────────
+  params <- .route_c_draw_params(group, ndraws)
+  n_draws <- params$n
+
+  n_new <- nrow(mu_wide)
+  bs <- if (is.null(batch_size)) n_new else max(1L, as.integer(batch_size))
+  batches <- split(seq_len(n_new), ceiling(seq_len(n_new) / bs))
+
+  predict_rows <- function(rows) {
+    purrr::map_dfr(rows, function(i) {
+      y <- as.numeric(obs_wide[i, safe_vec])
+      miss <- which(is.na(y))
+      if (length(miss) == 0L) return(NULL)
+
+      sid    <- mu_wide$sample_id[i]
+      analyt <- target_analytes[miss]
+      mu0    <- rep(0, J)
+      mu_i   <- as.numeric(mu_wide[i, safe_vec])[miss]
+      upper_i <- as.numeric(upper_wide[i, safe_vec])[miss]
+
+      if (return == "point") {
+        acc <- numeric(length(miss))
+        for (d in seq_len(n_draws)) {
+          cond <- .factor_condition(y, mu0, params$Lambda[[d]], params$Psi[[d]])
+          acc  <- acc + cond$mean
+        }
+        tibble::tibble(
+          sample_id = sid, analyte = analyt,
+          .post_mean = exp(mu_i + acc / n_draws)
+        )
+      } else {
+        vals <- vector("list", n_draws)
+        for (d in seq_len(n_draws)) {
+          draw_d <- .factor_condition_draw(
+            y, mu0, params$Lambda[[d]], params$Psi[[d]], ndraws = 1L, upper = upper_i
+          )
+          vals[[d]] <- exp(mu_i + as.numeric(draw_d))
+        }
+        tibble::tibble(
+          sample_id   = sid,
+          analyte     = rep(analyt, times = n_draws),
+          draw_id     = rep(seq_len(n_draws), each = length(miss)),
+          .post_value = unlist(vals, use.names = FALSE)
+        )
+      }
+    })
+  }
+
+  out <- purrr::map_dfr(batches, predict_rows)
+
+  # Every eligible cell was already detected (nothing to predict): return a
+  # correctly-typed empty frame so the join in .predict_and_merge() still
+  # works rather than erroring on a columnless tibble.
+  if (nrow(out) == 0L) {
+    out <- if (return == "point") {
+      tibble::tibble(sample_id = character(), analyte = character(),
+                     .post_mean = double())
+    } else {
+      tibble::tibble(sample_id = character(), analyte = character(),
+                     draw_id = integer(), .post_value = double())
+    }
+  }
+  out
+}

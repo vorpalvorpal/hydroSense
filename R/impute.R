@@ -984,11 +984,17 @@ impute_chemistry <- function(
     )
   }
 
-  # Cap imputed BDL values at their detection limit, for every method. An
+  # Cap imputed BDL values at their detection limit, for every brms method. An
   # imputed below-detection value must not exceed its DL. (For rescor_mi this
   # is the only enforcement of the censoring bound; for the cens methods the
   # bound is enforced in the likelihood during fitting, but the emitted
-  # prediction is unconstrained, so the cap is still needed.)
+  # prediction is unconstrained, so the cap is still needed.) The factor
+  # method (Route C) truncates every BDL draw at log(DL) by construction
+  # (.factor_condition_draw()), so the cap is a no-op there — skip the check
+  # entirely rather than have it silently never fire.
+  if (!is.null(model$impute_method) && model$impute_method == "factor") {
+    return(result)
+  }
   .check_bdl_imputed(result, dl_tbl, bdl_cap)
 }
 
@@ -1837,6 +1843,13 @@ impute_coanalytes <- function(
     # Predict every (eligible sample × analyte) cell from the univariate model;
     # the merge below overlays only the BDL/missing cells.
     pm_long <- .predict_factor_long(group, pc_wide, return, ndraws, batch_size)
+
+  } else if (!is.null(group$impute_method) && group$impute_method == "factor") {
+    # ── Route C: closed-form conditional prediction (dev/plan-route-c.md) ────
+    # Conditions the missing/BDL cells on this sample's OWN observed target
+    # analytes (finding 3) and truncates BDL draws at log(DL) (findings 1-2).
+    pm_long <- .predict_factor_conditional(group, pc_wide, df_eligible, return,
+                                           ndraws, batch_size)
 
   } else {
     # ── Wide newdata + per-method prediction (rescor_mi / cens) ──────────────

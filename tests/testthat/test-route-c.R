@@ -199,7 +199,6 @@ describe("impute_chemistry(impute_method = 'factor')", {
 
   it("imputes BDL cells without exceeding the DL, and needs no cap (findings 1-2)", {
     skip_if_not_installed("cmdstanr")
-    .skip_route_c("end-to-end factor prediction")
 
     df <- .imp_chem(n = 60, seed = 1)
     ## Make some Zn cells BDL at a known limit.
@@ -225,7 +224,6 @@ describe("impute_chemistry(impute_method = 'factor')", {
 
   it("lets co-measured metals inform an imputed missing metal (finding 3)", {
     skip_if_not_installed("cmdstanr")
-    .skip_route_c("end-to-end factor prediction")
 
     df <- .imp_chem(n = 80, seed = 7)
     model <- fit_imputation_model(
@@ -255,7 +253,6 @@ describe("impute_chemistry(impute_method = 'factor')", {
 
   it("propagates uncertainty through return = 'draws'", {
     skip_if_not_installed("cmdstanr")
-    .skip_route_c("end-to-end factor prediction")
 
     df <- .imp_chem(n = 60, seed = 9)
     model <- fit_imputation_model(
