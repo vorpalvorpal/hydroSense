@@ -62,6 +62,7 @@ Suggests:
     knitr,
     rmarkdown,
     testthat (>= 3.0.0),
+    truncnorm,
     weatherOz,
     withr
 Additional_repositories: https://stan-dev.r-universe.dev

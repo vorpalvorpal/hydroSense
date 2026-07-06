@@ -34,7 +34,6 @@ library(hydroSense)
 describe("factor conditional prediction kernel (.factor_condition)", {
 
   it("matches the full-Sigma Gaussian conditional (findings 1 & 3)", {
-    .skip_route_c(".factor_condition()")
 
     fm  <- .rc_factor(J = 4L, k = 2L, seed = 1L)
     ## Observe Cu (idx 1) and Cd (idx 3); impute Zn (2) and Pb (4).
@@ -48,7 +47,6 @@ describe("factor conditional prediction kernel (.factor_condition)", {
   })
 
   it("returns the marginal when no analyte is observed (|O| = 0)", {
-    .skip_route_c(".factor_condition()")
 
     fm <- .rc_factor(J = 4L, k = 2L, seed = 2L)
     y  <- rep(NA_real_, 4L)   # nothing observed
@@ -61,7 +59,6 @@ describe("factor conditional prediction kernel (.factor_condition)", {
   })
 
   it("is invariant to rotation of the loadings", {
-    .skip_route_c(".factor_condition()")
 
     fm <- .rc_factor(J = 4L, k = 2L, seed = 3L)
     y  <- c(fm$mu[["Cu"]] + 0.7, NA, NA, fm$mu[["Pb"]] + 0.3)
@@ -78,7 +75,6 @@ describe("factor conditional prediction kernel (.factor_condition)", {
   })
 
   it("is stable and correct when only one analyte is observed (|O| = 1)", {
-    .skip_route_c(".factor_condition()")
 
     fm <- .rc_factor(J = 4L, k = 2L, seed = 4L)
     y  <- c(fm$mu[["Cu"]] + 1.2, NA, NA, NA)  # only Cu observed
@@ -91,7 +87,6 @@ describe("factor conditional prediction kernel (.factor_condition)", {
   })
 
   it("moves an unobserved analyte in the direction of the observed residual", {
-    .skip_route_c(".factor_condition()")
 
     ## Single positive-loading factor: every metal loads +1, so a high observed
     ## Cu residual must raise the conditional mean of the unobserved Zn.
@@ -114,7 +109,6 @@ describe("factor conditional prediction kernel (.factor_condition)", {
 describe("factor conditional draws (.factor_condition_draw)", {
 
   it("never lets a BDL target draw exceed its detection limit (finding 2)", {
-    .skip_route_c(".factor_condition_draw()")
 
     fm <- .rc_factor(J = 4L, k = 2L, seed = 5L)
     y  <- c(fm$mu[["Cu"]] + 0.8, NA, NA, NA)   # observe Cu; impute Zn, Cd, Pb
@@ -130,7 +124,6 @@ describe("factor conditional draws (.factor_condition_draw)", {
   })
 
   it("centres unbounded draws on the conditional mean", {
-    .skip_route_c(".factor_condition_draw()")
 
     fm <- .rc_factor(J = 4L, k = 2L, seed = 6L)
     y  <- c(fm$mu[["Cu"]] + 0.5, NA, fm$mu[["Cd"]] - 0.2, NA)
