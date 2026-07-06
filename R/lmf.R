@@ -814,6 +814,13 @@ compute_lmf_for_sample <- function(
       ## sample, so it shifts a whole series coherently and matters most at high f.
       ## Ref: Genereux, D.P. (1998) "Quantifying uncertainty in tracer-based hydrograph
       ## separations", Water Resources Research 34(4):915-919, doi:10.1029/98WR00010.
+      ##
+      ## NOTE (interaction with robust reweighting): because this term uses each
+      ## ion's OWN f, a high-f outlier gets slightly inflated var_f and hence a
+      ## slightly smaller studentized residual below — a mild self-masking effect
+      ## in the Huber step. sigma_L is normally small relative to sigma_meas, so
+      ## this is negligible in practice; flagged here in case an outlier ever
+      ## escapes downweighting at high LMF.
       var_f = (sigma_meas^2 + sigma_R^2 + (f^2) * dplyr::coalesce(sigma_L, 0)^2) / (L - R)^2,
       weight = 1 / var_f
     ) |>
@@ -1002,7 +1009,15 @@ compute_lmf_for_sample <- function(
         "  chi2/df = ",
         if (!is.na(chi2_df)) round(chi2_df, 2) else "NA",
         if (n_downweighted > 0) {
-          paste0("  [", n_downweighted, " ion(s) downweighted *]")
+          paste0(
+            "  [", n_downweighted, " ion(s) downweighted *",
+            if (n_hi_downweighted > 0) {
+              paste0(", ", n_hi_downweighted, " high-info: possible source mis-attribution")
+            } else {
+              ""
+            },
+            "]"
+          )
         } else {
           ""
         }
@@ -1261,10 +1276,16 @@ collapse_censored <- function(df_meq, id_cols) {
   n_cols <- c("NH3-N_", "NO3-N_", "NO2-N_")
   n_present <- intersect(n_cols, names(wide))
 
+  ## A collapsed total is censored only if EVERY present constituent species was
+  ## a non-detect. If no species were measured for a row (all NA), the total is
+  ## NA (no data) rather than TRUE — all(logical(0)) would otherwise return TRUE
+  ## and spuriously flag an unmeasured total as censored.
+  total_censored <- function(row) if (all(is.na(row))) NA else all(row, na.rm = TRUE)
+
   wide <- wide |>
     dplyr::mutate(
       total_N_ = if (length(n_present) > 0) {
-        apply(as.matrix(dplyr::pick(dplyr::all_of(n_present))), 1, \(row) all(row, na.rm = TRUE))
+        apply(as.matrix(dplyr::pick(dplyr::all_of(n_present))), 1, total_censored)
       } else {
         NA
       }
@@ -1276,7 +1297,7 @@ collapse_censored <- function(df_meq, id_cols) {
   wide <- wide |>
     dplyr::mutate(
       total_alk_ = if (length(alk_present) > 0) {
-        apply(as.matrix(dplyr::pick(dplyr::all_of(alk_present))), 1, \(row) all(row, na.rm = TRUE))
+        apply(as.matrix(dplyr::pick(dplyr::all_of(alk_present))), 1, total_censored)
       } else {
         NA
       }
