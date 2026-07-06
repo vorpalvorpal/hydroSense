@@ -1296,9 +1296,13 @@ impute_coanalytes <- function(
 #'
 #' Shared by [.prepare_chem_pca()] (training) and [.compute_pca_scores()]
 #' (scoring) so predictor construction is identical on both paths.
-#' Below-detection cells (`detected == FALSE`) are halved before collapsing —
-#' DL/2, parity with the LMF path (`R/lmf.R`), so a BDL predictor cell does not
-#' enter the PCA at its full detection limit. Duplicate `(sample, analyte)`
+#' Below-detection cells (`detected == FALSE`) for concentration-like analytes
+#' are set to `NA` before collapsing, so a BDL predictor cell is treated as
+#' missing (scored by NIPALS from the sample's observed predictors) rather than
+#' substituted at its detection limit or DL/2 — this package avoids substituting
+#' magic numbers for non-detects. The interval-scale `no_log_vars` (pH,
+#' temperature, ORP, DO) are kept as-is when BDL: "below DL" is a concentration
+#' idea and they are essentially never BDL. Duplicate `(sample, analyte)`
 #' rows collapse via geometric mean for concentration-like analytes (matching
 #' how targets are logged before collapsing) and arithmetic mean for
 #' `no_log_vars`. An all-`NA` collapse yields `NaN` from `mean()`/`exp(NaN)`;
@@ -1312,8 +1316,20 @@ impute_coanalytes <- function(
   df |>
     dplyr::filter(.data$analyte %in% .env$wq_vars) |>
     dplyr::select("sample_id", "analyte", "value", "detected") |>
+    # A below-detection concentration cell carries no trustworthy quantitative
+    # value for the predictor PCA. Rather than substitute a magic number (its
+    # detection limit, or DL/2 — the substitution hacks this package exists to
+    # avoid), drop it to NA and let NIPALS score the sample from its observed
+    # predictors (its native missing-cell handling). The interval-scale
+    # no_log_vars (pH, temperature, ORP, DO) are kept as-is when BDL: "below
+    # DL" is a concentration idea, and they are essentially never BDL anyway.
+    # (Quantitatively recovering the "it's low" signal is Route C's job, via a
+    # censored predictor treatment; the honest interim is to omit, not invent.)
     dplyr::mutate(
-      value = dplyr::if_else(.data$detected, .data$value, .data$value * 0.5)
+      value = dplyr::if_else(
+        .data$detected | .data$analyte %in% .env$no_log_vars,
+        .data$value, NA_real_
+      )
     ) |>
     dplyr::summarise(
       value = if (dplyr::first(.data$analyte) %in% .env$no_log_vars) {

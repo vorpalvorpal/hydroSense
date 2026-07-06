@@ -9,9 +9,13 @@
 \description{
 Shared by \code{\link[=.prepare_chem_pca]{.prepare_chem_pca()}} (training) and \code{\link[=.compute_pca_scores]{.compute_pca_scores()}}
 (scoring) so predictor construction is identical on both paths.
-Below-detection cells (\code{detected == FALSE}) are halved before collapsing —
-DL/2, parity with the LMF path (\code{R/lmf.R}), so a BDL predictor cell does not
-enter the PCA at its full detection limit. Duplicate \verb{(sample, analyte)}
+Below-detection cells (\code{detected == FALSE}) for concentration-like analytes
+are set to \code{NA} before collapsing, so a BDL predictor cell is treated as
+missing (scored by NIPALS from the sample's observed predictors) rather than
+substituted at its detection limit or DL/2 — this package avoids substituting
+magic numbers for non-detects. The interval-scale \code{no_log_vars} (pH,
+temperature, ORP, DO) are kept as-is when BDL: "below DL" is a concentration
+idea and they are essentially never BDL. Duplicate \verb{(sample, analyte)}
 rows collapse via geometric mean for concentration-like analytes (matching
 how targets are logged before collapsing) and arithmetic mean for
 \code{no_log_vars}. An all-\code{NA} collapse yields \code{NaN} from \code{mean()}/\code{exp(NaN)};

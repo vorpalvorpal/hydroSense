@@ -13,8 +13,7 @@
 ##
 ## All specs here are brms/Stan-free: they exercise the deterministic
 ## predictor-building, hurdle and co-analyte machinery that Route C keeps, so
-## they run in the default suite. `.skip_tdd()` (defined in helper-lmf-review.R)
-## marks each as pending until the corresponding fix lands.
+## they run in the default suite.
 
 ## One analyte's worth of long rows for a set of sample ids.
 .imp_rows <- function(ids, analyte, value, detected = TRUE,

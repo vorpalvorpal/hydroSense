@@ -11,11 +11,9 @@
 ## and should be hardened first (findings 5 and 6 also improve the PC-score
 ## inputs Route C will consume).
 ##
-## These are written test-first: each spec encodes the *target* (post-fix)
-## behaviour and is expected to FAIL against the current implementation, so each
-## is guarded by `.skip_tdd()` (from helper-lmf-review.R) to keep the suite
-## green until the fix lands. To drive a fix red-green: delete the `.skip_tdd()`
-## line, watch it fail, implement, watch it pass.
+## These were written test-first (each spec encodes the *target* post-fix
+## behaviour); the fixes have since landed, so they now pass. The three
+## documented-only findings (4, 8b, B1) remain as pending `it()` placeholders.
 ##
 ## Every spec here is brms/Stan-free (it exercises deterministic helpers), so it
 ## runs in the default suite rather than being gated behind a Stan toolchain.
@@ -25,11 +23,13 @@ library(hydroSense)
 
 
 ## ----------------------------------------------------------------------------
-## Finding 5 — PCA predictor cells that are below detection are held at the FULL
-## detection limit, with no half-DL substitution (the LMF path uses DL/2). BDL
-## nutrients/DOC are PCA variables, so the leading axes are biased upward in
-## proportion to censoring. Fix: treat BDL predictor cells at DL/2 (or censored)
-## for train/predict parity with the LMF path.
+## Finding 5 — PCA predictor cells that are below detection were held at the FULL
+## detection limit, biasing the leading axes upward in proportion to censoring
+## (BDL nutrients/DOC are PCA variables). Fix: treat a BDL concentration
+## predictor cell as MISSING (NA) so NIPALS scores the sample from its observed
+## predictors, rather than substituting a magic number (DL or DL/2). Recovering
+## the quantitative "it's low" signal via a censored predictor treatment is
+## deferred to Route C (see the predictor-side censoring follow-up issue).
 ## ----------------------------------------------------------------------------
 describe("PCA predictor treatment of below-detection cells (finding 5)", {
 
@@ -53,7 +53,8 @@ describe("PCA predictor treatment of below-detection cells (finding 5)", {
       dplyr::bind_rows(ctx, q_bdl), pca)
 
     ## A non-detect at the limit must not score identically to a detection at
-    ## the limit: DL/2 makes the BDL value strictly smaller before the log.
+    ## the limit: the BDL cell is dropped to NA and scored from observed
+    ## predictors, so the two rows land in different places.
     expect_false(isTRUE(all.equal(
       as.numeric(dplyr::select(sc_detected, dplyr::starts_with("PC"))),
       as.numeric(dplyr::select(sc_bdl,      dplyr::starts_with("PC")))
