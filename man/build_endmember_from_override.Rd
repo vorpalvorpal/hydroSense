@@ -4,7 +4,7 @@
 \alias{build_endmember_from_override}
 \title{Build an end-member from a caller-supplied override dataframe}
 \usage{
-build_endmember_from_override(override_df, type)
+build_endmember_from_override(override_df, type, min_leachate_samples = 10L)
 }
 \arguments{
 \item{override_df}{Long-format dataframe in \code{data_df()} structure.
@@ -12,6 +12,12 @@ All samples are used; samples missing the LMF panel are dropped.}
 
 \item{type}{Character scalar, either \code{"reference"} or
 \code{"leachate"}, controlling which output list format is produced.}
+
+\item{min_leachate_samples}{Minimum number of leachate samples with F
+measured required to include F in the panel. Applies the same threshold
+as \code{\link{build_leachate_endmember}} so the two builders cannot
+disagree on panel composition for equivalent data. Ignored when
+\code{type = "reference"}. Default \code{10L}.}
 }
 \value{
 For \code{type = "reference"}: a list with the same structure as

@@ -14,9 +14,10 @@ compute_lmf_for_sample(
   max_chi2_df,
   uuid_lmf,
   robust_iterations = 3L,
-  robust_threshold_k = 1.5,
+  robust_threshold_k = 2.5,
   verbose = FALSE,
-  datetime_sample = NA_character_
+  datetime_sample = NA_character_,
+  censored_wide = NULL
 )
 }
 \arguments{
@@ -44,8 +45,8 @@ be present and non-NA in this sample.}
 \item{robust_iterations}{Number of Huber reweighting passes. Inherited from
 \code{\link{add_lmf}}.}
 
-\item{robust_threshold_k}{MAD multiplier for Huber downweighting. Inherited
-from \code{\link{add_lmf}}.}
+\item{robust_threshold_k}{Huber threshold in standard-deviation units on
+studentized residuals. Inherited from \code{\link{add_lmf}}.}
 
 \item{verbose}{If \code{TRUE}, emits a per-ion diagnostic table via
 \code{cli::cli_inform()} showing observed concentration, end-member
@@ -55,6 +56,11 @@ from \code{\link{add_lmf}}. Default \code{FALSE}.}
 \item{datetime_sample}{The sample datetime as a character string, used
 to label the per-ion diagnostic table when \code{verbose = TRUE}.
 Default \code{NA_character_}.}
+
+\item{censored_wide}{One-row wide-format tibble of logicals (from
+\code{\link{collapse_censored}}), one column per collapsed panel ion,
+\code{TRUE} where that ion's value was substituted at half the
+detection limit. Missing/unmatched ions are treated as not censored.}
 }
 \value{
 A one-row tibble. On success: \code{value} is the robust LMF

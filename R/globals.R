@@ -134,14 +134,14 @@
 
 utils::globalVariables(c(
   # NSE column names (dplyr/tidyr)
-  "analyte", "atomic_mass.analyte", "Cl_", "Conc", "datetime", "detected",
-  "draw_id", "n_draws", "value_lower", "value_upper",
+  "analyte", "atomic_mass.analyte", "censored", "Cl_", "Conc", "datetime",
+  "detected", "draw_id", "n_draws", "value_lower", "value_upper",
   "dw_flag", "f", "f_pct", "gradient", "hi_flag", "high_info",
   "informativeness", "ion", "L", "label", "mean_ratio", "n_ref", "n_values",
-  "name", "R", "reference", "row_str", "sample_id", "sigma_meas", "sigma_R",
-  "site_id", "species_id", "Species", "ssd_available", "total_alk_",
-  "total_N_", "total_N_mgl", "uuid", "valence.analyte", "value", "value_ug_L",
-  "var_f", "weight", "wt_orig_pct", "wt_rob_pct", "x",
+  "NH3-N_", "name", "R", "reference", "row_str", "sample_id", "sigma_L",
+  "sigma_meas", "sigma_R", "site_id", "species_id", "Species", "ssd_available",
+  "total_alk_", "total_N_", "total_N_mgl", "uuid", "valence.analyte", "value",
+  "value_ug_L", "var_f", "weight", "wt_orig_pct", "wt_rob_pct", "x",
   # reference_model / temporal ARA (reference_model.R, mspaf.R)
   ".date", "ara_diag", "best_aic", "C_adj", "C_excess", "C_norm",
   "coanalytes_required", "date", "doy", "fit_date", "floor_fired",
