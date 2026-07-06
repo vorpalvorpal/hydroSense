@@ -34,8 +34,6 @@ library(hydroSense)
 describe("PCA predictor treatment of below-detection cells (finding 5)", {
 
   it("scores a BDL-at-DL cell differently from a detected-at-DL cell", {
-    .skip_tdd("finding 5: DL/2 substitution for BDL PCA predictors")
-
     train <- .imp_chem(n = 40, seed = 1)
     pca   <- hydroSense:::.prepare_chem_pca(
       train, wq_vars = .imp_pca_vars(), min_var_explained = 0.75, max_pcs = 4L
@@ -74,8 +72,6 @@ describe("PCA predictor treatment of below-detection cells (finding 5)", {
 describe("scale-aware log floor for the PCA transform (finding 6)", {
 
   it("does not map a zero to a column-scale outlier", {
-    .skip_tdd("finding 6: per-column log floor")
-
     ## A high-magnitude column with one genuine zero.
     mat <- matrix(c(1e4, 1e5, 5e4, 0), ncol = 1,
                   dimnames = list(NULL, "Cl"))
@@ -101,8 +97,6 @@ describe("scale-aware log floor for the PCA transform (finding 6)", {
 describe("metals presence hurdle excludes redox indicators (finding 7)", {
 
   it("does not let Fe or Mn alone satisfy the trace-metals hurdle", {
-    .skip_tdd("finding 7: drop Fe/Mn from the metals hurdle")
-
     ## leachate_impute_groups() returns an UNNAMED list keyed by each group's
     ## $name field, so select by name rather than by list name.
     grps <- leachate_impute_groups()
@@ -124,8 +118,6 @@ describe("metals presence hurdle excludes redox indicators (finding 7)", {
 describe("duplicate collapse is consistent for log-normal analytes (finding 8a)", {
 
   it("collapses duplicate cells on the log scale (geometric mean)", {
-    .skip_tdd("finding 8a: geometric-mean collapse of duplicate PCA cells")
-
     train <- .imp_chem(n = 40, seed = 2)
     pca   <- hydroSense:::.prepare_chem_pca(
       train, wq_vars = .imp_pca_vars(), min_var_explained = 0.75, max_pcs = 4L
@@ -163,8 +155,6 @@ describe("duplicate collapse is consistent for log-normal analytes (finding 8a)"
 describe("safe-name mapping rejects make.names collisions (bug B2)", {
 
   it("errors informatively when two analytes share a safe name", {
-    .skip_tdd("bug B2: collision guard for the safe-name map")
-
     ## Target API introduced by the fix: a bijectivity guard used wherever the
     ## engine builds make.names() identifiers for responses.
     expect_error(
@@ -189,8 +179,6 @@ describe("safe-name mapping rejects make.names collisions (bug B2)", {
 describe("all-NA cells never inject NaN into PC scores (bug B3)", {
 
   it("returns finite scores for a sample whose WQ cell is all-NA", {
-    .skip_tdd("bug B3: guard NaN from all-NA cell collapse")
-
     train <- .imp_chem(n = 40, seed = 3)
     pca   <- hydroSense:::.prepare_chem_pca(
       train, wq_vars = .imp_pca_vars(), min_var_explained = 0.75, max_pcs = 4L

@@ -50,7 +50,13 @@ test_that("leachate_impute_groups() returns the metals + organics preset", {
   metals   <- gs[[1]]
   organics <- gs[[2]]
   expect_true(all(c("Cu", "Zn", "Pb", "Ni") %in% metals$targets))
-  expect_identical(metals$targets, metals$hurdle)  # hurdled on its own targets
+  ## Hurdled on its own targets, EXCEPT the redox indicators Fe/Mn (finding
+  ## 7): those are routine analytes kept as PCA predictors, not genuine
+  ## trace-metal contamination signals, so they must not alone satisfy the
+  ## presence hurdle.
+  expect_identical(metals$hurdle, setdiff(metals$targets, c("Fe", "Mn")))
+  expect_false("Fe" %in% metals$hurdle)
+  expect_false("Mn" %in% metals$hurdle)
   expect_null(organics$targets)                    # catch-all
   expect_true(all(c("DOC", "TOC", "BOD") %in% organics$hurdle))
 })

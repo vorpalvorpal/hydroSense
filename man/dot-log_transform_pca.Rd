@@ -4,7 +4,12 @@
 \alias{.log_transform_pca}
 \title{Log10-transform the concentration-like columns of a PCA matrix}
 \usage{
-.log_transform_pca(mat, no_log_vars = .PCA_NO_LOG_VARS, eps = 1e-09)
+.log_transform_pca(
+  mat,
+  no_log_vars = .PCA_NO_LOG_VARS,
+  eps = 1e-09,
+  floors = NULL
+)
 }
 \arguments{
 \item{mat}{Numeric matrix with named columns (samples × variables).}
@@ -12,14 +17,23 @@
 \item{no_log_vars}{Column names to leave on their native scale.  Default
 \link{.PCA_NO_LOG_VARS}.}
 
-\item{eps}{Positive floor applied before the log (default \code{1e-9}).}
+\item{eps}{Absolute fallback floor for columns with no positive values
+(default \code{1e-9}).}
+
+\item{floors}{Optional named numeric vector of per-column floors (as
+produced by a prior call's \code{attr(., "floors")}). When \code{NULL}, floors are
+computed from \code{mat} itself. Supply the training floors at scoring time.}
 }
 \description{
 Applies \code{log10()} to every column whose name is not in \link{.PCA_NO_LOG_VARS},
 leaving pH / temperature / ORP / DO on their native scale.  \code{NA} cells are
-preserved (so NIPALS can still handle within-sample missingness), and a small
-floor guards against \code{log10(0)} for genuine zeros.  Both the training PCA
+preserved (so NIPALS can still handle within-sample missingness).  A genuine
+zero is floored at half the column's own smallest observed positive value
+(\code{\link[=.scale_aware_log_floor]{.scale_aware_log_floor()}}) rather than one absolute constant shared across
+analytes of wildly different scale.  Both the training PCA
 (\code{.prepare_chem_pca()}) and the scoring projection (\code{.compute_pca_scores()})
-call this so the transform is identical on both paths.
+call this so the transform is identical on both paths; scoring passes the
+training-derived \code{floors} so a cell transforms identically at fit and
+predict regardless of how many rows the scoring call sees.
 }
 \keyword{internal}

@@ -201,7 +201,8 @@ than separate driver + WQ-block sets) eliminates predictor collinearity and
 ensures normalisation co-analytes (DOC, Ca, Mg) influence the imputed metal
 concentrations.  Principal components are added until cumulative variance
 explained reaches \code{min_var_explained} or \code{max_pcs} is reached.  A minimum
-of two PCs is always used.
+of \verb{min(2, available components)} PCs is used — i.e. the floor of two
+only applies when at least two components exist.
 
 \strong{Hurdles (applied at prediction time by \code{impute_chemistry()})}
 

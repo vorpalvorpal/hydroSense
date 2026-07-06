@@ -19,7 +19,10 @@ list of \code{\link[=impute_group]{impute_group()}} objects to model a different
 }
 \details{
 The metals set is \link{.METAL_ANALYTES} and the organic-carbon hurdle set is
-\link{.DOC_LIKE_ANALYTES}.
+\link{.DOC_LIKE_ANALYTES}. The metals presence hurdle excludes the redox
+indicators Fe and Mn (routine analytes kept as PCA predictors, not trace-
+metal contamination signals), so a sample reporting only Fe/Mn does not
+trigger fabrication of the other trace metals.
 }
 \examples{
 leachate_impute_groups()

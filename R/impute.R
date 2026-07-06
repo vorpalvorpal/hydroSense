@@ -259,7 +259,10 @@ print.impute_group <- function(x, ...) {
 #' list of [impute_group()] objects to model a different chemistry.
 #'
 #' The metals set is [.METAL_ANALYTES] and the organic-carbon hurdle set is
-#' [.DOC_LIKE_ANALYTES].
+#' [.DOC_LIKE_ANALYTES]. The metals presence hurdle excludes the redox
+#' indicators Fe and Mn (routine analytes kept as PCA predictors, not trace-
+#' metal contamination signals), so a sample reporting only Fe/Mn does not
+#' trigger fabrication of the other trace metals.
 #'
 #' @return A list of two `"impute_group"` objects (`metals`, `organics`).
 #' @seealso [impute_group()], [fit_imputation_model()]
@@ -269,7 +272,7 @@ print.impute_group <- function(x, ...) {
 leachate_impute_groups <- function() {
   list(
     impute_group("metals",   targets = .METAL_ANALYTES,
-                 hurdle = .METAL_ANALYTES),
+                 hurdle = setdiff(.METAL_ANALYTES, c("Fe", "Mn"))),
     impute_group("organics", targets = NULL,
                  hurdle = .DOC_LIKE_ANALYTES)
   )
@@ -401,7 +404,8 @@ leachate_impute_groups <- function() {
 #' ensures normalisation co-analytes (DOC, Ca, Mg) influence the imputed metal
 #' concentrations.  Principal components are added until cumulative variance
 #' explained reaches `min_var_explained` or `max_pcs` is reached.  A minimum
-#' of two PCs is always used.
+#' of `min(2, available components)` PCs is used — i.e. the floor of two
+#' only applies when at least two components exist.
 #'
 #' **Hurdles (applied at prediction time by `impute_chemistry()`)**
 #'
@@ -1136,13 +1140,18 @@ impute_coanalytes <- function(
     ))
 
     # ── Fit GAM on quantified observations ──────────────────────────────────
+    # Floor tied to this co-analyte's own scale (finding 6), not one constant
+    # shared across analytes of wildly different magnitude.
+    tgt_floor <- .scale_aware_log_floor(
+      result$value[result$analyte == tgt & result$detected]
+    )
     obs_vals <- result |>
       dplyr::filter(.data$analyte == tgt, .data$detected) |>
       dplyr::group_by(.data$sample_id) |>
       dplyr::slice(1L) |>
       dplyr::ungroup() |>
       dplyr::transmute(.data$sample_id,
-                        log_tgt = log(pmax(.data$value, 1e-9)))
+                        log_tgt = log(pmax(.data$value, tgt_floor)))
 
     gam_data <- pca_scores |>
       dplyr::filter(.data$sample_id %in% present_ids) |>
@@ -1230,25 +1239,92 @@ impute_coanalytes <- function(
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
+#' Scale-aware log floor for a single numeric vector
+#'
+#' Half the smallest observed positive value, so a genuine zero maps just
+#' below the column's own real values rather than to a single absolute
+#' constant shared across analytes of wildly different magnitude.  Falls back
+#' to `eps` when the vector has no observed positive values at all.
+#' @param x Numeric vector.
+#' @param eps Absolute fallback floor (default `1e-9`).
+#' @keywords internal
+.scale_aware_log_floor <- function(x, eps = 1e-9) {
+  pos <- x[!is.na(x) & x > 0]
+  if (length(pos) == 0L) eps else min(pos) / 2
+}
+
 #' Log10-transform the concentration-like columns of a PCA matrix
 #'
 #' Applies `log10()` to every column whose name is not in [.PCA_NO_LOG_VARS],
 #' leaving pH / temperature / ORP / DO on their native scale.  `NA` cells are
-#' preserved (so NIPALS can still handle within-sample missingness), and a small
-#' floor guards against `log10(0)` for genuine zeros.  Both the training PCA
+#' preserved (so NIPALS can still handle within-sample missingness).  A genuine
+#' zero is floored at half the column's own smallest observed positive value
+#' ([.scale_aware_log_floor()]) rather than one absolute constant shared across
+#' analytes of wildly different scale.  Both the training PCA
 #' (`.prepare_chem_pca()`) and the scoring projection (`.compute_pca_scores()`)
-#' call this so the transform is identical on both paths.
+#' call this so the transform is identical on both paths; scoring passes the
+#' training-derived `floors` so a cell transforms identically at fit and
+#' predict regardless of how many rows the scoring call sees.
 #' @param mat Numeric matrix with named columns (samples × variables).
 #' @param no_log_vars Column names to leave on their native scale.  Default
 #'   [.PCA_NO_LOG_VARS].
-#' @param eps Positive floor applied before the log (default `1e-9`).
+#' @param eps Absolute fallback floor for columns with no positive values
+#'   (default `1e-9`).
+#' @param floors Optional named numeric vector of per-column floors (as
+#'   produced by a prior call's `attr(., "floors")`). When `NULL`, floors are
+#'   computed from `mat` itself. Supply the training floors at scoring time.
 #' @keywords internal
-.log_transform_pca <- function(mat, no_log_vars = .PCA_NO_LOG_VARS, eps = 1e-9) {
+.log_transform_pca <- function(mat, no_log_vars = .PCA_NO_LOG_VARS, eps = 1e-9,
+                                floors = NULL) {
   log_cols <- setdiff(colnames(mat), no_log_vars)
   if (length(log_cols) > 0L) {
-    mat[, log_cols] <- log10(pmax(mat[, log_cols, drop = FALSE], eps))
+    sub <- mat[, log_cols, drop = FALSE]
+    if (is.null(floors)) {
+      floors <- apply(sub, 2, .scale_aware_log_floor, eps = eps)
+    } else {
+      floors <- floors[log_cols]
+      floors[is.na(floors)] <- eps
+    }
+    floor_mat <- matrix(floors, nrow = nrow(sub), ncol = ncol(sub), byrow = TRUE)
+    mat[, log_cols] <- log10(pmax(sub, floor_mat))
   }
+  attr(mat, "floors") <- floors
   mat
+}
+
+#' Pivot long chemistry rows to a wide per-sample predictor frame
+#'
+#' Shared by [.prepare_chem_pca()] (training) and [.compute_pca_scores()]
+#' (scoring) so predictor construction is identical on both paths.
+#' Below-detection cells (`detected == FALSE`) are halved before collapsing —
+#' DL/2, parity with the LMF path (`R/lmf.R`), so a BDL predictor cell does not
+#' enter the PCA at its full detection limit. Duplicate `(sample, analyte)`
+#' rows collapse via geometric mean for concentration-like analytes (matching
+#' how targets are logged before collapsing) and arithmetic mean for
+#' `no_log_vars`. An all-`NA` collapse yields `NaN` from `mean()`/`exp(NaN)`;
+#' coerced back to `NA` so it reaches NIPALS scoring as missing, not a bogus
+#' numeric value (bug B3). Callers without a `detected` column (e.g. the
+#' hydro-layer WQ frames in `R/target_model.R`, which carry no BDL concept)
+#' are treated as fully detected — no halving.
+#' @keywords internal
+.pivot_chem_wide <- function(df, wq_vars, no_log_vars) {
+  if (!"detected" %in% names(df)) df$detected <- TRUE
+  df |>
+    dplyr::filter(.data$analyte %in% .env$wq_vars) |>
+    dplyr::select("sample_id", "analyte", "value", "detected") |>
+    dplyr::mutate(
+      value = dplyr::if_else(.data$detected, .data$value, .data$value * 0.5)
+    ) |>
+    dplyr::summarise(
+      value = if (dplyr::first(.data$analyte) %in% .env$no_log_vars) {
+        mean(.data$value, na.rm = TRUE)
+      } else {
+        exp(mean(log(pmax(.data$value, .Machine$double.eps)), na.rm = TRUE))
+      },
+      .by = c("sample_id", "analyte")
+    ) |>
+    dplyr::mutate(value = dplyr::if_else(is.nan(.data$value), NA_real_, .data$value)) |>
+    tidyr::pivot_wider(names_from = "analyte", values_from = "value")
 }
 
 #' Fit the unified chemistry PCA on training data
@@ -1261,15 +1337,12 @@ impute_coanalytes <- function(
 #' @keywords internal
 .prepare_chem_pca <- function(df, wq_vars, min_var_explained = 0.75, max_pcs = 4L,
                               no_log_vars = .PCA_NO_LOG_VARS) {
-  # Pivot chemistry vars to wide (one row per sample); missing cells → NA
-  wq_wide <- df |>
-    dplyr::filter(.data$analyte %in% .env$wq_vars) |>
-    dplyr::select("sample_id", "analyte", "value") |>
-    dplyr::summarise(
-      value = mean(.data$value, na.rm = TRUE),
-      .by   = c("sample_id", "analyte")
-    ) |>
-    tidyr::pivot_wider(names_from = "analyte", values_from = "value")
+  # Pivot chemistry vars to wide (one row per sample); missing cells → NA.
+  # Below-detection cells are halved (DL/2, parity with the LMF path) and
+  # duplicate (sample, analyte) rows collapse on the log scale for
+  # concentration-like analytes (geometric mean), matching how targets are
+  # collapsed elsewhere. See .pivot_chem_wide().
+  wq_wide <- .pivot_chem_wide(df, wq_vars, no_log_vars)
 
   # Ensure every sample_id is present (even those with no WQ vars)
   all_samples <- tibble::tibble(sample_id = unique(df$sample_id))
@@ -1286,8 +1359,11 @@ impute_coanalytes <- function(
   # Log10-transform concentration-like variables (everything except
   # pH / temperature / ORP / DO).  Done before centring/scaling so the PCA
   # reflects multiplicative chemical variation rather than being dominated by
-  # the highest-magnitude major ions.  NAs are preserved for NIPALS.
-  wq_matrix <- .log_transform_pca(wq_matrix, no_log_vars = no_log_vars)
+  # the highest-magnitude major ions.  NAs are preserved for NIPALS.  Floors
+  # are computed from the training matrix here and stored below so scoring
+  # re-uses them instead of recomputing from (possibly single-row) new data.
+  wq_matrix  <- .log_transform_pca(wq_matrix, no_log_vars = no_log_vars)
+  log_floors <- attr(wq_matrix, "floors")
 
   # Remove zero-variance or all-NA columns
   col_sds   <- apply(wq_matrix, 2, stats::sd, na.rm = TRUE)
@@ -1334,6 +1410,7 @@ impute_coanalytes <- function(
     medians       = train_medians,         # all WQ vars (before zero-var removal)
     active_vars   = colnames(wq_matrix),   # after zero-var removal
     no_log_vars   = no_log_vars,           # linear-scale vars (train/predict parity)
+    log_floors    = log_floors,            # training-derived per-column log floors
     n_pcs         = n_pcs,
     var_explained = cum_var[n_pcs]
   )
@@ -1358,16 +1435,12 @@ impute_coanalytes <- function(
 #' measured at all, not just BDL) are filled with training medians.
 #' @keywords internal
 .compute_pca_scores <- function(df, pca_obj) {
-  wq_vars <- pca_obj$active_vars  # columns used in training
+  wq_vars     <- pca_obj$active_vars  # columns used in training
+  no_log_vars <- pca_obj$no_log_vars %||% .PCA_NO_LOG_VARS
 
-  wq_wide <- df |>
-    dplyr::filter(.data$analyte %in% .env$wq_vars) |>
-    dplyr::select("sample_id", "analyte", "value") |>
-    dplyr::summarise(
-      value = mean(.data$value, na.rm = TRUE),
-      .by   = c("sample_id", "analyte")
-    ) |>
-    tidyr::pivot_wider(names_from = "analyte", values_from = "value")
+  # Same BDL half-DL substitution and log-scale duplicate collapse as
+  # training (.pivot_chem_wide()), for train/predict parity.
+  wq_wide <- .pivot_chem_wide(df, wq_vars, no_log_vars)
 
   all_samples <- tibble::tibble(sample_id = unique(df$sample_id))
   wq_wide     <- dplyr::left_join(all_samples, wq_wide, by = "sample_id")
@@ -1391,10 +1464,11 @@ impute_coanalytes <- function(
   # Apply the same log10 transform used at training time.  Done AFTER the
   # raw-scale median fills above so filled values are transformed identically
   # to how the training medians were, keeping centre/scale parameters valid.
-  # Use the training-time no_log_vars for parity (older pca_obj without the
-  # field falls back to the package default).
+  # Use the training-time no_log_vars AND the training-derived per-column
+  # floors for train/predict parity (older pca_obj without these fields falls
+  # back to the package default / recomputing from this call's data).
   wq_mat <- .log_transform_pca(
-    wq_mat, no_log_vars = pca_obj$no_log_vars %||% .PCA_NO_LOG_VARS
+    wq_mat, no_log_vars = no_log_vars, floors = pca_obj$log_floors
   )
 
   # Centre and scale using training parameters stored in the nipals object
@@ -1441,12 +1515,39 @@ impute_coanalytes <- function(
   scores
 }
 
+#' Guard against make.names() collisions in a set of analyte names
+#'
+#' The fitting/prediction path maps original analyte names to syntactically
+#' valid R names via `make.names()` and relies on that mapping being a
+#' bijection. If two distinct analytes collide under `make.names()` (e.g.
+#' `"Cr-6"` and `"Cr.6"` both become `"Cr.6"`), a value-equality inverse
+#' lookup can silently return the wrong original name. This guard errors
+#' early and informatively instead.
+#'
+#' @param targets Character vector of original analyte names.
+#' @keywords internal
+.assert_safe_analyte_names <- function(targets) {
+  safe <- make.names(targets)
+  dupe_safe <- unique(safe[duplicated(safe)])
+  if (length(dupe_safe) > 0) {
+    colliding <- targets[safe %in% dupe_safe]
+    cli::cli_abort(c(
+      "Safe name collision: distinct analyte names map to the same
+       {.code make.names()} value, so the safe-name mapping is not unique.",
+      "x" = "Colliding original name{?s}: {.val {colliding}}",
+      "i" = "Colliding safe name{?s}: {.val {dupe_safe}}"
+    ))
+  }
+  invisible(TRUE)
+}
+
 #' Fit a single brms group model (metals or organics)
 #' @keywords internal
 .fit_group_model <- function(df, target_analytes, pca_obj,
                               family, iter, warmup, chains, cores,
                               impute_method = "rescor_mi",
                               group_name = "group", ...) {
+  .assert_safe_analyte_names(target_analytes)
   eps_log <- 1e-9
 
   safe_analytes <- stats::setNames(make.names(target_analytes), target_analytes)
@@ -1456,6 +1557,18 @@ impute_coanalytes <- function(
   rhs      <- paste(paste0("s(", pc_cols, ")"), collapse = " + ")
   pc_wide  <- dplyr::select(pca_obj$pc_scores, "sample_id", dplyr::all_of(pc_cols))
 
+  # Per-analyte log floor (half the analyte's own smallest positive value)
+  # rather than one constant shared across analytes of wildly different scale
+  # (finding 6). Computed once at fit time and reused at prediction time
+  # (.predict_and_merge()) for train/predict parity.
+  log_floors <- df |>
+    dplyr::filter(.data$analyte %in% .env$target_analytes) |>
+    dplyr::summarise(
+      .floor = .scale_aware_log_floor(.data$value, eps = eps_log),
+      .by = "analyte"
+    ) |>
+    tibble::deframe()
+
   # One row per (sample, analyte) with a safe column name and log value.
   base <- df |>
     dplyr::filter(.data$analyte %in% .env$target_analytes) |>
@@ -1464,7 +1577,7 @@ impute_coanalytes <- function(
     dplyr::ungroup() |>
     dplyr::mutate(
       safe = unname(safe_analytes[.data$analyte]),
-      lv   = log(pmax(.data$value, eps_log))
+      lv   = log(pmax(.data$value, log_floors[.data$analyte]))
     )
 
   if (impute_method == "rescor_mi") {
@@ -1593,7 +1706,8 @@ impute_coanalytes <- function(
     safe_names      = safe_analytes,     # names=safe, values=original
     pc_cols         = pc_cols,
     wide_sample_ids = unique(model_df$sample_id),
-    impute_method   = impute_method
+    impute_method   = impute_method,
+    log_floors      = log_floors         # per-analyte log floor, train/predict parity
   )
 }
 
@@ -1652,7 +1766,8 @@ impute_coanalytes <- function(
 #' @keywords internal
 .predict_and_merge <- function(df, group, pca_scores, eligible_ids, return,
                                 ndraws = NULL, batch_size = NULL) {
-  eps_log <- 1e-9
+  eps_log    <- 1e-9
+  log_floors <- group$log_floors  # per-analyte, from fit time (train/predict parity)
 
   target_analytes <- group$analytes
   safe_analytes   <- group$safe_names   # names=safe, values=original
@@ -1681,7 +1796,7 @@ impute_coanalytes <- function(
       dplyr::mutate(
         log_value = dplyr::if_else(
           .data$detected,
-          log(pmax(.data$value, eps_log)),
+          log(pmax(.data$value, dplyr::coalesce(log_floors[.data$analyte], eps_log))),
           NA_real_
         )
       ) |>
