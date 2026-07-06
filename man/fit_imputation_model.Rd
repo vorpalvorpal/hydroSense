@@ -23,6 +23,8 @@ fit_imputation_model(
   warmup = 1000,
   chains = 4,
   cores = parallel::detectCores(),
+  k = NULL,
+  seed = NULL,
   save_dir = NULL,
   ...
 )
@@ -119,6 +121,23 @@ See \code{vignette("imputation")} and the package benchmark for guidance on
 which to prefer.}
 
 \item{iter, warmup, chains, cores}{brms MCMC settings.}
+
+\item{k}{Number of latent factors, only used when
+\code{impute_method = "factor"} (Route C). \code{NULL} (default) uses
+\code{min(2, J - 1)} per group, where \code{J} is that group's number of target
+analytes (capped below \code{J} for identifiability — see
+\code{dev/plan-route-c.md}). Choosing \code{k = 2} vs \code{k = 3} by held-out coverage
+is a deliberate validation step; raise it here once you have evidence a
+group's analytes need a second/third shared axis. Ignored (with a
+message) for a single-analyte group, which always falls back to a
+Stage-1-only marginal fit regardless of \code{k}. Ignored by the brms methods.}
+
+\item{seed}{Optional integer seed, only used when
+\code{impute_method = "factor"} (Route C): passed to the Stage-2 Stan
+sampler (\code{cmdstanr}'s \verb{$sample(seed = ...)}) for reproducible factor
+fits. \code{NULL} (default) samples with a random seed each call. The brms
+methods are already seedable via \code{seed} in \code{...} (passed to
+\code{brms::brm()}); this argument only affects the factor method.}
 
 \item{save_dir}{If non-NULL, save the returned model object as a \code{.qs} file
 in this directory using \code{qs2::qs_save()}.}

@@ -25,7 +25,7 @@ value, on whatever scale \code{mu}/\code{Lambda}/\code{psi} share) for observed 
 Uses the k x k Woodbury form (posterior over the latent factor \code{f}) rather
 than inverting the full J x J residual covariance `Sigma = Lambda \%*\% t(Lambda)
 \itemize{
-\item diag(psi)` — the whole reason for the low-rank structure. Stable even
+\item diag(psi)` -- the whole reason for the low-rank structure. Stable even
 from a single observed analyte.
 }
 }

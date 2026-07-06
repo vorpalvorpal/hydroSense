@@ -498,6 +498,21 @@ leachate_impute_groups <- function() {
 #'   See `vignette("imputation")` and the package benchmark for guidance on
 #'   which to prefer.
 #' @param iter,warmup,chains,cores brms MCMC settings.
+#' @param k Number of latent factors, only used when
+#'   `impute_method = "factor"` (Route C). `NULL` (default) uses
+#'   `min(2, J - 1)` per group, where `J` is that group's number of target
+#'   analytes (capped below `J` for identifiability — see
+#'   `dev/plan-route-c.md`). Choosing `k = 2` vs `k = 3` by held-out coverage
+#'   is a deliberate validation step; raise it here once you have evidence a
+#'   group's analytes need a second/third shared axis. Ignored (with a
+#'   message) for a single-analyte group, which always falls back to a
+#'   Stage-1-only marginal fit regardless of `k`. Ignored by the brms methods.
+#' @param seed Optional integer seed, only used when
+#'   `impute_method = "factor"` (Route C): passed to the Stage-2 Stan
+#'   sampler (`cmdstanr`'s `$sample(seed = ...)`) for reproducible factor
+#'   fits. `NULL` (default) samples with a random seed each call. The brms
+#'   methods are already seedable via `seed` in `...` (passed to
+#'   `brms::brm()`); this argument only affects the factor method.
 #' @param save_dir If non-NULL, save the returned model object as a `.qs` file
 #'   in this directory using `qs2::qs_save()`.
 #' @param ... Additional arguments passed to `brms::brm()`.  The Stan
@@ -556,6 +571,8 @@ fit_imputation_model <- function(
     warmup            = 1000,
     chains            = 4,
     cores             = parallel::detectCores(),
+    k                 = NULL,
+    seed              = NULL,
     save_dir          = NULL,
     ...
 ) {
@@ -769,6 +786,8 @@ fit_imputation_model <- function(
       cores           = cores,
       impute_method   = impute_method,
       group_name      = g$name,
+      k               = k,
+      seed            = seed,
       ...
     )
     fit$name   <- g$name
@@ -1582,7 +1601,7 @@ impute_coanalytes <- function(
 .fit_group_model <- function(df, target_analytes, pca_obj,
                               family, iter, warmup, chains, cores,
                               impute_method = "rescor_mi",
-                              group_name = "group", ...) {
+                              group_name = "group", k = NULL, seed = NULL, ...) {
   .assert_safe_analyte_names(target_analytes)
   eps_log <- 1e-9
 
@@ -1633,6 +1652,8 @@ impute_coanalytes <- function(
       chains          = chains,
       cores           = cores,
       group_name      = group_name,
+      k               = k,
+      seed            = seed,
       ...
     ))
   }

@@ -28,7 +28,7 @@
 For each eligible sample, builds the residual vector \code{y} (observed minus
 the Stage-1 GAM mean for detected target cells; \code{NA} for BDL/missing
 cells), then applies \code{.factor_condition()} / \code{.factor_condition_draw()}
-per posterior draw of \verb{(Lambda, Psi)} to predict the missing cells —
+per posterior draw of \verb{(Lambda, Psi)} to predict the missing cells --
 conditioned on this sample's \emph{own} observed analytes (finding 3), with any
 BDL target truncated at \code{log(DL)} (findings 1-2). Mirrors
 \code{.predict_factor_long()}'s \code{pm_long} return shape so

@@ -166,9 +166,32 @@ rhat.route_c_stanfit <- function(x, ...) {
 .fit_group_model_factor <- function(target_analytes, safe_analytes, base,
                                      pc_wide, pc_cols, log_floors,
                                      iter, warmup, chains, cores,
-                                     group_name = "group", k = NULL, ...) {
+                                     group_name = "group", k = NULL,
+                                     seed = NULL, ...) {
   J <- length(target_analytes)
   safe_vec <- unname(safe_analytes[target_analytes])
+
+  # A single target analyte has no cross-analyte coupling to model at all: a
+  # rank-K factor structure with K < J is structurally impossible (K must be
+  # >= 1 and < J), so a Stan factor fit is neither necessary nor identifiable
+  # here. Fall back to a Stage-1-only path: the GAM mean plus a plug-in
+  # residual variance, with BDL/missing draws from that marginal Normal
+  # (truncated at log(DL) for BDL cells). This must not error out -- a
+  # single-analyte group is a realistic outcome of the default catch-all
+  # group routing on real data.
+  if (J == 1L) {
+    if (!is.null(k)) {
+      cli::cli_inform(c(
+        "i" = "{.arg k} = {k} ignored for group {.val {group_name}}: a \\
+               single-analyte group always uses the Stage-1-only marginal fit."
+      ))
+    }
+    return(.fit_group_model_factor_degenerate(
+      target_analytes = target_analytes, safe_analytes = safe_analytes,
+      base = base, pc_wide = pc_wide, pc_cols = pc_cols,
+      log_floors = log_floors, group_name = group_name
+    ))
+  }
 
   if (is.null(k)) k <- min(2L, J - 1L)
   if (k < 1L) {
@@ -243,6 +266,7 @@ rhat.route_c_stanfit <- function(x, ...) {
       iter_warmup     = warmup,
       iter_sampling   = max(1L, iter - warmup),
       adapt_delta     = 0.95,
+      seed            = seed,
       refresh         = 0
     ),
     list(...)
@@ -293,6 +317,68 @@ rhat.route_c_stanfit <- function(x, ...) {
   )
 }
 
+#' Stage-1-only fit for a single-analyte factor group (no cross-analyte
+#' coupling is possible with J = 1)
+#'
+#' Fits the Stage-1 GAM as usual and estimates a plug-in residual variance
+#' from the detected residuals. No Stan model is fit; `Lambda` is a J x 0
+#' matrix (`k = 0`) so `.factor_condition()`'s existing `length(obs) == 0`
+#' branch (always true here -- a single-analyte group's own target is either
+#' fully observed, in which case there is nothing to predict, or missing, in
+#' which case there is nothing else in the group to condition on) reduces
+#' exactly to the marginal `N(mu_j, Psi_j)`, letting `.predict_factor_conditional()`
+#' and `.route_c_draw_params()` handle this group with no special-casing.
+#' @keywords internal
+.fit_group_model_factor_degenerate <- function(target_analytes, safe_analytes,
+                                                base, pc_wide, pc_cols,
+                                                log_floors, group_name = "group") {
+  a <- target_analytes[[1]]
+  s <- unname(safe_analytes[a])
+
+  rhs <- paste(paste0("s(", pc_cols, ")"), collapse = " + ")
+  dat <- base[base$analyte == a, c("sample_id", "detected", "lv"), drop = FALSE]
+  dat <- dplyr::left_join(dat, pc_wide, by = "sample_id")
+  dat <- dat[stats::complete.cases(dat[, pc_cols, drop = FALSE]), , drop = FALSE]
+
+  n_detected <- sum(dat$detected)
+  if (n_detected < 4L) {
+    cli::cli_abort(c(
+      "Route C Stage-1 GAM for {.val {a}} needs at least 4 detected \\
+       observations with PC scores; got {n_detected}."
+    ))
+  }
+
+  cli::cli_inform(c(
+    "i" = "{group_name} (factor, single-analyte {.val {a}}): fitting a \\
+           Stage-1-only marginal model -- no cross-analyte coupling is \\
+           possible with a single target analyte."
+  ))
+
+  gam_formula <- stats::as.formula(paste0("lv ~ ", rhs))
+  gam_fit <- mgcv::gam(gam_formula, data = dat[dat$detected, , drop = FALSE],
+                      family = stats::gaussian())
+
+  detected_resid <- dat$lv[dat$detected] -
+    as.numeric(stats::predict(gam_fit, newdata = dat[dat$detected, , drop = FALSE],
+                              type = "response"))
+  resid_var <- stats::var(detected_resid)
+
+  list(
+    gams            = stats::setNames(list(gam_fit), a),
+    Lambda          = matrix(numeric(0), nrow = 1L, ncol = 0L, dimnames = list(s, NULL)),
+    Psi             = stats::setNames(resid_var, s),
+    k               = 0L,
+    fit             = NULL,
+    analytes        = target_analytes,
+    safe_names      = safe_analytes,
+    pc_cols         = pc_cols,
+    wide_sample_ids = unique(dat$sample_id),
+    impute_method   = "factor",
+    log_floors      = log_floors,
+    degenerate      = TRUE
+  )
+}
+
 
 ## ----------------------------------------------------------------------------
 ## Prediction -- closed-form conditional draws from the fitted factor model
@@ -310,6 +396,22 @@ rhat.route_c_stanfit <- function(x, ...) {
   J <- length(group$analytes)
   k <- group$k
   safe_vec <- unname(group$safe_names[group$analytes])
+
+  if (isTRUE(group$degenerate)) {
+    # No Stan fit exists (single-analyte group): Lambda/Psi are a fixed
+    # plug-in point (J x 0 loadings, so .factor_condition()'s marginal branch
+    # applies), replicated across `n` draws so .factor_condition_draw()'s own
+    # per-draw Gaussian noise still gives a proper predictive spread in
+    # `return = "draws"` mode.
+    n <- if (is.null(ndraws)) 1000L else max(1L, as.integer(ndraws))
+    Lam0 <- group$Lambda
+    psi0 <- group$Psi
+    return(list(
+      Lambda = rep(list(Lam0), n),
+      Psi    = rep(list(psi0), n),
+      n      = n
+    ))
+  }
 
   draws_mat <- posterior::as_draws_matrix(group$fit$draws(c("Lambda", "psi")))
   vars <- colnames(draws_mat)
@@ -426,10 +528,25 @@ rhat.route_c_stanfit <- function(x, ...) {
       upper_i <- as.numeric(upper_wide[i, safe_vec])[miss]
 
       if (return == "point") {
+        has_bound <- !is.na(upper_i)
+        if (any(has_bound) && !requireNamespace("truncnorm", quietly = TRUE)) {
+          cli::cli_abort(c(
+            "Point-mode BDL bounding needs the {.pkg truncnorm} package.",
+            "i" = "Install with {.code install.packages(\"truncnorm\")}."
+          ))
+        }
         acc <- numeric(length(miss))
         for (d in seq_len(n_draws)) {
           cond <- .factor_condition(y, mu0, params$Lambda[[d]], params$Psi[[d]])
-          acc  <- acc + cond$mean
+          contrib <- as.numeric(cond$mean)
+          if (any(has_bound)) {
+            sd_d <- sqrt(diag(as.matrix(cond$cov)))
+            contrib[has_bound] <- truncnorm::etruncnorm(
+              a = -Inf, b = upper_i[has_bound],
+              mean = cond$mean[has_bound], sd = sd_d[has_bound]
+            )
+          }
+          acc <- acc + contrib
         }
         tibble::tibble(
           sample_id = sid, analyte = analyt,

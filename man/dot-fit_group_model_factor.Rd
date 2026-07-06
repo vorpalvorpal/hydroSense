@@ -17,6 +17,7 @@
   cores,
   group_name = "group",
   k = NULL,
+  seed = NULL,
   ...
 )
 }
