@@ -40,6 +40,7 @@ Imports:
     mgcv,
     nipals,
     parallel,
+    posterior,
     purrr,
     qs2,
     readr,

@@ -144,7 +144,6 @@ describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
 
   it("returns Lambda, Psi, per-analyte gams and k", {
     skip_if_not_installed("cmdstanr")
-    .skip_route_c("the 'factor' branch of .fit_group_model()")
 
     df    <- .imp_chem(n = 60, seed = 1)
     model <- fit_imputation_model(
@@ -164,7 +163,6 @@ describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
 
   it("rejects analyte names that collide under make.names()", {
     skip_if_not_installed("cmdstanr")
-    .skip_route_c("the 'factor' branch of .fit_group_model()")
 
     df <- .imp_chem(n = 40, seed = 2)
     expect_error(
@@ -179,7 +177,6 @@ describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
 
   it("converges with benign geometry (no rescor_mi-style funnel)", {
     skip_if_not_installed("cmdstanr")
-    .skip_route_c("the 'factor' branch of .fit_group_model()")
 
     df    <- .imp_chem(n = 80, seed = 3)
     model <- fit_imputation_model(

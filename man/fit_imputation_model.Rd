@@ -18,7 +18,7 @@ fit_imputation_model(
   min_var_explained = 0.75,
   max_pcs = 6L,
   family = "gaussian",
-  impute_method = c("rescor_mi", "cens", "cens_factor"),
+  impute_method = c("rescor_mi", "cens", "cens_factor", "factor"),
   iter = 2000,
   warmup = 1000,
   chains = 4,
@@ -105,6 +105,15 @@ metal informs the unobserved/BDL ones at that sample. The factor is
 well-identified (each sample contributes several analyte observations);
 \code{adapt_delta = 0.95} is set by default to clear the factor's mild
 funnel (override via \code{control} in \code{...}).}
+\item{\code{"factor"}}{\strong{(Route C)} Low-rank left-censored latent factor
+model (\verb{Sigma = Lambda Lambda' + Psi}, rank \code{k = 2} by default),
+resolving findings 1-3 at the source: BDL cells are censored in the
+likelihood (no post-hoc cap), and the latent factor is inferred from a
+sample's \emph{observed} metals at prediction time, so measured metals
+genuinely condition the missing/BDL ones. Fitted in two stages: a
+per-analyte \code{mgcv::gam} mean on the PC scores, then a Stan factor
+model on the residuals (needs \pkg{cmdstanr}). See
+\code{dev/plan-route-c.md}.}
 }
 See \code{vignette("imputation")} and the package benchmark for guidance on
 which to prefer.}

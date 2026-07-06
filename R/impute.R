@@ -485,6 +485,15 @@ leachate_impute_groups <- function() {
 #'       well-identified (each sample contributes several analyte observations);
 #'       `adapt_delta = 0.95` is set by default to clear the factor's mild
 #'       funnel (override via `control` in `...`).}
+#'     \item{`"factor"`}{**(Route C)** Low-rank left-censored latent factor
+#'       model (`Sigma = Lambda Lambda' + Psi`, rank `k = 2` by default),
+#'       resolving findings 1-3 at the source: BDL cells are censored in the
+#'       likelihood (no post-hoc cap), and the latent factor is inferred from a
+#'       sample's *observed* metals at prediction time, so measured metals
+#'       genuinely condition the missing/BDL ones. Fitted in two stages: a
+#'       per-analyte `mgcv::gam` mean on the PC scores, then a Stan factor
+#'       model on the residuals (needs \pkg{cmdstanr}). See
+#'       `dev/plan-route-c.md`.}
 #'   }
 #'   See `vignette("imputation")` and the package benchmark for guidance on
 #'   which to prefer.
@@ -542,7 +551,7 @@ fit_imputation_model <- function(
     min_var_explained = 0.75,
     max_pcs           = 6L,
     family            = "gaussian",
-    impute_method     = c("rescor_mi", "cens", "cens_factor"),
+    impute_method     = c("rescor_mi", "cens", "cens_factor", "factor"),
     iter              = 2000,
     warmup            = 1000,
     chains            = 4,
@@ -559,6 +568,11 @@ fit_imputation_model <- function(
   if (is.null(exclude))     exclude     <- .IMPUTE_EXCLUDED
   if (is.null(no_log_vars)) no_log_vars <- .PCA_NO_LOG_VARS
   .validate_impute_groups(groups)
+  # Guard declared group targets against a make.names() collision up front —
+  # independent of whether they clear the detection-frequency gates below, so
+  # a mistyped group spec fails fast rather than silently dropping analytes.
+  declared_targets <- unique(unlist(lapply(groups, function(g) g$targets), use.names = FALSE))
+  if (length(declared_targets) > 0L) .assert_safe_analyte_names(declared_targets)
 
   checkmate::assert_data_frame(df)
   checkmate::assert_names(names(df),
@@ -1595,6 +1609,27 @@ impute_coanalytes <- function(
       safe = unname(safe_analytes[.data$analyte]),
       lv   = log(pmax(.data$value, log_floors[.data$analyte]))
     )
+
+  if (impute_method == "factor") {
+    # Route C: low-rank censored factor model (dev/plan-route-c.md). Its
+    # two-stage fit (per-analyte GAM mean + Stage-2 Stan factor model) is
+    # structurally different from the brms branches below, so it is handled
+    # entirely by .fit_group_model_factor() and returns directly.
+    return(.fit_group_model_factor(
+      target_analytes = target_analytes,
+      safe_analytes   = safe_analytes,
+      base            = base,
+      pc_wide         = pc_wide,
+      pc_cols         = pc_cols,
+      log_floors      = log_floors,
+      iter            = iter,
+      warmup          = warmup,
+      chains          = chains,
+      cores           = cores,
+      group_name      = group_name,
+      ...
+    ))
+  }
 
   if (impute_method == "rescor_mi") {
     # Residual correlation + mi() for BDL/missing. BDL and missing are NA and
