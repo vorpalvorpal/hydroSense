@@ -269,7 +269,8 @@ WQ-block sets) eliminates predictor collinearity and ensures
 normalisation co-analytes (DOC, Ca, Mg) influence the imputed metal
 concentrations. Principal components are added until cumulative variance
 explained reaches `min_var_explained` or `max_pcs` is reached. A minimum
-of two PCs is always used.
+of `min(2, available components)` PCs is used — i.e. the floor of two
+only applies when at least two components exist.
 
 **Hurdles (applied at prediction time by
 [`impute_chemistry()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.md))**

@@ -70,7 +70,10 @@ list of <code><a href="impute_group.html">impute_group()</a></code> objects to m
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>The metals set is <a href="dot-METAL_ANALYTES.html">.METAL_ANALYTES</a> and the organic-carbon hurdle set is
-<a href="dot-DOC_LIKE_ANALYTES.html">.DOC_LIKE_ANALYTES</a>.</p>
+<a href="dot-DOC_LIKE_ANALYTES.html">.DOC_LIKE_ANALYTES</a>. The metals presence hurdle excludes the redox
+indicators Fe and Mn (routine analytes kept as PCA predictors, not trace-
+metal contamination signals), so a sample reporting only Fe/Mn does not
+trigger fabrication of the other trace metals.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
@@ -83,7 +86,7 @@ list of <code><a href="impute_group.html">impute_group()</a></code> objects to m
 <span class="r-out co"><span class="r-pr">#&gt;</span> [[1]]</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;impute_group: metals&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   targets: Al, As, B, Ba, Be, Cd, Co, Cr, Cr-6, Cu, Fe, Hg, Mn, Mo, Ni, Pb, Sb, Se, Sn, Sr, V, Zn</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   hurdle:  Al, As, B, Ba, Be, Cd, Co, Cr, Cr-6, Cu, Fe, Hg, Mn, Mo, Ni, Pb, Sb, Se, Sn, Sr, V, Zn</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   hurdle:  Al, As, B, Ba, Be, Cd, Co, Cr, Cr-6, Cu, Hg, Mo, Ni, Pb, Sb, Se, Sn, Sr, V, Zn</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [[2]]</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;impute_group: organics&gt;</span>

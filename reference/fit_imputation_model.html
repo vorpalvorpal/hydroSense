@@ -283,7 +283,8 @@ than separate driver + WQ-block sets) eliminates predictor collinearity and
 ensures normalisation co-analytes (DOC, Ca, Mg) influence the imputed metal
 concentrations.  Principal components are added until cumulative variance
 explained reaches <code>min_var_explained</code> or <code>max_pcs</code> is reached.  A minimum
-of two PCs is always used.</p>
+of <code>min(2, available components)</code> PCs is used — i.e. the floor of two
+only applies when at least two components exist.</p>
 <p><strong>Hurdles (applied at prediction time by <code><a href="impute_chemistry.html">impute_chemistry()</a></code>)</strong></p>
 <p>Each group may carry a <em>presence hurdle</em> (see <code><a href="impute_group.html">impute_group()</a></code>): a sample is
 only imputed for that group if it carries at least one of the hurdle

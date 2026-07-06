@@ -40,6 +40,7 @@
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-anchor_residual_cor.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-apply_normalisation.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-assert_pos_scale.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-assert_safe_analyte_names.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-assert_temperature_present.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-bracket_draw_cols.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-bracket_summary_cols.html</loc></url>
@@ -98,6 +99,7 @@
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-perturb_gam.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-perturb_reference_model.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-perturb_target_model.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-pivot_chem_wide.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-predict_and_merge.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-predict_daily_tox.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-predict_factor_long.html</loc></url>
@@ -117,6 +119,7 @@
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-resolve_to.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-route_groups.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-s6_var_to_g.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-scale_aware_log_floor.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-select_api_tau.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-ssd_paf_lookup.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-ssd_paf_vec.html</loc></url>
