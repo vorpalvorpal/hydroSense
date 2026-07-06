@@ -10,6 +10,7 @@ make_lmf_row(
   reason,
   n_ions,
   n_downweighted,
+  n_hi_downweighted,
   sigma,
   chi2,
   quantified,
@@ -28,6 +29,10 @@ make_lmf_row(
 \item{n_downweighted}{Integer count of ions whose weight was meaningfully
 reduced (> 1\% reduction) by robust reweighting.}
 
+\item{n_hi_downweighted}{Integer count of high-information ions among those
+downweighted. A robust estimate carried by the low-information majority
+against the sensitive tracers signals source mis-attribution.}
+
 \item{sigma}{Numeric \code{sigma_lmf} uncertainty estimate (from robust
 weights).}
 
@@ -41,8 +46,9 @@ diagnostic only).}
 \value{
 A one-row tibble with columns: \code{value} (robust LMF),
 \code{lmf_naive}, \code{lmf_reason}, \code{n_ions_used},
-\code{n_ions_downweighted}, \code{sigma_lmf}, \code{chi2_per_df},
-\code{uuid.analyte}, \code{uuid}, \code{quantified}.
+\code{n_ions_downweighted}, \code{n_high_info_downweighted},
+\code{sigma_lmf}, \code{chi2_per_df}, \code{uuid.analyte}, \code{uuid},
+\code{quantified}.
 }
 \description{
 Internal helper that builds the one-row tibble returned by

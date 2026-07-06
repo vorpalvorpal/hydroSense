@@ -34,8 +34,6 @@ library(hydroSense)
 ## ----------------------------------------------------------------------------
 
 test_that("[issue 1] sigma_lmf responds to leachate end-member spread", {
-  .skip_tdd("issue 1: variance model omits uncertainty in the leachate end-member L")
-
   ref <- .rev_endmembers()$reference
 
   ## Two leachate end-members with (approximately) the SAME mean composition
@@ -65,8 +63,6 @@ test_that("[issue 1] sigma_lmf responds to leachate end-member spread", {
 ## ----------------------------------------------------------------------------
 
 test_that("[issue 2] sigma_lmf is inflated when ions disagree (chi2/df > 1)", {
-  .skip_tdd("issue 2: overdispersion (chi2/df > 1) not reflected in sigma_lmf")
-
   em <- .rev_endmembers()
 
   q_clean <- .rev_samples(0.5, "q", "query", noise_sd = 0)
@@ -101,8 +97,6 @@ test_that("[issue 2] sigma_lmf is inflated when ions disagree (chi2/df > 1)", {
 ## ----------------------------------------------------------------------------
 
 test_that("[issue 3] a well-fitting sample triggers no robust downweighting", {
-  .skip_tdd("issue 3: raw-MAD, k=1.5 downweights ions on essentially every sample")
-
   em <- .rev_endmembers()
   set.seed(4)
   ## Only ordinary measurement noise — no ion genuinely departs the mixing line.
@@ -123,8 +117,6 @@ test_that("[issue 3] a well-fitting sample triggers no robust downweighting", {
 ## ----------------------------------------------------------------------------
 
 test_that("[issue 4] an alternative Na-Cl source is surfaced, not silently scored", {
-  .skip_tdd("issue 4: mis-attributed Na-Cl source can pass with confident LMF and no flag")
-
   em <- .rev_endmembers()
 
   ## Only Na and Cl look leachate-like; every other tracer says reference.
@@ -144,8 +136,6 @@ test_that("[issue 4] an alternative Na-Cl source is surfaced, not silently score
 })
 
 test_that("[issue 4] a finite max_chi2_per_df rejects the mis-attributed sample", {
-  .skip_tdd("issue 4: verify then unskip — guards the existing chi2 gate on a mixed source")
-
   em <- .rev_endmembers()
   q <- .rev_samples(0.0, "q", "query", noise_sd = 0)
   q <- .rev_set_f(q, "Na", 0.6)
@@ -169,8 +159,6 @@ test_that("[issue 4] a finite max_chi2_per_df rejects the mis-attributed sample"
 ## ----------------------------------------------------------------------------
 
 test_that("[issue 5] censoring the highest-weight ion lowers precision", {
-  .skip_tdd("issue 5: non-detects substituted at DL/2 keep ~5% RSD, overstating precision")
-
   em <- .rev_endmembers()
 
   ## Clean sample (f = 0). Same chemistry twice; in one, the N species are
@@ -203,8 +191,6 @@ test_that("[issue 5] censoring the highest-weight ion lowers precision", {
 ## ----------------------------------------------------------------------------
 
 test_that("[issue 6] a partial N sum missing NH4 is not reported at full confidence", {
-  .skip_tdd("issue 6: rowSums(na.rm=TRUE) yields biased-low total_N from partial species")
-
   meq <- tibble::tribble(
     ~sample_id, ~analyte,   ~value,
     "A",        "NH3-N_",   3.0,
@@ -233,8 +219,6 @@ test_that("[issue 6] a partial N sum missing NH4 is not reported at full confide
 ## ----------------------------------------------------------------------------
 
 test_that("[smaller note] leachate ion:Cl ratio is unbiased under independent noise", {
-  .skip_tdd("smaller note: mean-of-ratios biases L high vs ratio-of-means/median (Jensen)")
-
   set.seed(21)
   n <- 60
   ## True meq ratio Na:Cl = 2. Independent 30% noise on each => mean-of-ratios
@@ -267,8 +251,6 @@ test_that("[smaller note] leachate ion:Cl ratio is unbiased under independent no
 ## ----------------------------------------------------------------------------
 
 test_that("[bug B1] add_lmf returns df unchanged when every feature is skipped", {
-  .skip_tdd("bug B1: empty group_modify -> left_join(by='sample_id') errors on missing column")
-
   em <- .rev_endmembers()
   q  <- .rev_samples(0.5, "q", "query", noise_sd = 0)
 
@@ -311,8 +293,6 @@ test_that("[bug B1] add_lmf returns df unchanged when every feature is skipped",
 ## ----------------------------------------------------------------------------
 
 test_that("[bug B2] override leachate applies the standard F-inclusion threshold", {
-  .skip_tdd("bug B2: override admits F at >=3 samples; standard builder needs >=10")
-
   set.seed(12)
   ## 5 leachate samples with F measured in all of them: below the standard
   ## threshold (10), so F must be EXCLUDED to match build_leachate_endmember().

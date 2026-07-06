@@ -219,16 +219,16 @@
 #'   threshold return \code{NA} with reason code
 #'   \code{"insufficient_high_info_ions"}. Default \code{3L}.
 #' @param robust_iterations Number of Huber M-estimator reweighting passes.
-#'   In each pass, ions whose residuals exceed \code{robust_threshold_k *
-#'   MAD(residuals)} are downweighted proportionally. Three iterations is
-#'   sufficient for convergence in practice. Set to \code{0L} to disable
-#'   robust reweighting entirely. Default \code{3L}.
-#' @param robust_threshold_k Threshold multiplier applied to the unweighted
-#'   median absolute deviation (MAD) of per-ion residuals. Ions with
-#'   \code{|r_i| > k * MAD} have their estimation weight reduced by a factor
-#'   of \code{k * MAD / |r_i|}. Smaller values downweight more aggressively;
-#'   \code{k = 1.5} is fairly tight, \code{k = 2.5} is close to the
-#'   conventional Huber constant. Default \code{1.5}.
+#'   In each pass, ions whose studentized residuals exceed
+#'   \code{robust_threshold_k} are downweighted proportionally. Three
+#'   iterations is sufficient for convergence in practice. Set to \code{0L}
+#'   to disable robust reweighting entirely. Default \code{3L}.
+#' @param robust_threshold_k Huber threshold in standard-deviation units on
+#'   studentized residuals (\code{r_i / sqrt(var_f_i)}). Ions with
+#'   \code{|sr_i| > k} have their estimation weight reduced by a factor of
+#'   \code{k / |sr_i|}. Smaller values downweight more aggressively;
+#'   \code{k = 2.5} is close to the conventional Huber constant. Default
+#'   \code{2.5}.
 #' @param verbose If \code{TRUE}, prints an ion informativeness table via
 #'   \code{cli::cli_inform()} showing each ion's score and high/low
 #'   classification. Useful when tuning \code{informativeness_threshold}.
@@ -263,10 +263,13 @@
 #'   (from the input), \code{lmf_naive} (the non-robust estimate for
 #'   comparison), \code{lmf_reason} (\code{NA} on success, reason code on
 #'   failure), \code{n_ions_used}, \code{n_ions_downweighted} (count of ions
-#'   whose weight was reduced by robust reweighting), \code{sigma_lmf}, and
-#'   \code{chi2_per_df} (diagnostic; computed on original weights). Columns
-#'   present in \code{df} but not produced by the LMF computation are
-#'   \code{NA} in the appended rows.
+#'   whose weight was reduced by robust reweighting), \code{n_high_info_downweighted}
+#'   (count of downweighted ions that were high-information tracers; a robust
+#'   estimate carried by the low-information majority against sensitive
+#'   tracers signals a mis-attributed source, not a transformation artifact),
+#'   \code{sigma_lmf}, and \code{chi2_per_df} (diagnostic; computed on original
+#'   weights). Columns present in \code{df} but not produced by the LMF
+#'   computation are \code{NA} in the appended rows.
 #'
 #' @seealso \code{\link{build_leachate_endmember}},
 #'   \code{\link{build_reference_endmember}},
@@ -308,7 +311,7 @@ add_lmf <- function(
   informativeness_threshold = 0.20,
   min_high_info_ions = 3L,
   robust_iterations = 3L,
-  robust_threshold_k = 1.5,
+  robust_threshold_k = 2.5,
   verbose = FALSE
 ) {
   checkmate::assert_data_frame(df)
@@ -406,6 +409,13 @@ add_lmf <- function(
       id_cols = c("sample_id", "site_id", "datetime")
     )
 
+  ## Per-ion censored flag (side table, keyed by sample_id and collapsed ion
+  ## name), used by compute_lmf_for_sample() to give non-detects
+  ## detection-limit-scale uncertainty instead of a fixed RSD (Issue 5). For a
+  ## collapsed total (total_N_, total_alk_), censored only if EVERY present
+  ## constituent species was a non-detect.
+  df_censored <- collapse_censored(df_meq, id_cols = "sample_id")
+
   ## ================================================================
   ## Step 3: Build the leachate end-member (once, shared all features).
   ##
@@ -429,7 +439,8 @@ add_lmf <- function(
     }
     leachate_em <- build_endmember_from_override(
       override_df = leachate_data,
-      type = "leachate"
+      type = "leachate",
+      min_leachate_samples = min_leachate_samples
     )
   } else {
     leachate_em <- build_leachate_endmember(
@@ -590,7 +601,10 @@ add_lmf <- function(
       endmembers <-
         ref_endmember$stats |>
         dplyr::filter(ion %in% leachate_em$L_values$ion) |>
-        dplyr::left_join(leachate_em$L_values |> dplyr::select(ion, L), by = "ion") |>
+        dplyr::left_join(
+          leachate_em$L_values |> dplyr::select(ion, L, sigma_L),
+          by = "ion"
+        ) |>
         dplyr::filter(abs(L - R) > .Machine$double.eps * 1000)
 
       ## Compute LMF per sample.
@@ -609,7 +623,8 @@ add_lmf <- function(
             robust_iterations = robust_iterations,
             robust_threshold_k = robust_threshold_k,
             verbose = verbose,
-            datetime_sample = as.character(.s$datetime[[1]])
+            datetime_sample = as.character(.s$datetime[[1]]),
+            censored_wide = df_censored[df_censored$sample_id == .sid[[1, 1]], ]
           )
         }) |>
         dplyr::ungroup()
@@ -619,6 +634,13 @@ add_lmf <- function(
   ## ================================================================
   ## Step 6: Bind LMF rows back into the input df.
   ## ================================================================
+
+  ## If every feature was skipped (no usable reference data), there is nothing to
+  ## append and lsi_results lacks a sample_id column; return the input untouched
+  ## rather than erroring in the join below.
+  if (nrow(lsi_results) == 0 || !"sample_id" %in% names(lsi_results)) {
+    return(df)
+  }
 
   lsi_results <- dplyr::mutate(lsi_results, analyte = "LMF")
 
@@ -665,8 +687,8 @@ add_lmf <- function(
 #' @param uuid_lmf UUID of the LMF analyte entry in \code{analyteDF}.
 #' @param robust_iterations Number of Huber reweighting passes. Inherited from
 #'   \code{\link{add_lmf}}.
-#' @param robust_threshold_k MAD multiplier for Huber downweighting. Inherited
-#'   from \code{\link{add_lmf}}.
+#' @param robust_threshold_k Huber threshold in standard-deviation units on
+#'   studentized residuals. Inherited from \code{\link{add_lmf}}.
 #' @param verbose If \code{TRUE}, emits a per-ion diagnostic table via
 #'   \code{cli::cli_inform()} showing observed concentration, end-member
 #'   values, per-ion mixing fraction, original and robust weights. Inherited
@@ -674,6 +696,10 @@ add_lmf <- function(
 #' @param datetime_sample The sample datetime as a character string, used
 #'   to label the per-ion diagnostic table when \code{verbose = TRUE}.
 #'   Default \code{NA_character_}.
+#' @param censored_wide One-row wide-format tibble of logicals (from
+#'   \code{\link{collapse_censored}}), one column per collapsed panel ion,
+#'   \code{TRUE} where that ion's value was substituted at half the
+#'   detection limit. Missing/unmatched ions are treated as not censored.
 #'
 #' @return A one-row tibble. On success: \code{value} is the robust LMF
 #'   estimate, \code{quantified = TRUE}. On failure: \code{value = NA},
@@ -692,9 +718,10 @@ compute_lmf_for_sample <- function(
   max_chi2_df,
   uuid_lmf,
   robust_iterations = 3L,
-  robust_threshold_k = 1.5,
+  robust_threshold_k = 2.5,
   verbose = FALSE,
-  datetime_sample = NA_character_
+  datetime_sample = NA_character_,
+  censored_wide = NULL
 ) {
   ## Helper: construct a failure row without repeating all columns.
   fail <- function(reason, n_ions = 0L, sigma = NA_real_, chi2 = NA_real_) {
@@ -704,6 +731,7 @@ compute_lmf_for_sample <- function(
       reason = reason,
       n_ions = n_ions,
       n_downweighted = NA_integer_,
+      n_hi_downweighted = NA_integer_,
       sigma = sigma,
       chi2 = chi2,
       quantified = FALSE,
@@ -721,6 +749,17 @@ compute_lmf_for_sample <- function(
   ## Helper to safely extract a value from a wide row by column name.
   get_val <- function(nm) {
     if (nm %in% names(sample_wide)) sample_wide[[nm]] else NA_real_
+  }
+
+  ## Helper to safely extract a censored flag; unmatched ions are FALSE
+  ## (not NA), since "unknown" should not be treated as censored.
+  get_censored <- function(nm) {
+    if (!is.null(censored_wide) && nm %in% names(censored_wide)) {
+      val <- censored_wide[[nm]]
+      if (length(val) == 0 || is.na(val)) FALSE else val
+    } else {
+      FALSE
+    }
   }
 
   hi_in_endmembers <- high_info_ions[high_info_ions %in% endmembers$ion]
@@ -744,25 +783,38 @@ compute_lmf_for_sample <- function(
 
   all_vals <- purrr::map_dbl(endmembers$ion, get_val)
   available_mask <- !is.na(all_vals)
+  all_censored <- purrr::map_lgl(endmembers$ion, get_censored)
 
   ion_data <-
     endmembers[available_mask, ] |>
     dplyr::mutate(
       x = all_vals[available_mask],
+      censored = all_censored[available_mask],
 
       ## Per-ion mixing fraction.
       ## f_i = (x_i - R_i) / (L_i - R_i)
       ## Values outside [0, 1] are permitted.
       f = (x - R) / (L - R),
 
-      ## Analytical uncertainty: rsd_default * |x|, floor at
-      ## rsd_default * |R| (approximates half the detection limit
-      ## near reference concentrations).
-      sigma_meas = pmax(rsd_default * abs(x), rsd_default * abs(R)),
+      ## Analytical uncertainty. For a DETECTED value: rsd_default * |x|, floored at
+      ## rsd_default * |R|. For a NON-DETECT the value was substituted at DL/2, so its
+      ## honest uncertainty is ~DL/2, i.e. |x| (since x == DL/2). A fixed 5% RSD on an
+      ## imputed number would fabricate precision at the clean end of the index.
+      ## Ref: Helsel, D.R. (2006) "Fabricating data: how substituting values for
+      ## nondetects can ruin results, and what can be done about it", Chemosphere
+      ## 65(11):2434-2439, doi:10.1016/j.chemosphere.2006.04.051.
+      sigma_meas = dplyr::if_else(
+        censored,
+        abs(x),
+        pmax(rsd_default * abs(x), rsd_default * abs(R))
+      ),
 
-      ## Per-ion variance on the mixing fraction:
-      ## sigma2_f_i = (sigma2_meas + sigma2_R) / (L - R)^2
-      var_f = (sigma_meas^2 + sigma_R^2) / (L - R)^2,
+      ## Per-ion variance on the mixing fraction, including end-member uncertainty.
+      ## The leachate term f^2 * sigma_L^2 is systematic: the same L applies to every
+      ## sample, so it shifts a whole series coherently and matters most at high f.
+      ## Ref: Genereux, D.P. (1998) "Quantifying uncertainty in tracer-based hydrograph
+      ## separations", Water Resources Research 34(4):915-919, doi:10.1029/98WR00010.
+      var_f = (sigma_meas^2 + sigma_R^2 + (f^2) * dplyr::coalesce(sigma_L, 0)^2) / (L - R)^2,
       weight = 1 / var_f
     ) |>
     dplyr::filter(is.finite(weight), weight > 0)
@@ -805,29 +857,31 @@ compute_lmf_for_sample <- function(
   ## Robust reweighting: Huber M-estimator.
   ##
   ## Iteratively downweights ions whose residuals are large relative
-  ## to the spread of residuals across all ions, so that process-
-  ## specific deviations (denitrification in total_N, sulphate
-  ## reduction in SO4, young leachate SO4 spike, etc.) do not
-  ## systematically bias the LMF estimate.
+  ## to their OWN expected noise, so that process-specific deviations
+  ## (denitrification in total_N, sulphate reduction in SO4, young
+  ## leachate SO4 spike, etc.) do not systematically bias the LMF
+  ## estimate.
   ##
   ## At each iteration:
   ##   1. Compute residuals: r_i = f_i - LMF_current
-  ##   2. Compute the unweighted MAD of |r_i| across all ions.
-  ##      UNWEIGHTED because outlier detection is a question about
-  ##      the distribution of residuals, not about estimation
-  ##      reliability. An ion's informativeness (high or low weight)
-  ##      is irrelevant to whether its residual is unusual.
+  ##   2. Studentize: express each residual in units of its OWN expected noise
+  ##      (sqrt(var_f)). A low-information ion's naturally large raw residual is then
+  ##      not mistaken for an anomaly, and a precise ion's small raw residual is
+  ##      correctly flagged. Studentized residuals have unit scale under the mixing
+  ##      model, so compare to a fixed Huber threshold rather than a MAD (which
+  ##      collapses to ~0 on a well-fitting sample and over-downweights).
+  ##      Ref: Huber, P.J. (1964) "Robust estimation of a location parameter",
+  ##      Annals of Mathematical Statistics 35(1):73-101.
   ##   3. Apply Huber downweighting:
-  ##        w_robust_i = w_original_i * min(1, k * MAD / |r_i|)
-  ##      Ions within k*MAD of LMF keep full weight. Ions beyond
-  ##      are downweighted proportionally to their exceedance.
+  ##        w_robust_i = w_original_i * min(1, k / |sr_i|)
+  ##      Ions within k standard deviations of LMF keep full weight. Ions
+  ##      beyond are downweighted proportionally to their exceedance.
   ##      This is continuous — an ion twice the threshold gets half
   ##      its original weight, not zero.
   ##   4. Recompute LMF with the adjusted weights.
   ##
-  ## Reference: Huber (1964) Annals of Mathematical Statistics 35(1).
-  ## robust_threshold_k = 1.5 is fairly tight; 2.5 is closer to the
-  ## conventional Huber constant used in regression.
+  ## robust_threshold_k = 2.5 is close to the conventional Huber constant
+  ## used in regression.
   ## ---------------------------------------------------------------
 
   robust_weights <- ion_data$weight ## initialise at original weights
@@ -835,18 +889,12 @@ compute_lmf_for_sample <- function(
 
   for (iter in seq_len(max(robust_iterations, 0L))) {
     residuals <- ion_data$f - lmf_robust
-
-    ## Unweighted MAD of absolute residuals.
-    ## Add a small floor to avoid division-by-zero when all ions agree
-    ## perfectly (MAD = 0, which would downweight every non-zero residual
-    ## to zero). The floor of 1e-6 is negligible on the 0-1 scale.
-    mad_resid <- max(stats::median(abs(residuals)), 1e-6)
-    threshold <- robust_threshold_k * mad_resid
+    sr <- residuals / sqrt(ion_data$var_f)
 
     ## Huber influence function: full weight within threshold,
     ## proportional downweight beyond.
     robust_weights <- ion_data$weight *
-      pmin(1, threshold / pmax(abs(residuals), .Machine$double.eps))
+      pmin(1, robust_threshold_k / pmax(abs(sr), .Machine$double.eps))
 
     sum_w_robust <- sum(robust_weights)
     lmf_robust <- sum(robust_weights * ion_data$f) / sum_w_robust
@@ -854,13 +902,32 @@ compute_lmf_for_sample <- function(
 
   ## Count how many ions had their weight meaningfully reduced.
   ## Threshold: weight reduced by more than 1% of original.
-  n_downweighted <- sum(robust_weights < 0.99 * ion_data$weight)
+  downweighted_mask <- robust_weights < 0.99 * ion_data$weight
+  n_downweighted <- sum(downweighted_mask)
+
+  ## Count how many of the DOWNWEIGHTED ions were high-information tracers. A robust
+  ## estimate carried by the low-information majority against the sensitive tracers is
+  ## the signature of source mis-attribution (a third Na-Cl source: road salt, saline
+  ## intrusion) rather than a transformation artifact. Two-component EMMA cannot
+  ## distinguish a third source from noise by fit alone, so surface it as a diagnostic.
+  ## Ref: Christophersen, N. & Hooper, R.P. (1992) Water Resources Research 28(1):99-107.
+  n_hi_downweighted <- sum(downweighted_mask & (ion_data$ion %in% high_info_ions))
 
   ## sigma_LMF from the robust weights.
   ## 1 / sqrt(sum(w_robust)) reflects the effective precision after
   ## downweighting outlier ions.
   sum_w_robust <- sum(robust_weights)
   sigma_lmf <- 1 / sqrt(sum_w_robust)
+
+  ## Overdispersion (Birge) scaling. When per-ion estimates disagree more than their
+  ## stated precision allows (chi2/df > 1) - e.g. because reference ion errors are
+  ## correlated - the inverse-variance sigma is optimistic. Inflate by the Birge ratio
+  ## sqrt(chi2/df); it only ever widens the interval.
+  ## Ref: Birge, R.T. (1932) "The calculation of errors by the method of least
+  ## squares", Physical Review 40(2):207-227, doi:10.1103/PhysRev.40.207.
+  if (!is.na(chi2_df) && chi2_df > 1) {
+    sigma_lmf <- sigma_lmf * sqrt(chi2_df)
+  }
 
   ## ---------------------------------------------------------------
   ## Scale to percentage.
@@ -994,6 +1061,7 @@ compute_lmf_for_sample <- function(
     reason = NA_character_,
     n_ions = n_ions,
     n_downweighted = n_downweighted,
+    n_hi_downweighted = n_hi_downweighted,
     sigma = sigma_lmf,
     chi2 = chi2_df,
     quantified = TRUE,
@@ -1023,6 +1091,9 @@ compute_lmf_for_sample <- function(
 #' @param n_ions Integer count of ions used in the calculation.
 #' @param n_downweighted Integer count of ions whose weight was meaningfully
 #'   reduced (> 1% reduction) by robust reweighting.
+#' @param n_hi_downweighted Integer count of high-information ions among those
+#'   downweighted. A robust estimate carried by the low-information majority
+#'   against the sensitive tracers signals source mis-attribution.
 #' @param sigma Numeric \code{sigma_lmf} uncertainty estimate (from robust
 #'   weights).
 #' @param chi2 Numeric chi-squared per degree of freedom (on original weights;
@@ -1032,8 +1103,9 @@ compute_lmf_for_sample <- function(
 #'
 #' @return A one-row tibble with columns: \code{value} (robust LMF),
 #'   \code{lmf_naive}, \code{lmf_reason}, \code{n_ions_used},
-#'   \code{n_ions_downweighted}, \code{sigma_lmf}, \code{chi2_per_df},
-#'   \code{uuid.analyte}, \code{uuid}, \code{quantified}.
+#'   \code{n_ions_downweighted}, \code{n_high_info_downweighted},
+#'   \code{sigma_lmf}, \code{chi2_per_df}, \code{uuid.analyte}, \code{uuid},
+#'   \code{quantified}.
 #'
 #' @keywords internal
 make_lmf_row <- function(
@@ -1042,6 +1114,7 @@ make_lmf_row <- function(
   reason,
   n_ions,
   n_downweighted,
+  n_hi_downweighted,
   sigma,
   chi2,
   quantified,
@@ -1054,6 +1127,7 @@ make_lmf_row <- function(
     lmf_reason = reason,
     n_ions_used = as.integer(n_ions),
     n_ions_downweighted = as.integer(n_downweighted),
+    n_high_info_downweighted = as.integer(n_hi_downweighted),
     sigma_lmf = sigma,
     chi2_per_df = chi2,
     uuid.analyte = uuid_lmf,
@@ -1117,6 +1191,17 @@ collapse_species <- function(df_meq, id_cols) {
         )
       } else {
         NA_real_
+      },
+
+      ## Ammonium (NH3-N) is the dominant nitrogen species in landfill leachate, so a
+      ## total_N computed without it is biased low - and total_N is the highest-weight
+      ## ion. Require NH3-N to be present; otherwise report NA rather than a confident
+      ## partial sum. Ref: Kjeldsen, P. et al. (2002) "Present and long-term composition
+      ## of MSW landfill leachate: a review", Crit. Rev. Environ. Sci. Technol. 32(4):297-336.
+      total_N_ = if ("NH3-N_" %in% names(wide)) {
+        dplyr::if_else(!is.na(`NH3-N_`), total_N_, NA_real_)
+      } else {
+        NA_real_
       }
     )
 
@@ -1139,6 +1224,61 @@ collapse_species <- function(df_meq, id_cols) {
         )
       } else {
         NA_real_
+      }
+    )
+
+  wide |>
+    dplyr::select(-dplyr::any_of(c(n_cols, alk_cols)))
+}
+
+
+#' Pivot and collapse per-ion censored (non-detect) flags to match
+#' \code{\link{collapse_species}}'s ion panel
+#'
+#' Internal helper used by \code{\link{add_lmf}} to build the censored-flag
+#' side table consumed by \code{\link{compute_lmf_for_sample}} (Issue 5: give
+#' non-detects detection-limit-scale uncertainty instead of a fixed RSD). A
+#' collapsed total (\code{total_N_}, \code{total_alk_}) is censored only if
+#' every present constituent species was a non-detect.
+#'
+#' @param df_meq Long-format dataframe with columns \code{analyte},
+#'   \code{detected}, plus any columns named in \code{id_cols}.
+#' @param id_cols Character vector of column names to preserve as row
+#'   identifiers during the wide pivot.
+#'
+#' @return Wide-format tibble of logicals, one row per unique combination of
+#'   \code{id_cols}, one column per collapsed panel ion.
+#'
+#' @keywords internal
+collapse_censored <- function(df_meq, id_cols) {
+  wide <-
+    df_meq |>
+    dplyr::select(dplyr::all_of(c(id_cols, "analyte", "detected"))) |>
+    dplyr::mutate(censored = !detected) |>
+    dplyr::select(-detected) |>
+    tidyr::pivot_wider(names_from = analyte, values_from = censored, values_fn = dplyr::first)
+
+  n_cols <- c("NH3-N_", "NO3-N_", "NO2-N_")
+  n_present <- intersect(n_cols, names(wide))
+
+  wide <- wide |>
+    dplyr::mutate(
+      total_N_ = if (length(n_present) > 0) {
+        apply(as.matrix(dplyr::pick(dplyr::all_of(n_present))), 1, \(row) all(row, na.rm = TRUE))
+      } else {
+        NA
+      }
+    )
+
+  alk_cols <- c("CO3-CaCO3_", "HCO3-CaCO3_")
+  alk_present <- intersect(alk_cols, names(wide))
+
+  wide <- wide |>
+    dplyr::mutate(
+      total_alk_ = if (length(alk_present) > 0) {
+        apply(as.matrix(dplyr::pick(dplyr::all_of(alk_present))), 1, \(row) all(row, na.rm = TRUE))
+      } else {
+        NA
       }
     )
 
@@ -1175,6 +1315,11 @@ collapse_species <- function(df_meq, id_cols) {
 #'   All samples are used; samples missing the LMF panel are dropped.
 #' @param type Character scalar, either \code{"reference"} or
 #'   \code{"leachate"}, controlling which output list format is produced.
+#' @param min_leachate_samples Minimum number of leachate samples with F
+#'   measured required to include F in the panel. Applies the same threshold
+#'   as \code{\link{build_leachate_endmember}} so the two builders cannot
+#'   disagree on panel composition for equivalent data. Ignored when
+#'   \code{type = "reference"}. Default \code{10L}.
 #'
 #' @return For \code{type = "reference"}: a list with the same structure as
 #'   \code{\link{build_reference_endmember}}: \code{stats} (tibble of ion,
@@ -1187,7 +1332,7 @@ collapse_species <- function(df_meq, id_cols) {
 #'
 #' @keywords internal
 
-build_endmember_from_override <- function(override_df, type) {
+build_endmember_from_override <- function(override_df, type, min_leachate_samples = 10L) {
   checkmate::assert_data_frame(override_df)
   checkmate::assert_choice(type, c("reference", "leachate"))
 
@@ -1281,27 +1426,42 @@ build_endmember_from_override <- function(override_df, type) {
       dplyr::filter(!is.na(Cl_), Cl_ > 0) |>
       dplyr::mutate(dplyr::across(dplyr::all_of(ratio_cols), \(x) x / Cl_, .names = "ratio_{.col}"))
 
-    ## F availability: same threshold as standard builder.
+    ## F availability: same min_leachate_samples threshold as the standard
+    ## builder (build_leachate_endmember()), so the two paths cannot disagree
+    ## on panel composition for equivalent data.
     f_col <- "ratio_F_"
     f_available <- f_col %in%
       names(leachate_ratios) &&
-      sum(!is.na(leachate_ratios[[f_col]])) >= 3
+      sum(!is.na(leachate_ratios[[f_col]])) >= min_leachate_samples
 
-    L_values <-
-      leachate_ratios |>
-      dplyr::select(dplyr::starts_with("ratio_")) |>
-      dplyr::summarise(dplyr::across(dplyr::everything(), \(x) mean(x, na.rm = TRUE))) |>
-      tidyr::pivot_longer(dplyr::everything(), names_to = "ion", values_to = "mean_ratio") |>
-      dplyr::mutate(
-        ion = stringr::str_remove(ion, "^ratio_"),
-        L = mean_ratio * cl_anchor
-      ) |>
+    ## Ratio-of-means, not mean-of-ratios. Averaging per-sample ion/Cl ratios is biased
+    ## high when Cl varies (Jensen's inequality: 1/Cl is convex), inflating L. The ratio
+    ## of the means (equivalently the median per-sample ratio) is unbiased.
+    ## Ref: Jensen, J.L.W.V. (1906) Acta Mathematica 30:175-193.
+    ##
+    ## sigma_L is the leachate end-member's own sample-to-sample spread: sd(ratio) put
+    ## back on the concentration scale of L. Feeds var_f's end-member uncertainty term
+    ## (see compute_lmf_for_sample()).
+    cl_mean <- mean(leachate_ratios$Cl_, na.rm = TRUE)
+
+    L_values <- purrr::map_dfr(ratio_cols, \(col) {
+      dplyr::tibble(
+        ion = col,
+        mean_ratio = mean(leachate_ratios[[col]], na.rm = TRUE) / cl_mean,
+        sigma_L = stats::sd(leachate_ratios[[paste0("ratio_", col)]], na.rm = TRUE) * cl_anchor
+      )
+    }) |>
+      dplyr::mutate(L = mean_ratio * cl_anchor) |>
       dplyr::filter(!is.na(L)) |>
       dplyr::filter(!(ion == "F_" & !f_available))
 
     L_values <- dplyr::bind_rows(
       L_values,
-      dplyr::tibble(ion = "Cl_", mean_ratio = 1, L = cl_anchor)
+      dplyr::tibble(
+        ion = "Cl_", mean_ratio = 1,
+        sigma_L = stats::sd(override_wide$Cl_, na.rm = TRUE),
+        L = cl_anchor
+      )
     )
 
     return(list(
@@ -1657,23 +1817,36 @@ build_leachate_endmember <- function(
     message("F not found in leachate samples. F excluded from LMF panel.")
   }
 
-  ## Average ratios and construct L_i values.
-  L_values <-
-    leachate_ratios |>
-    dplyr::select(dplyr::starts_with("ratio_")) |>
-    dplyr::summarise(dplyr::across(dplyr::everything(), \(x) mean(x, na.rm = TRUE))) |>
-    tidyr::pivot_longer(dplyr::everything(), names_to = "ion", values_to = "mean_ratio") |>
-    dplyr::mutate(
-      ion = stringr::str_remove(ion, "^ratio_"),
-      L = mean_ratio * cl_anchor
-    ) |>
+  ## Ratio-of-means, not mean-of-ratios. Averaging per-sample ion/Cl ratios is biased
+  ## high when Cl varies (Jensen's inequality: 1/Cl is convex), inflating L. The ratio
+  ## of the means (equivalently the median per-sample ratio) is unbiased.
+  ## Ref: Jensen, J.L.W.V. (1906) Acta Mathematica 30:175-193.
+  ##
+  ## sigma_L is the leachate end-member's own uncertainty: sd(ratio) * cl_anchor
+  ## puts it back on the concentration scale of L. Used downstream to propagate
+  ## L's sample-to-sample spread into var_f (see compute_lmf_for_sample()).
+  cl_mean <- mean(leachate_ratios$Cl_, na.rm = TRUE)
+
+  L_values <- purrr::map_dfr(ratio_cols, \(col) {
+    dplyr::tibble(
+      ion = col,
+      mean_ratio = mean(leachate_ratios[[col]], na.rm = TRUE) / cl_mean,
+      sigma_L = stats::sd(leachate_ratios[[paste0("ratio_", col)]], na.rm = TRUE) * cl_anchor
+    )
+  }) |>
+    dplyr::mutate(L = mean_ratio * cl_anchor) |>
     dplyr::filter(!is.na(L)) |>
     dplyr::filter(!(ion == "F_" & !f_available))
 
   ## Add Cl itself (ratio = 1, L_Cl = cl_anchor by definition).
+  ## sigma_L for Cl is sd(Cl) directly (the anchor's own spread).
   L_values <- dplyr::bind_rows(
     L_values,
-    dplyr::tibble(ion = "Cl_", mean_ratio = 1, L = cl_anchor)
+    dplyr::tibble(
+      ion = "Cl_", mean_ratio = 1,
+      sigma_L = stats::sd(leachate_wide$Cl_, na.rm = TRUE),
+      L = cl_anchor
+    )
   )
 
   list(

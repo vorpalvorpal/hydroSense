@@ -20,7 +20,7 @@ add_lmf(
   informativeness_threshold = 0.2,
   min_high_info_ions = 3L,
   robust_iterations = 3L,
-  robust_threshold_k = 1.5,
+  robust_threshold_k = 2.5,
   verbose = FALSE
 )
 }
@@ -103,17 +103,17 @@ threshold return \code{NA} with reason code
 \code{"insufficient_high_info_ions"}. Default \code{3L}.}
 
 \item{robust_iterations}{Number of Huber M-estimator reweighting passes.
-In each pass, ions whose residuals exceed \code{robust_threshold_k *
-  MAD(residuals)} are downweighted proportionally. Three iterations is
-sufficient for convergence in practice. Set to \code{0L} to disable
-robust reweighting entirely. Default \code{3L}.}
+In each pass, ions whose studentized residuals exceed
+\code{robust_threshold_k} are downweighted proportionally. Three
+iterations is sufficient for convergence in practice. Set to \code{0L}
+to disable robust reweighting entirely. Default \code{3L}.}
 
-\item{robust_threshold_k}{Threshold multiplier applied to the unweighted
-median absolute deviation (MAD) of per-ion residuals. Ions with
-\code{|r_i| > k * MAD} have their estimation weight reduced by a factor
-of \code{k * MAD / |r_i|}. Smaller values downweight more aggressively;
-\code{k = 1.5} is fairly tight, \code{k = 2.5} is close to the
-conventional Huber constant. Default \code{1.5}.}
+\item{robust_threshold_k}{Huber threshold in standard-deviation units on
+studentized residuals (\code{r_i / sqrt(var_f_i)}). Ions with
+\code{|sr_i| > k} have their estimation weight reduced by a factor of
+\code{k / |sr_i|}. Smaller values downweight more aggressively;
+\code{k = 2.5} is close to the conventional Huber constant. Default
+\code{2.5}.}
 
 \item{verbose}{If \code{TRUE}, prints an ion informativeness table via
 \code{cli::cli_inform()} showing each ion's score and high/low
@@ -127,10 +127,13 @@ The input \code{df} with LMF rows appended. Each LMF row carries
 (from the input), \code{lmf_naive} (the non-robust estimate for
 comparison), \code{lmf_reason} (\code{NA} on success, reason code on
 failure), \code{n_ions_used}, \code{n_ions_downweighted} (count of ions
-whose weight was reduced by robust reweighting), \code{sigma_lmf}, and
-\code{chi2_per_df} (diagnostic; computed on original weights). Columns
-present in \code{df} but not produced by the LMF computation are
-\code{NA} in the appended rows.
+whose weight was reduced by robust reweighting), \code{n_high_info_downweighted}
+(count of downweighted ions that were high-information tracers; a robust
+estimate carried by the low-information majority against sensitive
+tracers signals a mis-attributed source, not a transformation artifact),
+\code{sigma_lmf}, and \code{chi2_per_df} (diagnostic; computed on original
+weights). Columns present in \code{df} but not produced by the LMF
+computation are \code{NA} in the appended rows.
 }
 \description{
 Appends LMF rows to a long-format water quality dataframe. LMF is a
