@@ -60,6 +60,7 @@ guaranteed consistent.</p>
 <span>  <span class="va">reason</span>,</span>
 <span>  <span class="va">n_ions</span>,</span>
 <span>  <span class="va">n_downweighted</span>,</span>
+<span>  <span class="va">n_hi_downweighted</span>,</span>
 <span>  <span class="va">sigma</span>,</span>
 <span>  <span class="va">chi2</span>,</span>
 <span>  <span class="va">quantified</span>,</span>
@@ -92,6 +93,12 @@ guaranteed consistent.</p>
 reduced (&gt; 1% reduction) by robust reweighting.</p></dd>
 
 
+<dt id="arg-n-hi-downweighted">n_hi_downweighted<a class="anchor" aria-label="anchor" href="#arg-n-hi-downweighted"></a></dt>
+<dd><p>Integer count of high-information ions among those
+downweighted. A robust estimate carried by the low-information majority
+against the sensitive tracers signals source mis-attribution.</p></dd>
+
+
 <dt id="arg-sigma">sigma<a class="anchor" aria-label="anchor" href="#arg-sigma"></a></dt>
 <dd><p>Numeric <code>sigma_lmf</code> uncertainty estimate (from robust
 weights).</p></dd>
@@ -114,8 +121,9 @@ diagnostic only).</p></dd>
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>A one-row tibble with columns: <code>value</code> (robust LMF),
 <code>lmf_naive</code>, <code>lmf_reason</code>, <code>n_ions_used</code>,
-<code>n_ions_downweighted</code>, <code>sigma_lmf</code>, <code>chi2_per_df</code>,
-<code>uuid.analyte</code>, <code>uuid</code>, <code>quantified</code>.</p>
+<code>n_ions_downweighted</code>, <code>n_high_info_downweighted</code>,
+<code>sigma_lmf</code>, <code>chi2_per_df</code>, <code>uuid.analyte</code>, <code>uuid</code>,
+<code>quantified</code>.</p>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

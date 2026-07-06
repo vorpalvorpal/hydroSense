@@ -24,7 +24,7 @@ add_lmf(
   informativeness_threshold = 0.2,
   min_high_info_ions = 3L,
   robust_iterations = 3L,
-  robust_threshold_k = 1.5,
+  robust_threshold_k = 2.5,
   verbose = FALSE
 )
 ```
@@ -133,19 +133,18 @@ add_lmf(
 - robust_iterations:
 
   Number of Huber M-estimator reweighting passes. In each pass, ions
-  whose residuals exceed `robust_threshold_k * MAD(residuals)` are
+  whose studentized residuals exceed `robust_threshold_k` are
   downweighted proportionally. Three iterations is sufficient for
   convergence in practice. Set to `0L` to disable robust reweighting
   entirely. Default `3L`.
 
 - robust_threshold_k:
 
-  Threshold multiplier applied to the unweighted median absolute
-  deviation (MAD) of per-ion residuals. Ions with `|r_i| > k * MAD` have
-  their estimation weight reduced by a factor of `k * MAD / |r_i|`.
-  Smaller values downweight more aggressively; `k = 1.5` is fairly
-  tight, `k = 2.5` is close to the conventional Huber constant. Default
-  `1.5`.
+  Huber threshold in standard-deviation units on studentized residuals
+  (`r_i / sqrt(var_f_i)`). Ions with `|sr_i| > k` have their estimation
+  weight reduced by a factor of `k / |sr_i|`. Smaller values downweight
+  more aggressively; `k = 2.5` is close to the conventional Huber
+  constant. Default `2.5`.
 
 - verbose:
 
@@ -162,9 +161,13 @@ leachate), `name.analyte = "LMF"`, `uuid.feature` (from the input),
 `lmf_naive` (the non-robust estimate for comparison), `lmf_reason` (`NA`
 on success, reason code on failure), `n_ions_used`,
 `n_ions_downweighted` (count of ions whose weight was reduced by robust
-reweighting), `sigma_lmf`, and `chi2_per_df` (diagnostic; computed on
-original weights). Columns present in `df` but not produced by the LMF
-computation are `NA` in the appended rows.
+reweighting), `n_high_info_downweighted` (count of downweighted ions
+that were high-information tracers; a robust estimate carried by the
+low-information majority against sensitive tracers signals a
+mis-attributed source, not a transformation artifact), `sigma_lmf`, and
+`chi2_per_df` (diagnostic; computed on original weights). Columns
+present in `df` but not produced by the LMF computation are `NA` in the
+appended rows.
 
 ## References
 
@@ -196,11 +199,11 @@ subset(out, analyte == "LMF", c("sample_id", "value"))
 #> # A tibble: 6 × 2
 #>   sample_id value
 #>   <chr>     <dbl>
-#> 1 DS-01      15.1
-#> 2 DS-02      14.9
-#> 3 DS-03      14.2
-#> 4 DS-04      14.9
-#> 5 DS-05      14.7
-#> 6 DS-06      15.0
+#> 1 DS-01      14.9
+#> 2 DS-02      14.7
+#> 3 DS-03      14.7
+#> 4 DS-04      15.1
+#> 5 DS-05      14.6
+#> 6 DS-06      14.9
 # }
 ```

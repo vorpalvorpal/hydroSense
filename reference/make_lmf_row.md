@@ -14,6 +14,7 @@ make_lmf_row(
   reason,
   n_ions,
   n_downweighted,
+  n_hi_downweighted,
   sigma,
   chi2,
   quantified,
@@ -44,6 +45,12 @@ make_lmf_row(
   Integer count of ions whose weight was meaningfully reduced (\> 1%
   reduction) by robust reweighting.
 
+- n_hi_downweighted:
+
+  Integer count of high-information ions among those downweighted. A
+  robust estimate carried by the low-information majority against the
+  sensitive tracers signals source mis-attribution.
+
 - sigma:
 
   Numeric `sigma_lmf` uncertainty estimate (from robust weights).
@@ -64,5 +71,6 @@ make_lmf_row(
 ## Value
 
 A one-row tibble with columns: `value` (robust LMF), `lmf_naive`,
-`lmf_reason`, `n_ions_used`, `n_ions_downweighted`, `sigma_lmf`,
-`chi2_per_df`, `uuid.analyte`, `uuid`, `quantified`.
+`lmf_reason`, `n_ions_used`, `n_ions_downweighted`,
+`n_high_info_downweighted`, `sigma_lmf`, `chi2_per_df`, `uuid.analyte`,
+`uuid`, `quantified`.

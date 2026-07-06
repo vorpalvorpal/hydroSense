@@ -18,9 +18,10 @@ compute_lmf_for_sample(
   max_chi2_df,
   uuid_lmf,
   robust_iterations = 3L,
-  robust_threshold_k = 1.5,
+  robust_threshold_k = 2.5,
   verbose = FALSE,
-  datetime_sample = NA_character_
+  datetime_sample = NA_character_,
+  censored_wide = NULL
 )
 ```
 
@@ -69,7 +70,8 @@ compute_lmf_for_sample(
 
 - robust_threshold_k:
 
-  MAD multiplier for Huber downweighting. Inherited from
+  Huber threshold in standard-deviation units on studentized residuals.
+  Inherited from
   [`add_lmf`](https://vorpalvorpal.github.io/hydroSense/reference/add_lmf.md).
 
 - verbose:
@@ -85,6 +87,14 @@ compute_lmf_for_sample(
 
   The sample datetime as a character string, used to label the per-ion
   diagnostic table when `verbose = TRUE`. Default `NA_character_`.
+
+- censored_wide:
+
+  One-row wide-format tibble of logicals (from
+  [`collapse_censored`](https://vorpalvorpal.github.io/hydroSense/reference/collapse_censored.md)),
+  one column per collapsed panel ion, `TRUE` where that ion's value was
+  substituted at half the detection limit. Missing/unmatched ions are
+  treated as not censored.
 
 ## Value
 

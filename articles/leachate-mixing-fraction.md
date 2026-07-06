@@ -100,12 +100,12 @@ lmf
 #> # A tibble: 6 × 5
 #>   sample_id value sigma_lmf n_ions_used chi2_per_df
 #>   <chr>     <dbl>     <dbl>       <int>       <dbl>
-#> 1 DS-01      15.1     0.320           9       0.330
-#> 2 DS-02      14.9     0.322           9       0.419
-#> 3 DS-03      14.2     0.309           9      29.9  
-#> 4 DS-04      14.9     0.305           9       0.423
-#> 5 DS-05      14.7     0.303           9       0.388
-#> 6 DS-06      15.0     0.341           9       0.502
+#> 1 DS-01      14.9     0.472           8       0.163
+#> 2 DS-02      14.7     0.467           8       0.208
+#> 3 DS-03      14.7     0.465           8       0.155
+#> 4 DS-04      15.1     0.476           8       0.129
+#> 5 DS-05      14.6     0.463           8       0.201
+#> 6 DS-06      14.9     0.471           8       0.268
 ```
 
 The downstream samples return an LMF of about 15% — consistent with how

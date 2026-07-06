@@ -70,7 +70,7 @@ model. See the file-level header for full methodological detail.</p>
 <span>  informativeness_threshold <span class="op">=</span> <span class="fl">0.2</span>,</span>
 <span>  min_high_info_ions <span class="op">=</span> <span class="fl">3L</span>,</span>
 <span>  robust_iterations <span class="op">=</span> <span class="fl">3L</span>,</span>
-<span>  robust_threshold_k <span class="op">=</span> <span class="fl">1.5</span>,</span>
+<span>  robust_threshold_k <span class="op">=</span> <span class="fl">2.5</span>,</span>
 <span>  verbose <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -186,19 +186,19 @@ threshold return <code>NA</code> with reason code
 
 <dt id="arg-robust-iterations">robust_iterations<a class="anchor" aria-label="anchor" href="#arg-robust-iterations"></a></dt>
 <dd><p>Number of Huber M-estimator reweighting passes.
-In each pass, ions whose residuals exceed <code>robust_threshold_k *
-  MAD(residuals)</code> are downweighted proportionally. Three iterations is
-sufficient for convergence in practice. Set to <code>0L</code> to disable
-robust reweighting entirely. Default <code>3L</code>.</p></dd>
+In each pass, ions whose studentized residuals exceed
+<code>robust_threshold_k</code> are downweighted proportionally. Three
+iterations is sufficient for convergence in practice. Set to <code>0L</code>
+to disable robust reweighting entirely. Default <code>3L</code>.</p></dd>
 
 
 <dt id="arg-robust-threshold-k">robust_threshold_k<a class="anchor" aria-label="anchor" href="#arg-robust-threshold-k"></a></dt>
-<dd><p>Threshold multiplier applied to the unweighted
-median absolute deviation (MAD) of per-ion residuals. Ions with
-<code>|r_i| &gt; k * MAD</code> have their estimation weight reduced by a factor
-of <code>k * MAD / |r_i|</code>. Smaller values downweight more aggressively;
-<code>k = 1.5</code> is fairly tight, <code>k = 2.5</code> is close to the
-conventional Huber constant. Default <code>1.5</code>.</p></dd>
+<dd><p>Huber threshold in standard-deviation units on
+studentized residuals (<code>r_i / sqrt(var_f_i)</code>). Ions with
+<code>|sr_i| &gt; k</code> have their estimation weight reduced by a factor of
+<code>k / |sr_i|</code>. Smaller values downweight more aggressively;
+<code>k = 2.5</code> is close to the conventional Huber constant. Default
+<code>2.5</code>.</p></dd>
 
 
 <dt id="arg-verbose">verbose<a class="anchor" aria-label="anchor" href="#arg-verbose"></a></dt>
@@ -216,10 +216,13 @@ Default <code>FALSE</code>.</p></dd>
 (from the input), <code>lmf_naive</code> (the non-robust estimate for
 comparison), <code>lmf_reason</code> (<code>NA</code> on success, reason code on
 failure), <code>n_ions_used</code>, <code>n_ions_downweighted</code> (count of ions
-whose weight was reduced by robust reweighting), <code>sigma_lmf</code>, and
-<code>chi2_per_df</code> (diagnostic; computed on original weights). Columns
-present in <code>df</code> but not produced by the LMF computation are
-<code>NA</code> in the appended rows.</p>
+whose weight was reduced by robust reweighting), <code>n_high_info_downweighted</code>
+(count of downweighted ions that were high-information tracers; a robust
+estimate carried by the low-information majority against sensitive
+tracers signals a mis-attributed source, not a transformation artifact),
+<code>sigma_lmf</code>, and <code>chi2_per_df</code> (diagnostic; computed on original
+weights). Columns present in <code>df</code> but not produced by the LMF
+computation are <code>NA</code> in the appended rows.</p>
     </div>
     <div class="section level2">
     <h2 id="references">References<a class="anchor" aria-label="anchor" href="#references"></a></h2>
@@ -250,12 +253,12 @@ Kjeldsen P et al. (2002) Crit Rev Environ Sci Technol 32(4).</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 6 × 2</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   sample_id value</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> DS-01      15.1</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> DS-02      14.9</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> DS-03      14.2</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">4</span> DS-04      14.9</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">5</span> DS-05      14.7</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">6</span> DS-06      15.0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> DS-01      14.9</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> DS-02      14.7</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> DS-03      14.7</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">4</span> DS-04      15.1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">5</span> DS-05      14.6</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">6</span> DS-06      14.9</span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
 </code></pre></div>
     </div>

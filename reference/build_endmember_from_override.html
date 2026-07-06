@@ -57,7 +57,7 @@ builders, but uses all available samples without date filtering.</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">build_endmember_from_override</span><span class="op">(</span><span class="va">override_df</span>, <span class="va">type</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">build_endmember_from_override</span><span class="op">(</span><span class="va">override_df</span>, <span class="va">type</span>, min_leachate_samples <span class="op">=</span> <span class="fl">10L</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -72,6 +72,14 @@ All samples are used; samples missing the LMF panel are dropped.</p></dd>
 <dt id="arg-type">type<a class="anchor" aria-label="anchor" href="#arg-type"></a></dt>
 <dd><p>Character scalar, either <code>"reference"</code> or
 <code>"leachate"</code>, controlling which output list format is produced.</p></dd>
+
+
+<dt id="arg-min-leachate-samples">min_leachate_samples<a class="anchor" aria-label="anchor" href="#arg-min-leachate-samples"></a></dt>
+<dd><p>Minimum number of leachate samples with F
+measured required to include F in the panel. Applies the same threshold
+as <code><a href="build_leachate_endmember.html">build_leachate_endmember</a></code> so the two builders cannot
+disagree on panel composition for equivalent data. Ignored when
+<code>type = "reference"</code>. Default <code>10L</code>.</p></dd>
 
 </dl></div>
     <div class="section level2">

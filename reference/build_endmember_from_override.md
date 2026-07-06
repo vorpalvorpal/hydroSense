@@ -10,7 +10,7 @@ available samples without date filtering.
 ## Usage
 
 ``` r
-build_endmember_from_override(override_df, type)
+build_endmember_from_override(override_df, type, min_leachate_samples = 10L)
 ```
 
 ## Arguments
@@ -24,6 +24,14 @@ build_endmember_from_override(override_df, type)
 
   Character scalar, either `"reference"` or `"leachate"`, controlling
   which output list format is produced.
+
+- min_leachate_samples:
+
+  Minimum number of leachate samples with F measured required to include
+  F in the panel. Applies the same threshold as
+  [`build_leachate_endmember`](https://vorpalvorpal.github.io/hydroSense/reference/build_leachate_endmember.md)
+  so the two builders cannot disagree on panel composition for
+  equivalent data. Ignored when `type = "reference"`. Default `10L`.
 
 ## Value
 

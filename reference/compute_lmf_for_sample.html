@@ -61,9 +61,10 @@ quality metrics, applying admission and quality gates before returning.</p>
 <span>  <span class="va">max_chi2_df</span>,</span>
 <span>  <span class="va">uuid_lmf</span>,</span>
 <span>  robust_iterations <span class="op">=</span> <span class="fl">3L</span>,</span>
-<span>  robust_threshold_k <span class="op">=</span> <span class="fl">1.5</span>,</span>
+<span>  robust_threshold_k <span class="op">=</span> <span class="fl">2.5</span>,</span>
 <span>  verbose <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  datetime_sample <span class="op">=</span> <span class="cn">NA_character_</span></span>
+<span>  datetime_sample <span class="op">=</span> <span class="cn">NA_character_</span>,</span>
+<span>  censored_wide <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -114,8 +115,8 @@ be present and non-NA in this sample.</p></dd>
 
 
 <dt id="arg-robust-threshold-k">robust_threshold_k<a class="anchor" aria-label="anchor" href="#arg-robust-threshold-k"></a></dt>
-<dd><p>MAD multiplier for Huber downweighting. Inherited
-from <code><a href="add_lmf.html">add_lmf</a></code>.</p></dd>
+<dd><p>Huber threshold in standard-deviation units on
+studentized residuals. Inherited from <code><a href="add_lmf.html">add_lmf</a></code>.</p></dd>
 
 
 <dt id="arg-verbose">verbose<a class="anchor" aria-label="anchor" href="#arg-verbose"></a></dt>
@@ -129,6 +130,13 @@ from <code><a href="add_lmf.html">add_lmf</a></code>. Default <code>FALSE</code>
 <dd><p>The sample datetime as a character string, used
 to label the per-ion diagnostic table when <code>verbose = TRUE</code>.
 Default <code>NA_character_</code>.</p></dd>
+
+
+<dt id="arg-censored-wide">censored_wide<a class="anchor" aria-label="anchor" href="#arg-censored-wide"></a></dt>
+<dd><p>One-row wide-format tibble of logicals (from
+<code><a href="collapse_censored.html">collapse_censored</a></code>), one column per collapsed panel ion,
+<code>TRUE</code> where that ion's value was substituted at half the
+detection limit. Missing/unmatched ions are treated as not censored.</p></dd>
 
 </dl></div>
     <div class="section level2">
