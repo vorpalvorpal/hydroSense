@@ -553,19 +553,36 @@ rhat.route_c_stanfit <- function(x, ...) {
       out_list[[a]] <- tibble::tibble(sample_id = pred_ids, analyte = a,
                                       .post_mean = exp(est))
     } else {
-      # beta ~ N(coef, Vp_unconditional): mean uncertainty incl. smoothing params.
-      beta <- mgcv::rmvn(N, stats::coef(gam_a),
-                        stats::vcov(gam_a, unconditional = TRUE))
-      eta  <- Xp %*% t(beta)                                    # n_cells x N
-      eps  <- matrix(stats::rnorm(length(eta), 0, sig), nrow = nrow(eta))
+      # Proper posterior predictive: draw sigma^2 from its scaled-inverse-chi^2
+      # posterior (flat prior; df = residual df) so the predictive is Student-t,
+      # not Normal -- this fattens the tails and calibrates coverage. The mean
+      # draw (beta ~ N(coef, Vp)) is scaled by the same per-draw sigma so beta is
+      # marginally multivariate-t and coherent with the residual. Falls back to
+      # the plug-in sigma^2 when the residual df is unusable.
+      cf       <- stats::coef(gam_a)
+      Vp       <- stats::vcov(gam_a, unconditional = TRUE)
+      sig2_hat <- gam_a$sig2
+      df_res   <- gam_a$df.residual
+      sig2_d <- if (is.null(df_res) || !is.finite(df_res) || df_res < 2)
+        rep(sig2_hat, N) else df_res * sig2_hat / stats::rchisq(N, df_res)
+      sd_d    <- sqrt(sig2_d)                                   # per-draw residual sd
+      scale_d <- sd_d / sqrt(sig2_hat)                          # per-draw coef scale
+
+      eta_mean <- as.numeric(Xp %*% cf)                         # n_cells
+      B0       <- mgcv::rmvn(N, rep(0, length(cf)), Vp)         # centred coef draws
+      eta_dev  <- sweep(Xp %*% t(B0), 2, scale_d, "*")          # n_cells x N
+      eta      <- eta_dev + eta_mean                            # eta_mean per column
+      eps      <- sweep(matrix(stats::rnorm(length(eta)), nrow = nrow(eta)),
+                        2, sd_d, "*")                           # eps[,d] ~ N(0, sig2_d)
       if (any(is_bdl)) {
         if (!requireNamespace("truncnorm", quietly = TRUE))
           cli::cli_abort(c("BDL draw truncation needs the {.pkg truncnorm} package.",
                            "i" = "Install with {.code install.packages(\"truncnorm\")}."))
-        ub <- upper[is_bdl] - eta[is_bdl, , drop = FALSE]       # per-draw residual bound
+        ub  <- upper[is_bdl] - eta[is_bdl, , drop = FALSE]      # per-draw residual bound
+        sdb <- rep(sd_d, each = sum(is_bdl))                    # per-draw sd, col-major
         eps[is_bdl, ] <- matrix(
           truncnorm::rtruncnorm(length(ub), a = -Inf, b = as.vector(ub),
-                                mean = 0, sd = sig),
+                                mean = 0, sd = sdb),
           nrow = sum(is_bdl))
       }
       val <- exp(eta + eps)                                     # n_cells x N

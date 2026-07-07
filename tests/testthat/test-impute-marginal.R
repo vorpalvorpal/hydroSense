@@ -109,12 +109,13 @@ describe("impute_method = 'marginal' prediction", {
     expect_equal(v_lo, v_hi, tolerance = 1e-6)
   })
 
-  it("propagates GAM parameter uncertainty, not just residual noise", {
-    ## The calibration upgrade: predictive variance for an imputed cell must
-    ## equal Xp Vp Xp' (mean uncertainty) + sig2 (residual), NOT sig2 alone.
+  it("propagates BOTH parameter and residual-variance uncertainty (t-tails)", {
+    ## Proper posterior predictive: the draw variance for an imputed cell must
+    ## EXCEED Xp Vp Xp' (mean uncertainty) + sig2 (plug-in residual), because
+    ## sigma^2 is itself drawn from its scaled-inverse-chi^2 posterior, making
+    ## the predictive Student-t. A fixed-sigma^2 (Normal) predictive would only
+    ## reach param_var + sig2; the t-inflation pushes it strictly above.
     df <- .imp_chem(n = 40, seed = 5)
-    ## Drop Zn for a handful of samples so they need a (truncation-free) missing
-    ## imputation — clean variance decomposition, no truncation to distort it.
     miss_ids <- paste0("s", 1:8)
     df <- df[!(df$analyte == "Zn" & df$sample_id %in% miss_ids), ]
     model <- fit_imputation_model(
@@ -122,12 +123,12 @@ describe("impute_method = 'marginal' prediction", {
       groups = list(impute_group("metals", targets = c("Cu", "Zn"),
                                  hurdle = c("Cu", "Zn")))
     )
-    out <- impute_chemistry(df, model, return = "draws", ndraws = 4000)
+    out <- impute_chemistry(df, model, return = "draws", ndraws = 8000)
 
     sid  <- miss_ids[1]
     draws <- out$value[out$sample_id == sid & out$analyte == "Zn" & out$imputed]
-    expect_gt(length(draws), 1000)          # a distribution
-    v <- stats::var(log(draws))             # draws are exp(eta + eps); log => eta + eps
+    expect_gt(length(draws), 1000)
+    v <- stats::var(log(draws))
 
     gam_zn <- model$groups[["metals"]]$gams[["Zn"]]
     sig2   <- gam_zn$sig2
@@ -136,7 +137,44 @@ describe("impute_method = 'marginal' prediction", {
     Xp  <- stats::predict(gam_zn, newdata = pc1, type = "lpmatrix")
     param_var <- as.numeric(Xp %*% stats::vcov(gam_zn, unconditional = TRUE) %*% t(Xp))
 
-    expect_gt(param_var, 0)                                 # mean uncertainty is real
-    expect_equal(v, param_var + sig2, tolerance = 0.2)      # draws = param + residual
+    expect_gt(param_var, 0)                    # mean uncertainty is real
+    expect_gt(v, param_var + sig2)             # + residual-variance uncertainty (t)
+  })
+
+  it("is calibrated: ~90% of held-out truths fall in the 90% interval", {
+    ## Synthetic panel where log(Zn) is a smooth function of pH (a PC driver)
+    ## plus Gaussian noise -- exactly the model's assumptions -- so a correct
+    ## posterior predictive must cover ~90%. Hold out 90 cells as "missing" and
+    ## check interval coverage.
+    set.seed(101); n <- 220
+    df <- .imp_chem(n = n, seed = 101)
+    ph <- df$value[df$analyte == "pH"]                      # per-sample pH
+    log_zn <- 2 + sin(ph) + stats::rnorm(n, 0, 0.5)
+    df$value[df$analyte == "Zn"] <- exp(log_zn)
+    names(log_zn) <- paste0("s", seq_len(n))
+
+    hold <- paste0("s", 1:90)
+    truth <- log10(exp(log_zn[hold]))
+    train <- df[!(df$analyte == "Zn" & df$sample_id %in% hold), ]
+
+    model <- fit_imputation_model(
+      train, impute_method = "marginal",
+      groups = list(impute_group("metals", targets = c("Cu", "Zn"),
+                                 hurdle = c("Cu", "Zn")))
+    )
+    ## Impute on `train` — the held-out samples have no Zn row there, so they are
+    ## imputed as "missing" (on `df` they are still observed and skipped).
+    out <- impute_chemistry(train, model, return = "draws", ndraws = 1500)
+    ci <- out |>
+      dplyr::filter(.data$analyte == "Zn", .data$sample_id %in% hold, .data$imputed) |>
+      dplyr::mutate(pl = log10(.data$value)) |>
+      dplyr::group_by(.data$sample_id) |>
+      dplyr::summarise(lo = stats::quantile(.data$pl, 0.05),
+                       hi = stats::quantile(.data$pl, 0.95), .groups = "drop")
+    ci$truth <- truth[ci$sample_id]
+    cov90 <- mean(ci$truth >= ci$lo & ci$truth <= ci$hi)
+    expect_gt(nrow(ci), 80)     # the held cells were actually imputed
+    expect_gt(cov90, 0.82)      # near the 0.90 nominal (was ~0.75 plug-in)
+    expect_lt(cov90, 0.99)      # and not wildly over-covered
   })
 })
