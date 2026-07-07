@@ -44,8 +44,9 @@
 #' @param impute_groups Optional `groups` for [fit_imputation_model()]; `NULL`
 #'   (default) uses [leachate_impute_groups()].
 #' @param impute_seed Optional integer seed for the imputation fit (forwarded to
-#'   `brms::brm()` via [fit_imputation_model()]) so the default-on path is
-#'   reproducible.
+#'   [fit_imputation_model()]) so a stochastic fit is reproducible. The default
+#'   `"marginal"` method's GAM fit is deterministic; the seed matters for the
+#'   Stan-based methods (`"factor"` and the brms methods).
 #' @param reference_args,daily_args Named lists of additional arguments
 #'   forwarded to [fit_reference_model()] and [mspaf_daily()] respectively. Do
 #'   not include arguments the orchestrator sets itself (`reference`/`hydro`/

@@ -462,19 +462,34 @@ leachate_impute_groups <- function() {
 #'   are log-transformed before fitting; residual correlations require
 #'   Gaussian family).
 #' @param impute_method How below-detection (BDL) values and cross-analyte
-#'   coupling are handled. One of:
+#'   coupling are handled. Defaults to `"marginal"` — the fastest, best-
+#'   calibrated method on the package benchmark; the others are retained for
+#'   comparison and for panels with genuinely strong cross-analyte coupling. See
+#'   `vignette("imputation")` for the assumptions, trade-offs and benchmark. One
+#'   of:
 #'   \describe{
-#'     \item{`"rescor_mi"`}{(default) Residual correlation across analytes
+#'     \item{`"marginal"`}{**(default)** Per-analyte left-censored `mgcv::gam`
+#'       (spline mean on the PC scores) with an independent Student-t posterior
+#'       predictive -- **no** cross-analyte borrowing. Uses \pkg{mgcv} only (no
+#'       brms, no cmdstanr) and is ~400x faster than `"rescor_mi"`. Best MAE and
+#'       well-calibrated 90% coverage on the B.S01 benchmark; on that panel the
+#'       cross-metal borrowing the other methods attempt does not help (it
+#'       mis-conditions sparse analytes). Uncertainty is a proper posterior
+#'       predictive: GAM parameter uncertainty (`beta ~ N(coef, Vp)`,
+#'       unconditional) plus residual-variance uncertainty (`sigma^2` drawn from
+#'       its scaled-inverse-chi^2 posterior, giving the t-tails), with BDL cells
+#'       truncated at the detection limit (no post-hoc cap).}
+#'     \item{`"rescor_mi"`}{Residual correlation across analytes
 #'       (`rescor = TRUE`) with BDL/missing treated as imputable (`mi()`); the
 #'       imputed BDL cells are capped at the detection limit post-hoc by
-#'       [impute_chemistry()] (brms cannot combine `rescor` with `cens()`). Most
-#'       accurate recovery (best hold-out RMSE by a wide margin), but the `mi()` +
-#'       correlation geometry is funnel-prone, so `adapt_delta = 0.95` and an
-#'       `lkj(2)` prior on the residual correlation are set by default (override
-#'       via `control` / `prior` in `...`). Even so the geometry stays hard
-#'       (tree-depth saturation, low E-BFMI, worst-case R̂ ≈ 1.6 on a hard mask):
-#'       trust the **point estimate**, but check `brms::rhat()` before relying on
-#'       the **draws** — for well-calibrated uncertainty prefer `"cens_factor"`.}
+#'       [impute_chemistry()] (brms cannot combine `rescor` with `cens()`).
+#'       Slightly better hold-out RMSE than `"marginal"` but at ~400x the cost
+#'       and with over-wide, uninformative intervals; the `mi()` + correlation
+#'       geometry is funnel-prone, so `adapt_delta = 0.95` and an `lkj(2)` prior
+#'       on the residual correlation are set by default (override via `control` /
+#'       `prior` in `...`). The geometry stays hard (tree-depth saturation, low
+#'       E-BFMI, worst-case R̂ ≈ 1.6 on a hard mask): trust the **point
+#'       estimate**, but check `brms::rhat()` before relying on the **draws**.}
 #'     \item{`"cens"`}{Proper left-censoring of BDL at the detection limit
 #'       (`cens("left")`), no residual correlation -- clean BDL handling but no
 #'       cross-analyte coupling.}
@@ -494,15 +509,6 @@ leachate_impute_groups <- function() {
 #'       per-analyte `mgcv::gam` mean on the PC scores, then a Stan factor
 #'       model on the residuals (needs \pkg{cmdstanr}). See
 #'       `dev/plan-route-c.md`.}
-#'     \item{`"marginal"`}{Per-analyte left-censored `mgcv::gam` (spline mean on
-#'       the PC scores) with an independent posterior-predictive residual --
-#'       **no** cross-analyte borrowing. Uses \pkg{mgcv} only (no brms, no
-#'       cmdstanr) and is fast. On panels where cross-metal correlation is weak
-#'       or ragged this is the robust, best-recovering choice (the factor
-#'       method's borrowing mis-conditions sparse analytes there). Uncertainty
-#'       is a proper posterior predictive: GAM parameter uncertainty
-#'       (`beta ~ N(coef, Vp)`, unconditional) plus residual variance, with BDL
-#'       cells truncated at the detection limit.}
 #'   }
 #'   See `vignette("imputation")` and the package benchmark for guidance on
 #'   which to prefer.
@@ -578,7 +584,7 @@ fit_imputation_model <- function(
     min_var_explained = 0.75,
     max_pcs           = 6L,
     family            = "gaussian",
-    impute_method     = c("rescor_mi", "cens", "cens_factor", "factor", "marginal"),
+    impute_method     = c("marginal", "rescor_mi", "cens", "cens_factor", "factor"),
     iter              = 2000,
     warmup            = 1000,
     chains            = 4,
