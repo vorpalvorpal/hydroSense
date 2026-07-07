@@ -47,8 +47,9 @@ downstream (identical to chaining the functions by hand without one).}
 (default) uses \code{\link[=leachate_impute_groups]{leachate_impute_groups()}}.}
 
 \item{impute_seed}{Optional integer seed for the imputation fit (forwarded to
-\code{brms::brm()} via \code{\link[=fit_imputation_model]{fit_imputation_model()}}) so the default-on path is
-reproducible.}
+\code{\link[=fit_imputation_model]{fit_imputation_model()}}) so a stochastic fit is reproducible. The default
+\code{"marginal"} method's GAM fit is deterministic; the seed matters for the
+Stan-based methods (\code{"factor"} and the brms methods).}
 
 \item{reference_args, daily_args}{Named lists of additional arguments
 forwarded to \code{\link[=fit_reference_model]{fit_reference_model()}} and \code{\link[=mspaf_daily]{mspaf_daily()}} respectively. Do

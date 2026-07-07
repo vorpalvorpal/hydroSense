@@ -152,6 +152,7 @@
 #' @param x A `route_c_stanfit` object (a `CmdStanMCMC` with this class prepended).
 #' @param ... Unused; present for S3 signature compatibility.
 #' @return Named numeric vector of per-parameter Rhat.
+#' @keywords internal
 #' @exportS3Method posterior::rhat
 rhat.route_c_stanfit <- function(x, ...) {
   s <- x$summary()

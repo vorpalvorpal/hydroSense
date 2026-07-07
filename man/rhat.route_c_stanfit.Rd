@@ -24,3 +24,4 @@ Rhat correctly (unlike calling \code{posterior::rhat()} on the whole multi-
 parameter draws array, which silently blends every parameter into one
 meaningless number).
 }
+\keyword{internal}
