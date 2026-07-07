@@ -494,6 +494,15 @@ leachate_impute_groups <- function() {
 #'       per-analyte `mgcv::gam` mean on the PC scores, then a Stan factor
 #'       model on the residuals (needs \pkg{cmdstanr}). See
 #'       `dev/plan-route-c.md`.}
+#'     \item{`"marginal"`}{Per-analyte left-censored `mgcv::gam` (spline mean on
+#'       the PC scores) with an independent posterior-predictive residual --
+#'       **no** cross-analyte borrowing. Uses \pkg{mgcv} only (no brms, no
+#'       cmdstanr) and is fast. On panels where cross-metal correlation is weak
+#'       or ragged this is the robust, best-recovering choice (the factor
+#'       method's borrowing mis-conditions sparse analytes there). Uncertainty
+#'       is a proper posterior predictive: GAM parameter uncertainty
+#'       (`beta ~ N(coef, Vp)`, unconditional) plus residual variance, with BDL
+#'       cells truncated at the detection limit.}
 #'   }
 #'   See `vignette("imputation")` and the package benchmark for guidance on
 #'   which to prefer.
@@ -569,7 +578,7 @@ fit_imputation_model <- function(
     min_var_explained = 0.75,
     max_pcs           = 6L,
     family            = "gaussian",
-    impute_method     = c("rescor_mi", "cens", "cens_factor", "factor"),
+    impute_method     = c("rescor_mi", "cens", "cens_factor", "factor", "marginal"),
     iter              = 2000,
     warmup            = 1000,
     chains            = 4,
@@ -580,10 +589,12 @@ fit_imputation_model <- function(
     ...
 ) {
   impute_method <- match.arg(impute_method)
-  # Require the method-appropriate Stan engine only. The Route C "factor" method
-  # uses cmdstanr + mgcv, never brms; the three brms methods need brms. Both are
-  # Suggests, so gate on the chosen method rather than forcing brms on everyone.
-  if (impute_method == "factor") .require_cmdstanr() else .require_brms()
+  # Require the method-appropriate engine only, rather than forcing brms on
+  # everyone (both brms and cmdstanr are Suggests): "factor" uses cmdstanr +
+  # mgcv; "marginal" uses mgcv alone (always available); the three brms methods
+  # need brms.
+  if (impute_method == "factor") .require_cmdstanr()
+  else if (impute_method != "marginal") .require_brms()
 
   if (is.null(pca_vars))    pca_vars    <- c("pH", "EC", "NH3-N",
                                              .WQ_BLOCK_CANDIDATES)
@@ -947,10 +958,10 @@ impute_chemistry <- function(
   if (!inherits(model, "imputation_model"))
     cli::cli_abort("{.arg model} must be an object returned by {.fn fit_imputation_model}.")
 
-  # Require the method-appropriate Stan engine. The Route C "factor" method uses
-  # cmdstanr + mgcv; the three brms methods use brms. Don't force brms on a
-  # factor-only user (it is a Suggests, needing its own toolchain).
-  if (identical(model$impute_method, "factor")) .require_cmdstanr() else .require_brms()
+  # Require the method-appropriate engine (see fit_imputation_model): "factor"
+  # needs cmdstanr, "marginal" needs only mgcv, the brms methods need brms.
+  if (identical(model$impute_method, "factor")) .require_cmdstanr()
+  else if (!identical(model$impute_method, "marginal")) .require_brms()
 
   groups <- model$groups %||% list()
   if (length(groups) == 0L) {
@@ -1018,10 +1029,11 @@ impute_chemistry <- function(
   # is the only enforcement of the censoring bound; for the cens methods the
   # bound is enforced in the likelihood during fitting, but the emitted
   # prediction is unconstrained, so the cap is still needed.) The factor
-  # method (Route C) truncates every BDL draw at log(DL) by construction
-  # (.factor_condition_draw()), so the cap is a no-op there — skip the check
+  # method (Route C) and the "marginal" method truncate every BDL draw at
+  # log(DL) by construction, so the cap is a no-op there — skip the check
   # entirely rather than have it silently never fire.
-  if (!is.null(model$impute_method) && model$impute_method == "factor") {
+  if (!is.null(model$impute_method) &&
+      model$impute_method %in% c("factor", "marginal")) {
     return(result)
   }
   .check_bdl_imputed(result, dl_tbl, bdl_cap)
@@ -1668,6 +1680,20 @@ impute_coanalytes <- function(
     ))
   }
 
+  if (impute_method == "marginal") {
+    # Per-analyte censored GAM, no shared factor (mgcv only). Handled entirely
+    # by .fit_group_model_marginal() and returns directly.
+    return(.fit_group_model_marginal(
+      target_analytes = target_analytes,
+      safe_analytes   = safe_analytes,
+      base            = base,
+      pc_wide         = pc_wide,
+      pc_cols         = pc_cols,
+      log_floors      = log_floors,
+      group_name      = group_name
+    ))
+  }
+
   if (impute_method == "rescor_mi") {
     # Residual correlation + mi() for BDL/missing. BDL and missing are NA and
     # imputed; the post-hoc DL cap is applied in impute_chemistry().
@@ -1881,6 +1907,11 @@ impute_coanalytes <- function(
     # analytes (finding 3) and truncates BDL draws at log(DL) (findings 1-2).
     pm_long <- .predict_factor_conditional(group, pc_wide, df_eligible, return,
                                            ndraws, batch_size)
+
+  } else if (!is.null(group$impute_method) && group$impute_method == "marginal") {
+    # ── Marginal: per-analyte censored-GAM posterior predictive, no borrowing ─
+    pm_long <- .predict_marginal(group, pc_wide, df_eligible, return,
+                                 ndraws, batch_size)
 
   } else {
     # ── Wide newdata + per-method prediction (rescor_mi / cens) ──────────────

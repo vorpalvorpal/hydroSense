@@ -18,7 +18,7 @@ fit_imputation_model(
   min_var_explained = 0.75,
   max_pcs = 6L,
   family = "gaussian",
-  impute_method = c("rescor_mi", "cens", "cens_factor", "factor"),
+  impute_method = c("rescor_mi", "cens", "cens_factor", "factor", "marginal"),
   iter = 2000,
   warmup = 1000,
   chains = 4,
@@ -116,6 +116,15 @@ genuinely condition the missing/BDL ones. Fitted in two stages: a
 per-analyte \code{mgcv::gam} mean on the PC scores, then a Stan factor
 model on the residuals (needs \pkg{cmdstanr}). See
 \code{dev/plan-route-c.md}.}
+\item{\code{"marginal"}}{Per-analyte left-censored \code{mgcv::gam} (spline mean on
+the PC scores) with an independent posterior-predictive residual --
+\strong{no} cross-analyte borrowing. Uses \pkg{mgcv} only (no brms, no
+cmdstanr) and is fast. On panels where cross-metal correlation is weak
+or ragged this is the robust, best-recovering choice (the factor
+method's borrowing mis-conditions sparse analytes there). Uncertainty
+is a proper posterior predictive: GAM parameter uncertainty
+(\code{beta ~ N(coef, Vp)}, unconditional) plus residual variance, with BDL
+cells truncated at the detection limit.}
 }
 See \code{vignette("imputation")} and the package benchmark for guidance on
 which to prefer.}

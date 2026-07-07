@@ -448,6 +448,149 @@ rhat.route_c_stanfit <- function(x, ...) {
 
 
 ## ----------------------------------------------------------------------------
+## Marginal method -- per-analyte censored GAM, no cross-analyte factor
+## ----------------------------------------------------------------------------
+
+#' Fit the marginal (no-borrowing) group model
+#'
+#' One left-censored GAM per target analyte (`lv ~ s(PC1) + ...` on detected
+#' observations), with NO shared factor. Uses \pkg{mgcv} only -- no brms, no
+#' cmdstanr. The "borrowing" the factor model attempts is skipped entirely, so
+#' this is the robust choice on panels where cross-analyte correlation is weak
+#' or ragged (sparse analytes' spurious loadings can't mis-condition anything).
+#' @keywords internal
+.fit_group_model_marginal <- function(target_analytes, safe_analytes, base,
+                                      pc_wide, pc_cols, log_floors,
+                                      group_name = "group") {
+  J   <- length(target_analytes)
+  rhs <- paste(paste0("s(", pc_cols, ")"), collapse = " + ")
+  gams <- stats::setNames(vector("list", J), target_analytes)
+
+  for (a in target_analytes) {
+    dat <- base[base$analyte == a, c("sample_id", "detected", "lv"), drop = FALSE]
+    dat <- dplyr::left_join(dat, pc_wide, by = "sample_id")
+    dat <- dat[stats::complete.cases(dat[, pc_cols, drop = FALSE]), , drop = FALSE]
+    n_detected <- sum(dat$detected)
+    if (n_detected < 4L) {
+      cli::cli_abort(c(
+        "Marginal Stage-1 GAM for {.val {a}} needs at least 4 detected \\
+         observations with PC scores; got {n_detected}."
+      ))
+    }
+    gams[[a]] <- mgcv::gam(stats::as.formula(paste0("lv ~ ", rhs)),
+                          data = dat[dat$detected, , drop = FALSE],
+                          family = stats::gaussian())
+  }
+
+  cli::cli_inform(c(
+    "i" = "{group_name} (marginal): {J} per-analyte censored GAM{?s}, no \\
+           shared factor (mgcv only, no Stan)."
+  ))
+
+  list(
+    gams          = gams,
+    analytes      = target_analytes,
+    safe_names    = safe_analytes,
+    pc_cols       = pc_cols,
+    log_floors    = log_floors,
+    impute_method = "marginal"
+  )
+}
+
+#' Posterior-predictive prediction for the marginal method
+#'
+#' Per analyte, per cell that needs imputing (BDL or entirely absent): draw the
+#' GAM mean with parameter uncertainty (`beta ~ N(coef, Vp)`, `Vp` unconditional
+#' so smoothing-parameter uncertainty is included) plus residual noise
+#' `N(0, sig2)`; BDL cells draw the residual left-truncated so the value never
+#' exceeds `log(DL)`. This is a proper posterior predictive (mean + residual
+#' uncertainty), not the plug-in residual-only draw. Returns the same `pm_long`
+#' shape as the other predictors so `.predict_and_merge()` is unchanged.
+#' @keywords internal
+.predict_marginal <- function(group, pc_wide, df_eligible, return,
+                              ndraws, batch_size) {
+  target_analytes <- group$analytes
+  log_floors <- group$log_floors
+  N <- if (!is.null(ndraws)) as.integer(ndraws) else 1000L
+
+  tv <- df_eligible |>
+    dplyr::filter(.data$analyte %in% .env$target_analytes) |>
+    dplyr::select("sample_id", "analyte", "value", "detected") |>
+    dplyr::group_by(.data$sample_id, .data$analyte) |>
+    dplyr::slice(1L) |>
+    dplyr::ungroup()
+
+  all_elig <- pc_wide$sample_id
+  out_list <- list()
+
+  for (a in target_analytes) {
+    gam_a   <- group$gams[[a]]
+    floor_a <- log_floors[[a]]
+    rows_a  <- tv[tv$analyte == a, ]
+    bdl     <- rows_a[!rows_a$detected, , drop = FALSE]
+    missing_ids <- setdiff(all_elig, rows_a$sample_id)
+
+    pred_ids <- c(bdl$sample_id, missing_ids)
+    if (length(pred_ids) == 0L) next
+    # Absolute log(DL) bound for BDL cells; NA (unbounded) for missing cells.
+    upper <- c(log(pmax(bdl$value, floor_a)), rep(NA_real_, length(missing_ids)))
+
+    pc_p <- pc_wide[match(pred_ids, pc_wide$sample_id), , drop = FALSE]
+    Xp   <- stats::predict(gam_a, newdata = pc_p, type = "lpmatrix")
+    sig  <- sqrt(gam_a$sig2)
+    is_bdl <- !is.na(upper)
+
+    if (return == "point") {
+      mu  <- as.numeric(Xp %*% stats::coef(gam_a))
+      est <- mu
+      if (any(is_bdl)) {
+        if (!requireNamespace("truncnorm", quietly = TRUE))
+          cli::cli_abort(c("Point-mode BDL bounding needs the {.pkg truncnorm} package.",
+                           "i" = "Install with {.code install.packages(\"truncnorm\")}."))
+        est[is_bdl] <- truncnorm::etruncnorm(a = -Inf, b = upper[is_bdl],
+                                             mean = mu[is_bdl], sd = sig)
+      }
+      out_list[[a]] <- tibble::tibble(sample_id = pred_ids, analyte = a,
+                                      .post_mean = exp(est))
+    } else {
+      # beta ~ N(coef, Vp_unconditional): mean uncertainty incl. smoothing params.
+      beta <- mgcv::rmvn(N, stats::coef(gam_a),
+                        stats::vcov(gam_a, unconditional = TRUE))
+      eta  <- Xp %*% t(beta)                                    # n_cells x N
+      eps  <- matrix(stats::rnorm(length(eta), 0, sig), nrow = nrow(eta))
+      if (any(is_bdl)) {
+        if (!requireNamespace("truncnorm", quietly = TRUE))
+          cli::cli_abort(c("BDL draw truncation needs the {.pkg truncnorm} package.",
+                           "i" = "Install with {.code install.packages(\"truncnorm\")}."))
+        ub <- upper[is_bdl] - eta[is_bdl, , drop = FALSE]       # per-draw residual bound
+        eps[is_bdl, ] <- matrix(
+          truncnorm::rtruncnorm(length(ub), a = -Inf, b = as.vector(ub),
+                                mean = 0, sd = sig),
+          nrow = sum(is_bdl))
+      }
+      val <- exp(eta + eps)                                     # n_cells x N
+      out_list[[a]] <- tibble::tibble(
+        sample_id   = rep(pred_ids, times = N),
+        analyte     = a,
+        draw_id     = rep(seq_len(N), each = length(pred_ids)),
+        .post_value = as.numeric(val))
+    }
+  }
+
+  out <- dplyr::bind_rows(out_list)
+  if (nrow(out) == 0L) {
+    out <- if (return == "point")
+      tibble::tibble(sample_id = character(), analyte = character(),
+                     .post_mean = double())
+    else
+      tibble::tibble(sample_id = character(), analyte = character(),
+                     draw_id = integer(), .post_value = double())
+  }
+  out
+}
+
+
+## ----------------------------------------------------------------------------
 ## Prediction -- closed-form conditional draws from the fitted factor model
 ## ----------------------------------------------------------------------------
 
