@@ -117,13 +117,13 @@ mask_chem <- function(seed) {
 # ── A. impute_method comparison (brms methods + factor) ──────────────────────
 run_one <- function(meth, seed) {
   mc <- mask_chem(seed)
-  # "marginal" = the no-borrowing baseline: each metal in its own single-analyte
-  # group, so every analyte fits the Stage-1 GAM + an independent censored
-  # residual (degenerate k = 0 path) with NO shared factor.
+  # "marginal" is now a first-class impute_method: per-analyte censored GAM with
+  # a Student-t posterior predictive (parameter + residual-variance uncertainty),
+  # no cross-analyte borrowing. (It fits per-analyte GAMs internally, so it takes
+  # the normal metals group, not one group per analyte.)
   is_marg    <- meth == "marginal"
-  groups_use <- if (is_marg) lapply(ROUTINE, function(a)
-                  impute_group(a, targets = a, hurdle = ROUTINE)) else GROUPS
-  method_use <- if (is_marg) "factor" else meth
+  groups_use <- GROUPS
+  method_use <- meth
 
   t_fit <- system.time(
     m <- fit_imputation_model(mc$masked, required_vars = c("pH", "EC"),
