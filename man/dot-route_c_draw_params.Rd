@@ -4,7 +4,7 @@
 \alias{.route_c_draw_params}
 \title{Extract per-draw (Lambda, Psi) pairs from a fitted Route C group}
 \usage{
-.route_c_draw_params(group, ndraws = NULL)
+.route_c_draw_params(group, ndraws = NULL, return = "draws")
 }
 \arguments{
 \item{group}{A fitted \code{factor}-method group (from \code{.fit_group_model_factor()}).}

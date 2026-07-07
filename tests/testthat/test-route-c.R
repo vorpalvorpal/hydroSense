@@ -168,7 +168,7 @@ describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
     )
   })
 
-  it("converges with benign geometry (no rescor_mi-style funnel)", {
+  it("converges in the rotation-invariant quantities that drive imputation", {
     skip_if_not_installed("cmdstanr")
 
     df    <- .imp_chem(n = 80, seed = 3)
@@ -178,9 +178,13 @@ describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
                                  hurdle = c("Cu", "Zn", "Cd"))),
       iter = 800, warmup = 400, chains = 2
     )
-    ## The low-rank structure exists precisely to avoid rescor_mi's R-hat ~ 1.6.
-    rhats <- brms::rhat(model$groups[["metals"]]$fit)
-    expect_lt(max(rhats, na.rm = TRUE), 1.1)
+    ## A factor model is identified only up to rotation of Lambda, so a raw
+    ## max(rhat(fit)) over Lambda elements is NOT a meaningful convergence gate.
+    ## Prediction uses only the rotation-INVARIANT Sigma = Lambda Lambda' + Psi,
+    ## which mixes cleanly (~1.0) even when a Lambda element is noisier.
+    conv <- hydroSense:::.route_c_convergence(model$groups[["metals"]])
+    expect_lt(conv$sigma_rhat, 1.1)
+    expect_lt(conv$psi_rhat,   1.1)
   })
 
   it("fits the K > 1 Stan construction for a J >= 4 group (k = 2)", {
@@ -193,17 +197,13 @@ describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
     ## idiosyncratic noise, so the two-factor structure has genuine signal to
     ## identify without landing near a Heywood-case boundary.
     ##
-    ## Empirically, a k = 2 fit at this sample size is intrinsically harder to
-    ## mix than the k = 1 fits above: even with correctly-specified data and
-    ## the lower-triangular + positive-diagonal identification, some rotation-
-    ## finding difficulty remains and max Rhat lands well above the < 1.1 bar
-    ## the k = 1 specs hit reliably (this was checked across several data/Stan
-    ## seeds and iteration/adapt_delta budgets, not a one-off). Data and Stan
-    ## seeds are pinned to a reproducible run (max Rhat = 1.14 here) and the
-    ## bound below is set with margin over that, so the spec's real regression
-    ## guard is the shape/k assertions (the K > 1 matrix construction), with a
-    ## generous sanity check that the fit isn't badly broken (e.g. no ~1.6
-    ## funnel-style failure).
+    ## Convergence is asserted on the rotation-INVARIANT implied covariance
+    ## Sigma = Lambda Lambda' + Psi, not raw Lambda: at this sample size the
+    ## individual Lambda elements are rotation-redundant and mix less well (a
+    ## naive max(rhat(fit)) lands ~1.14), but the Sigma entries -- the only
+    ## thing prediction uses -- converge cleanly (~1.0). See
+    ## .route_c_convergence(). The real convergence question on production-size
+    ## data is validated offline in dev/bench-route-c.R, not in a unit test.
     set.seed(33)
     n   <- 100
     ids <- paste0("s", seq_len(n))
@@ -230,8 +230,8 @@ describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
 
     expect_equal(grp$k, 2L)
     expect_equal(dim(grp$Lambda), c(4L, 2L))
-    rhats <- brms::rhat(grp$fit)
-    expect_lt(max(rhats, na.rm = TRUE), 1.3)
+    conv <- hydroSense:::.route_c_convergence(grp)
+    expect_lt(conv$sigma_rhat, 1.1)
   })
 
   it("fits a single-analyte group via the Stage-1-only degenerate path", {
@@ -319,18 +319,30 @@ describe("impute_chemistry(impute_method = 'factor')", {
     expect_true(all(imp_zn_bdl$value <= dl + 1e-9))
   })
 
-  it("lets co-measured metals inform an imputed missing metal (finding 3)", {
+  it("moves an imputed metal in the direction of a co-measured metal (finding 3)", {
     skip_if_not_installed("cmdstanr")
 
-    df <- .imp_chem(n = 80, seed = 7)
+    ## Train on data where Cu and Zn share a strong positive latent factor (so
+    ## the fitted Lambda gives them same-sign loadings). Then a high observed Cu
+    ## must pull the imputed Zn UP, not merely change it -- a directional test,
+    ## not the weak "they differ" check (which a noisy fit passes even on
+    ## independent data). Other analytes come from the standard panel.
+    set.seed(11); n <- 100; ids <- paste0("s", seq_len(n))
+    df <- .imp_chem(n = n, seed = 11)
+    fac <- stats::rnorm(n)
+    df$value[df$analyte == "Cu"] <- exp(1.0 * fac + stats::rnorm(n, 0, 0.4))
+    df$value[df$analyte == "Zn"] <- exp(1.0 * fac + stats::rnorm(n, 0, 0.4))
+
     model <- fit_imputation_model(
       df, impute_method = "factor",
       groups = list(impute_group("metals", targets = c("Cu", "Zn"),
                                  hurdle = c("Cu", "Zn"))),
-      iter = 500, warmup = 250, chains = 2
+      iter = 800, warmup = 400, chains = 2, seed = 11
     )
 
-    ## One new sample, Zn absent (to be imputed), observed Cu at two levels.
+    ## One new sample, Zn absent (to be imputed), same context, observed Cu low
+    ## vs high. Identical PC scores, so the ONLY difference feeding Zn is the
+    ## observed Cu residual conditioned through the shared factor.
     ctx <- dplyr::bind_rows(
       .imp_rows("q1", "pH", 7), .imp_rows("q1", "EC", 400),
       .imp_rows("q1", "Cl", 500)
@@ -343,9 +355,9 @@ describe("impute_chemistry(impute_method = 'factor')", {
     v_lo <- zn_lo$value[zn_lo$sample_id == "q1" & zn_lo$analyte == "Zn"]
     v_hi <- zn_hi$value[zn_hi$sample_id == "q1" & zn_hi$analyte == "Zn"]
 
-    ## If Cu and Zn co-vary positively, the higher-Cu sample must impute a
-    ## higher Zn — the conditioning rescor_mi never delivered at predict time.
-    expect_false(isTRUE(all.equal(v_lo, v_hi)))
+    ## Positive Cu-Zn coupling => higher observed Cu imputes a higher Zn: the
+    ## prediction-time conditioning rescor_mi never delivered.
+    expect_gt(v_hi, v_lo)
   })
 
   it("propagates uncertainty through return = 'draws'", {

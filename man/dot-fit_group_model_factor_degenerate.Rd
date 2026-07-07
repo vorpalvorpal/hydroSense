@@ -12,7 +12,8 @@ coupling is possible with J = 1)}
   pc_wide,
   pc_cols,
   log_floors,
-  group_name = "group"
+  group_name = "group",
+  post_ndraws = 1000L
 )
 }
 \description{

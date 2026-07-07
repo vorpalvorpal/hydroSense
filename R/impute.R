@@ -515,12 +515,15 @@ leachate_impute_groups <- function() {
 #'   `brms::brm()`); this argument only affects the factor method.
 #' @param save_dir If non-NULL, save the returned model object as a `.qs` file
 #'   in this directory using `qs2::qs_save()`.
-#' @param ... Additional arguments passed to `brms::brm()`.  The Stan
-#'   **`backend`** defaults to `"cmdstanr"` when the \pkg{cmdstanr} package and a
-#'   CmdStan install are both available (cached compiled binaries + faster
-#'   sampling, statistically equivalent to rstan), otherwise `"rstan"`; pass
-#'   `backend = ...` here or set `options(hydroSense.brms_backend = ...)` to
-#'   override.
+#' @param ... Additional arguments passed to the sampler. For the three brms
+#'   methods they go to `brms::brm()`; the Stan **`backend`** defaults to
+#'   `"cmdstanr"` when the \pkg{cmdstanr} package and a CmdStan install are both
+#'   available (cached compiled binaries + faster sampling, statistically
+#'   equivalent to rstan), otherwise `"rstan"`; pass `backend = ...` here or set
+#'   `options(hydroSense.brms_backend = ...)` to override. For
+#'   `impute_method = "factor"` (Route C) there is no brms call — `...` is passed
+#'   to \pkg{cmdstanr}'s `$sample()` instead (e.g. `adapt_delta`,
+#'   `max_treedepth`, `parallel_chains`), so brms-only arguments do not apply.
 #'
 #' @return A named list of class `"imputation_model"`:
 #'   - `$pca`: PCA fit + metadata (loadings, training medians, n_pcs,
@@ -576,8 +579,11 @@ fit_imputation_model <- function(
     save_dir          = NULL,
     ...
 ) {
-  .require_brms()
   impute_method <- match.arg(impute_method)
+  # Require the method-appropriate Stan engine only. The Route C "factor" method
+  # uses cmdstanr + mgcv, never brms; the three brms methods need brms. Both are
+  # Suggests, so gate on the chosen method rather than forcing brms on everyone.
+  if (impute_method == "factor") .require_cmdstanr() else .require_brms()
 
   if (is.null(pca_vars))    pca_vars    <- c("pH", "EC", "NH3-N",
                                              .WQ_BLOCK_CANDIDATES)
@@ -934,13 +940,17 @@ impute_chemistry <- function(
     batch_size     = NULL
 ) {
   return <- match.arg(return)
-  .require_brms()
   checkmate::assert_data_frame(df)
   checkmate::assert_names(names(df),
     must.include = c("sample_id", "site_id", "datetime",
                      "analyte", "value", "detected"))
   if (!inherits(model, "imputation_model"))
     cli::cli_abort("{.arg model} must be an object returned by {.fn fit_imputation_model}.")
+
+  # Require the method-appropriate Stan engine. The Route C "factor" method uses
+  # cmdstanr + mgcv; the three brms methods use brms. Don't force brms on a
+  # factor-only user (it is a Suggests, needing its own toolchain).
+  if (identical(model$impute_method, "factor")) .require_cmdstanr() else .require_brms()
 
   groups <- model$groups %||% list()
   if (length(groups) == 0L) {

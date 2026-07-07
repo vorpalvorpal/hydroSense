@@ -106,18 +106,27 @@
 
 .route_c_model_env <- new.env(parent = emptyenv())
 
+#' Stop with a friendly message if cmdstanr is unavailable
+#'
+#' The Route C `"factor"` imputation method uses \pkg{cmdstanr} + \pkg{mgcv}
+#' (it does **not** use \pkg{brms}), so this is the method-appropriate engine
+#' guard -- the analogue of [.require_brms()] for the three brms-based methods.
+#' @keywords internal
+.require_cmdstanr <- function() {
+  if (requireNamespace("cmdstanr", quietly = TRUE)) return(invisible(TRUE))
+  cli::cli_abort(c(
+    "The Route C {.val factor} imputation method needs the {.pkg cmdstanr} \\
+     package (plus a working CmdStan install).",
+    "i" = "Install with {.code install.packages(\"cmdstanr\", repos = \\
+           \"https://stan-dev.r-universe.dev\")} then {.code \\
+           cmdstanr::install_cmdstan()}."
+  ))
+}
+
 #' Compiled Stage-2 censored-factor Stan model (cached for the session)
 #' @keywords internal
 .route_c_stan_model <- function() {
-  if (!requireNamespace("cmdstanr", quietly = TRUE)) {
-    cli::cli_abort(c(
-      "The Route C {.val factor} imputation method needs the {.pkg cmdstanr} \\
-       package (plus a working CmdStan install).",
-      "i" = "Install with {.code install.packages(\"cmdstanr\", repos = \\
-             \"https://stan-dev.r-universe.dev\")} then {.code \\
-             cmdstanr::install_cmdstan()}."
-    ))
-  }
+  .require_cmdstanr()
   if (is.null(.route_c_model_env$mod)) {
     stan_file <- system.file("stan", "factor_censored.stan", package = "hydroSense")
     if (!nzchar(stan_file)) {
@@ -147,6 +156,58 @@
 rhat.route_c_stanfit <- function(x, ...) {
   s <- x$summary()
   stats::setNames(s$rhat, s$variable)
+}
+
+#' Rotation-invariant convergence diagnostics for a Route C factor fit
+#'
+#' A low-rank factor model is only identified up to rotation of `Lambda`
+#' (`Lambda R` gives the same `Lambda Lambda'`). With the positive-lower-
+#' triangular constraint this is mostly pinned, but at small `N` / weak signal
+#' the sampler can still explore near-rotationally-equivalent modes, inflating
+#' the per-element Rhat of `Lambda` **without any consequence for imputation** --
+#' prediction uses only `Sigma = Lambda Lambda' + Psi`, which is rotation-
+#' invariant (see [.factor_condition()]). So the meaningful convergence check
+#' monitors the invariant functionals: the implied residual covariance `Sigma`,
+#' the idiosyncratic variances `psi`, and the log-density `lp__` -- not raw
+#' `Lambda`. Empirically `Sigma` converges cleanly (Rhat ~ 1.0) even when a
+#' `Lambda` element trips a naive `max(rhat(fit))` gate.
+#'
+#' @param group A fitted `factor`-method group (from [.fit_group_model_factor()]).
+#' @return A list with `sigma_rhat`, `psi_rhat`, `lp_rhat` (max Rhat over the
+#'   `Sigma` entries, over `psi`, and for `lp__`); all `NA` for a degenerate
+#'   (single-analyte, Stan-free) group.
+#' @keywords internal
+.route_c_convergence <- function(group) {
+  na <- list(sigma_rhat = NA_real_, psi_rhat = NA_real_, lp_rhat = NA_real_)
+  if (isTRUE(group$degenerate) || is.null(group$fit)) return(na)
+
+  fit <- group$fit
+  J   <- length(group$analytes)
+  k   <- group$k
+
+  s <- fit$summary(c("psi", "lp__"))
+  psi_rhat <- max(s$rhat[grepl("^psi\\[", s$variable)], na.rm = TRUE)
+  lp_rhat  <- max(s$rhat[s$variable == "lp__"], na.rm = TRUE)
+
+  # Implied Sigma = Lambda Lambda' (rotation-invariant), Rhat per unique entry.
+  ld   <- posterior::as_draws_array(fit$draws("Lambda"))  # iter x chain x param
+  vn   <- dimnames(ld)[[3]]
+  ij   <- do.call(rbind, lapply(vn, function(v)
+    as.integer(strsplit(gsub("Lambda\\[|\\]", "", v), ",")[[1]])))
+  pairs <- which(upper.tri(matrix(0, J, J), diag = TRUE), arr.ind = TRUE)
+  sigma_rhats <- vapply(seq_len(nrow(pairs)), function(p) {
+    a <- pairs[p, 1]; b <- pairs[p, 2]
+    acc <- 0
+    for (kk in seq_len(k)) {
+      ia <- which(ij[, 1] == a & ij[, 2] == kk)
+      ib <- which(ij[, 1] == b & ij[, 2] == kk)
+      acc <- acc + ld[, , ia] * ld[, , ib]
+    }
+    posterior::rhat(acc)   # acc is iterations x chains
+  }, numeric(1))
+
+  list(sigma_rhat = max(sigma_rhats, na.rm = TRUE),
+       psi_rhat = psi_rhat, lp_rhat = lp_rhat)
 }
 
 
@@ -189,7 +250,10 @@ rhat.route_c_stanfit <- function(x, ...) {
     return(.fit_group_model_factor_degenerate(
       target_analytes = target_analytes, safe_analytes = safe_analytes,
       base = base, pc_wide = pc_wide, pc_cols = pc_cols,
-      log_floors = log_floors, group_name = group_name
+      log_floors = log_floors, group_name = group_name,
+      # Match a Stan group's posterior draw count so a mixed Stan+degenerate
+      # model emits one consistent draw domain in return = "draws" mode.
+      post_ndraws = chains * max(1L, iter - warmup)
     ))
   }
 
@@ -313,7 +377,8 @@ rhat.route_c_stanfit <- function(x, ...) {
     pc_cols         = pc_cols,
     wide_sample_ids = sample_levels,
     impute_method   = "factor",
-    log_floors      = log_floors
+    log_floors      = log_floors,
+    post_ndraws     = chains * max(1L, iter - warmup)
   )
 }
 
@@ -331,7 +396,8 @@ rhat.route_c_stanfit <- function(x, ...) {
 #' @keywords internal
 .fit_group_model_factor_degenerate <- function(target_analytes, safe_analytes,
                                                 base, pc_wide, pc_cols,
-                                                log_floors, group_name = "group") {
+                                                log_floors, group_name = "group",
+                                                post_ndraws = 1000L) {
   a <- target_analytes[[1]]
   s <- unname(safe_analytes[a])
 
@@ -375,6 +441,7 @@ rhat.route_c_stanfit <- function(x, ...) {
     wide_sample_ids = unique(dat$sample_id),
     impute_method   = "factor",
     log_floors      = log_floors,
+    post_ndraws     = post_ndraws,
     degenerate      = TRUE
   )
 }
@@ -392,27 +459,32 @@ rhat.route_c_stanfit <- function(x, ...) {
 #' @return `list(Lambda = list of J x k matrices, Psi = list of length-J
 #'   vectors)`, one entry per used draw, plus `n` (the number used).
 #' @keywords internal
-.route_c_draw_params <- function(group, ndraws = NULL) {
+.route_c_draw_params <- function(group, ndraws = NULL, return = "draws") {
   J <- length(group$analytes)
   k <- group$k
   safe_vec <- unname(group$safe_names[group$analytes])
 
   if (isTRUE(group$degenerate)) {
-    # No Stan fit exists (single-analyte group): Lambda/Psi are a fixed
-    # plug-in point (J x 0 loadings, so .factor_condition()'s marginal branch
-    # applies), replicated across `n` draws so .factor_condition_draw()'s own
-    # per-draw Gaussian noise still gives a proper predictive spread in
-    # `return = "draws"` mode.
-    n <- if (is.null(ndraws)) 1000L else max(1L, as.integer(ndraws))
-    Lam0 <- group$Lambda
-    psi0 <- group$Psi
+    # No Stan fit exists (single-analyte group): Lambda/Psi are a fixed plug-in
+    # point (J x 0 loadings, so .factor_condition()'s marginal branch applies).
+    # In draws mode, replicate across `post_ndraws` -- matched to the Stan
+    # groups' posterior draw count (chains * (iter - warmup)) so a mixed
+    # Stan+degenerate model emits ONE consistent draw domain -- letting
+    # .factor_condition_draw()'s own per-draw Gaussian noise give a proper
+    # predictive spread. In point mode the params are constant across draws, so
+    # a single evaluation suffices (no redundant averaging over identical draws).
+    post <- group$post_ndraws %||% 1000L
+    n <- if (return == "point") 1L
+         else if (is.null(ndraws)) post
+         else min(as.integer(ndraws), post)
     return(list(
-      Lambda = rep(list(Lam0), n),
-      Psi    = rep(list(psi0), n),
+      Lambda = rep(list(group$Lambda), n),
+      Psi    = rep(list(group$Psi), n),
       n      = n
     ))
   }
 
+  .require_cmdstanr()
   draws_mat <- posterior::as_draws_matrix(group$fit$draws(c("Lambda", "psi")))
   vars <- colnames(draws_mat)
   lam_cols <- grep("^Lambda\\[", vars)
@@ -508,7 +580,7 @@ rhat.route_c_stanfit <- function(x, ...) {
   }
 
   # -- Posterior draws of (Lambda, Psi) ---------------------------------------
-  params <- .route_c_draw_params(group, ndraws)
+  params <- .route_c_draw_params(group, ndraws, return)
   n_draws <- params$n
 
   n_new <- nrow(mu_wide)

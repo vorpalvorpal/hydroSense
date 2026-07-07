@@ -142,12 +142,15 @@ methods are already seedable via \code{seed} in \code{...} (passed to
 \item{save_dir}{If non-NULL, save the returned model object as a \code{.qs} file
 in this directory using \code{qs2::qs_save()}.}
 
-\item{...}{Additional arguments passed to \code{brms::brm()}.  The Stan
-\strong{\code{backend}} defaults to \code{"cmdstanr"} when the \pkg{cmdstanr} package and a
-CmdStan install are both available (cached compiled binaries + faster
-sampling, statistically equivalent to rstan), otherwise \code{"rstan"}; pass
-\code{backend = ...} here or set \code{options(hydroSense.brms_backend = ...)} to
-override.}
+\item{...}{Additional arguments passed to the sampler. For the three brms
+methods they go to \code{brms::brm()}; the Stan \strong{\code{backend}} defaults to
+\code{"cmdstanr"} when the \pkg{cmdstanr} package and a CmdStan install are both
+available (cached compiled binaries + faster sampling, statistically
+equivalent to rstan), otherwise \code{"rstan"}; pass \code{backend = ...} here or set
+\code{options(hydroSense.brms_backend = ...)} to override. For
+\code{impute_method = "factor"} (Route C) there is no brms call — \code{...} is passed
+to \pkg{cmdstanr}'s \verb{$sample()} instead (e.g. \code{adapt_delta},
+\code{max_treedepth}, \code{parallel_chains}), so brms-only arguments do not apply.}
 }
 \value{
 A named list of class \code{"imputation_model"}:

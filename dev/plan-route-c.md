@@ -138,14 +138,27 @@ New/edited symbols (all in `R/impute.R` unless noted):
   - `impute_method = "factor"`.
   Call `.assert_safe_analyte_names(target_analytes)` at entry (as the brms
   branches now do).
-- `.predict_factor_conditional(group, pc_wide, return, ndraws, batch_size)` —
-  NEW. Mirrors `.predict_factor_long()`'s contract: returns the same `pm_long`
-  shape (`sample_id, analyte, .post_mean` for `point`; `sample_id, analyte,
-  draw_id, .post_value` for `draws`) so `.predict_and_merge()`'s merge/fabricate
-  logic is untouched. Internally: compute `mu_j` from `group$gams` on `pc_wide`;
-  read the observed target residuals for each eligible sample from `df`; apply
-  the closed-form update above per posterior draw of `(Λ, Ψ)`; truncate BDL
-  target draws at `log(DL)`.
+- `.predict_factor_conditional(group, pc_wide, df_eligible, return, ndraws,
+  batch_size)` — NEW. (Takes `df_eligible` in addition to
+  `.predict_factor_long()`'s args, because it must read each sample's own
+  observed target values.) Returns the same `pm_long` shape (`sample_id,
+  analyte, .post_mean` for `point`; `sample_id, analyte, draw_id, .post_value`
+  for `draws`) so `.predict_and_merge()`'s merge/fabricate logic is untouched.
+  Internally: compute `mu_j` from `group$gams` on `pc_wide`; read the observed
+  target residuals for each eligible sample from `df_eligible`; apply the
+  closed-form update above per posterior draw of `(Λ, Ψ)`; truncate BDL target
+  draws at `log(DL)`. Emits rows only for cells that need prediction
+  (BDL/missing); observed cells are left to the caller.
+- **Draw-domain consistency:** every group's per-draw prediction must emit the
+  same number of draws so the draw carrier stays coherent. Stan groups use the
+  posterior draw count `chains*(iter-warmup)`; a degenerate single-analyte group
+  stores the same figure as `post_ndraws` and replicates its plug-in `(Λ,Ψ)`
+  that many times (fresh Gaussian noise per draw). Point mode collapses the
+  degenerate group to a single evaluation.
+- **Engine gating (not brms):** the factor method uses cmdstanr + mgcv and must
+  NOT trigger `.require_brms()`. `fit_imputation_model()` and
+  `impute_chemistry()` call `.require_cmdstanr()` when
+  `impute_method == "factor"`, `.require_brms()` otherwise.
 - `.predict_and_merge()` — add a `factor` branch that dispatches to
   `.predict_factor_conditional()` (parallel to the existing `cens_factor`
   dispatch to `.predict_factor_long()`).
@@ -205,39 +218,63 @@ identifiability detail — a `positive_ordered` or `lower=0` diagonal is fine.)
 - `truncnorm` — truncated BDL draws at prediction (add to `Suggests`).
 - base / `Matrix` — the `k×k` factor update.
 - `gllvm` was considered and **rejected**: no left-censored Gaussian family.
-- `zCompositions::lrEM` is the Route D **benchmark only** (see below), not the
-  engine — it is compositional and does not carry the WQ mean.
+- `zCompositions::lrEM` was intended as the Route D benchmark but **cannot run
+  on B.S01** (needs a fully-complete column; none exists). Replaced by an
+  internal marginal/no-factor baseline (see Validation).
 
 ## Validation
 
-### Route D benchmark (`zCompositions`)
-`lrEM` / `lrDA` is the geochemistry-standard multivariate BDL-imputation
-baseline. It lacks a WQ-predictor mean, so run it on **Stage-1 residuals** for a
-like-for-like comparison:
-1. Stage-1 GAM residuals (detected) + censoring bounds (BDL).
-2. `lrEM` (point) and `lrDA` (multiple-imputation, for uncertainty) on the
-   residual matrix.
-3. Compare hold-out RMSE and 90% coverage against the factor model.
-Expectation: the factor model matches `lrEM` on point recovery while adding the
-WQ mean structure and calibrated Bayesian draws. Script: `dev/bench-route-c.R`.
+> **Phase-D reality check.** Two things learned attempting this on B.S01:
+> (1) `zCompositions::lrEM` **cannot run** on the B.S01 panel — it needs at
+> least one fully-complete column and there is none, so the external Route D
+> baseline as originally specified is infeasible. (2) The k=2 fit shows
+> apparent non-convergence, but this is **rotation non-identifiability of
+> `Lambda`, not a sampling failure**: the rotation-invariant implied covariance
+> `Σ = ΛΛ' + Ψ` — the only thing prediction uses — converges cleanly (R̂ ≈ 1.0
+> while a raw `Lambda` element sits ~1.14). So the convergence question must be
+> asked of invariant functionals, and the external benchmark must be replaced.
+> The offline validation below is `dev/bench-route-c.R`; it is NOT a unit test
+> (the unit tests are smoke + invariant-sanity only).
 
-### B.S01 hold-out validation (reuse the existing harness)
-Reuse the 3-seed masking hold-out (memory: `calibration/impute-method-benchmark`,
-`dev/` bench scripts) that produced the `rescor_mi` RMSE 0.30 vs 0.75/0.92
-numbers. Report, per masked cell:
+### Convergence — measure invariant functionals, not raw `Lambda`
+Use `.route_c_convergence(group)`: max R̂ over the implied `Σ` entries, over
+`psi`, and `lp__`. These are rotation-invariant and are what imputation
+depends on. Report R̂ / ESS / divergences / E-BFMI on **`Σ` and `psi`** (not
+`Lambda`) at production panel size and budget. On real B.S01 metals (more
+analytes than the 2–4 analyte unit fixtures → k identified better), decide
+whether any residual `Σ` non-convergence remains after a reasonable budget; if
+so that is a genuine follow-up (more data / longer runs), separate from this
+task.
+
+### Baseline — internal "no-borrowing" marginal (replaces the infeasible lrEM)
+Since `lrEM` can't run, the informative comparison is the **marginal / no-factor
+baseline**: the Stage-1 GAM mean + an *independent* left-censored residual per
+analyte (i.e. the degenerate path applied to every analyte, k=0, no shared
+factor). This always runs and directly isolates the finding-3 borrowing
+benefit: factor vs marginal = "does conditioning on co-measured metals help?".
+Also compare against the already-benchmarked `rescor_mi` / `cens_factor` / `cens`
+numbers from the impute-method benchmark. (Optional: run `lrEM` on a reduced,
+completable sub-panel purely as an external sanity point — not the main
+comparison.)
+
+### B.S01 hold-out (reuse the existing harness) — `dev/bench-route-c.R`
+Reuse the 3-seed masking hold-out (memory: `calibration/impute-method-benchmark`)
+that produced the `rescor_mi` RMSE 0.30 vs 0.75/0.92 numbers. Per masked cell,
+for **factor vs marginal-baseline vs rescor_mi vs cens_factor**:
 - **Point recovery:** RMSE / bias vs held-out truth. Target ≈ `rescor_mi`
   (~0.30) — no accuracy loss.
 - **Calibration:** 90% interval coverage ≈ nominal (`rescor_mi` fails this;
   `cens_factor` half-achieves it).
-- **Convergence:** worst-case R̂, E-BFMI, tree-depth. Target clean (no 1.6 R̂,
-  no funnel) — the reason for the low-rank structure.
-- **Conditioning check (the finding-3 win):** mask Zn, vary the *observed*
-  Cu/Cd/Pb in the same sample, confirm imputed Zn moves (currently invariant).
-  Quantify effect size to settle `k = 2` vs `k = 3`.
+- **Convergence:** `.route_c_convergence()` on `Σ`/`psi` + divergences/E-BFMI.
+- **Conditioning (the finding-3 win):** mask Zn, vary the *observed* Cu/Cd/Pb in
+  the same sample, confirm imputed Zn moves and **in the right direction vs the
+  marginal baseline (which cannot move at all)**. Quantify effect size to settle
+  `k = 2` vs `k = 3` by held-out predictive log-density / coverage.
 
-**Win condition:** point accuracy ≈ `rescor_mi`, coverage ≈ nominal, R̂ clean,
-and imputed metals demonstrably respond to co-measured metals — collapsing the
-current "accurate OR trustworthy" trade-off into one method.
+**Win condition:** point accuracy ≈ `rescor_mi`, coverage ≈ nominal, `Σ`
+convergence clean, and imputed metals demonstrably respond to co-measured metals
+(beat the marginal baseline on conditioning) — collapsing the current "accurate
+OR trustworthy" trade-off into one method.
 
 ## Rollout
 1. ~~Land `claude/impute-review-hardening`~~ **DONE (PR #69).**
@@ -248,8 +285,13 @@ current "accurate OR trustworthy" trade-off into one method.
    `.fit_group_model()`; drive the fit BDD specs green (gated on `cmdstanr`).
 4. Wire `impute_method = "factor"` end-to-end; drive the end-to-end BDD specs
    green (draws respect the DL; imputed metals condition on observed).
-5. Benchmark vs Route D + B.S01 (`dev/bench-route-c.R`). If the win condition
-   holds, flip the default and deprecate the brms methods. Fold in findings
-   4/8b at this stage if desired.
+5. Benchmark on B.S01 (`dev/bench-route-c.R`): factor vs the marginal baseline
+   vs `rescor_mi`/`cens_factor`, reporting RMSE, coverage, `Σ`-convergence and
+   the finding-3 conditioning effect. If the win condition holds, flip the
+   default and deprecate the brms methods. Fold in findings 4/8b if desired.
 6. Only if the #68 sensitivity check says predictor BDL matters, revisit
    censored predictors — separately.
+7. Open follow-up: real-data `Σ`-convergence at k=2 under a larger
+   data/iteration budget than a unit test affords (the residual small-N
+   rotation difficulty), if the B.S01 benchmark still shows any invariant-
+   functional non-convergence.
