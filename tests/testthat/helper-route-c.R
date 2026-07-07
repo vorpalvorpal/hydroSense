@@ -24,6 +24,17 @@
   ))
 }
 
+## Skip a spec that actually FITS a factor model unless a working CmdStan is
+## available. cmdstanr the package can be installed while CmdStan (the backend
+## binary) is not set up (as on CI), so `skip_if_not_installed("cmdstanr")` is
+## not enough. Mirrors the package's own `.brms_backend()` availability probe.
+.skip_if_no_cmdstan <- function() {
+  testthat::skip_if_not_installed("cmdstanr")
+  ok <- !is.null(tryCatch(suppressMessages(cmdstanr::cmdstan_version()),
+                          error = function(e) NULL))
+  if (!ok) testthat::skip("CmdStan not installed / path not set")
+}
+
 ## A known low-rank factor model for the Stan-free prediction kernels.
 ##
 ## Returns the ground-truth pieces the conditional-prediction kernels consume:

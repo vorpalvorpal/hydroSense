@@ -136,7 +136,7 @@ describe("factor conditional draws (.factor_condition_draw)", {
 describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
 
   it("returns Lambda, Psi, per-analyte gams and k", {
-    skip_if_not_installed("cmdstanr")
+    .skip_if_no_cmdstan()
 
     df    <- .imp_chem(n = 60, seed = 1)
     model <- fit_imputation_model(
@@ -155,7 +155,7 @@ describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
   })
 
   it("rejects analyte names that collide under make.names()", {
-    skip_if_not_installed("cmdstanr")
+    .skip_if_no_cmdstan()
 
     df <- .imp_chem(n = 40, seed = 2)
     expect_error(
@@ -169,7 +169,7 @@ describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
   })
 
   it("converges in the rotation-invariant quantities that drive imputation", {
-    skip_if_not_installed("cmdstanr")
+    .skip_if_no_cmdstan()
 
     df    <- .imp_chem(n = 80, seed = 3)
     model <- fit_imputation_model(
@@ -188,7 +188,7 @@ describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
   })
 
   it("fits the K > 1 Stan construction for a J >= 4 group (k = 2)", {
-    skip_if_not_installed("cmdstanr")
+    .skip_if_no_cmdstan()
 
     ## 4 target analytes -> default k = min(2, J - 1) = 2, exercising the
     ## lower-triangular top block + free Lambda_rest rows (untested at J = 2/3,
@@ -235,7 +235,7 @@ describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
   })
 
   it("fits a single-analyte group via the Stage-1-only degenerate path", {
-    skip_if_not_installed("cmdstanr")
+    .skip_if_no_cmdstan()
 
     df <- .imp_chem(n = 60, seed = 22)
     model <- fit_imputation_model(
@@ -268,7 +268,7 @@ describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
 describe("impute_chemistry(impute_method = 'factor')", {
 
   it("imputes BDL cells without exceeding the DL, and needs no cap (findings 1-2)", {
-    skip_if_not_installed("cmdstanr")
+    .skip_if_no_cmdstan()
 
     df <- .imp_chem(n = 60, seed = 1)
     ## Make some Zn cells BDL at a known limit.
@@ -293,7 +293,7 @@ describe("impute_chemistry(impute_method = 'factor')", {
   })
 
   it("caps return = 'point' BDL estimates at the DL too (finding 1-2, point mode)", {
-    skip_if_not_installed("cmdstanr")
+    .skip_if_no_cmdstan()
 
     ## Same fixture as the draws-mode BDL spec above: return = "point" must be
     ## just as bound as return = "draws" -- the conditional MEAN, not just
@@ -320,7 +320,7 @@ describe("impute_chemistry(impute_method = 'factor')", {
   })
 
   it("moves an imputed metal in the direction of a co-measured metal (finding 3)", {
-    skip_if_not_installed("cmdstanr")
+    .skip_if_no_cmdstan()
 
     ## Train on data where Cu and Zn share a strong positive latent factor (so
     ## the fitted Lambda gives them same-sign loadings). Then a high observed Cu
@@ -361,7 +361,7 @@ describe("impute_chemistry(impute_method = 'factor')", {
   })
 
   it("propagates uncertainty through return = 'draws'", {
-    skip_if_not_installed("cmdstanr")
+    .skip_if_no_cmdstan()
 
     df <- .imp_chem(n = 60, seed = 9)
     model <- fit_imputation_model(
