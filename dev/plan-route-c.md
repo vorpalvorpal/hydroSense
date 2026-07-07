@@ -276,6 +276,39 @@ convergence clean, and imputed metals demonstrably respond to co-measured metals
 (beat the marginal baseline on conditioning) — collapsing the current "accurate
 OR trustworthy" trade-off into one method.
 
+## Benchmark outcome (B.S01, 3-seed, 57 masked cells)
+
+The win condition **did not hold** — and the negative result is itself the
+finding:
+
+| method | RMSE | MAE | bias | cov90 | fit time |
+|---|---|---|---|---|---|
+| rescor_mi | 0.250 | 0.209 | −0.045 | 1.000 (width 1.29, uninformative) | 172s |
+| **marginal** | 0.276 | **0.182** | −0.108 | 0.75 → **~0.88 after t-fix** | **0.43s** |
+| factor | 0.343 | 0.230 | **−0.213** | 0.982 | 66s |
+
+- **`factor` is the worst performer.** Cell-level breakdown: the loss is
+  concentrated in **sparse analytes (Pb, Cr)** whose loadings are unidentified,
+  so conditioning on the sample's other metals through a spurious `Λ` yanks
+  predictions far down (Pb: −1.17 bias, ~33× under-prediction on the worst
+  cell). For well-observed metals `factor ≈ marginal`. On B.S01 at production
+  budget `Σ` R̂ also reached 1.207 with 25% treedepth saturation. So the
+  cross-metal borrowing **mis-conditions where data is thin and adds nothing
+  where data is thick** — consistent with the weak/ragged coupling found in
+  #43/#47. Keep `factor` as an opt-in for genuinely coupled panels; **do not
+  promote it**.
+- **`marginal` (the no-borrowing method) is the pragmatic winner:** ~ties
+  `rescor_mi` on accuracy (better MAE), ~400× faster, brms- and cmdstanr-free.
+  Its initial under-coverage (0.75) is fixed by drawing `σ²` from its
+  scaled-inverse-χ² posterior (Student-t predictive), lifting synthetic-holdout
+  coverage to ~0.88. `rescor_mi`'s cov90 = 1.0 is not a real win — just
+  over-wide (width 1.29 vs 0.55).
+
+**Revised recommendation:** make **`marginal`** the default (accurate, fast,
+no-Stan, calibrated), keep `factor` opt-in, keep `rescor_mi` available. Confirm
+the calibrated `marginal` cov90 on the real B.S01 hold-out (not just synthetic),
+then flip the default and consider deprecating the slow brms methods.
+
 ## Rollout
 1. ~~Land `claude/impute-review-hardening`~~ **DONE (PR #69).**
 2. **Prediction first (Stan-free).** Implement `.predict_factor_conditional()`
