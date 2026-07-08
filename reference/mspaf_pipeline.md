@@ -83,9 +83,10 @@ mspaf_pipeline(
 - impute_seed:
 
   Optional integer seed for the imputation fit (forwarded to
-  [`brms::brm()`](https://paulbuerkner.com/brms/reference/brm.html) via
   [`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md))
-  so the default-on path is reproducible.
+  so a stochastic fit is reproducible. The default `"marginal"` method's
+  GAM fit is deterministic; the seed matters for the Stan-based methods
+  (`"factor"` and the brms methods).
 
 - reference_args, daily_args:
 

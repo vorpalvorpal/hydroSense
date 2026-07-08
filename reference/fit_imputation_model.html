@@ -80,11 +80,13 @@ can be swapped for any other chemistry by passing your own list of
 <span>  min_var_explained <span class="op">=</span> <span class="fl">0.75</span>,</span>
 <span>  max_pcs <span class="op">=</span> <span class="fl">6L</span>,</span>
 <span>  family <span class="op">=</span> <span class="st">"gaussian"</span>,</span>
-<span>  impute_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"rescor_mi"</span>, <span class="st">"cens"</span>, <span class="st">"cens_factor"</span><span class="op">)</span>,</span>
+<span>  impute_method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"marginal"</span>, <span class="st">"rescor_mi"</span>, <span class="st">"cens"</span>, <span class="st">"cens_factor"</span>, <span class="st">"factor"</span><span class="op">)</span>,</span>
 <span>  iter <span class="op">=</span> <span class="fl">2000</span>,</span>
 <span>  warmup <span class="op">=</span> <span class="fl">1000</span>,</span>
 <span>  chains <span class="op">=</span> <span class="fl">4</span>,</span>
 <span>  cores <span class="op">=</span> <span class="fu">parallel</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/parallel/detectCores.html" class="external-link">detectCores</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  k <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  save_dir <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -175,18 +177,35 @@ Gaussian family).</p></dd>
 
 <dt id="arg-impute-method">impute_method<a class="anchor" aria-label="anchor" href="#arg-impute-method"></a></dt>
 <dd><p>How below-detection (BDL) values and cross-analyte
-coupling are handled. One of:</p><dl><dt><code>"rescor_mi"</code></dt>
-<dd><p>(default) Residual correlation across analytes
+coupling are handled. Defaults to <code>"marginal"</code> — the fastest, best-
+calibrated method on the package benchmark; the others are retained for
+comparison and for panels with genuinely strong cross-analyte coupling. See
+<code><a href="../articles/imputation.html">vignette("imputation")</a></code> for the assumptions, trade-offs and benchmark. One
+of:</p><dl><dt><code>"marginal"</code></dt>
+<dd><p><strong>(default)</strong> Per-analyte left-censored <code><a href="https://rdrr.io/pkg/mgcv/man/gam.html" class="external-link">mgcv::gam</a></code>
+(spline mean on the PC scores) with an independent Student-t posterior
+predictive – <strong>no</strong> cross-analyte borrowing. Uses <span class="pkg">mgcv</span> only (no
+brms, no cmdstanr) and is ~400x faster than <code>"rescor_mi"</code>. Best MAE and
+well-calibrated 90% coverage on the B.S01 benchmark; on that panel the
+cross-metal borrowing the other methods attempt does not help (it
+mis-conditions sparse analytes). Uncertainty is a proper posterior
+predictive: GAM parameter uncertainty (<code>beta ~ N(coef, Vp)</code>,
+unconditional) plus residual-variance uncertainty (<code>sigma^2</code> drawn from
+its scaled-inverse-chi^2 posterior, giving the t-tails), with BDL cells
+truncated at the detection limit (no post-hoc cap).</p></dd>
+
+<dt><code>"rescor_mi"</code></dt>
+<dd><p>Residual correlation across analytes
 (<code>rescor = TRUE</code>) with BDL/missing treated as imputable (<code>mi()</code>); the
 imputed BDL cells are capped at the detection limit post-hoc by
-<code><a href="impute_chemistry.html">impute_chemistry()</a></code> (brms cannot combine <code>rescor</code> with <code>cens()</code>). Most
-accurate recovery (best hold-out RMSE by a wide margin), but the <code>mi()</code> +
-correlation geometry is funnel-prone, so <code>adapt_delta = 0.95</code> and an
-<code>lkj(2)</code> prior on the residual correlation are set by default (override
-via <code>control</code> / <code>prior</code> in <code>...</code>). Even so the geometry stays hard
-(tree-depth saturation, low E-BFMI, worst-case R̂ ≈ 1.6 on a hard mask):
-trust the <strong>point estimate</strong>, but check <code><a href="https://mc-stan.org/posterior/reference/rhat.html" class="external-link">brms::rhat()</a></code> before relying on
-the <strong>draws</strong> — for well-calibrated uncertainty prefer <code>"cens_factor"</code>.</p></dd>
+<code><a href="impute_chemistry.html">impute_chemistry()</a></code> (brms cannot combine <code>rescor</code> with <code>cens()</code>).
+Slightly better hold-out RMSE than <code>"marginal"</code> but at ~400x the cost
+and with over-wide, uninformative intervals; the <code>mi()</code> + correlation
+geometry is funnel-prone, so <code>adapt_delta = 0.95</code> and an <code>lkj(2)</code> prior
+on the residual correlation are set by default (override via <code>control</code> /
+<code>prior</code> in <code>...</code>). The geometry stays hard (tree-depth saturation, low
+E-BFMI, worst-case R̂ ≈ 1.6 on a hard mask): trust the <strong>point
+estimate</strong>, but check <code><a href="https://mc-stan.org/posterior/reference/rhat.html" class="external-link">brms::rhat()</a></code> before relying on the <strong>draws</strong>.</p></dd>
 
 <dt><code>"cens"</code></dt>
 <dd><p>Proper left-censoring of BDL at the detection limit
@@ -202,6 +221,17 @@ well-identified (each sample contributes several analyte observations);
 <code>adapt_delta = 0.95</code> is set by default to clear the factor's mild
 funnel (override via <code>control</code> in <code>...</code>).</p></dd>
 
+<dt><code>"factor"</code></dt>
+<dd><p><strong>(Route C)</strong> Low-rank left-censored latent factor
+model (<code>Sigma = Lambda Lambda' + Psi</code>, rank <code>k = 2</code> by default),
+resolving findings 1-3 at the source: BDL cells are censored in the
+likelihood (no post-hoc cap), and the latent factor is inferred from a
+sample's <em>observed</em> metals at prediction time, so measured metals
+genuinely condition the missing/BDL ones. Fitted in two stages: a
+per-analyte <code><a href="https://rdrr.io/pkg/mgcv/man/gam.html" class="external-link">mgcv::gam</a></code> mean on the PC scores, then a Stan factor
+model on the residuals (needs <span class="pkg">cmdstanr</span>). See
+<code>dev/plan-route-c.md</code>.</p></dd>
+
 
 </dl><p>See <code><a href="../articles/imputation.html">vignette("imputation")</a></code> and the package benchmark for guidance on
 which to prefer.</p></dd>
@@ -211,18 +241,42 @@ which to prefer.</p></dd>
 <dd><p>brms MCMC settings.</p></dd>
 
 
+<dt id="arg-k">k<a class="anchor" aria-label="anchor" href="#arg-k"></a></dt>
+<dd><p>Number of latent factors, only used when
+<code>impute_method = "factor"</code> (Route C). <code>NULL</code> (default) uses
+<code>min(2, J - 1)</code> per group, where <code>J</code> is that group's number of target
+analytes (capped below <code>J</code> for identifiability — see
+<code>dev/plan-route-c.md</code>). Choosing <code>k = 2</code> vs <code>k = 3</code> by held-out coverage
+is a deliberate validation step; raise it here once you have evidence a
+group's analytes need a second/third shared axis. Ignored (with a
+message) for a single-analyte group, which always falls back to a
+Stage-1-only marginal fit regardless of <code>k</code>. Ignored by the brms methods.</p></dd>
+
+
+<dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
+<dd><p>Optional integer seed, only used when
+<code>impute_method = "factor"</code> (Route C): passed to the Stage-2 Stan
+sampler (<code>cmdstanr</code>'s <code>$sample(seed = ...)</code>) for reproducible factor
+fits. <code>NULL</code> (default) samples with a random seed each call. The brms
+methods are already seedable via <code>seed</code> in <code>...</code> (passed to
+<code><a href="https://paulbuerkner.com/brms/reference/brm.html" class="external-link">brms::brm()</a></code>); this argument only affects the factor method.</p></dd>
+
+
 <dt id="arg-save-dir">save_dir<a class="anchor" aria-label="anchor" href="#arg-save-dir"></a></dt>
 <dd><p>If non-NULL, save the returned model object as a <code>.qs</code> file
 in this directory using <code><a href="https://rdrr.io/pkg/qs2/man/qs_save.html" class="external-link">qs2::qs_save()</a></code>.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>Additional arguments passed to <code><a href="https://paulbuerkner.com/brms/reference/brm.html" class="external-link">brms::brm()</a></code>.  The Stan
-<strong><code>backend</code></strong> defaults to <code>"cmdstanr"</code> when the <span class="pkg">cmdstanr</span> package and a
-CmdStan install are both available (cached compiled binaries + faster
-sampling, statistically equivalent to rstan), otherwise <code>"rstan"</code>; pass
-<code>backend = ...</code> here or set <code>options(hydroSense.brms_backend = ...)</code> to
-override.</p></dd>
+<dd><p>Additional arguments passed to the sampler. For the three brms
+methods they go to <code><a href="https://paulbuerkner.com/brms/reference/brm.html" class="external-link">brms::brm()</a></code>; the Stan <strong><code>backend</code></strong> defaults to
+<code>"cmdstanr"</code> when the <span class="pkg">cmdstanr</span> package and a CmdStan install are both
+available (cached compiled binaries + faster sampling, statistically
+equivalent to rstan), otherwise <code>"rstan"</code>; pass <code>backend = ...</code> here or set
+<code>options(hydroSense.brms_backend = ...)</code> to override. For
+<code>impute_method = "factor"</code> (Route C) there is no brms call — <code>...</code> is passed
+to <span class="pkg">cmdstanr</span>'s <code>$sample()</code> instead (e.g. <code>adapt_delta</code>,
+<code>max_treedepth</code>, <code>parallel_chains</code>), so brms-only arguments do not apply.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -328,7 +382,7 @@ bound).  A message is issued but the sample is retained.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer></div>

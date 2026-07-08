@@ -128,8 +128,9 @@ downstream (identical to chaining the functions by hand without one).</p></dd>
 
 <dt id="arg-impute-seed">impute_seed<a class="anchor" aria-label="anchor" href="#arg-impute-seed"></a></dt>
 <dd><p>Optional integer seed for the imputation fit (forwarded to
-<code><a href="https://paulbuerkner.com/brms/reference/brm.html" class="external-link">brms::brm()</a></code> via <code><a href="fit_imputation_model.html">fit_imputation_model()</a></code>) so the default-on path is
-reproducible.</p></dd>
+<code><a href="fit_imputation_model.html">fit_imputation_model()</a></code>) so a stochastic fit is reproducible. The default
+<code>"marginal"</code> method's GAM fit is deterministic; the seed matters for the
+Stan-based methods (<code>"factor"</code> and the brms methods).</p></dd>
 
 
 <dt id="arg-reference-args-daily-args">reference_args, daily_args<a class="anchor" aria-label="anchor" href="#arg-reference-args-daily-args"></a></dt>
@@ -244,7 +245,7 @@ missingness (MAR/MNAR) modelling judgement, not a neutral default. Set
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer></div>

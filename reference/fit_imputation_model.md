@@ -29,11 +29,13 @@ fit_imputation_model(
   min_var_explained = 0.75,
   max_pcs = 6L,
   family = "gaussian",
-  impute_method = c("rescor_mi", "cens", "cens_factor"),
+  impute_method = c("marginal", "rescor_mi", "cens", "cens_factor", "factor"),
   iter = 2000,
   warmup = 1000,
   chains = 4,
   cores = parallel::detectCores(),
+  k = NULL,
+  seed = NULL,
   save_dir = NULL,
   ...
 )
@@ -129,24 +131,45 @@ fit_imputation_model(
 - impute_method:
 
   How below-detection (BDL) values and cross-analyte coupling are
-  handled. One of:
+  handled. Defaults to `"marginal"` — the fastest, best- calibrated
+  method on the package benchmark; the others are retained for
+  comparison and for panels with genuinely strong cross-analyte
+  coupling. See
+  [`vignette("imputation")`](https://vorpalvorpal.github.io/hydroSense/articles/imputation.md)
+  for the assumptions, trade-offs and benchmark. One of:
+
+  `"marginal"`
+
+  :   **(default)** Per-analyte left-censored
+      [`mgcv::gam`](https://rdrr.io/pkg/mgcv/man/gam.html) (spline mean
+      on the PC scores) with an independent Student-t posterior
+      predictive – **no** cross-analyte borrowing. Uses mgcv only (no
+      brms, no cmdstanr) and is ~400x faster than `"rescor_mi"`. Best
+      MAE and well-calibrated 90% coverage on the B.S01 benchmark; on
+      that panel the cross-metal borrowing the other methods attempt
+      does not help (it mis-conditions sparse analytes). Uncertainty is
+      a proper posterior predictive: GAM parameter uncertainty
+      (`beta ~ N(coef, Vp)`, unconditional) plus residual-variance
+      uncertainty (`sigma^2` drawn from its scaled-inverse-chi^2
+      posterior, giving the t-tails), with BDL cells truncated at the
+      detection limit (no post-hoc cap).
 
   `"rescor_mi"`
 
-  :   (default) Residual correlation across analytes (`rescor = TRUE`)
-      with BDL/missing treated as imputable (`mi()`); the imputed BDL
-      cells are capped at the detection limit post-hoc by
+  :   Residual correlation across analytes (`rescor = TRUE`) with
+      BDL/missing treated as imputable (`mi()`); the imputed BDL cells
+      are capped at the detection limit post-hoc by
       [`impute_chemistry()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.md)
-      (brms cannot combine `rescor` with `cens()`). Most accurate
-      recovery (best hold-out RMSE by a wide margin), but the `mi()` +
-      correlation geometry is funnel-prone, so `adapt_delta = 0.95` and
-      an `lkj(2)` prior on the residual correlation are set by default
-      (override via `control` / `prior` in `...`). Even so the geometry
-      stays hard (tree-depth saturation, low E-BFMI, worst-case R̂ ≈ 1.6
-      on a hard mask): trust the **point estimate**, but check
+      (brms cannot combine `rescor` with `cens()`). Slightly better
+      hold-out RMSE than `"marginal"` but at ~400x the cost and with
+      over-wide, uninformative intervals; the `mi()` + correlation
+      geometry is funnel-prone, so `adapt_delta = 0.95` and an `lkj(2)`
+      prior on the residual correlation are set by default (override via
+      `control` / `prior` in `...`). The geometry stays hard (tree-depth
+      saturation, low E-BFMI, worst-case R̂ ≈ 1.6 on a hard mask): trust
+      the **point estimate**, but check
       [`brms::rhat()`](https://mc-stan.org/posterior/reference/rhat.html)
-      before relying on the **draws** — for well-calibrated uncertainty
-      prefer `"cens_factor"`.
+      before relying on the **draws**.
 
   `"cens"`
 
@@ -164,6 +187,19 @@ fit_imputation_model(
       observations); `adapt_delta = 0.95` is set by default to clear the
       factor's mild funnel (override via `control` in `...`).
 
+  `"factor"`
+
+  :   **(Route C)** Low-rank left-censored latent factor model
+      (`Sigma = Lambda Lambda' + Psi`, rank `k = 2` by default),
+      resolving findings 1-3 at the source: BDL cells are censored in
+      the likelihood (no post-hoc cap), and the latent factor is
+      inferred from a sample's *observed* metals at prediction time, so
+      measured metals genuinely condition the missing/BDL ones. Fitted
+      in two stages: a per-analyte
+      [`mgcv::gam`](https://rdrr.io/pkg/mgcv/man/gam.html) mean on the
+      PC scores, then a Stan factor model on the residuals (needs
+      cmdstanr). See `dev/plan-route-c.md`.
+
   See
   [`vignette("imputation")`](https://vorpalvorpal.github.io/hydroSense/articles/imputation.md)
   and the package benchmark for guidance on which to prefer.
@@ -171,6 +207,28 @@ fit_imputation_model(
 - iter, warmup, chains, cores:
 
   brms MCMC settings.
+
+- k:
+
+  Number of latent factors, only used when `impute_method = "factor"`
+  (Route C). `NULL` (default) uses `min(2, J - 1)` per group, where `J`
+  is that group's number of target analytes (capped below `J` for
+  identifiability — see `dev/plan-route-c.md`). Choosing `k = 2` vs
+  `k = 3` by held-out coverage is a deliberate validation step; raise it
+  here once you have evidence a group's analytes need a second/third
+  shared axis. Ignored (with a message) for a single-analyte group,
+  which always falls back to a Stage-1-only marginal fit regardless of
+  `k`. Ignored by the brms methods.
+
+- seed:
+
+  Optional integer seed, only used when `impute_method = "factor"`
+  (Route C): passed to the Stage-2 Stan sampler (`cmdstanr`'s
+  `$sample(seed = ...)`) for reproducible factor fits. `NULL` (default)
+  samples with a random seed each call. The brms methods are already
+  seedable via `seed` in `...` (passed to
+  [`brms::brm()`](https://paulbuerkner.com/brms/reference/brm.html));
+  this argument only affects the factor method.
 
 - save_dir:
 
@@ -180,13 +238,18 @@ fit_imputation_model(
 
 - ...:
 
-  Additional arguments passed to
-  [`brms::brm()`](https://paulbuerkner.com/brms/reference/brm.html). The
+  Additional arguments passed to the sampler. For the three brms methods
+  they go to
+  [`brms::brm()`](https://paulbuerkner.com/brms/reference/brm.html); the
   Stan **`backend`** defaults to `"cmdstanr"` when the cmdstanr package
   and a CmdStan install are both available (cached compiled binaries +
   faster sampling, statistically equivalent to rstan), otherwise
   `"rstan"`; pass `backend = ...` here or set
-  `options(hydroSense.brms_backend = ...)` to override.
+  `options(hydroSense.brms_backend = ...)` to override. For
+  `impute_method = "factor"` (Route C) there is no brms call — `...` is
+  passed to cmdstanr's `$sample()` instead (e.g. `adapt_delta`,
+  `max_treedepth`, `parallel_chains`), so brms-only arguments do not
+  apply.
 
 ## Value
 

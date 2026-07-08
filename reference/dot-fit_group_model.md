@@ -16,6 +16,8 @@ Fit a single brms group model (metals or organics)
   cores,
   impute_method = "rescor_mi",
   group_name = "group",
+  k = NULL,
+  seed = NULL,
   ...
 )
 ```

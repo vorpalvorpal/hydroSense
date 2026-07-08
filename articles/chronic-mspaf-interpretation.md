@@ -485,16 +485,18 @@ not been empirically tied to observed community impact.
 
 **Below-detection handling in imputation.**
 [`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md)
-offers three `impute_method` options for BDL cells and cross-analyte
-coupling: `"rescor_mi"` (default — full residual correlation with `mi()`
-imputation), `"cens"` (proper left-censoring, no coupling), and
-`"cens_factor"` (left-censoring plus a shared latent factor). The
-default cannot use `cens("left")` because brms does not support censored
-likelihoods together with multivariate residual correlation
-(`rescor = TRUE`), so it imputes BDL cells via `mi()`. In all methods an
-imputed BDL value is capped at its detection limit (`bdl_cap = TRUE`);
-frequent capping signals tension between the modelled chemistry and the
-reported limits and should be inspected. See the *Imputing missing and
+offers several `impute_method` options for BDL cells and cross-analyte
+coupling. The default `"marginal"` fits a per-analyte left-censored GAM
+with a Student-t posterior predictive and **no** cross-analyte borrowing
+— the fastest, best-calibrated method on the B.S01 benchmark (borrowing
+across metals did not help there; it mis-conditions sparse analytes).
+Cross-analyte coupling is available via `"factor"` (a low-rank censored
+latent factor) and the slower brms methods (`"rescor_mi"`, `"cens"`,
+`"cens_factor"`). The `"marginal"` and `"factor"` methods truncate BDL
+draws at the detection limit by construction; the brms methods instead
+cap an imputed BDL value at its limit (`bdl_cap = TRUE`), and frequent
+capping signals tension between the modelled chemistry and the reported
+limits and should be inspected. See the *Imputing missing and
 below-detection chemistry* article and the
 [`fit_imputation_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_imputation_model.md)
 docs for the trade-offs.

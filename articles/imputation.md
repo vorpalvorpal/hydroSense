@@ -38,15 +38,17 @@ The design has three ideas at its core:
     the *whole* measured chemical context, not one or two surrogate
     analytes.
 
-2.  **Cross-analyte coupling.** Metals are modelled jointly. In a
-    leachate- or AMD-impacted aquifer, conservative tracers move ahead
-    of redox-controlled metals, so a post-pulse sample can look
-    near-baseline on its major ions while Cu/Pb/Zn/Mn stay co-elevated.
-    That co-elevation is residual correlation with no predictor driving
-    it — capturing it lets an *observed* metal at a sample inform the
-    *missing* ones. By default this is a full residual correlation
-    matrix (`rescor = TRUE`); see *Choosing the imputation method* for
-    the alternatives.
+2.  **Cross-analyte coupling (optional).** Metals *can* be modelled
+    jointly, so an *observed* metal at a sample informs the *missing*
+    ones — the idea being that in a leachate- or AMD-impacted aquifer,
+    conservative tracers move ahead of redox-controlled metals, leaving
+    Cu/Pb/Zn/Mn co-elevated beyond what the major ions predict. In
+    practice, on the B.S01 panel this borrowing did **not** help (the
+    cross-metal correlation is too weak and ragged, and borrowing noise
+    hurts sparse analytes), so the **default method does no borrowing**
+    and predicts each metal from the shared chemistry PCA alone. Opt
+    into coupling with `impute_method = "factor"`; see *Choosing the
+    imputation method*.
 
 3.  **Hurdles, so silence is not mistaken for absence.** A sample is
     only imputed for a group if it carries at least one of that group’s
@@ -130,7 +132,7 @@ model <- fit_imputation_model(
 
 model
 #> <imputation_model>  fitted 2026-06-03 | 248 samples | 14 PCA vars | 3 PCs (78% var)
-#>   method:   rescor_mi
+#>   method:   marginal
 #>   metals:   8 analytes
 #>   organics: 2 analytes
 ```
@@ -179,95 +181,105 @@ starting from scratch.
 ## Choosing the imputation method
 
 `fit_imputation_model(impute_method =)` controls how below-detection
-cells and cross-analyte coupling are handled. All three share the same
-PCA predictors; `"rescor_mi"` and `"cens"` fit a wide multivariate
-model, while `"cens_factor"` fits a single long-format model with a
-shared per-sample factor:
+cells and cross-analyte coupling are handled. The methods split on one
+design question: **should an observed metal at a sample help predict the
+missing/BDL ones at that same sample?** All share the same PCA
+predictors and per-analyte spline mean; they differ in whether (and how)
+they add cross-analyte coupling on top.
 
-| `impute_method` | BDL handling | Coupling | Notes |
-|----|----|----|----|
-| `"rescor_mi"` *(default)* | `mi()` (imputed) + DL cap | full residual-correlation matrix | most accurate recovery; posterior **draws are memory-heavy** |
-| `"cens"` | `cens("left")` (proper censoring) | none | fastest; cleanest convergence; no borrowing across metals |
-| `"cens_factor"` | `cens("left")` | shared per-sample latent factor | proper censoring **and** coupling; calibrated, cheap uncertainty |
+| `impute_method` | Engine | BDL handling | Cross-analyte coupling | Uncertainty |
+|----|----|----|----|----|
+| `"marginal"` *(default)* | mgcv | `cens` (truncated draws) | **none** | proper posterior predictive (t) |
+| `"rescor_mi"` | brms/Stan | `mi()` + DL cap | full residual-correlation matrix | over-wide; hard to sample |
+| `"cens"` | brms/Stan | `cens("left")` | none | calibrated, slow |
+| `"cens_factor"` | brms/Stan | `cens("left")` | shared per-sample latent factor | calibrated, cheap |
+| `"factor"` | mgcv + cmdstanr | `cens` (bounded latents) | low-rank latent factor (inferred at prediction) | calibrated |
 
-The trade-off is **point accuracy versus trustworthy uncertainty**.
-`brms` cannot combine a full residual correlation (`rescor = TRUE`) with
-proper left-censoring, so the default pairs residual correlation with
-`mi()` imputation and a post-hoc cap.
+### The benchmark, and why `"marginal"` is the default
 
 A hold-out benchmark on real B.S01 data — masking ~10% of detected
 routine-metal cells, pooled over three mask seeds (57 held-out cells),
 scored on the log₁₀ scale — gives:
 
-| `impute_method` | RMSE | bias | 90% coverage | max R̂ | sampler health |
-|----|---:|---:|---:|---:|----|
-| `"rescor_mi"` | **0.30** | −0.05 | 1.00 | 1.63 | 72–99% treedepth-saturated, E-BFMI \< 0.3 |
-| `"cens_factor"` | 0.75 | −0.44 | **0.93** | 1.59 | up to 28% divergent on a hard mask |
-| `"cens"` | 0.92 | −0.58 | 0.90 | **1.04** | clean, but one seed took ~2 h to fit |
+| `impute_method` |     RMSE |      MAE |  bias |    90% coverage | 90% width |  fit time |
+|-----------------|---------:|---------:|------:|----------------:|----------:|----------:|
+| `"marginal"`    |     0.30 | **0.19** | −0.14 |        **0.91** |  **0.77** | **0.3 s** |
+| `"rescor_mi"`   | **0.25** |     0.21 | −0.05 | 1.00 (too wide) |      1.29 |    ~160 s |
+| `"factor"`      |     0.34 |     0.23 | −0.21 |            0.98 |      1.00 |     ~60 s |
 
-Two things stand out, and they pull in opposite directions:
+The headline is a **negative result about borrowing**: on B.S01, letting
+a sample’s observed metals condition its missing ones does **not** help.
+The `"factor"` method — a principled low-rank latent-factor model that
+does exactly that borrowing — is the *worst* performer. A cell-level
+breakdown shows why: the loss is concentrated in the **sparse analytes**
+(Pb, Cr), whose factor loadings are unidentified, so conditioning on the
+sample’s other metals through a spurious loading yanks the prediction
+far down (on the worst Pb cell, ~30× too low). For the well-measured
+metals it merely equals `"marginal"`. This matches the weak, ragged
+cross-metal correlation seen on this panel: there is little real signal
+to borrow, and borrowing noise actively hurts where data is thin.
 
-- **`"rescor_mi"` recovers the masked values by far the most
-  accurately** (RMSE 0.30 vs 0.75 and 0.92, with near-zero bias) — the
-  full residual-correlation matrix is the strongest coupling, and the
-  `mi()` likelihood is not pulled down by the censoring bound the way
-  the cens methods are. This is why it remains the default **for point
-  estimates**.
-- **But `"rescor_mi"`’s posterior is hard to sample**: the `mi()` +
-  full-rescor geometry saturates the NUTS tree depth and trips E-BFMI
-  even at `adapt_delta = 0.95` with an `lkj(2)` prior on `rescor`, and
-  its 90% intervals over-cover (1.00, i.e. too wide). Treat its **point
-  estimate** as reliable but its **draws/uncertainty with caution** —
-  check
-  [`brms::rhat()`](https://mc-stan.org/posterior/reference/rhat.html) /
-  `bayesplot::mcmc_*` on the returned fit, and consider raising
-  `max_treedepth` and `iter` for production runs.
+`"marginal"` — which deliberately does **no** borrowing (a per-analyte
+censored GAM) — is therefore the robust choice: it has the best MAE,
+well-calibrated 90% coverage (0.91), tight informative intervals, needs
+neither brms nor cmdstanr, and is ~400× faster than `"rescor_mi"`.
+`"rescor_mi"`’s slim RMSE edge (0.25 vs 0.30) comes with uninformative
+100%-coverage intervals (width 1.29 vs 0.77) and a posterior that
+saturates tree depth and trips E-BFMI.
 
-The cens methods sample more honestly but recover less well here:
-censoring at the (inflated) hold-out detection limit pulls their
-estimates *below* the truth, which is the source of their strong
-negative bias in this masked-detect setup (in genuine BDL cells, where
-the truth really is sub-limit, that conservatism is correct). Of the
-two, **`"cens_factor"` gives the best-calibrated intervals** (90%
-coverage 0.93) thanks to a single per-sample latent factor shared across
-analytes — fitted in long format, so the factor is well-identified (each
-sample contributes several analyte observations) and genuinely lets an
-observed metal inform the unobserved/BDL ones at that sample. Its
-sampling is usually clean but not bullet-proof (one hard mask hit 28%
-divergences). `"cens"` drops the coupling entirely; it is the simplest
-and best-converging model, at the cost of accuracy.
+### `"marginal"`: assumptions and trade-offs
 
-Bottom line: **prefer the default `"rescor_mi"` for the most accurate
-point estimates; prefer `"cens_factor"` when you need well-calibrated
-uncertainty (`return = "draws"`), hit memory limits, or want a posterior
-you can trust without per-fit diagnostic checks.** (Single-seed runs can
-reorder the R̂ column — the convergence numbers above are the worst case
-across seeds, not a typical fit.)
+Per target analyte, it fits `log(conc) ~ s(PC1) + … + s(PCk)` on the
+*detected* observations (an `mgcv` GAM), then predicts each BDL/missing
+cell from a proper **posterior predictive**: GAM parameter uncertainty
+(`β ~ N(coef, Vp)`, unconditional so smoothing-parameter uncertainty is
+included) **plus** residual-variance uncertainty (`σ²` drawn from its
+scaled-inverse-χ² posterior, making the predictive Student-t), with BDL
+cells’ draws truncated at the detection limit. Its assumptions:
 
-**How much does this matter downstream?** Usually less than the
-cell-level RMSE gap suggests. Running the full B.S01 daily-msPAF
-pipeline (`mspaf_daily`, deterministic line + gap-uncertainty bracket)
-under each method, with everything else held fixed, the two give an
-*almost identical* result — both for Total and reference-adjusted (ARA)
-msPAF. The **central estimates** (deterministic line and both envelope
-medians) differ by a day-to-day median of ~0.005 percentage points and
-well under 1 pp overall: `"rescor_mi"` gives a marginally better central
-estimate, but the difference is tiny. The only systematic difference is
-in the **band width**: `"rescor_mi"`’s 90% bands run a little *too wide*
-(about 5–15 % wider than `"cens_factor"`’s), exactly as its
-over-coverage on the hold-out predicts. The reason the choice washes out
-is that on a panel site, where the metals are usually measured,
-imputation only fills a handful of cells, and the gap-uncertainty
-bracket (informative vs ignorable) dwarfs the imputation effect. So:
-**use the default `"rescor_mi"` for the better central estimate, but
-read its uncertainty bands as slightly conservative (a bit too wide);
-switch to `"cens_factor"` when the band width itself is the decision
-variable.**
+- **The chemistry PCA carries the signal.** A metal is predicted only
+  from the water-quality context (major ions, pH, EC, nutrients, redox
+  indicators) summarised by the PC scores — *not* from the other metals.
+  If your panel has strong, well-observed cross-metal coupling that the
+  PCA does not already capture, `"marginal"` leaves that on the table
+  (use `"factor"`).
+- **Log-normal, smoothly-varying concentrations.** The spline mean
+  assumes the log concentration is a smooth function of the PC scores;
+  the residual is Gaussian on the log scale.
+- **Detected-only mean.** The GAM mean is fit on quantified values; on a
+  heavily censored analyte the mean can sit slightly high (a small
+  negative bias in the masked-detect benchmark, −0.14), because the fit
+  never sees the low tail. In genuine BDL cells — where the truth really
+  is sub-limit — the DL truncation is the correct conservatism.
+
+### When to use the others
+
+- **`"factor"`** — the principled cross-analyte model. Use it when you
+  have evidence of genuine, reasonably-observed metal-to-metal coupling
+  that the WQ PCA misses; it will beat `"marginal"` only when there is
+  real signal to borrow. On weak/ragged panels it mis-conditions sparse
+  analytes (see above).
+- **`"rescor_mi"` / `"cens"` / `"cens_factor"`** — the brms methods,
+  retained for comparison and continuity. `"cens_factor"` is the
+  best-calibrated of the three; all are far slower than `"marginal"` and
+  need a Stan toolchain.
+
+**How much does the choice matter downstream?** Usually little. Running
+the full B.S01 daily-msPAF pipeline (`mspaf_daily`) under different
+methods, everything else fixed, the central estimates differ by a
+day-to-day median of ~0.005 percentage points: on a panel site the
+metals are usually measured, so imputation fills only a handful of cells
+and the gap-uncertainty bracket dwarfs the imputation effect. The method
+choice matters most for the **width** of the reported bands — where
+`"marginal"`’s calibrated, tighter intervals are the honest default.
 
 ``` r
 
-# Proper censoring + cross-analyte coupling, with cheap calibrated uncertainty:
-model <- fit_imputation_model(monitoring_long, impute_method = "cens_factor")
+# Default — fast, calibrated, no Stan toolchain needed:
+model <- fit_imputation_model(monitoring_long)                       # "marginal"
+
+# Opt in to cross-analyte borrowing (only worth it with genuine coupling):
+model <- fit_imputation_model(monitoring_long, impute_method = "factor")
 ```
 
 ## Imputing new chemistry
@@ -302,14 +314,18 @@ samples in batches, both of which bound peak memory.
 ### The detection-limit cap
 
 An imputed below-detection value must never exceed its detection limit.
-The posterior prediction is not itself constrained below the DL, so
+The default `"marginal"` method (and `"factor"`) **truncate** BDL draws
+at the limit by construction, so no cap is needed and the check is
+skipped. The brms methods (`"rescor_mi"`, `"cens"`, `"cens_factor"`)
+emit an unconstrained prediction, so for those
 [`impute_chemistry()`](https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.md)
 **caps** any imputed BDL cell at its original detection limit
 (`bdl_cap = TRUE`, the default) and warns when the cap fires, with a
 per-analyte breakdown (how many cells, and the worst exceedance ratio)
 so the activations are auditable rather than just an aggregate count.
 Frequent cap firing signals tension between the modelled chemistry and
-the reported limits.
+the reported limits — and is characteristic of `"rescor_mi"`, whose
+`mi()` predictions are not held below the bound.
 
 For a full per-cell audit, the result carries a `"bdl_cap_summary"`
 attribute — one row per capped (`sample_id`, `analyte`) cell with its
