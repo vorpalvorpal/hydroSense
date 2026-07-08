@@ -462,19 +462,34 @@ leachate_impute_groups <- function() {
 #'   are log-transformed before fitting; residual correlations require
 #'   Gaussian family).
 #' @param impute_method How below-detection (BDL) values and cross-analyte
-#'   coupling are handled. One of:
+#'   coupling are handled. Defaults to `"marginal"` — the fastest, best-
+#'   calibrated method on the package benchmark; the others are retained for
+#'   comparison and for panels with genuinely strong cross-analyte coupling. See
+#'   `vignette("imputation")` for the assumptions, trade-offs and benchmark. One
+#'   of:
 #'   \describe{
-#'     \item{`"rescor_mi"`}{(default) Residual correlation across analytes
+#'     \item{`"marginal"`}{**(default)** Per-analyte left-censored `mgcv::gam`
+#'       (spline mean on the PC scores) with an independent Student-t posterior
+#'       predictive -- **no** cross-analyte borrowing. Uses \pkg{mgcv} only (no
+#'       brms, no cmdstanr) and is ~400x faster than `"rescor_mi"`. Best MAE and
+#'       well-calibrated 90% coverage on the B.S01 benchmark; on that panel the
+#'       cross-metal borrowing the other methods attempt does not help (it
+#'       mis-conditions sparse analytes). Uncertainty is a proper posterior
+#'       predictive: GAM parameter uncertainty (`beta ~ N(coef, Vp)`,
+#'       unconditional) plus residual-variance uncertainty (`sigma^2` drawn from
+#'       its scaled-inverse-chi^2 posterior, giving the t-tails), with BDL cells
+#'       truncated at the detection limit (no post-hoc cap).}
+#'     \item{`"rescor_mi"`}{Residual correlation across analytes
 #'       (`rescor = TRUE`) with BDL/missing treated as imputable (`mi()`); the
 #'       imputed BDL cells are capped at the detection limit post-hoc by
-#'       [impute_chemistry()] (brms cannot combine `rescor` with `cens()`). Most
-#'       accurate recovery (best hold-out RMSE by a wide margin), but the `mi()` +
-#'       correlation geometry is funnel-prone, so `adapt_delta = 0.95` and an
-#'       `lkj(2)` prior on the residual correlation are set by default (override
-#'       via `control` / `prior` in `...`). Even so the geometry stays hard
-#'       (tree-depth saturation, low E-BFMI, worst-case R̂ ≈ 1.6 on a hard mask):
-#'       trust the **point estimate**, but check `brms::rhat()` before relying on
-#'       the **draws** — for well-calibrated uncertainty prefer `"cens_factor"`.}
+#'       [impute_chemistry()] (brms cannot combine `rescor` with `cens()`).
+#'       Slightly better hold-out RMSE than `"marginal"` but at ~400x the cost
+#'       and with over-wide, uninformative intervals; the `mi()` + correlation
+#'       geometry is funnel-prone, so `adapt_delta = 0.95` and an `lkj(2)` prior
+#'       on the residual correlation are set by default (override via `control` /
+#'       `prior` in `...`). The geometry stays hard (tree-depth saturation, low
+#'       E-BFMI, worst-case R̂ ≈ 1.6 on a hard mask): trust the **point
+#'       estimate**, but check `brms::rhat()` before relying on the **draws**.}
 #'     \item{`"cens"`}{Proper left-censoring of BDL at the detection limit
 #'       (`cens("left")`), no residual correlation -- clean BDL handling but no
 #'       cross-analyte coupling.}
@@ -485,18 +500,45 @@ leachate_impute_groups <- function() {
 #'       well-identified (each sample contributes several analyte observations);
 #'       `adapt_delta = 0.95` is set by default to clear the factor's mild
 #'       funnel (override via `control` in `...`).}
+#'     \item{`"factor"`}{**(Route C)** Low-rank left-censored latent factor
+#'       model (`Sigma = Lambda Lambda' + Psi`, rank `k = 2` by default),
+#'       resolving findings 1-3 at the source: BDL cells are censored in the
+#'       likelihood (no post-hoc cap), and the latent factor is inferred from a
+#'       sample's *observed* metals at prediction time, so measured metals
+#'       genuinely condition the missing/BDL ones. Fitted in two stages: a
+#'       per-analyte `mgcv::gam` mean on the PC scores, then a Stan factor
+#'       model on the residuals (needs \pkg{cmdstanr}). See
+#'       `dev/plan-route-c.md`.}
 #'   }
 #'   See `vignette("imputation")` and the package benchmark for guidance on
 #'   which to prefer.
 #' @param iter,warmup,chains,cores brms MCMC settings.
+#' @param k Number of latent factors, only used when
+#'   `impute_method = "factor"` (Route C). `NULL` (default) uses
+#'   `min(2, J - 1)` per group, where `J` is that group's number of target
+#'   analytes (capped below `J` for identifiability — see
+#'   `dev/plan-route-c.md`). Choosing `k = 2` vs `k = 3` by held-out coverage
+#'   is a deliberate validation step; raise it here once you have evidence a
+#'   group's analytes need a second/third shared axis. Ignored (with a
+#'   message) for a single-analyte group, which always falls back to a
+#'   Stage-1-only marginal fit regardless of `k`. Ignored by the brms methods.
+#' @param seed Optional integer seed, only used when
+#'   `impute_method = "factor"` (Route C): passed to the Stage-2 Stan
+#'   sampler (`cmdstanr`'s `$sample(seed = ...)`) for reproducible factor
+#'   fits. `NULL` (default) samples with a random seed each call. The brms
+#'   methods are already seedable via `seed` in `...` (passed to
+#'   `brms::brm()`); this argument only affects the factor method.
 #' @param save_dir If non-NULL, save the returned model object as a `.qs` file
 #'   in this directory using `qs2::qs_save()`.
-#' @param ... Additional arguments passed to `brms::brm()`.  The Stan
-#'   **`backend`** defaults to `"cmdstanr"` when the \pkg{cmdstanr} package and a
-#'   CmdStan install are both available (cached compiled binaries + faster
-#'   sampling, statistically equivalent to rstan), otherwise `"rstan"`; pass
-#'   `backend = ...` here or set `options(hydroSense.brms_backend = ...)` to
-#'   override.
+#' @param ... Additional arguments passed to the sampler. For the three brms
+#'   methods they go to `brms::brm()`; the Stan **`backend`** defaults to
+#'   `"cmdstanr"` when the \pkg{cmdstanr} package and a CmdStan install are both
+#'   available (cached compiled binaries + faster sampling, statistically
+#'   equivalent to rstan), otherwise `"rstan"`; pass `backend = ...` here or set
+#'   `options(hydroSense.brms_backend = ...)` to override. For
+#'   `impute_method = "factor"` (Route C) there is no brms call — `...` is passed
+#'   to \pkg{cmdstanr}'s `$sample()` instead (e.g. `adapt_delta`,
+#'   `max_treedepth`, `parallel_chains`), so brms-only arguments do not apply.
 #'
 #' @return A named list of class `"imputation_model"`:
 #'   - `$pca`: PCA fit + metadata (loadings, training medians, n_pcs,
@@ -542,16 +584,23 @@ fit_imputation_model <- function(
     min_var_explained = 0.75,
     max_pcs           = 6L,
     family            = "gaussian",
-    impute_method     = c("rescor_mi", "cens", "cens_factor"),
+    impute_method     = c("marginal", "rescor_mi", "cens", "cens_factor", "factor"),
     iter              = 2000,
     warmup            = 1000,
     chains            = 4,
     cores             = parallel::detectCores(),
+    k                 = NULL,
+    seed              = NULL,
     save_dir          = NULL,
     ...
 ) {
-  .require_brms()
   impute_method <- match.arg(impute_method)
+  # Require the method-appropriate engine only, rather than forcing brms on
+  # everyone (both brms and cmdstanr are Suggests): "factor" uses cmdstanr +
+  # mgcv; "marginal" uses mgcv alone (always available); the three brms methods
+  # need brms.
+  if (impute_method == "factor") .require_cmdstanr()
+  else if (impute_method != "marginal") .require_brms()
 
   if (is.null(pca_vars))    pca_vars    <- c("pH", "EC", "NH3-N",
                                              .WQ_BLOCK_CANDIDATES)
@@ -559,6 +608,11 @@ fit_imputation_model <- function(
   if (is.null(exclude))     exclude     <- .IMPUTE_EXCLUDED
   if (is.null(no_log_vars)) no_log_vars <- .PCA_NO_LOG_VARS
   .validate_impute_groups(groups)
+  # Guard declared group targets against a make.names() collision up front —
+  # independent of whether they clear the detection-frequency gates below, so
+  # a mistyped group spec fails fast rather than silently dropping analytes.
+  declared_targets <- unique(unlist(lapply(groups, function(g) g$targets), use.names = FALSE))
+  if (length(declared_targets) > 0L) .assert_safe_analyte_names(declared_targets)
 
   checkmate::assert_data_frame(df)
   checkmate::assert_names(names(df),
@@ -755,6 +809,8 @@ fit_imputation_model <- function(
       cores           = cores,
       impute_method   = impute_method,
       group_name      = g$name,
+      k               = k,
+      seed            = seed,
       ...
     )
     fit$name   <- g$name
@@ -901,13 +957,17 @@ impute_chemistry <- function(
     batch_size     = NULL
 ) {
   return <- match.arg(return)
-  .require_brms()
   checkmate::assert_data_frame(df)
   checkmate::assert_names(names(df),
     must.include = c("sample_id", "site_id", "datetime",
                      "analyte", "value", "detected"))
   if (!inherits(model, "imputation_model"))
     cli::cli_abort("{.arg model} must be an object returned by {.fn fit_imputation_model}.")
+
+  # Require the method-appropriate engine (see fit_imputation_model): "factor"
+  # needs cmdstanr, "marginal" needs only mgcv, the brms methods need brms.
+  if (identical(model$impute_method, "factor")) .require_cmdstanr()
+  else if (!identical(model$impute_method, "marginal")) .require_brms()
 
   groups <- model$groups %||% list()
   if (length(groups) == 0L) {
@@ -970,11 +1030,18 @@ impute_chemistry <- function(
     )
   }
 
-  # Cap imputed BDL values at their detection limit, for every method. An
+  # Cap imputed BDL values at their detection limit, for every brms method. An
   # imputed below-detection value must not exceed its DL. (For rescor_mi this
   # is the only enforcement of the censoring bound; for the cens methods the
   # bound is enforced in the likelihood during fitting, but the emitted
-  # prediction is unconstrained, so the cap is still needed.)
+  # prediction is unconstrained, so the cap is still needed.) The factor
+  # method (Route C) and the "marginal" method truncate every BDL draw at
+  # log(DL) by construction, so the cap is a no-op there — skip the check
+  # entirely rather than have it silently never fire.
+  if (!is.null(model$impute_method) &&
+      model$impute_method %in% c("factor", "marginal")) {
+    return(result)
+  }
   .check_bdl_imputed(result, dl_tbl, bdl_cap)
 }
 
@@ -1562,7 +1629,7 @@ impute_coanalytes <- function(
 .fit_group_model <- function(df, target_analytes, pca_obj,
                               family, iter, warmup, chains, cores,
                               impute_method = "rescor_mi",
-                              group_name = "group", ...) {
+                              group_name = "group", k = NULL, seed = NULL, ...) {
   .assert_safe_analyte_names(target_analytes)
   eps_log <- 1e-9
 
@@ -1595,6 +1662,43 @@ impute_coanalytes <- function(
       safe = unname(safe_analytes[.data$analyte]),
       lv   = log(pmax(.data$value, log_floors[.data$analyte]))
     )
+
+  if (impute_method == "factor") {
+    # Route C: low-rank censored factor model (dev/plan-route-c.md). Its
+    # two-stage fit (per-analyte GAM mean + Stage-2 Stan factor model) is
+    # structurally different from the brms branches below, so it is handled
+    # entirely by .fit_group_model_factor() and returns directly.
+    return(.fit_group_model_factor(
+      target_analytes = target_analytes,
+      safe_analytes   = safe_analytes,
+      base            = base,
+      pc_wide         = pc_wide,
+      pc_cols         = pc_cols,
+      log_floors      = log_floors,
+      iter            = iter,
+      warmup          = warmup,
+      chains          = chains,
+      cores           = cores,
+      group_name      = group_name,
+      k               = k,
+      seed            = seed,
+      ...
+    ))
+  }
+
+  if (impute_method == "marginal") {
+    # Per-analyte censored GAM, no shared factor (mgcv only). Handled entirely
+    # by .fit_group_model_marginal() and returns directly.
+    return(.fit_group_model_marginal(
+      target_analytes = target_analytes,
+      safe_analytes   = safe_analytes,
+      base            = base,
+      pc_wide         = pc_wide,
+      pc_cols         = pc_cols,
+      log_floors      = log_floors,
+      group_name      = group_name
+    ))
+  }
 
   if (impute_method == "rescor_mi") {
     # Residual correlation + mi() for BDL/missing. BDL and missing are NA and
@@ -1802,6 +1906,18 @@ impute_coanalytes <- function(
     # Predict every (eligible sample × analyte) cell from the univariate model;
     # the merge below overlays only the BDL/missing cells.
     pm_long <- .predict_factor_long(group, pc_wide, return, ndraws, batch_size)
+
+  } else if (!is.null(group$impute_method) && group$impute_method == "factor") {
+    # ── Route C: closed-form conditional prediction (dev/plan-route-c.md) ────
+    # Conditions the missing/BDL cells on this sample's OWN observed target
+    # analytes (finding 3) and truncates BDL draws at log(DL) (findings 1-2).
+    pm_long <- .predict_factor_conditional(group, pc_wide, df_eligible, return,
+                                           ndraws, batch_size)
+
+  } else if (!is.null(group$impute_method) && group$impute_method == "marginal") {
+    # ── Marginal: per-analyte censored-GAM posterior predictive, no borrowing ─
+    pm_long <- .predict_marginal(group, pc_wide, df_eligible, return,
+                                 ndraws, batch_size)
 
   } else {
     # ── Wide newdata + per-method prediction (rescor_mi / cens) ──────────────

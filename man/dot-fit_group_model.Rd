@@ -15,6 +15,8 @@
   cores,
   impute_method = "rescor_mi",
   group_name = "group",
+  k = NULL,
+  seed = NULL,
   ...
 )
 }

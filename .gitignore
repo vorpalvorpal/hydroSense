@@ -37,3 +37,9 @@ vignettes/*.html
 
 # Exploratory / scratch — never tracked
 dev/
+
+# cmdstanr-compiled Stan binaries (rebuilt locally, never tracked)
+inst/stan/*.exe
+inst/stan/factor_censored
+inst/stan/*.o
+inst/stan/*.hpp

@@ -18,11 +18,13 @@ fit_imputation_model(
   min_var_explained = 0.75,
   max_pcs = 6L,
   family = "gaussian",
-  impute_method = c("rescor_mi", "cens", "cens_factor"),
+  impute_method = c("marginal", "rescor_mi", "cens", "cens_factor", "factor"),
   iter = 2000,
   warmup = 1000,
   chains = 4,
   cores = parallel::detectCores(),
+  k = NULL,
+  seed = NULL,
   save_dir = NULL,
   ...
 )
@@ -82,19 +84,34 @@ are log-transformed before fitting; residual correlations require
 Gaussian family).}
 
 \item{impute_method}{How below-detection (BDL) values and cross-analyte
-coupling are handled. One of:
+coupling are handled. Defaults to \code{"marginal"} — the fastest, best-
+calibrated method on the package benchmark; the others are retained for
+comparison and for panels with genuinely strong cross-analyte coupling. See
+\code{vignette("imputation")} for the assumptions, trade-offs and benchmark. One
+of:
 \describe{
-\item{\code{"rescor_mi"}}{(default) Residual correlation across analytes
+\item{\code{"marginal"}}{\strong{(default)} Per-analyte left-censored \code{mgcv::gam}
+(spline mean on the PC scores) with an independent Student-t posterior
+predictive -- \strong{no} cross-analyte borrowing. Uses \pkg{mgcv} only (no
+brms, no cmdstanr) and is ~400x faster than \code{"rescor_mi"}. Best MAE and
+well-calibrated 90\% coverage on the B.S01 benchmark; on that panel the
+cross-metal borrowing the other methods attempt does not help (it
+mis-conditions sparse analytes). Uncertainty is a proper posterior
+predictive: GAM parameter uncertainty (\code{beta ~ N(coef, Vp)},
+unconditional) plus residual-variance uncertainty (\code{sigma^2} drawn from
+its scaled-inverse-chi^2 posterior, giving the t-tails), with BDL cells
+truncated at the detection limit (no post-hoc cap).}
+\item{\code{"rescor_mi"}}{Residual correlation across analytes
 (\code{rescor = TRUE}) with BDL/missing treated as imputable (\code{mi()}); the
 imputed BDL cells are capped at the detection limit post-hoc by
-\code{\link[=impute_chemistry]{impute_chemistry()}} (brms cannot combine \code{rescor} with \code{cens()}). Most
-accurate recovery (best hold-out RMSE by a wide margin), but the \code{mi()} +
-correlation geometry is funnel-prone, so \code{adapt_delta = 0.95} and an
-\code{lkj(2)} prior on the residual correlation are set by default (override
-via \code{control} / \code{prior} in \code{...}). Even so the geometry stays hard
-(tree-depth saturation, low E-BFMI, worst-case R̂ ≈ 1.6 on a hard mask):
-trust the \strong{point estimate}, but check \code{brms::rhat()} before relying on
-the \strong{draws} — for well-calibrated uncertainty prefer \code{"cens_factor"}.}
+\code{\link[=impute_chemistry]{impute_chemistry()}} (brms cannot combine \code{rescor} with \code{cens()}).
+Slightly better hold-out RMSE than \code{"marginal"} but at ~400x the cost
+and with over-wide, uninformative intervals; the \code{mi()} + correlation
+geometry is funnel-prone, so \code{adapt_delta = 0.95} and an \code{lkj(2)} prior
+on the residual correlation are set by default (override via \code{control} /
+\code{prior} in \code{...}). The geometry stays hard (tree-depth saturation, low
+E-BFMI, worst-case R̂ ≈ 1.6 on a hard mask): trust the \strong{point
+estimate}, but check \code{brms::rhat()} before relying on the \strong{draws}.}
 \item{\code{"cens"}}{Proper left-censoring of BDL at the detection limit
 (\code{cens("left")}), no residual correlation -- clean BDL handling but no
 cross-analyte coupling.}
@@ -105,21 +122,50 @@ metal informs the unobserved/BDL ones at that sample. The factor is
 well-identified (each sample contributes several analyte observations);
 \code{adapt_delta = 0.95} is set by default to clear the factor's mild
 funnel (override via \code{control} in \code{...}).}
+\item{\code{"factor"}}{\strong{(Route C)} Low-rank left-censored latent factor
+model (\verb{Sigma = Lambda Lambda' + Psi}, rank \code{k = 2} by default),
+resolving findings 1-3 at the source: BDL cells are censored in the
+likelihood (no post-hoc cap), and the latent factor is inferred from a
+sample's \emph{observed} metals at prediction time, so measured metals
+genuinely condition the missing/BDL ones. Fitted in two stages: a
+per-analyte \code{mgcv::gam} mean on the PC scores, then a Stan factor
+model on the residuals (needs \pkg{cmdstanr}). See
+\code{dev/plan-route-c.md}.}
 }
 See \code{vignette("imputation")} and the package benchmark for guidance on
 which to prefer.}
 
 \item{iter, warmup, chains, cores}{brms MCMC settings.}
 
+\item{k}{Number of latent factors, only used when
+\code{impute_method = "factor"} (Route C). \code{NULL} (default) uses
+\code{min(2, J - 1)} per group, where \code{J} is that group's number of target
+analytes (capped below \code{J} for identifiability — see
+\code{dev/plan-route-c.md}). Choosing \code{k = 2} vs \code{k = 3} by held-out coverage
+is a deliberate validation step; raise it here once you have evidence a
+group's analytes need a second/third shared axis. Ignored (with a
+message) for a single-analyte group, which always falls back to a
+Stage-1-only marginal fit regardless of \code{k}. Ignored by the brms methods.}
+
+\item{seed}{Optional integer seed, only used when
+\code{impute_method = "factor"} (Route C): passed to the Stage-2 Stan
+sampler (\code{cmdstanr}'s \verb{$sample(seed = ...)}) for reproducible factor
+fits. \code{NULL} (default) samples with a random seed each call. The brms
+methods are already seedable via \code{seed} in \code{...} (passed to
+\code{brms::brm()}); this argument only affects the factor method.}
+
 \item{save_dir}{If non-NULL, save the returned model object as a \code{.qs} file
 in this directory using \code{qs2::qs_save()}.}
 
-\item{...}{Additional arguments passed to \code{brms::brm()}.  The Stan
-\strong{\code{backend}} defaults to \code{"cmdstanr"} when the \pkg{cmdstanr} package and a
-CmdStan install are both available (cached compiled binaries + faster
-sampling, statistically equivalent to rstan), otherwise \code{"rstan"}; pass
-\code{backend = ...} here or set \code{options(hydroSense.brms_backend = ...)} to
-override.}
+\item{...}{Additional arguments passed to the sampler. For the three brms
+methods they go to \code{brms::brm()}; the Stan \strong{\code{backend}} defaults to
+\code{"cmdstanr"} when the \pkg{cmdstanr} package and a CmdStan install are both
+available (cached compiled binaries + faster sampling, statistically
+equivalent to rstan), otherwise \code{"rstan"}; pass \code{backend = ...} here or set
+\code{options(hydroSense.brms_backend = ...)} to override. For
+\code{impute_method = "factor"} (Route C) there is no brms call — \code{...} is passed
+to \pkg{cmdstanr}'s \verb{$sample()} instead (e.g. \code{adapt_delta},
+\code{max_treedepth}, \code{parallel_chains}), so brms-only arguments do not apply.}
 }
 \value{
 A named list of class \code{"imputation_model"}:

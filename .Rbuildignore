@@ -20,3 +20,9 @@
 ^references$
 ^CLAUDE\.md$
 ^\.claude$
+
+# cmdstanr-compiled Stan binaries (rebuilt locally, never shipped)
+^inst/stan/factor_censored$
+^inst/stan/.*\.exe$
+^inst/stan/.*\.o$
+^inst/stan/.*\.hpp$
