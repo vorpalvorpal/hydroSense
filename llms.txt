@@ -4,7 +4,9 @@
 impacted by landfill leachate. It turns routine monitoring chemistry
 into ecologically interpretable, mixture-aware risk estimates, with
 explicit handling of below-detection data and local background
-conditions.
+conditions. It is part of the
+[`tidyWaste`](https://github.com/vorpalvorpal/tidyWaste) family of
+packages.
 
 The package has three pillars:
 
