@@ -28,7 +28,6 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Imports:
     assertr,
-    brms (>= 2.20.0),
     checkmate,
     cli,
     collapse,
@@ -54,13 +53,17 @@ Imports:
     tools,
     units,
     uuid
-SystemRequirements: Stan (rstan or cmdstanr); required by brms for Bayesian imputation
+SystemRequirements: Stan (rstan or cmdstanr); required by brms for the
+    brms-based Bayesian imputation methods
 Suggests:
+    brms (>= 2.20.0),
+    callr,
     cmdstanr,
     future,
     future.apply,
     ggplot2,
     knitr,
+    pkgload,
     rmarkdown,
     testthat (>= 3.0.0),
     truncnorm,
