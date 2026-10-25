@@ -24,8 +24,12 @@
   names (`Hardness-total-CaCO3`, `Temperature`, `Alkalinity-total-CaCO3`,
   `NO2+NO3-N`, ...) to the package's; `add_lmf()`, `add_mspaf()` and
   `mspaf_pipeline()` accept them and return the caller's rows under their own
-  names. Combined alkalinity and oxidised N are not double counted when their
-  species are also present.
+  names, values and units (unit conversion is internal). A combined
+  alkalinity / oxidised-N value is dropped only when all of its split species
+  are present in the sample; otherwise it is used and the partial species are
+  dropped. This also applies to the leachate total-N filter.
+* Trailing windows are compared as whole calendar days in each datetime's own
+  time zone (UTC when none), not by clock time.
 * **`brms` moved from `Imports` back to `Suggests`.** Only the brms-based
   imputation methods need it; the default `"marginal"` method does not load it.
 * **New `hydrosense_provenance()`** returns the package version, git SHA, R

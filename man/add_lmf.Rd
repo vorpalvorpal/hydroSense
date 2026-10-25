@@ -39,7 +39,8 @@ are appended to \code{df} as supplied.}
 as \code{df} providing leachate end-member chemistry. Required columns:
 \code{sample_id}, \code{analyte}, \code{value}, \code{detected}
 (and \code{datetime} for \code{calibration = "trailing"}).
-The total-N quality filter is not applied -- supply curated data. Samples
+The total-N quality filter (\code{min_leachate_total_n}) applies in both
+calibration modes: leachate samples below it are ignored. Samples
 missing the required LMF panel analytes are silently dropped.}
 
 \item{reference_data}{Required. Long-format dataframe in the same structure
@@ -60,7 +61,9 @@ date, and applies them to every sample. \code{"trailing"} calibrates each
 sample separately, from only the rows of \code{leachate_data} and
 \code{reference_data} whose \code{datetime} lies in
 \code{[t - calibration_window_years, t]} (inclusive at both ends, where
-\code{t} is the sample's own \code{datetime}). A sample's LMF therefore
+\code{t} is the sample's own \code{datetime}). Bounds are compared as
+whole calendar days, each \code{datetime}'s day taken in its own time
+zone (UTC when it has none), so clock time never matters. A sample's LMF therefore
 depends on data up to its own date only, and appending later samples or
 later end-member data never changes it. A sample whose window has no
 usable reference or leachate data (none, too few reference samples to

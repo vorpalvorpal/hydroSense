@@ -93,8 +93,9 @@ analyte_aliases <- function() {
 ## resolves the two combined quantities: Alkalinity-total-CaCO3 stands in for
 ## CO3-CaCO3 + HCO3-CaCO3 (both are expressed as CaCO3, so meq/L is identical
 ## whichever of the two it is booked against), and NO2+NO3-N for NO3-N +
-## NO2-N (both as N). A combined row is dropped for any sample that also
-## carries one of its species, so it is never double counted.
+## NO2-N (both as N). Per sample: when ALL the species a combined row stands
+## for are also present, the combined row is dropped (it would double count);
+## otherwise the combined value is used and any partial species are dropped.
 .canonicalise_lmf_input <- function(df) {
   df <- .canonicalise_analytes(df)
   combos <- list(
@@ -106,8 +107,13 @@ analyte_aliases <- function() {
   for (cb in combos) {
     is_comb <- df$analyte == cb$combined
     if (!any(is_comb)) next
-    has_parts <- df$sample_id %in% df$sample_id[df$analyte %in% cb$parts]
-    df <- df[!(is_comb & has_parts), , drop = FALSE]
+    ## Samples carrying every species the combined row stands for.
+    n_parts <- tapply(df$analyte %in% cb$parts & !duplicated(df[c("sample_id", "analyte")]),
+                      df$sample_id, sum)
+    full <- df$sample_id %in% names(n_parts)[n_parts == length(cb$parts)]
+    comb_ids <- unique(df$sample_id[is_comb])
+    drop_part <- df$analyte %in% cb$parts & df$sample_id %in% comb_ids & !full
+    df <- df[!(is_comb & full) & !drop_part, , drop = FALSE]
     df$analyte[df$analyte == cb$combined] <- cb$as
   }
   df

@@ -192,7 +192,9 @@
 #'   sample separately, from only the rows of \code{leachate_data} and
 #'   \code{reference_data} whose \code{datetime} lies in
 #'   \code{[t - calibration_window_years, t]} (inclusive at both ends, where
-#'   \code{t} is the sample's own \code{datetime}). A sample's LMF therefore
+#'   \code{t} is the sample's own \code{datetime}). Bounds are compared as
+#'   whole calendar days, each \code{datetime}'s day taken in its own time
+#'   zone (UTC when it has none), so clock time never matters. A sample's LMF therefore
 #'   depends on data up to its own date only, and appending later samples or
 #'   later end-member data never changes it. A sample whose window has no
 #'   usable reference or leachate data (none, too few reference samples to
@@ -265,7 +267,8 @@
 #'   as \code{df} providing leachate end-member chemistry. Required columns:
 #'   \code{sample_id}, \code{analyte}, \code{value}, \code{detected}
 #'   (and \code{datetime} for \code{calibration = "trailing"}).
-#'   The total-N quality filter is not applied -- supply curated data. Samples
+#'   The total-N quality filter (\code{min_leachate_total_n}) applies in both
+#'   calibration modes: leachate samples below it are ignored. Samples
 #'   missing the required LMF panel analytes are silently dropped.
 #' @param reference_data Required. Long-format dataframe in the same structure
 #'   as \code{df} providing reference site chemistry for end-member
@@ -481,16 +484,17 @@ add_lmf <- function(
     window_months <- as.integer(round(12 * calibration_window_years))
     cal_cache <- new.env(parent = emptyenv())
     cal_for <- function(datetime) {
-      t <- .lmf_as_time(datetime)
-      key <- format(as.numeric(t), digits = 17)
+      ## Whole calendar days, each in its own datetime's time zone (UTC when
+      ## it has none): [day - window, day], inclusive at both ends.
+      day <- .lmf_day(datetime)
+      key <- format(day)
       if (!is.null(hit <- cal_cache[[key]])) return(hit)
-      cal <- if (is.na(t)) {
+      cal <- if (is.na(day)) {
         list(reason = "insufficient_calibration_data: sample has no datetime.")
       } else {
-        t_lo <- lubridate::`%m-%`(t, lubridate::period(month = window_months))
+        day_lo <- lubridate::`%m-%`(day, lubridate::period(month = window_months))
         in_win <- function(w) {
-          w[!is.na(w$datetime) & w$datetime >= t_lo & w$datetime <= t, ,
-            drop = FALSE]
+          w[!is.na(w$.day) & w$.day >= day_lo & w$.day <= day, , drop = FALSE]
         }
         .lmf_calibration(
           in_win(lea_wide), in_win(ref_wide), min_ref_samples,
@@ -579,14 +583,17 @@ add_lmf <- function(
 ## Calibration helpers
 ## ============================================================================
 
-## Coerce a Date / POSIXct / character datetime to POSIXct (Dates as UTC).
-.lmf_as_time <- function(x) {
-  if (inherits(x, "POSIXct")) {
+## The calendar day of a Date / POSIXct / character datetime: a POSIXct's day is
+## taken in its own time zone, UTC when it has none.
+.lmf_day <- function(x) {
+  if (inherits(x, "Date")) {
     x
-  } else if (inherits(x, "Date")) {
-    as.POSIXct(x, tz = "UTC")
+  } else if (inherits(x, "POSIXct")) {
+    tz <- attr(x, "tzone")[1]
+    if (is.null(tz) || is.na(tz) || !nzchar(tz)) tz <- "UTC"
+    as.Date(x, tz = tz)
   } else {
-    as.POSIXct(x, tz = "UTC")
+    as.Date(as.POSIXct(x, tz = "UTC"), tz = "UTC")
   }
 }
 
@@ -675,7 +682,7 @@ add_lmf <- function(
   wide <- collapse_species(
     meq, id_cols = c("sample_id", if (has_time) "datetime")
   )
-  wide$datetime <- if (has_time) .lmf_as_time(wide$datetime) else .lmf_as_time(NA)
+  wide$.day <- if (has_time) .lmf_day(wide$datetime) else as.Date(NA)
   wide$.valid_n <- TRUE
   if (!is.null(min_n_mgl)) {
     n_rows <- data[data$analyte %in% c("NH3-N", "NO3-N", "NO2-N"), , drop = FALSE]

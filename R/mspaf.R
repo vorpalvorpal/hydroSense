@@ -354,10 +354,9 @@ add_mspaf <- function(
   checkmate::assert_flag(require_temperature)
 
   ## Accept sampleTidy's analyte names and `units` column: compute on a
-  ## canonicalised copy, and hand the caller's own rows back with their
-  ## original names (and without a `units.analyte` column they never had).
-  orig_analyte <- df$analyte
-  added_units  <- !"units.analyte" %in% names(df) && "units" %in% names(df)
+  ## canonicalised, unit-converted copy, and hand the caller's own rows back
+  ## exactly as supplied (original names, values and units).
+  orig_df <- df
   df <- .canonicalise_mspaf_input(df)
   if (is.data.frame(reference)) reference <- .canonicalise_mspaf_input(reference)
 
@@ -514,9 +513,7 @@ add_mspaf <- function(
     mspaf_df   <- dplyr::left_join(mspaf_df, focal_times, by = "sample_id")
   }
 
-  df$analyte <- orig_analyte
-  if (added_units) df$units.analyte <- NULL
-  result <- dplyr::bind_rows(df, mspaf_df)
+  result <- dplyr::bind_rows(orig_df, mspaf_df)
   if ("focal_date" %in% names(result)) {
     result <- dplyr::arrange(result, .data$focal_date)
   } else if ("datetime" %in% names(result)) {
