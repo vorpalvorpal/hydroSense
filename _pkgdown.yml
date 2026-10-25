@@ -44,6 +44,8 @@ reference:
     contents:
       - add_lmf
       - to_meq
+      - analyte_aliases
+      - hydrosense_provenance
 
   - title: Chemistry imputation
     desc: >

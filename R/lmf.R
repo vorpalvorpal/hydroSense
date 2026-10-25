@@ -180,28 +180,57 @@
 #' @param df Long-format dataframe.
 #'   Required columns: \code{sample_id}, \code{site_id},
 #'   \code{analyte}, \code{value}, \code{detected},
-#'   \code{datetime}.
-#' @param calibration_window_years Number of years of calibration data to use.
-#'   Window is centred on the input data's date range and shifted backwards if
-#'   future data are unavailable. Default \code{5}.
-#' @param min_leachate_total_n Minimum total N (sum of NH4-N + NO3-N + NO2-N)
-#'   for a leachate sample to qualify for end-member calibration. Excludes
-#'   non-representative samples (dilution events, treatment upsets). Total N is
-#'   used rather than NH4-N alone because aerated leachate features may have
-#'   nitrified NH4 to NO3. Numeric or `units` object; bare numeric requires
-#'   `min_leachate_total_n_units`. Default \code{NULL} → 20 mg/L.
+#'   \code{datetime}, and a unit column (\code{units.analyte} or sampleTidy's
+#'   \code{units}). Analyte names may be hydroSense's or sampleTidy's (see
+#'   [analyte_aliases()]); \code{valence.analyte} and
+#'   \code{atomic_mass.analyte} are optional (see [to_meq()]). The LMF rows
+#'   are appended to \code{df} as supplied.
+#' @param calibration How the end-members are calibrated. \code{"window"}
+#'   (default) builds one reference and one leachate end-member from
+#'   \emph{all} of \code{reference_data} / \code{leachate_data}, regardless of
+#'   date, and applies them to every sample. \code{"trailing"} calibrates each
+#'   sample separately, from only the rows of \code{leachate_data} and
+#'   \code{reference_data} whose \code{datetime} lies in
+#'   \code{[t - calibration_window_years, t]} (inclusive at both ends, where
+#'   \code{t} is the sample's own \code{datetime}). Bounds are compared as
+#'   whole calendar days, each \code{datetime}'s day taken in its own time
+#'   zone (UTC when it has none), so clock time never matters. A sample's LMF therefore
+#'   depends on data up to its own date only, and appending later samples or
+#'   later end-member data never changes it. A sample whose window has no
+#'   usable reference or leachate data (none, too few reference samples to
+#'   estimate spread, too few samples for \code{min_ref_samples} or
+#'   \code{min_leachate_samples}, or too few high-information ions) gets an
+#'   \code{NA} LMF
+#'   with \code{lmf_reason} starting \code{"insufficient_calibration_data"}.
+#'   \code{"trailing"} requires a \code{datetime} column in both end-member
+#'   data frames.
+#' @param calibration_window_years Length in years of the trailing calibration
+#'   window. Used only when \code{calibration = "trailing"}. Default \code{5}.
+#' @param min_leachate_total_n Minimum total N (sum of NH3-N + NO3-N + NO2-N,
+#'   each converted to mg/L by its row's unit) for a leachate sample to
+#'   qualify for end-member calibration. Excludes non-representative samples
+#'   (dilution events, treatment upsets); samples below it do not contribute to
+#'   the leachate end-member at all. Total N is used rather than NH3-N alone
+#'   because aerated leachate may have nitrified NH3 to NO3. Numeric or `units`
+#'   object; bare numeric requires `min_leachate_total_n_units`. Default
+#'   \code{NULL} (20 mg/L).
 #' @param min_leachate_total_n_units Character unit string for
 #'   `min_leachate_total_n` when it is bare numeric, e.g. `"mg/L"`. Ignored
 #'   when `min_leachate_total_n` is a `units` object or `NULL`.
 #' @param rsd_default Default relative analytical uncertainty, applied as
 #'   \code{sigma_meas = rsd_default * |x|} with a floor at
 #'   \code{rsd_default * |R|}. Default \code{0.05} (5% RSD).
-#' @param min_ref_samples Minimum reference samples required in the calibration
-#'   window. Features matched to a reference site with fewer samples are
-#'   skipped silently. Default \code{10}.
-#' @param min_leachate_samples Minimum valid leachate samples required for
-#'   end-member construction. The function stops with an informative error if
-#'   not met. Default \code{10}.
+#' @param min_ref_samples Minimum number of reference samples (distinct
+#'   \code{sample_id}s carrying at least one LMF panel ion) in the calibration
+#'   data -- in the sample's trailing window when \code{calibration =
+#'   "trailing"}. Below it the LMF is \code{NA} with \code{lmf_reason}
+#'   \code{"insufficient_calibration_data"}. Default \code{10}.
+#' @param min_leachate_samples Minimum number of valid leachate samples (total
+#'   N at least \code{min_leachate_total_n}) in the calibration data (in the
+#'   trailing window for \code{calibration = "trailing"}); below it the LMF is
+#'   \code{NA} with \code{lmf_reason} \code{"insufficient_calibration_data"}.
+#'   Also the number of valid samples with fluoride measured needed for F to
+#'   join the panel. Default \code{10}.
 #' @param max_sigma_lsi Maximum permitted \code{sigma_lmf} in percentage points
 #'   (uncertainty on the mixing fraction estimate). Samples above this threshold
 #'   return \code{NA} with reason code \code{"insufficient_precision"}.
@@ -234,25 +263,19 @@
 #'   classification. Useful when tuning \code{informativeness_threshold}.
 #'   Default \code{FALSE}.
 #'
-#' @param leachate_data Optional long-format dataframe in the same structure
+#' @param leachate_data Required. Long-format dataframe in the same structure
 #'   as \code{df} providing leachate end-member chemistry. Required columns:
-#'   \code{sample_id}, \code{analyte}, \code{value}, \code{detected}.
-#'   When supplied, \emph{all} samples are used to build the leachate
-#'   end-member regardless of date and regardless of total-N content (the
-#'   total-N quality filter is bypassed — supply curated data). Samples
+#'   \code{sample_id}, \code{analyte}, \code{value}, \code{detected}
+#'   (and \code{datetime} for \code{calibration = "trailing"}).
+#'   The total-N quality filter (\code{min_leachate_total_n}) applies in both
+#'   calibration modes: leachate samples below it are ignored. Samples
 #'   missing the required LMF panel analytes are silently dropped.
-#'   \code{NULL} (default) uses the standard leachate feature detection
-#'   logic (requires dashboard infrastructure: \code{feature_df()},
-#'   \code{data_df()}).
-#' @param reference_data Optional long-format dataframe in the same structure
+#' @param reference_data Required. Long-format dataframe in the same structure
 #'   as \code{df} providing reference site chemistry for end-member
 #'   calibration. Required columns: \code{sample_id}, \code{analyte},
-#'   \code{value}, \code{detected}. When supplied, \emph{all} samples are
-#'   used to build the reference end-member regardless of date; the
-#'   calibration window is ignored. The same end-member is applied globally
-#'   to all features. \code{NULL} (default) uses the standard per-feature
-#'   matched reference site logic (requires dashboard infrastructure:
-#'   \code{feature_sfc()}, \code{data_df()}).
+#'   \code{value}, \code{detected} (and \code{datetime} for
+#'   \code{calibration = "trailing"}). The same end-member is applied to
+#'   every site in \code{df}.
 #' @param lmf_analyte_uuid UUID assigned to LMF rows in the \code{uuid.analyte}
 #'   column of the output. Set to a fixed UUID if integrating with a data
 #'   system that tracks analytes by UUID. Default \code{NA_character_}.
@@ -271,9 +294,8 @@
 #'   weights). Columns present in \code{df} but not produced by the LMF
 #'   computation are \code{NA} in the appended rows.
 #'
-#' @seealso \code{\link{build_leachate_endmember}},
-#'   \code{\link{build_reference_endmember}},
-#'   \code{\link{compute_lmf_for_sample}}
+#' @seealso \code{\link{compute_lmf_for_sample}}, \code{\link{to_meq}},
+#'   \code{\link{analyte_aliases}}
 #'
 #' @references
 #' Christophersen N, Hooper RP (1992) Water Resources Research 28(1):99-107.
@@ -289,7 +311,10 @@
 #' out <- add_lmf(
 #'   df             = subset(demo, site_id == "downstream"),
 #'   leachate_data  = subset(demo, site_id == "leachate"),
-#'   reference_data = subset(demo, site_id == "reference")
+#'   reference_data = subset(demo, site_id == "reference"),
+#'   # the demo has 6 samples per end-member; the defaults ask for 10
+#'   min_ref_samples      = 5,
+#'   min_leachate_samples = 5
 #' )
 #' subset(out, analyte == "LMF", c("sample_id", "value"))
 #' }
@@ -300,6 +325,7 @@ add_lmf <- function(
   leachate_data = NULL,
   reference_data = NULL,
   lmf_analyte_uuid = NA_character_,
+  calibration = c("window", "trailing"),
   calibration_window_years = 5,
   min_leachate_total_n       = NULL,
   min_leachate_total_n_units = NULL,
@@ -314,11 +340,29 @@ add_lmf <- function(
   robust_threshold_k = 2.5,
   verbose = FALSE
 ) {
+  calibration <- match.arg(calibration)
   checkmate::assert_data_frame(df)
   checkmate::assert_names(names(df),
     must.include = c("sample_id", "site_id", "analyte", "value", "detected", "datetime"))
-  checkmate::assert_data_frame(leachate_data, null.ok = TRUE)
-  checkmate::assert_data_frame(reference_data, null.ok = TRUE)
+  for (arg in c("leachate_data", "reference_data")) {
+    if (!is.data.frame(get(arg))) {
+      cli::cli_abort(c(
+        "{.arg {arg}} must be a data frame of end-member chemistry.",
+        "i" = "{.fn add_lmf} no longer looks the end-members up itself; \\
+               supply both {.arg leachate_data} and {.arg reference_data}."
+      ))
+    }
+  }
+  if (calibration == "trailing") {
+    for (arg in c("leachate_data", "reference_data")) {
+      if (!"datetime" %in% names(get(arg))) {
+        cli::cli_abort(
+          "{.arg {arg}} needs a {.field datetime} column for \\
+           {.code calibration = \"trailing\"}."
+        )
+      }
+    }
+  }
   checkmate::assert_character(lmf_analyte_uuid, len = 1L)
   checkmate::assert_number(calibration_window_years, lower = 1)
   min_n_mgl <- if (is.null(min_leachate_total_n)) {
@@ -341,39 +385,19 @@ add_lmf <- function(
   uuid_lmf <- lmf_analyte_uuid
 
   ## ================================================================
-  ## Step 1: Derive calibration window from input df's date range.
+  ## Step 1: Prepare input data.
   ##
-  ## NOT derived from Sys.Date(). Anchored to the input data so
-  ## results are reproducible and appropriate for the assessed period.
-  ## The window is centred on the data's midpoint and shifted backwards
-  ## per-site below if future calibration data are unavailable.
-  ## ================================================================
-
-  df_dates <- as.Date(df$datetime)
-  df_start <- min(df_dates, na.rm = TRUE)
-  df_end <- max(df_dates, na.rm = TRUE)
-  df_span <- as.numeric(difftime(df_end, df_start, units = "days")) / 365.25
-
-  if (df_span >= calibration_window_years) {
-    calibration_start <- df_start
-    calibration_end <- df_end
-  } else {
-    df_centre <- df_start + (df_end - df_start) / 2
-    half_window_days <- (calibration_window_years * 365.25) / 2
-    calibration_start <- df_centre - lubridate::days(round(half_window_days))
-    calibration_end <- df_centre + lubridate::days(round(half_window_days))
-  }
-
-  ## ================================================================
-  ## Step 2: Prepare input data.
-  ##
-  ## Convert to meq/L (once only), extract LMF panel, verify no
-  ## duplicates, apply BDL half-detection-limit replacement, collapse
-  ## transforming species to conserved totals, pivot to wide format.
+  ## Canonicalise analyte names (sampleTidy spellings, combined
+  ## alkalinity / oxidised N), convert to meq/L (once only), extract the
+  ## LMF panel, verify no duplicates, apply BDL half-detection-limit
+  ## replacement, collapse transforming species to conserved totals,
+  ## pivot to wide format. `df` itself is left as supplied; only this
+  ## working copy is renamed.
   ## ================================================================
 
   df_meq <-
     df |>
+    .canonicalise_lmf_input() |>
     to_meq() |>
     dplyr::filter(analyte %in% .LMF_ANALYTES_MEQ)
 
@@ -417,79 +441,170 @@ add_lmf <- function(
   df_censored <- collapse_censored(df_meq, id_cols = "sample_id")
 
   ## ================================================================
-  ## Step 3: Build the leachate end-member (once, shared all features).
+  ## Step 2: Calibration.
   ##
-  ## When leachate_data is provided, bypass the standard
-  ## leachate feature detection and calibration window logic entirely.
-  ## All samples in the override are used; the total-N quality filter
-  ## is not applied (caller is responsible for data quality).
+  ## "window": one leachate and one reference end-member built from all
+  ## the supplied rows, shared by every sample (a stop() on unusable
+  ## data). "trailing": the same construction repeated per sample over
+  ## [t - calibration_window_years, t] (unusable data -> NA row).
+  ##
+  ## Per-ion informativeness_i = sigma_R_i / |L_i - R_i| is computed from
+  ## the reference end-member and gates sample admission: a sample must
+  ## have >= min_high_info_ions high-information ions measured. All ions
+  ## still contribute to the weighted mean via their inverse-variance
+  ## weights.
   ## ================================================================
 
-  if (!is.null(leachate_data)) {
+  lea_wide <- .lmf_endmember_wide(leachate_data, min_n_mgl = min_n_mgl)
+  ref_wide <- .lmf_endmember_wide(reference_data)
+
+  if (calibration == "window") {
     if (verbose) {
-      cli::cli_inform(
+      cli::cli_inform(c(
         "i" = paste0(
           "Using leachate_data (",
-          dplyr::n_distinct(leachate_data$sample_id),
-          " samples, ",
-          dplyr::n_distinct(leachate_data$site_id),
-          " feature(s))."
-        )
-      )
-    }
-    leachate_em <- build_endmember_from_override(
-      override_df = leachate_data,
-      type = "leachate",
-      min_leachate_samples = min_leachate_samples
-    )
-  } else {
-    leachate_em <- build_leachate_endmember(
-      calibration_start = calibration_start,
-      calibration_end = calibration_end,
-      min_leachate_total_n_mgl = min_n_mgl,
-      min_leachate_samples = min_leachate_samples
-    )
-  }
-
-  ## ================================================================
-  ## Step 4: Compute per-ion informativeness and classify ions.
-  ##
-  ## informativeness_i = sigma_R_i / |L_i - R_i|
-  ##
-  ## This is a system-wide property, computed from a pooled reference
-  ## end-member, not per-feature. NH4 will reliably score as high-
-  ## information at any site; Ca will reliably score as low.
-  ##
-  ## The high-information classification gates sample admission (must
-  ## have >= min_high_info_ions measured). All ions still contribute
-  ## to the weighted mean via their inverse-variance weights.
-  ## ================================================================
-
-  if (!is.null(reference_data)) {
-    if (verbose) {
-      cli::cli_inform(
+          dplyr::n_distinct(leachate_data$sample_id), " samples, ",
+          dplyr::n_distinct(leachate_data$site_id), " feature(s))."
+        ),
         "i" = paste0(
-          "Using reference_data for informativeness calibration (",
-          dplyr::n_distinct(reference_data$sample_id),
-          " samples, ",
-          dplyr::n_distinct(reference_data$site_id),
-          " feature(s))."
+          "Using reference_data (",
+          dplyr::n_distinct(reference_data$sample_id), " samples, ",
+          dplyr::n_distinct(reference_data$site_id), " feature(s))."
         )
-      )
+      ))
     }
-    pooled_ref <- build_endmember_from_override(
-      override_df = reference_data,
-      type = "reference"
-    )$stats
-  } else {
-    pooled_ref <- build_pooled_reference_endmember(
-      calibration_start = calibration_start,
-      calibration_end = calibration_end
+    ## All rows, whatever their date; a builder failure is an error here.
+    fixed_cal <- .lmf_calibration(
+      lea_wide, ref_wide, min_ref_samples, min_leachate_samples,
+      informativeness_threshold, min_high_info_ions,
+      trailing = FALSE, verbose = verbose
     )
+    cal_for <- function(datetime) fixed_cal
+  } else {
+    window_months <- as.integer(round(12 * calibration_window_years))
+    cal_cache <- new.env(parent = emptyenv())
+    cal_for <- function(datetime) {
+      ## Whole calendar days, each in its own datetime's time zone (UTC when
+      ## it has none): [day - window, day], inclusive at both ends.
+      day <- .lmf_day(datetime)
+      key <- format(day)
+      if (!is.null(hit <- cal_cache[[key]])) return(hit)
+      cal <- if (is.na(day)) {
+        list(reason = "insufficient_calibration_data: sample has no datetime.")
+      } else {
+        day_lo <- lubridate::`%m-%`(day, lubridate::period(month = window_months))
+        in_win <- function(w) {
+          w[!is.na(w$.day) & w$.day >= day_lo & w$.day <= day, , drop = FALSE]
+        }
+        .lmf_calibration(
+          in_win(lea_wide), in_win(ref_wide), min_ref_samples,
+          min_leachate_samples, informativeness_threshold, min_high_info_ions,
+          trailing = TRUE
+        )
+      }
+      assign(key, cal, envir = cal_cache)
+      cal
+    }
   }
 
+  ## ================================================================
+  ## Step 3: Compute per-sample LMF.
+  ## ================================================================
+
+  ## No sample carries any LMF panel ion: nothing to compute.
+  if (nrow(df_wide) == 0L) {
+    return(df)
+  }
+
+  lsi_results <-
+    df_wide |>
+    dplyr::group_by(site_id) |>
+    dplyr::group_modify(\(.x, .y) {
+      .x |>
+        dplyr::group_by(sample_id) |>
+        dplyr::group_modify(\(.s, .sid) {
+          cal <- cal_for(.s$datetime[[1]])
+          if (!is.null(cal$reason)) {
+            return(make_lmf_row(
+              value = NA_real_, lmf_naive = NA_real_, reason = cal$reason,
+              n_ions = 0L, n_downweighted = NA_integer_,
+              n_hi_downweighted = NA_integer_, sigma = NA_real_,
+              chi2 = NA_real_, quantified = FALSE, uuid_lmf = uuid_lmf
+            ))
+          }
+          compute_lmf_for_sample(
+            sample_wide = .s,
+            endmembers = cal$endmembers,
+            high_info_ions = cal$high_info_ions,
+            min_high_info_ions = min_high_info_ions,
+            rsd_default = rsd_default,
+            max_sigma = max_sigma_lsi,
+            max_chi2_df = max_chi2_per_df,
+            uuid_lmf = uuid_lmf,
+            robust_iterations = robust_iterations,
+            robust_threshold_k = robust_threshold_k,
+            verbose = verbose,
+            datetime_sample = as.character(.s$datetime[[1]]),
+            censored_wide = df_censored[df_censored$sample_id == .sid[[1, 1]], ]
+          )
+        }) |>
+        dplyr::ungroup()
+    }) |>
+    dplyr::ungroup()
+
+  ## ================================================================
+  ## Step 4: Bind LMF rows back into the input df.
+  ## ================================================================
+
+  lsi_results <- dplyr::mutate(lsi_results, analyte = "LMF")
+
+  ## sampleTidy-shaped input carries `units`, not `units.analyte`.
+  if ("units" %in% names(df) && !"units.analyte" %in% names(df)) {
+    lsi_results$units <- lsi_results$units.analyte
+    lsi_results$units.analyte <- NULL
+  }
+
+  ## Propagate datetime from input df to LMF rows.
+  if ("datetime" %in% names(df)) {
+    sample_times <- dplyr::distinct(df, sample_id, datetime)
+    lsi_results <- dplyr::left_join(lsi_results, sample_times, by = "sample_id")
+  }
+
+  result <- dplyr::bind_rows(df, lsi_results)
+
+  if ("datetime" %in% names(result)) {
+    result <- dplyr::arrange(result, datetime)
+  }
+  result
+}
+
+
+## ============================================================================
+## Calibration helpers
+## ============================================================================
+
+## The calendar day of a Date / POSIXct / character datetime: a POSIXct's day is
+## taken in its own time zone, UTC when it has none.
+.lmf_day <- function(x) {
+  if (inherits(x, "Date")) {
+    x
+  } else if (inherits(x, "POSIXct")) {
+    tz <- attr(x, "tzone")[1]
+    if (is.null(tz) || is.na(tz) || !nzchar(tz)) tz <- "UTC"
+    as.Date(x, tz = tz)
+  } else {
+    as.Date(as.POSIXct(x, tz = "UTC"), tz = "UTC")
+  }
+}
+
+## Informativeness table, high-information ions and the joined end-member table
+## for one reference / leachate end-member pair. `reason` is non-NULL (and the
+## rest absent) when the pair cannot support LMF: too few high-information
+## ions, or no ions in common.
+.lmf_calibrate <- function(ref_endmember, leachate_em, informativeness_threshold,
+                           min_high_info_ions, verbose = FALSE) {
   informativeness_tbl <-
-    pooled_ref |>
+    ref_endmember$stats |>
     dplyr::inner_join(leachate_em$L_values |> dplyr::select(ion, L), by = "ion") |>
     dplyr::mutate(
       gradient = abs(L - R),
@@ -506,9 +621,6 @@ add_lmf <- function(
     dplyr::filter(high_info) |>
     dplyr::pull(ion)
 
-  ## ---------------------------------------------------------------
-  ## Optionally report the informativeness table.
-  ## ---------------------------------------------------------------
   if (verbose) {
     rows <- informativeness_tbl |>
       dplyr::mutate(
@@ -529,133 +641,118 @@ add_lmf <- function(
     ))
   }
 
-  ## Stop early if the full panel can never meet the minimum — indicates
-  ## a misconfigured threshold or broken end-members.
   if (length(high_info_ions) < min_high_info_ions) {
-    stop(glue::glue(
+    return(list(reason = glue::glue(
       "Only {length(high_info_ions)} high-information ion(s) found ",
       "(informativeness <= {informativeness_threshold}), but ",
-      "min_high_info_ions = {min_high_info_ions}. ",
+      "min_high_info_ions = {min_high_info_ions}."
+    )))
+  }
+
+  ## Join R and L; exclude zero-gradient ions.
+  endmembers <-
+    ref_endmember$stats |>
+    dplyr::filter(ion %in% leachate_em$L_values$ion) |>
+    dplyr::left_join(
+      leachate_em$L_values |> dplyr::select(ion, L, sigma_L),
+      by = "ion"
+    ) |>
+    dplyr::filter(abs(L - R) > .Machine$double.eps * 1000)
+
+  list(
+    reason = NULL,
+    endmembers = endmembers,
+    high_info_ions = high_info_ions
+  )
+}
+
+## End-member rows as a wide per-sample panel (meq/L, BDL halved, species
+## collapsed) with a POSIXct `datetime` (when the data carry one); built once
+## and then sliced per window. With `min_n_mgl` (leachate), a logical `.valid_n`
+## column flags the samples whose total N -- NH3-N + NO3-N + NO2-N, each
+## converted to mg/L by its row's unit -- reaches it.
+.lmf_endmember_wide <- function(data, min_n_mgl = NULL) {
+  data <- .canonicalise_lmf_input(data)
+  meq <-
+    data |>
+    to_meq() |>
+    dplyr::filter(analyte %in% .LMF_ANALYTES_MEQ) |>
+    dplyr::mutate(value = dplyr::if_else(!detected, value * 0.5, value))
+  has_time <- "datetime" %in% names(meq)
+  wide <- collapse_species(
+    meq, id_cols = c("sample_id", if (has_time) "datetime")
+  )
+  wide$.day <- if (has_time) .lmf_day(wide$datetime) else as.Date(NA)
+  wide$.valid_n <- TRUE
+  if (!is.null(min_n_mgl)) {
+    n_rows <- data[data$analyte %in% c("NH3-N", "NO3-N", "NO2-N"), , drop = FALSE]
+    u <- .normalise_units(n_rows[[.units_col(data)]])
+    fac <- vapply(unique(u), function(uu) {
+      if (is.na(uu)) return(NA_real_)
+      as.numeric(units::set_units(units::set_units(1, uu, mode = "standard"),
+                                  "mg/L", mode = "standard"))
+    }, numeric(1))
+    n_rows$mgl <- n_rows$value * fac[match(u, unique(u))]
+    total_n <- tapply(n_rows$mgl, n_rows$sample_id, sum, na.rm = TRUE)
+    tn <- as.numeric(total_n[wide$sample_id])
+    wide$.valid_n <- !is.na(tn) & tn >= min_n_mgl
+  }
+  wide
+}
+
+## Calibration from the wide end-member panels (already restricted to the
+## calibration window). Returns the .lmf_calibrate() list, or list(reason = ...)
+## with an "insufficient_calibration_data" reason when `trailing` and the
+## data cannot support LMF: too few reference samples (min_ref_samples), too
+## few valid leachate samples (min_leachate_samples), an end-member that cannot
+## be built, or too few high-information ions. Below a minimum, or with
+## `trailing = FALSE` for the rest, the reason still comes back as a reason
+## when it is a minimum (so every sample is NA, no error); an unbuildable
+## end-member or too few high-information ions is an error outside trailing.
+.lmf_calibration <- function(lea_w, ref_w, min_ref_samples, min_leachate_samples,
+                             informativeness_threshold, min_high_info_ions,
+                             trailing, verbose = FALSE) {
+  insufficient <- function(why) {
+    list(reason = paste0("insufficient_calibration_data: ", why))
+  }
+  lea_w <- lea_w[lea_w$.valid_n, , drop = FALSE]
+  if (nrow(ref_w) < min_ref_samples) {
+    return(insufficient(sprintf(
+      "%d reference sample(s), fewer than min_ref_samples = %d.",
+      nrow(ref_w), as.integer(min_ref_samples))))
+  }
+  if (nrow(lea_w) < min_leachate_samples) {
+    return(insufficient(sprintf(
+      "%d valid leachate sample(s), fewer than min_leachate_samples = %d.",
+      nrow(lea_w), as.integer(min_leachate_samples))))
+  }
+
+  build <- function(w, type) {
+    if (!trailing) {
+      return(.endmember_from_wide(w, type, min_leachate_samples, NA, NA))
+    }
+    tryCatch(
+      .endmember_from_wide(w, type, min_leachate_samples, NA, NA),
+      error = function(e) NULL
+    )
+  }
+  lea_em <- build(lea_w, "leachate")
+  ref_em <- build(ref_w, "reference")
+  if (is.null(lea_em)) return(insufficient("leachate end-member cannot be built from the window."))
+  if (is.null(ref_em)) return(insufficient("reference end-member cannot be built from the window."))
+
+  cal <- .lmf_calibrate(ref_em, lea_em, informativeness_threshold,
+                        min_high_info_ions, verbose = verbose)
+  if (!is.null(cal$reason)) {
+    if (trailing) return(insufficient(cal$reason))
+    ## Misconfigured threshold or broken end-members.
+    stop(glue::glue(
+      "{cal$reason} ",
       "Lower informativeness_threshold or min_high_info_ions, or check ",
       "end-member data. Run with verbose = TRUE to inspect."
     ))
   }
-
-  ## ================================================================
-  ## Step 5: Compute per-sample LMF for each feature in the input df.
-  ##
-  ## When reference_data is provided, the end-member is built once
-  ## here (outside the per-feature loop) and applied to all features.
-  ## When NULL, per-feature reference matching uses dashboard globals.
-  ## ================================================================
-
-  ## Pre-build the reference end-member if reference_data was provided.
-  ## NULL when using standard per-feature matching.
-  ref_endmember_override <- if (!is.null(reference_data)) {
-    build_endmember_from_override(
-      override_df = reference_data,
-      type = "reference"
-    )
-  } else {
-    NULL
-  }
-
-  lsi_results <-
-    df_wide |>
-    dplyr::group_by(site_id) |>
-    dplyr::group_modify(\(.x, .y) {
-      feature_id <- .y[[1, 1]]
-      if (!is.null(ref_endmember_override)) {
-        ## Use the pre-built override end-member (same for all features).
-        ref_endmember <- ref_endmember_override
-      } else {
-        ref_feature <- get_reference_site(feature_id)
-        ref_endmember <- build_reference_endmember(
-          reference_feature_uuid = ref_feature$uuid,
-          cal_start = calibration_start,
-          cal_end = calibration_end
-        )
-      }
-
-      if (is.null(ref_endmember)) {
-        message(glue::glue(
-          "No reference data for feature {feature_id}. Skipping."
-        ))
-        return(dplyr::tibble())
-      }
-
-      ## Apply minimum sample count only when NOT using an override.
-      ## With an override the caller controls data quality directly.
-      if (
-        is.null(ref_endmember_override) &&
-          ref_endmember$n_samples < min_ref_samples
-      ) {
-        message(glue::glue(
-          "Only {ref_endmember$n_samples} reference samples for ",
-          "feature {feature_id} (min {min_ref_samples}). Skipping."
-        ))
-        return(dplyr::tibble())
-      }
-
-      ## Join R and L; exclude zero-gradient ions.
-      endmembers <-
-        ref_endmember$stats |>
-        dplyr::filter(ion %in% leachate_em$L_values$ion) |>
-        dplyr::left_join(
-          leachate_em$L_values |> dplyr::select(ion, L, sigma_L),
-          by = "ion"
-        ) |>
-        dplyr::filter(abs(L - R) > .Machine$double.eps * 1000)
-
-      ## Compute LMF per sample.
-      .x |>
-        dplyr::group_by(sample_id) |>
-        dplyr::group_modify(\(.s, .sid) {
-          compute_lmf_for_sample(
-            sample_wide = .s,
-            endmembers = endmembers,
-            high_info_ions = high_info_ions,
-            min_high_info_ions = min_high_info_ions,
-            rsd_default = rsd_default,
-            max_sigma = max_sigma_lsi,
-            max_chi2_df = max_chi2_per_df,
-            uuid_lmf = uuid_lmf,
-            robust_iterations = robust_iterations,
-            robust_threshold_k = robust_threshold_k,
-            verbose = verbose,
-            datetime_sample = as.character(.s$datetime[[1]]),
-            censored_wide = df_censored[df_censored$sample_id == .sid[[1, 1]], ]
-          )
-        }) |>
-        dplyr::ungroup()
-    }) |>
-    dplyr::ungroup()
-
-  ## ================================================================
-  ## Step 6: Bind LMF rows back into the input df.
-  ## ================================================================
-
-  ## If every feature was skipped (no usable reference data), there is nothing to
-  ## append and lsi_results lacks a sample_id column; return the input untouched
-  ## rather than erroring in the join below.
-  if (nrow(lsi_results) == 0 || !"sample_id" %in% names(lsi_results)) {
-    return(df)
-  }
-
-  lsi_results <- dplyr::mutate(lsi_results, analyte = "LMF")
-
-  ## Propagate datetime from input df to LMF rows.
-  if ("datetime" %in% names(df)) {
-    sample_times <- dplyr::distinct(df, sample_id, datetime)
-    lsi_results <- dplyr::left_join(lsi_results, sample_times, by = "sample_id")
-  }
-
-  result <- dplyr::bind_rows(df, lsi_results)
-
-  if ("datetime" %in% names(result)) {
-    result <- dplyr::arrange(result, datetime)
-  }
-  result
+  cal
 }
 
 
@@ -1162,9 +1259,8 @@ make_lmf_row <- function(
 
 #' Pivot and collapse transforming ion species to conserved totals
 #'
-#' Internal helper used by \code{\link{add_lmf}},
-#' \code{\link{build_reference_endmember}}, and
-#' \code{\link{build_leachate_endmember}} to avoid code duplication.
+#' Internal helper used by \code{\link{add_lmf}} and the end-member builders
+#' to avoid code duplication.
 #' Pivots long-format meq data to wide format and replaces the individual N
 #' species (NH4-N, NO3-N, NO2-N) with \code{total_N_} and the carbonate
 #' species (CO3, HCO3) with \code{total_alk_}.
@@ -1312,8 +1408,8 @@ collapse_censored <- function(df_meq, id_cols) {
 ## build_endmember_from_override() — end-member builder for override data
 ## ============================================================================
 ##
-## Processes a raw data_df()-structured dataframe into the same list format
-## produced by build_reference_endmember() or build_leachate_endmember(),
+## Processes a raw long-format dataframe into the same list format
+## produced for the reference and leachate end-members,
 ## allowing callers to supply their own chemistry data for specific events
 ## instead of using the standard calibration window and feature-matching logic.
 ##
@@ -1332,22 +1428,18 @@ collapse_censored <- function(df_meq, id_cols) {
 #' BDL substitution, and species-collapsing machinery as the standard
 #' builders, but uses all available samples without date filtering.
 #'
-#' @param override_df Long-format dataframe in \code{data_df()} structure.
+#' @param override_df Long-format dataframe.
 #'   All samples are used; samples missing the LMF panel are dropped.
 #' @param type Character scalar, either \code{"reference"} or
 #'   \code{"leachate"}, controlling which output list format is produced.
 #' @param min_leachate_samples Minimum number of leachate samples with F
-#'   measured required to include F in the panel. Applies the same threshold
-#'   as \code{\link{build_leachate_endmember}} so the two builders cannot
-#'   disagree on panel composition for equivalent data. Ignored when
+#'   measured required to include F in the panel. Ignored when
 #'   \code{type = "reference"}. Default \code{10L}.
 #'
-#' @return For \code{type = "reference"}: a list with the same structure as
-#'   \code{\link{build_reference_endmember}}: \code{stats} (tibble of ion,
+#' @return For \code{type = "reference"}: a list with \code{stats} (tibble of ion,
 #'   n_ref, R, sigma_R), \code{window_start}, \code{window_end},
 #'   \code{n_samples}.
-#'   For \code{type = "leachate"}: a list with the same structure as
-#'   \code{\link{build_leachate_endmember}}: \code{L_values} (tibble of
+#'   For \code{type = "leachate"}: a list with \code{L_values} (tibble of
 #'   ion, mean_ratio, L), \code{cl_anchor}, \code{n_samples},
 #'   \code{f_included}, \code{window_start}, \code{window_end}.
 #'
@@ -1362,6 +1454,7 @@ build_endmember_from_override <- function(override_df, type, min_leachate_sample
   ## drop out naturally — no explicit check needed.
   override_meq <-
     override_df |>
+    .canonicalise_lmf_input() |>
     to_meq() |>
     dplyr::filter(analyte %in% .LMF_ANALYTES_MEQ) |>
     dplyr::mutate(value = dplyr::if_else(!detected, value * 0.5, value))
@@ -1386,13 +1479,35 @@ build_endmember_from_override <- function(override_df, type, min_leachate_sample
   dates <- as.Date(override_df$datetime)
   window_start <- min(dates, na.rm = TRUE)
   window_end <- max(dates, na.rm = TRUE)
+
+  .endmember_from_wide(override_wide, type, min_leachate_samples,
+                       window_start, window_end)
+}
+
+
+#' Build an end-member from a wide, collapsed LMF panel
+#'
+#' The statistics half of \code{\link{build_endmember_from_override}}, split
+#' out so that \code{add_lmf(calibration = "trailing")} can slice one prepared
+#' panel per sample instead of re-converting the whole table each time.
+#'
+#' @param override_wide Wide per-sample tibble from \code{\link{collapse_species}}.
+#' @param type,min_leachate_samples As in
+#'   \code{\link{build_endmember_from_override}}.
+#' @param window_start,window_end Informational span of the data.
+#'
+#' @return As \code{\link{build_endmember_from_override}}.
+#'
+#' @keywords internal
+.endmember_from_wide <- function(override_wide, type, min_leachate_samples,
+                                 window_start, window_end) {
   n_samples <- nrow(override_wide)
 
   if (type == "reference") {
     ## ---------------------------------------------------------------
     ## Reference end-member: mean and SD per ion.
     ## Require >= 3 observations per ion for a meaningful SD, consistent
-    ## with build_reference_endmember().
+    ## with the usual minimum for a meaningful SD.
     ## ---------------------------------------------------------------
     stats <-
       override_wide |>
@@ -1425,8 +1540,7 @@ build_endmember_from_override <- function(override_df, type, min_leachate_sample
   } else {
     ## ---------------------------------------------------------------
     ## Leachate end-member: Cl-anchored ratios.
-    ## Mirrors build_leachate_endmember() but without the total-N
-    ## quality filter (caller supplies curated data).
+    ## No total-N quality filter (caller supplies curated data).
     ## ---------------------------------------------------------------
     cl_anchor <- stats::median(override_wide$Cl_, na.rm = TRUE)
 
@@ -1447,9 +1561,7 @@ build_endmember_from_override <- function(override_df, type, min_leachate_sample
       dplyr::filter(!is.na(Cl_), Cl_ > 0) |>
       dplyr::mutate(dplyr::across(dplyr::all_of(ratio_cols), \(x) x / Cl_, .names = "ratio_{.col}"))
 
-    ## F availability: same min_leachate_samples threshold as the standard
-    ## builder (build_leachate_endmember()), so the two paths cannot disagree
-    ## on panel composition for equivalent data.
+    ## F availability: needs at least min_leachate_samples measurements.
     f_col <- "ratio_F_"
     f_available <- f_col %in%
       names(leachate_ratios) &&
@@ -1498,390 +1610,6 @@ build_endmember_from_override <- function(override_df, type, min_leachate_sample
 
 
 ## ============================================================================
-## build_reference_endmember() — per-feature reference end-member
-## ============================================================================
-##
-## Applies the same backwards-window-shift logic as MTUI: if reference data
-## do not extend to the ideal forward edge of the calibration window (common
-## when processing recent data), the window is shifted backwards so it ends at
-## the latest available reference sample while retaining the full window width.
-## Requires at least 3 observations per ion for a meaningful SD estimate.
-
-#' Build a per-feature reference end-member for LMF calibration
-#'
-#' Computes mean (\code{R_i}) and standard deviation (\code{sigma_R_i}) for
-#' each ion in the collapsed LMF panel from reference samples within the
-#' calibration window. Called once per feature by \code{\link{add_lmf}}.
-#'
-#' @param reference_feature_uuid UUID of the matched reference feature.
-#' @param cal_start Ideal calibration window start date.
-#' @param cal_end Ideal calibration window end date. Shifted backwards if
-#'   reference data do not extend this far.
-#'
-#' @return \code{NULL} if no reference data are found. Otherwise a named list
-#'   with elements:
-#'   \describe{
-#'     \item{stats}{Tibble with columns \code{ion}, \code{n_ref}, \code{R},
-#'       \code{sigma_R}. Only ions with >= 3 observations are included.}
-#'     \item{window_start}{Actual calibration window start used.}
-#'     \item{window_end}{Actual calibration window end used.}
-#'     \item{n_samples}{Number of sample events contributing.}
-#'   }
-#'
-#' @keywords internal
-
-build_reference_endmember <- function(
-  reference_feature_uuid,
-  cal_start,
-  cal_end
-) {
-  all_ref <-
-    data_df() |>
-    dplyr::filter(site_id == reference_feature_uuid) |>
-    to_meq() |>
-    dplyr::filter(analyte %in% .LMF_ANALYTES_MEQ) |>
-    dplyr::mutate(value = dplyr::if_else(!detected, value * 0.5, value))
-
-  if (nrow(all_ref) == 0) {
-    return(NULL)
-  }
-
-  ## Backwards window shift if no future data.
-  ref_max_date <- max(as.Date(all_ref$datetime), na.rm = TRUE)
-  window_start <- cal_start
-  window_end <- cal_end
-
-  if (ref_max_date < window_end) {
-    shift_days <- as.numeric(difftime(window_end, ref_max_date, units = "days"))
-    window_start <- window_start - lubridate::days(round(shift_days))
-    window_end <- ref_max_date
-  }
-
-  ref_window <-
-    all_ref |>
-    dplyr::filter(
-      as.Date(datetime) >= window_start,
-      as.Date(datetime) <= window_end
-    )
-
-  ref_wide <- collapse_species(ref_window, id_cols = "sample_id")
-
-  R_stats <-
-    ref_wide |>
-    dplyr::select(dplyr::all_of(intersect(.LMF_PANEL_COLLAPSED, names(ref_wide)))) |>
-    tidyr::pivot_longer(dplyr::everything(), names_to = "ion", values_to = "value") |>
-    dplyr::filter(!is.na(value)) |>
-    dplyr::group_by(ion) |>
-    dplyr::summarise(
-      n_ref = dplyr::n(),
-      R = mean(value, na.rm = TRUE),
-      sigma_R = stats::sd(value, na.rm = TRUE),
-      .groups = "drop"
-    ) |>
-    dplyr::filter(n_ref >= 3)
-
-  list(
-    stats = R_stats,
-    window_start = window_start,
-    window_end = window_end,
-    n_samples = nrow(ref_wide)
-  )
-}
-
-
-## ============================================================================
-## build_pooled_reference_endmember() — system-wide pooled reference
-## ============================================================================
-##
-## Used only for computing per-ion informativeness in Step 4 of add_lmf().
-## Draws on all reference features rather than a single matched site because
-## informativeness reflects system-wide chemistry properties, not site-specific
-## conditions.
-
-#' Build a system-wide pooled reference end-member
-#'
-#' Pools data from all reference features to compute per-ion mean and standard
-#' deviation. Used exclusively for computing ion informativeness scores in
-#' \code{\link{add_lmf}}; per-feature reference end-members are built by
-#' \code{\link{build_reference_endmember}}.
-#'
-#' @param calibration_start Calibration window start date.
-#' @param calibration_end Calibration window end date. Shifted backwards if
-#'   reference data do not extend this far.
-#'
-#' @return Tibble with columns \code{ion}, \code{n_ref}, \code{R},
-#'   \code{sigma_R}. Only ions with >= 3 observations across all reference
-#'   features are included.
-#'
-#' @keywords internal
-
-build_pooled_reference_endmember <- function(
-  calibration_start,
-  calibration_end
-) {
-  ref_uuids <-
-    feature_sfc() |>
-    dplyr::filter(reference == TRUE) |>
-    dplyr::pull(uuid)
-
-  if (length(ref_uuids) == 0) {
-    stop(
-      "No reference features found. Check reference == TRUE in feature_sfc()."
-    )
-  }
-
-  all_ref <-
-    data_df() |>
-    dplyr::filter(site_id %in% ref_uuids) |>
-    to_meq() |>
-    dplyr::filter(analyte %in% .LMF_ANALYTES_MEQ) |>
-    dplyr::mutate(value = dplyr::if_else(!detected, value * 0.5, value))
-
-  if (nrow(all_ref) == 0) {
-    stop("No reference data found for any reference features.")
-  }
-
-  ref_max_date <- max(as.Date(all_ref$datetime), na.rm = TRUE)
-  window_start <- calibration_start
-  window_end <- calibration_end
-
-  if (ref_max_date < window_end) {
-    shift_days <- as.numeric(difftime(window_end, ref_max_date, units = "days"))
-    window_start <- window_start - lubridate::days(round(shift_days))
-    window_end <- ref_max_date
-  }
-
-  ref_window <-
-    all_ref |>
-    dplyr::filter(
-      as.Date(datetime) >= window_start,
-      as.Date(datetime) <= window_end
-    )
-
-  ref_wide <- collapse_species(ref_window, id_cols = "sample_id")
-
-  ref_wide |>
-    dplyr::select(dplyr::all_of(intersect(.LMF_PANEL_COLLAPSED, names(ref_wide)))) |>
-    tidyr::pivot_longer(dplyr::everything(), names_to = "ion", values_to = "value") |>
-    dplyr::filter(!is.na(value)) |>
-    dplyr::group_by(ion) |>
-    dplyr::summarise(
-      n_ref = dplyr::n(),
-      R = mean(value, na.rm = TRUE),
-      sigma_R = stats::sd(value, na.rm = TRUE),
-      .groups = "drop"
-    ) |>
-    dplyr::filter(n_ref >= 3)
-}
-
-
-## ============================================================================
-## build_leachate_endmember() — Cl-anchored leachate end-member
-## ============================================================================
-##
-## Leachate features are identified by ".L" + digit in their feature name
-## (e.g., "B.L01"). F is included only if >= min_leachate_samples leachate
-## samples have F measurements; otherwise it is excluded with a message.
-## See the file-level header for full Cl-anchoring rationale.
-
-#' Build the Cl-anchored leachate end-member for LMF calibration
-#'
-#' Constructs the leachate end-member L by computing the mean ratio of each
-#' ion to Cl across valid leachate samples, then anchoring to the median Cl
-#' concentration. This makes the end-member robust to EC variability between
-#' leachate samples while preserving the stable compositional fingerprint.
-#'
-#' @param calibration_start Calibration window start date.
-#' @param calibration_end Calibration window end date. Shifted backwards if
-#'   leachate data do not extend this far.
-#' @param min_leachate_total_n_mgl Minimum total N (mg/L) for a leachate
-#'   sample to be considered valid. Applied in original mg/L units before meq
-#'   conversion. Filters out anomalous samples not representing genuine
-#'   leachate.
-#' @param min_leachate_samples Minimum number of valid leachate samples
-#'   required. Stops with an error if not met.
-#'
-#' @return A named list with elements:
-#'   \describe{
-#'     \item{L_values}{Tibble with columns \code{ion}, \code{mean_ratio},
-#'       \code{L} (the end-member concentration in meq/L for each ion).}
-#'     \item{cl_anchor}{Median Cl concentration (meq/L) used to anchor the
-#'       end-member.}
-#'     \item{n_samples}{Number of valid leachate samples used.}
-#'     \item{f_included}{Logical; \code{TRUE} if F was included in the
-#'       end-member.}
-#'     \item{window_start}{Actual calibration window start used.}
-#'     \item{window_end}{Actual calibration window end used.}
-#'   }
-#'
-#' @keywords internal
-
-build_leachate_endmember <- function(
-  calibration_start,
-  calibration_end,
-  min_leachate_total_n_mgl,
-  min_leachate_samples
-) {
-  leachate_features <-
-    feature_df() |>
-    dplyr::filter(stringr::str_detect(name, "\\.L\\d"))
-
-  if (nrow(leachate_features) == 0) {
-    stop(paste0(
-      "No leachate features found. Expected names matching '.L01', '.L02', ",
-      "etc. (e.g., 'B.L01'). Check feature naming."
-    ))
-  }
-
-  leachate_raw <-
-    data_df() |>
-    dplyr::filter(site_id %in% leachate_features$uuid)
-
-  if (nrow(leachate_raw) == 0) {
-    stop("No leachate data found for identified leachate features.")
-  }
-
-  leach_max_date <- max(as.Date(leachate_raw$datetime), na.rm = TRUE)
-  window_start <- calibration_start
-  window_end <- calibration_end
-
-  if (leach_max_date < window_end) {
-    shift_days <- as.numeric(difftime(
-      window_end,
-      leach_max_date,
-      units = "days"
-    ))
-    window_start <- window_start - lubridate::days(round(shift_days))
-    window_end <- leach_max_date
-  }
-
-  leachate_window <-
-    leachate_raw |>
-    dplyr::filter(
-      as.Date(datetime) >= window_start,
-      as.Date(datetime) <= window_end
-    )
-
-  ## ---------------------------------------------------------------
-  ## Total-N quality filter in mg/L (original units, not meq).
-  ## Using total N (NH4 + NO3 + NO2) not just NH4, because downstream
-  ## aerated leachate features may have nitrified NH4 to NO3.
-  ## ---------------------------------------------------------------
-
-  valid_samples <-
-    leachate_window |>
-    dplyr::filter(analyte %in% c("NH3-N", "NO3-N", "NO2-N")) |>
-    dplyr::group_by(sample_id) |>
-    dplyr::summarise(total_N_mgl = sum(value, na.rm = TRUE), .groups = "drop") |>
-    dplyr::filter(total_N_mgl >= min_leachate_total_n_mgl) |>
-    dplyr::pull(sample_id)
-
-  leachate_valid <-
-    leachate_window |>
-    dplyr::filter(sample_id %in% valid_samples)
-
-  n_valid <- dplyr::n_distinct(leachate_valid$sample_id)
-
-  if (n_valid < min_leachate_samples) {
-    stop(glue::glue(
-      "Only {n_valid} valid leachate samples ({window_start} to ",
-      "{window_end}, total N >= {min_leachate_total_n_mgl} mg/L). ",
-      "Minimum: {min_leachate_samples}. ",
-      "Extend the window, lower min_leachate_total_n_mgl, or add more ",
-      "leachate sampling."
-    ))
-  }
-
-  ## Convert, BDL, collapse.
-  leachate_wide <-
-    leachate_valid |>
-    to_meq() |>
-    dplyr::filter(analyte %in% .LMF_ANALYTES_MEQ) |>
-    dplyr::mutate(value = dplyr::if_else(!detected, value * 0.5, value)) |>
-    collapse_species(id_cols = "sample_id")
-
-  ## Cl anchor: median Cl across valid leachate samples.
-  cl_anchor <- stats::median(leachate_wide$Cl_, na.rm = TRUE)
-
-  if (is.na(cl_anchor) || cl_anchor <= 0) {
-    stop(
-      "Cannot compute Cl anchor. Check that Cl is measured in leachate samples."
-    )
-  }
-
-  ## Compute per-sample ion/Cl ratios.
-  ratio_cols <- setdiff(
-    intersect(.LMF_PANEL_COLLAPSED, names(leachate_wide)),
-    "Cl_"
-  )
-
-  leachate_ratios <-
-    leachate_wide |>
-    dplyr::filter(!is.na(Cl_), Cl_ > 0) |>
-    dplyr::mutate(dplyr::across(dplyr::all_of(ratio_cols), \(x) x / Cl_, .names = "ratio_{.col}"))
-
-  ## F availability check.
-  f_available <- FALSE
-  f_col <- "ratio_F_"
-
-  if (f_col %in% names(leachate_ratios)) {
-    n_f <- sum(!is.na(leachate_ratios[[f_col]]))
-    if (n_f >= min_leachate_samples) {
-      f_available <- TRUE
-    } else {
-      message(glue::glue(
-        "F measured in only {n_f} leachate samples (min {min_leachate_samples}). ",
-        "F excluded from LMF panel."
-      ))
-    }
-  } else {
-    message("F not found in leachate samples. F excluded from LMF panel.")
-  }
-
-  ## Ratio-of-means, not mean-of-ratios. Averaging per-sample ion/Cl ratios is biased
-  ## high when Cl varies (Jensen's inequality: 1/Cl is convex), inflating L. The ratio
-  ## of the means (equivalently the median per-sample ratio) is unbiased.
-  ## Ref: Jensen, J.L.W.V. (1906) Acta Mathematica 30:175-193.
-  ##
-  ## sigma_L is the leachate end-member's own uncertainty: sd(ratio) * cl_anchor
-  ## puts it back on the concentration scale of L. Used downstream to propagate
-  ## L's sample-to-sample spread into var_f (see compute_lmf_for_sample()).
-  cl_mean <- mean(leachate_ratios$Cl_, na.rm = TRUE)
-
-  L_values <- purrr::map_dfr(ratio_cols, \(col) {
-    dplyr::tibble(
-      ion = col,
-      mean_ratio = mean(leachate_ratios[[col]], na.rm = TRUE) / cl_mean,
-      sigma_L = stats::sd(leachate_ratios[[paste0("ratio_", col)]], na.rm = TRUE) * cl_anchor
-    )
-  }) |>
-    dplyr::mutate(L = mean_ratio * cl_anchor) |>
-    dplyr::filter(!is.na(L)) |>
-    dplyr::filter(!(ion == "F_" & !f_available))
-
-  ## Add Cl itself (ratio = 1, L_Cl = cl_anchor by definition).
-  ## sigma_L for Cl is sd(Cl) directly (the anchor's own spread).
-  L_values <- dplyr::bind_rows(
-    L_values,
-    dplyr::tibble(
-      ion = "Cl_", mean_ratio = 1,
-      sigma_L = stats::sd(leachate_wide$Cl_, na.rm = TRUE),
-      L = cl_anchor
-    )
-  )
-
-  list(
-    L_values = L_values,
-    cl_anchor = cl_anchor,
-    n_samples = n_valid,
-    f_included = f_available,
-    window_start = window_start,
-    window_end = window_end
-  )
-}
-
-
-## ============================================================================
 ## to_meq() — unit conversion
 ## ============================================================================
 ##
@@ -1893,18 +1621,26 @@ build_leachate_endmember <- function(
 #' Convert analyte concentrations to milliequivalents per litre
 #'
 #' Appends meq/L-converted rows to the input dataframe. Converted rows have
-#' \code{name.analyte} suffixed with \code{"_"} to distinguish them from the
+#' \code{analyte} suffixed with \code{"_"} to distinguish them from the
 #' original rows, which are preserved unchanged.
 #'
+#' Valence and molar mass for the LMF panel ions (Na, K, Ca, Mg, Cl, F, SO4,
+#' NH3-N, NO3-N, NO2-N, CO3-CaCO3, HCO3-CaCO3) are built in, so a frame with
+#' only \code{analyte}, \code{value} and a unit column converts. Nitrogen
+#' species are taken as N and the carbonate species as CaCO3. A
+#' \code{valence.analyte} / \code{atomic_mass.analyte} supplied by the caller
+#' takes precedence for the rows it is non-\code{NA} on.
+#'
 #' @param df Long-format dataframe. Required columns: \code{analyte},
-#'   \code{value}, \code{units.analyte}, \code{valence.analyte},
-#'   \code{atomic_mass.analyte}.
+#'   \code{value}, and a unit column: \code{units.analyte} or sampleTidy's
+#'   \code{units} (a unit string per row, e.g. \code{"mg/L"}, \code{"ug/L"}).
+#'   Optional: \code{valence.analyte}, \code{atomic_mass.analyte}.
 #'
 #' @return The input \code{df} with converted rows appended via
 #'   \code{bind_rows}. Converted rows have \code{analyte} suffixed with
-#'   \code{"_"} and \code{value} in meq/L. Rows lacking \code{valence.analyte}
-#'   or \code{atomic_mass.analyte} are excluded from conversion but retained
-#'   in the original rows.
+#'   \code{"_"} and \code{value} in meq/L. Rows with no known valence and
+#'   molar mass (not a panel ion and none supplied) are excluded from
+#'   conversion but retained in the original rows.
 #'
 #' @examples
 #' df <- tibble::tibble(
@@ -1916,22 +1652,45 @@ build_leachate_endmember <- function(
 #' )
 #' to_meq(df)   # appends a "Ca_" row of 2 meq/L (1 mmol/L x |valence| = 2)
 #'
+#' # Panel ions need no valence or molar mass columns.
+#' to_meq(tibble::tibble(analyte = "Ca", value = 40.08, units = "mg/L"))
+#'
 #' @export
 
 to_meq <- function(df) {
   checkmate::assert_data_frame(df)
-  checkmate::assert_names(
-    names(df),
-    must.include = c(
-      "analyte",
-      "value",
-      "units.analyte",
-      "valence.analyte",
-      "atomic_mass.analyte"
+  checkmate::assert_names(names(df), must.include = c("analyte", "value"))
+  unit_col <- .units_col(df)
+  if (is.na(unit_col)) {
+    cli::cli_abort(
+      "{.arg df} needs a unit column: {.field units.analyte} or {.field units}."
     )
-  )
+  }
 
-  ## Split by units.analyte, convert each subset, then recombine.
+  ## Valence and molar mass: the caller's columns where present and non-NA,
+  ## otherwise the built-in panel-ion table.
+  props <- .ion_properties()
+  pos   <- match(df$analyte, props$analyte)
+  valence <- props$valence[pos]
+  mass    <- props$atomic_mass[pos]
+  if ("valence.analyte" %in% names(df)) {
+    valence <- dplyr::coalesce(as.numeric(df$valence.analyte), valence)
+  }
+  if ("atomic_mass.analyte" %in% names(df)) {
+    mass <- dplyr::coalesce(as.numeric(df$atomic_mass.analyte), mass)
+  }
+  unit_str <- .normalise_units(df[[unit_col]])
+
+  keep <- !is.na(valence) & !is.na(mass)
+  if (!any(keep)) {
+    return(dplyr::bind_rows(df))
+  }
+  to_convert <- df[keep, , drop = FALSE]
+  to_convert$.valence <- valence[keep]
+  to_convert$.mass    <- mass[keep]
+  to_convert$.unit    <- unit_str[keep]
+
+  ## Split by unit string, convert each subset, then recombine.
   ##
   ## We split by unit string (a guaranteed length-1 scalar per group) because
   ## set_units(mode = "standard") needs a scalar unit. Each subset is converted
@@ -1947,28 +1706,20 @@ to_meq <- function(df) {
   ## avoids a non-standard-evaluation pitfall where symbolic-mode set_units()
   ## fails to resolve data columns inside a mutate data mask.
 
-  to_convert <-
-    df |>
-    dplyr::filter(!is.na(valence.analyte), !is.na(atomic_mass.analyte))
-
-  if (nrow(to_convert) == 0) {
-    return(dplyr::bind_rows(df))
-  }
-
   converted <-
     to_convert |>
-    split(to_convert$units.analyte) |>
+    split(to_convert$.unit) |>
     purrr::imap(\(subset, unit_str) {
       conc  <- units::set_units(subset$value, unit_str, mode = "standard")
-      molar <- conc / units::set_units(subset$atomic_mass.analyte, "g/mol",
-                                       mode = "standard")
+      molar <- conc / units::set_units(subset$.mass, "g/mol", mode = "standard")
       meq_L <- units::set_units(molar, "mmol/L", mode = "standard") *
-               abs(subset$valence.analyte)
+               abs(subset$.valence)
       subset$value   <- as.numeric(units::drop_units(meq_L))   # meq/L
       subset$analyte <- paste0(subset$analyte, "_")
       subset
     }) |>
     purrr::list_rbind()
+  converted[c(".valence", ".mass", ".unit")] <- NULL
 
   dplyr::bind_rows(df, converted)
 }

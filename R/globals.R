@@ -151,8 +151,5 @@ utils::globalVariables(c(
   # mspaf_daily (mspaf_daily.R)
   ".measured", "mspaf", "days_since_last_sample", "n_measured_analytes",
   # target_model (target_model.R)
-  "I", "S", "impact", "impact_tier",
-  # host-environment (dashboard) functions used only on add_lmf()'s non-override
-  # path; supplied at run time, not defined in this package
-  "data_df", "feature_df", "feature_sfc", "get_reference_site"
+  "I", "S", "impact", "impact_tier"
 ))

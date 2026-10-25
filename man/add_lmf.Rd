@@ -9,6 +9,7 @@ add_lmf(
   leachate_data = NULL,
   reference_data = NULL,
   lmf_analyte_uuid = NA_character_,
+  calibration = c("window", "trailing"),
   calibration_window_years = 5,
   min_leachate_total_n = NULL,
   min_leachate_total_n_units = NULL,
@@ -28,43 +29,62 @@ add_lmf(
 \item{df}{Long-format dataframe.
 Required columns: \code{sample_id}, \code{site_id},
 \code{analyte}, \code{value}, \code{detected},
-\code{datetime}.}
+\code{datetime}, and a unit column (\code{units.analyte} or sampleTidy's
+\code{units}). Analyte names may be hydroSense's or sampleTidy's (see
+\code{\link[=analyte_aliases]{analyte_aliases()}}); \code{valence.analyte} and
+\code{atomic_mass.analyte} are optional (see \code{\link[=to_meq]{to_meq()}}). The LMF rows
+are appended to \code{df} as supplied.}
 
-\item{leachate_data}{Optional long-format dataframe in the same structure
+\item{leachate_data}{Required. Long-format dataframe in the same structure
 as \code{df} providing leachate end-member chemistry. Required columns:
-\code{sample_id}, \code{analyte}, \code{value}, \code{detected}.
-When supplied, \emph{all} samples are used to build the leachate
-end-member regardless of date and regardless of total-N content (the
-total-N quality filter is bypassed — supply curated data). Samples
-missing the required LMF panel analytes are silently dropped.
-\code{NULL} (default) uses the standard leachate feature detection
-logic (requires dashboard infrastructure: \code{feature_df()},
-\code{data_df()}).}
+\code{sample_id}, \code{analyte}, \code{value}, \code{detected}
+(and \code{datetime} for \code{calibration = "trailing"}).
+The total-N quality filter (\code{min_leachate_total_n}) applies in both
+calibration modes: leachate samples below it are ignored. Samples
+missing the required LMF panel analytes are silently dropped.}
 
-\item{reference_data}{Optional long-format dataframe in the same structure
+\item{reference_data}{Required. Long-format dataframe in the same structure
 as \code{df} providing reference site chemistry for end-member
 calibration. Required columns: \code{sample_id}, \code{analyte},
-\code{value}, \code{detected}. When supplied, \emph{all} samples are
-used to build the reference end-member regardless of date; the
-calibration window is ignored. The same end-member is applied globally
-to all features. \code{NULL} (default) uses the standard per-feature
-matched reference site logic (requires dashboard infrastructure:
-\code{feature_sfc()}, \code{data_df()}).}
+\code{value}, \code{detected} (and \code{datetime} for
+\code{calibration = "trailing"}). The same end-member is applied to
+every site in \code{df}.}
 
 \item{lmf_analyte_uuid}{UUID assigned to LMF rows in the \code{uuid.analyte}
 column of the output. Set to a fixed UUID if integrating with a data
 system that tracks analytes by UUID. Default \code{NA_character_}.}
 
-\item{calibration_window_years}{Number of years of calibration data to use.
-Window is centred on the input data's date range and shifted backwards if
-future data are unavailable. Default \code{5}.}
+\item{calibration}{How the end-members are calibrated. \code{"window"}
+(default) builds one reference and one leachate end-member from
+\emph{all} of \code{reference_data} / \code{leachate_data}, regardless of
+date, and applies them to every sample. \code{"trailing"} calibrates each
+sample separately, from only the rows of \code{leachate_data} and
+\code{reference_data} whose \code{datetime} lies in
+\code{[t - calibration_window_years, t]} (inclusive at both ends, where
+\code{t} is the sample's own \code{datetime}). Bounds are compared as
+whole calendar days, each \code{datetime}'s day taken in its own time
+zone (UTC when it has none), so clock time never matters. A sample's LMF therefore
+depends on data up to its own date only, and appending later samples or
+later end-member data never changes it. A sample whose window has no
+usable reference or leachate data (none, too few reference samples to
+estimate spread, too few samples for \code{min_ref_samples} or
+\code{min_leachate_samples}, or too few high-information ions) gets an
+\code{NA} LMF
+with \code{lmf_reason} starting \code{"insufficient_calibration_data"}.
+\code{"trailing"} requires a \code{datetime} column in both end-member
+data frames.}
 
-\item{min_leachate_total_n}{Minimum total N (sum of NH4-N + NO3-N + NO2-N)
-for a leachate sample to qualify for end-member calibration. Excludes
-non-representative samples (dilution events, treatment upsets). Total N is
-used rather than NH4-N alone because aerated leachate features may have
-nitrified NH4 to NO3. Numeric or \code{units} object; bare numeric requires
-\code{min_leachate_total_n_units}. Default \code{NULL} → 20 mg/L.}
+\item{calibration_window_years}{Length in years of the trailing calibration
+window. Used only when \code{calibration = "trailing"}. Default \code{5}.}
+
+\item{min_leachate_total_n}{Minimum total N (sum of NH3-N + NO3-N + NO2-N,
+each converted to mg/L by its row's unit) for a leachate sample to
+qualify for end-member calibration. Excludes non-representative samples
+(dilution events, treatment upsets); samples below it do not contribute to
+the leachate end-member at all. Total N is used rather than NH3-N alone
+because aerated leachate may have nitrified NH3 to NO3. Numeric or \code{units}
+object; bare numeric requires \code{min_leachate_total_n_units}. Default
+\code{NULL} (20 mg/L).}
 
 \item{min_leachate_total_n_units}{Character unit string for
 \code{min_leachate_total_n} when it is bare numeric, e.g. \code{"mg/L"}. Ignored
@@ -74,13 +94,18 @@ when \code{min_leachate_total_n} is a \code{units} object or \code{NULL}.}
 \code{sigma_meas = rsd_default * |x|} with a floor at
 \code{rsd_default * |R|}. Default \code{0.05} (5\% RSD).}
 
-\item{min_ref_samples}{Minimum reference samples required in the calibration
-window. Features matched to a reference site with fewer samples are
-skipped silently. Default \code{10}.}
+\item{min_ref_samples}{Minimum number of reference samples (distinct
+\code{sample_id}s carrying at least one LMF panel ion) in the calibration
+data -- in the sample's trailing window when \code{calibration =
+  "trailing"}. Below it the LMF is \code{NA} with \code{lmf_reason}
+\code{"insufficient_calibration_data"}. Default \code{10}.}
 
-\item{min_leachate_samples}{Minimum valid leachate samples required for
-end-member construction. The function stops with an informative error if
-not met. Default \code{10}.}
+\item{min_leachate_samples}{Minimum number of valid leachate samples (total
+N at least \code{min_leachate_total_n}) in the calibration data (in the
+trailing window for \code{calibration = "trailing"}); below it the LMF is
+\code{NA} with \code{lmf_reason} \code{"insufficient_calibration_data"}.
+Also the number of valid samples with fluoride measured needed for F to
+join the panel. Default \code{10}.}
 
 \item{max_sigma_lsi}{Maximum permitted \code{sigma_lmf} in percentage points
 (uncertainty on the mixing fraction estimate). Samples above this threshold
@@ -150,7 +175,10 @@ demo <- leachate_demo()
 out <- add_lmf(
   df             = subset(demo, site_id == "downstream"),
   leachate_data  = subset(demo, site_id == "leachate"),
-  reference_data = subset(demo, site_id == "reference")
+  reference_data = subset(demo, site_id == "reference"),
+  # the demo has 6 samples per end-member; the defaults ask for 10
+  min_ref_samples      = 5,
+  min_leachate_samples = 5
 )
 subset(out, analyte == "LMF", c("sample_id", "value"))
 }
@@ -161,7 +189,6 @@ Christensen JB et al. (2001) Applied Geochemistry 16(7-8):659-718.
 Kjeldsen P et al. (2002) Crit Rev Environ Sci Technol 32(4).
 }
 \seealso{
-\code{\link{build_leachate_endmember}},
-\code{\link{build_reference_endmember}},
-\code{\link{compute_lmf_for_sample}}
+\code{\link{compute_lmf_for_sample}}, \code{\link{to_meq}},
+\code{\link{analyte_aliases}}
 }

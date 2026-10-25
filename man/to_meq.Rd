@@ -8,20 +8,29 @@ to_meq(df)
 }
 \arguments{
 \item{df}{Long-format dataframe. Required columns: \code{analyte},
-\code{value}, \code{units.analyte}, \code{valence.analyte},
-\code{atomic_mass.analyte}.}
+\code{value}, and a unit column: \code{units.analyte} or sampleTidy's
+\code{units} (a unit string per row, e.g. \code{"mg/L"}, \code{"ug/L"}).
+Optional: \code{valence.analyte}, \code{atomic_mass.analyte}.}
 }
 \value{
 The input \code{df} with converted rows appended via
 \code{bind_rows}. Converted rows have \code{analyte} suffixed with
-\code{"_"} and \code{value} in meq/L. Rows lacking \code{valence.analyte}
-or \code{atomic_mass.analyte} are excluded from conversion but retained
-in the original rows.
+\code{"_"} and \code{value} in meq/L. Rows with no known valence and
+molar mass (not a panel ion and none supplied) are excluded from
+conversion but retained in the original rows.
 }
 \description{
 Appends meq/L-converted rows to the input dataframe. Converted rows have
-\code{name.analyte} suffixed with \code{"_"} to distinguish them from the
+\code{analyte} suffixed with \code{"_"} to distinguish them from the
 original rows, which are preserved unchanged.
+}
+\details{
+Valence and molar mass for the LMF panel ions (Na, K, Ca, Mg, Cl, F, SO4,
+NH3-N, NO3-N, NO2-N, CO3-CaCO3, HCO3-CaCO3) are built in, so a frame with
+only \code{analyte}, \code{value} and a unit column converts. Nitrogen
+species are taken as N and the carbonate species as CaCO3. A
+\code{valence.analyte} / \code{atomic_mass.analyte} supplied by the caller
+takes precedence for the rows it is non-\code{NA} on.
 }
 \examples{
 df <- tibble::tibble(
@@ -32,5 +41,8 @@ df <- tibble::tibble(
   atomic_mass.analyte = 40.08    # g/mol
 )
 to_meq(df)   # appends a "Ca_" row of 2 meq/L (1 mmol/L x |valence| = 2)
+
+# Panel ions need no valence or molar mass columns.
+to_meq(tibble::tibble(analyte = "Ca", value = 40.08, units = "mg/L"))
 
 }

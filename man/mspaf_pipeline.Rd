@@ -26,7 +26,9 @@ mspaf_pipeline(
 \arguments{
 \item{target}{Long-format target-site chemistry (same schema as
 \code{\link[=mspaf_daily]{mspaf_daily()}}'s \code{df}): \code{sample_id}, \code{site_id}, \code{datetime}, \code{analyte},
-\code{value}, \code{detected}.}
+\code{value}, \code{detected}, and a unit column (\code{units.analyte}, or sampleTidy's
+\code{units}). Analyte names may be hydroSense's or sampleTidy's (see
+\code{\link[=analyte_aliases]{analyte_aliases()}}).}
 
 \item{reference}{Long-format reference-site chemistry passed to
 \code{\link[=fit_reference_model]{fit_reference_model()}}.}

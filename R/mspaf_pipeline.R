@@ -30,7 +30,9 @@
 #'
 #' @param target Long-format target-site chemistry (same schema as
 #'   [mspaf_daily()]'s `df`): `sample_id`, `site_id`, `datetime`, `analyte`,
-#'   `value`, `detected`.
+#'   `value`, `detected`, and a unit column (`units.analyte`, or sampleTidy's
+#'   `units`). Analyte names may be hydroSense's or sampleTidy's (see
+#'   [analyte_aliases()]).
 #' @param reference Long-format reference-site chemistry passed to
 #'   [fit_reference_model()].
 #' @param hydro Optional hydrology series forwarded to [fit_reference_model()].
@@ -129,6 +131,10 @@ mspaf_pipeline <- function(target,
   checkmate::assert_list(daily_args)
   checkmate::assert_flag(chronic)
   checkmate::assert_string(chronic_summary)
+
+  # Accept sampleTidy's analyte names and `units` column.
+  target    <- .canonicalise_mspaf_input(target)
+  reference <- .canonicalise_mspaf_input(reference)
 
   # ── 1. (Optional) imputation model — fit once, thread into both steps ───────
   imodel <- NULL

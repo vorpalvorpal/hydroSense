@@ -27,12 +27,14 @@ add_mspaf(
 \item{df}{Long-format monitoring dataframe. Required columns:
 \code{sample_id}, \code{site_id}, \code{analyte}, \code{value}. Toxicant concentrations must
 ultimately be in µg/L for SSD lookup; supply them either via a
-\code{units.analyte} column (one unit string per row, e.g. \code{"mg/L"}) or via the
-\code{conc_units} argument (applied uniformly to all SSD-eligible rows). Optional
+\code{units.analyte} column (or sampleTidy's \code{units}; one unit string per row,
+e.g. \code{"mg/L"}) or via the \code{conc_units} argument (applied uniformly to all SSD-eligible rows). Optional
 but recommended: \code{datetime} (propagated to msPAF rows if present),
 \code{detected} (assumed \code{TRUE} if absent), \code{imputed} (logical; if present,
 \code{n_analytes_imputed} is populated in output). Driver analytes needed for
-chemistry normalisation (e.g. pH, DOC) should be present as rows in \code{df}.}
+chemistry normalisation (e.g. pH, DOC) should be present as rows in \code{df}.
+Analyte names may be hydroSense's or sampleTidy's (see
+\code{\link[=analyte_aliases]{analyte_aliases()}}); the rows come back under the names supplied.}
 
 \item{reference}{Background reference chemistry for the ARA adjustment.
 Accepts four forms:

@@ -20,9 +20,8 @@ Wide-format tibble with one row per unique combination of
 replaced by \code{total_N_} and \code{total_alk_} respectively.
 }
 \description{
-Internal helper used by \code{\link{add_lmf}},
-\code{\link{build_reference_endmember}}, and
-\code{\link{build_leachate_endmember}} to avoid code duplication.
+Internal helper used by \code{\link{add_lmf}} and the end-member builders
+to avoid code duplication.
 Pivots long-format meq data to wide format and replaces the individual N
 species (NH4-N, NO3-N, NO2-N) with \code{total_N_} and the carbonate
 species (CO3, HCO3) with \code{total_alk_}.

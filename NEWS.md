@@ -1,5 +1,44 @@
 # hydroSense (development)
 
+## Explicit inputs, trailing LMF calibration, optional brms (breaking)
+
+* **`add_lmf()` takes explicit end-member data.** `leachate_data` and
+  `reference_data` are now required; the fallback to host-environment
+  dashboard functions (`feature_df()`, `data_df()`, `feature_sfc()`,
+  `get_reference_site()`) is removed, along with the internal builders that
+  used them (`build_reference_endmember()`, `build_pooled_reference_endmember()`,
+  `build_leachate_endmember()`). `min_ref_samples`, `min_leachate_samples` and
+  `min_leachate_total_n` are still enforced, in both calibration modes: below
+  a minimum the LMF is `NA` with `lmf_reason` `"insufficient_calibration_data"`
+  (no error). Total N is now converted from each row's unit to mg/L. The
+  bundled `leachate_demo()` has 6 samples per end-member, so pass
+  `min_ref_samples = 5, min_leachate_samples = 5` with it.
+* **New `add_lmf(calibration = "trailing")`** calibrates each sample from only
+  the end-member rows dated in `[t - calibration_window_years, t]`, so new
+  data never change an earlier sample's LMF. A sample whose window is unusable
+  gets an `NA` LMF with `lmf_reason` starting `"insufficient_calibration_data"`.
+  The default `calibration = "window"` is the previous behaviour.
+* **sampleTidy-shaped input works.** `to_meq()` and `add_lmf()` carry valence
+  and molar mass for the LMF panel ions internally and read a `units` column
+  (or `units.analyte`). New `analyte_aliases()` maps sampleTidy's analyte
+  names (`Hardness-total-CaCO3`, `Temperature`, `Alkalinity-total-CaCO3`,
+  `NO2+NO3-N`, ...) to the package's; `add_lmf()`, `add_mspaf()` and
+  `mspaf_pipeline()` accept them and return the caller's rows under their own
+  names, values and units (unit conversion is internal). A combined
+  alkalinity / oxidised-N value is dropped only when all of its split species
+  are present in the sample; otherwise it is used and the partial species are
+  dropped. This also applies to the leachate total-N filter.
+* Trailing windows are compared as whole calendar days in each datetime's own
+  time zone (UTC when none), not by clock time.
+* **`brms` moved from `Imports` back to `Suggests`.** Only the brms-based
+  imputation methods need it; the default `"marginal"` method does not load it.
+* **New `hydrosense_provenance()`** returns the package version, git SHA, R
+  version and a UTC timestamp, for recording what computed a derived product.
+* **`scripts/run_mspaf_pipeline.R` removed.** It wrote msPAF and interpolated
+  temperature back into a monitoring database; derived products are not
+  written to measurement databases. Use `mspaf_pipeline()` and store the
+  result in the consuming layer.
+
 ## Rename, dependency, and a one-call pipeline (breaking)
 
 * **Package renamed `leachatetools` → `hydroSense`.** Update `library()` calls

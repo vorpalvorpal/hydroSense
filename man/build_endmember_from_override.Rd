@@ -7,25 +7,21 @@
 build_endmember_from_override(override_df, type, min_leachate_samples = 10L)
 }
 \arguments{
-\item{override_df}{Long-format dataframe in \code{data_df()} structure.
+\item{override_df}{Long-format dataframe.
 All samples are used; samples missing the LMF panel are dropped.}
 
 \item{type}{Character scalar, either \code{"reference"} or
 \code{"leachate"}, controlling which output list format is produced.}
 
 \item{min_leachate_samples}{Minimum number of leachate samples with F
-measured required to include F in the panel. Applies the same threshold
-as \code{\link{build_leachate_endmember}} so the two builders cannot
-disagree on panel composition for equivalent data. Ignored when
+measured required to include F in the panel. Ignored when
 \code{type = "reference"}. Default \code{10L}.}
 }
 \value{
-For \code{type = "reference"}: a list with the same structure as
-\code{\link{build_reference_endmember}}: \code{stats} (tibble of ion,
+For \code{type = "reference"}: a list with \code{stats} (tibble of ion,
 n_ref, R, sigma_R), \code{window_start}, \code{window_end},
 \code{n_samples}.
-For \code{type = "leachate"}: a list with the same structure as
-\code{\link{build_leachate_endmember}}: \code{L_values} (tibble of
+For \code{type = "leachate"}: a list with \code{L_values} (tibble of
 ion, mean_ratio, L), \code{cl_anchor}, \code{n_samples},
 \code{f_included}, \code{window_start}, \code{window_end}.
 }

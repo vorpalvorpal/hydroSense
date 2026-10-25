@@ -216,12 +216,14 @@
 #' @param df Long-format monitoring dataframe. Required columns:
 #'   `sample_id`, `site_id`, `analyte`, `value`. Toxicant concentrations must
 #'   ultimately be in µg/L for SSD lookup; supply them either via a
-#'   `units.analyte` column (one unit string per row, e.g. `"mg/L"`) or via the
-#'   `conc_units` argument (applied uniformly to all SSD-eligible rows). Optional
+#'   `units.analyte` column (or sampleTidy's `units`; one unit string per row,
+#'   e.g. `"mg/L"`) or via the `conc_units` argument (applied uniformly to all SSD-eligible rows). Optional
 #'   but recommended: `datetime` (propagated to msPAF rows if present),
 #'   `detected` (assumed `TRUE` if absent), `imputed` (logical; if present,
 #'   `n_analytes_imputed` is populated in output). Driver analytes needed for
 #'   chemistry normalisation (e.g. pH, DOC) should be present as rows in `df`.
+#'   Analyte names may be hydroSense's or sampleTidy's (see
+#'   [analyte_aliases()]); the rows come back under the names supplied.
 #' @param reference Background reference chemistry for the ARA adjustment.
 #'   Accepts four forms:
 #'   \itemize{
@@ -350,6 +352,13 @@ add_mspaf <- function(
   central     <- match.arg(central)
   checkmate::assert_int(min_analytes, lower = 1L)
   checkmate::assert_flag(require_temperature)
+
+  ## Accept sampleTidy's analyte names and `units` column: compute on a
+  ## canonicalised, unit-converted copy, and hand the caller's own rows back
+  ## exactly as supplied (original names, values and units).
+  orig_df <- df
+  df <- .canonicalise_mspaf_input(df)
+  if (is.data.frame(reference)) reference <- .canonicalise_mspaf_input(reference)
 
   ## Temperature is mandatory for ammonia: the NH3-N un-ionised-fraction
   ## normalisation is undefined without it.  Fail loudly (rather than silently
@@ -504,7 +513,7 @@ add_mspaf <- function(
     mspaf_df   <- dplyr::left_join(mspaf_df, focal_times, by = "sample_id")
   }
 
-  result <- dplyr::bind_rows(df, mspaf_df)
+  result <- dplyr::bind_rows(orig_df, mspaf_df)
   if ("focal_date" %in% names(result)) {
     result <- dplyr::arrange(result, .data$focal_date)
   } else if ("datetime" %in% names(result)) {
