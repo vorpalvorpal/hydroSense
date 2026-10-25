@@ -59,6 +59,7 @@ model. See the file-level header for full methodological detail.</p>
 <span>  leachate_data <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  reference_data <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  lmf_analyte_uuid <span class="op">=</span> <span class="cn">NA_character_</span>,</span>
+<span>  calibration <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"window"</span>, <span class="st">"trailing"</span><span class="op">)</span>,</span>
 <span>  calibration_window_years <span class="op">=</span> <span class="fl">5</span>,</span>
 <span>  min_leachate_total_n <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  min_leachate_total_n_units <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -83,32 +84,30 @@ model. See the file-level header for full methodological detail.</p>
 <dd><p>Long-format dataframe.
 Required columns: <code>sample_id</code>, <code>site_id</code>,
 <code>analyte</code>, <code>value</code>, <code>detected</code>,
-<code>datetime</code>.</p></dd>
+<code>datetime</code>, and a unit column (<code>units.analyte</code> or sampleTidy's
+<code>units</code>). Analyte names may be hydroSense's or sampleTidy's (see
+<code><a href="analyte_aliases.html">analyte_aliases()</a></code>); <code>valence.analyte</code> and
+<code>atomic_mass.analyte</code> are optional (see <code><a href="to_meq.html">to_meq()</a></code>). The LMF rows
+are appended to <code>df</code> as supplied.</p></dd>
 
 
 <dt id="arg-leachate-data">leachate_data<a class="anchor" aria-label="anchor" href="#arg-leachate-data"></a></dt>
-<dd><p>Optional long-format dataframe in the same structure
+<dd><p>Required. Long-format dataframe in the same structure
 as <code>df</code> providing leachate end-member chemistry. Required columns:
-<code>sample_id</code>, <code>analyte</code>, <code>value</code>, <code>detected</code>.
-When supplied, <em>all</em> samples are used to build the leachate
-end-member regardless of date and regardless of total-N content (the
-total-N quality filter is bypassed — supply curated data). Samples
-missing the required LMF panel analytes are silently dropped.
-<code>NULL</code> (default) uses the standard leachate feature detection
-logic (requires dashboard infrastructure: <code>feature_df()</code>,
-<code>data_df()</code>).</p></dd>
+<code>sample_id</code>, <code>analyte</code>, <code>value</code>, <code>detected</code>
+(and <code>datetime</code> for <code>calibration = "trailing"</code>).
+The total-N quality filter (<code>min_leachate_total_n</code>) applies in both
+calibration modes: leachate samples below it are ignored. Samples
+missing the required LMF panel analytes are silently dropped.</p></dd>
 
 
 <dt id="arg-reference-data">reference_data<a class="anchor" aria-label="anchor" href="#arg-reference-data"></a></dt>
-<dd><p>Optional long-format dataframe in the same structure
+<dd><p>Required. Long-format dataframe in the same structure
 as <code>df</code> providing reference site chemistry for end-member
 calibration. Required columns: <code>sample_id</code>, <code>analyte</code>,
-<code>value</code>, <code>detected</code>. When supplied, <em>all</em> samples are
-used to build the reference end-member regardless of date; the
-calibration window is ignored. The same end-member is applied globally
-to all features. <code>NULL</code> (default) uses the standard per-feature
-matched reference site logic (requires dashboard infrastructure:
-<code>feature_sfc()</code>, <code>data_df()</code>).</p></dd>
+<code>value</code>, <code>detected</code> (and <code>datetime</code> for
+<code>calibration = "trailing"</code>). The same end-member is applied to
+every site in <code>df</code>.</p></dd>
 
 
 <dt id="arg-lmf-analyte-uuid">lmf_analyte_uuid<a class="anchor" aria-label="anchor" href="#arg-lmf-analyte-uuid"></a></dt>
@@ -117,19 +116,42 @@ column of the output. Set to a fixed UUID if integrating with a data
 system that tracks analytes by UUID. Default <code>NA_character_</code>.</p></dd>
 
 
+<dt id="arg-calibration">calibration<a class="anchor" aria-label="anchor" href="#arg-calibration"></a></dt>
+<dd><p>How the end-members are calibrated. <code>"window"</code>
+(default) builds one reference and one leachate end-member from
+<em>all</em> of <code>reference_data</code> / <code>leachate_data</code>, regardless of
+date, and applies them to every sample. <code>"trailing"</code> calibrates each
+sample separately, from only the rows of <code>leachate_data</code> and
+<code>reference_data</code> whose <code>datetime</code> lies in
+<code>[t - calibration_window_years, t]</code> (inclusive at both ends, where
+<code>t</code> is the sample's own <code>datetime</code>). Bounds are compared as
+whole calendar days, each <code>datetime</code>'s day taken in its own time
+zone (UTC when it has none), so clock time never matters. A sample's LMF therefore
+depends on data up to its own date only, and appending later samples or
+later end-member data never changes it. A sample whose window has no
+usable reference or leachate data (none, too few reference samples to
+estimate spread, too few samples for <code>min_ref_samples</code> or
+<code>min_leachate_samples</code>, or too few high-information ions) gets an
+<code>NA</code> LMF
+with <code>lmf_reason</code> starting <code>"insufficient_calibration_data"</code>.
+<code>"trailing"</code> requires a <code>datetime</code> column in both end-member
+data frames.</p></dd>
+
+
 <dt id="arg-calibration-window-years">calibration_window_years<a class="anchor" aria-label="anchor" href="#arg-calibration-window-years"></a></dt>
-<dd><p>Number of years of calibration data to use.
-Window is centred on the input data's date range and shifted backwards if
-future data are unavailable. Default <code>5</code>.</p></dd>
+<dd><p>Length in years of the trailing calibration
+window. Used only when <code>calibration = "trailing"</code>. Default <code>5</code>.</p></dd>
 
 
 <dt id="arg-min-leachate-total-n">min_leachate_total_n<a class="anchor" aria-label="anchor" href="#arg-min-leachate-total-n"></a></dt>
-<dd><p>Minimum total N (sum of NH4-N + NO3-N + NO2-N)
-for a leachate sample to qualify for end-member calibration. Excludes
-non-representative samples (dilution events, treatment upsets). Total N is
-used rather than NH4-N alone because aerated leachate features may have
-nitrified NH4 to NO3. Numeric or <code>units</code> object; bare numeric requires
-<code>min_leachate_total_n_units</code>. Default <code>NULL</code> → 20 mg/L.</p></dd>
+<dd><p>Minimum total N (sum of NH3-N + NO3-N + NO2-N,
+each converted to mg/L by its row's unit) for a leachate sample to
+qualify for end-member calibration. Excludes non-representative samples
+(dilution events, treatment upsets); samples below it do not contribute to
+the leachate end-member at all. Total N is used rather than NH3-N alone
+because aerated leachate may have nitrified NH3 to NO3. Numeric or <code>units</code>
+object; bare numeric requires <code>min_leachate_total_n_units</code>. Default
+<code>NULL</code> (20 mg/L).</p></dd>
 
 
 <dt id="arg-min-leachate-total-n-units">min_leachate_total_n_units<a class="anchor" aria-label="anchor" href="#arg-min-leachate-total-n-units"></a></dt>
@@ -145,15 +167,20 @@ when <code>min_leachate_total_n</code> is a <code>units</code> object or <code>N
 
 
 <dt id="arg-min-ref-samples">min_ref_samples<a class="anchor" aria-label="anchor" href="#arg-min-ref-samples"></a></dt>
-<dd><p>Minimum reference samples required in the calibration
-window. Features matched to a reference site with fewer samples are
-skipped silently. Default <code>10</code>.</p></dd>
+<dd><p>Minimum number of reference samples (distinct
+<code>sample_id</code>s carrying at least one LMF panel ion) in the calibration
+data – in the sample's trailing window when <code>calibration =
+  "trailing"</code>. Below it the LMF is <code>NA</code> with <code>lmf_reason</code>
+<code>"insufficient_calibration_data"</code>. Default <code>10</code>.</p></dd>
 
 
 <dt id="arg-min-leachate-samples">min_leachate_samples<a class="anchor" aria-label="anchor" href="#arg-min-leachate-samples"></a></dt>
-<dd><p>Minimum valid leachate samples required for
-end-member construction. The function stops with an informative error if
-not met. Default <code>10</code>.</p></dd>
+<dd><p>Minimum number of valid leachate samples (total
+N at least <code>min_leachate_total_n</code>) in the calibration data (in the
+trailing window for <code>calibration = "trailing"</code>); below it the LMF is
+<code>NA</code> with <code>lmf_reason</code> <code>"insufficient_calibration_data"</code>.
+Also the number of valid samples with fluoride measured needed for F to
+join the panel. Default <code>10</code>.</p></dd>
 
 
 <dt id="arg-max-sigma-lsi">max_sigma_lsi<a class="anchor" aria-label="anchor" href="#arg-max-sigma-lsi"></a></dt>
@@ -232,9 +259,8 @@ Kjeldsen P et al. (2002) Crit Rev Environ Sci Technol 32(4).</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
-    <div class="dont-index"><p><code><a href="build_leachate_endmember.html">build_leachate_endmember</a></code>,
-<code><a href="build_reference_endmember.html">build_reference_endmember</a></code>,
-<code><a href="compute_lmf_for_sample.html">compute_lmf_for_sample</a></code></p></div>
+    <div class="dont-index"><p><code><a href="compute_lmf_for_sample.html">compute_lmf_for_sample</a></code>, <code><a href="to_meq.html">to_meq</a></code>,
+<code><a href="analyte_aliases.html">analyte_aliases</a></code></p></div>
     </div>
 
     <div class="section level2">
@@ -247,17 +273,20 @@ Kjeldsen P et al. (2002) Crit Rev Environ Sci Technol 32(4).</p>
 <span class="r-in"><span><span class="va">out</span> <span class="op">&lt;-</span> <span class="fu">add_lmf</span><span class="op">(</span></span></span>
 <span class="r-in"><span>  df             <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">demo</span>, <span class="va">site_id</span> <span class="op">==</span> <span class="st">"downstream"</span><span class="op">)</span>,</span></span>
 <span class="r-in"><span>  leachate_data  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">demo</span>, <span class="va">site_id</span> <span class="op">==</span> <span class="st">"leachate"</span><span class="op">)</span>,</span></span>
-<span class="r-in"><span>  reference_data <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">demo</span>, <span class="va">site_id</span> <span class="op">==</span> <span class="st">"reference"</span><span class="op">)</span></span></span>
+<span class="r-in"><span>  reference_data <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">demo</span>, <span class="va">site_id</span> <span class="op">==</span> <span class="st">"reference"</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>  <span class="co"># the demo has 6 samples per end-member; the defaults ask for 10</span></span></span>
+<span class="r-in"><span>  min_ref_samples      <span class="op">=</span> <span class="fl">5</span>,</span></span>
+<span class="r-in"><span>  min_leachate_samples <span class="op">=</span> <span class="fl">5</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">out</span>, <span class="va">analyte</span> <span class="op">==</span> <span class="st">"LMF"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"sample_id"</span>, <span class="st">"value"</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 6 × 2</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   sample_id value</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> DS-01      14.9</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> DS-02      14.7</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> DS-01      15.0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> DS-02      14.8</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> DS-03      14.7</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">4</span> DS-04      15.1</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">5</span> DS-05      14.6</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">4</span> DS-04      14.9</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">5</span> DS-05      14.7</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">6</span> DS-06      14.9</span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
 </code></pre></div>

@@ -44,7 +44,9 @@ mspaf_pipeline(
   Long-format target-site chemistry (same schema as
   [`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)'s
   `df`): `sample_id`, `site_id`, `datetime`, `analyte`, `value`,
-  `detected`.
+  `detected`, and a unit column (`units.analyte`, or sampleTidy's
+  `units`). Analyte names may be hydroSense's or sampleTidy's (see
+  [`analyte_aliases()`](https://vorpalvorpal.github.io/hydroSense/reference/analyte_aliases.md)).
 
 - reference:
 

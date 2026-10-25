@@ -36,13 +36,16 @@ add_mspaf(
   Long-format monitoring dataframe. Required columns: `sample_id`,
   `site_id`, `analyte`, `value`. Toxicant concentrations must ultimately
   be in µg/L for SSD lookup; supply them either via a `units.analyte`
-  column (one unit string per row, e.g. `"mg/L"`) or via the
-  `conc_units` argument (applied uniformly to all SSD-eligible rows).
-  Optional but recommended: `datetime` (propagated to msPAF rows if
-  present), `detected` (assumed `TRUE` if absent), `imputed` (logical;
-  if present, `n_analytes_imputed` is populated in output). Driver
-  analytes needed for chemistry normalisation (e.g. pH, DOC) should be
-  present as rows in `df`.
+  column (or sampleTidy's `units`; one unit string per row, e.g.
+  `"mg/L"`) or via the `conc_units` argument (applied uniformly to all
+  SSD-eligible rows). Optional but recommended: `datetime` (propagated
+  to msPAF rows if present), `detected` (assumed `TRUE` if absent),
+  `imputed` (logical; if present, `n_analytes_imputed` is populated in
+  output). Driver analytes needed for chemistry normalisation (e.g. pH,
+  DOC) should be present as rows in `df`. Analyte names may be
+  hydroSense's or sampleTidy's (see
+  [`analyte_aliases()`](https://vorpalvorpal.github.io/hydroSense/reference/analyte_aliases.md));
+  the rows come back under the names supplied.
 
 - reference:
 

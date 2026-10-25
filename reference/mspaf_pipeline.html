@@ -93,7 +93,9 @@ entirely-absent analytes are filled before the toxicity calculation.</p>
 <dl><dt id="arg-target">target<a class="anchor" aria-label="anchor" href="#arg-target"></a></dt>
 <dd><p>Long-format target-site chemistry (same schema as
 <code><a href="mspaf_daily.html">mspaf_daily()</a></code>'s <code>df</code>): <code>sample_id</code>, <code>site_id</code>, <code>datetime</code>, <code>analyte</code>,
-<code>value</code>, <code>detected</code>.</p></dd>
+<code>value</code>, <code>detected</code>, and a unit column (<code>units.analyte</code>, or sampleTidy's
+<code>units</code>). Analyte names may be hydroSense's or sampleTidy's (see
+<code><a href="analyte_aliases.html">analyte_aliases()</a></code>).</p></dd>
 
 
 <dt id="arg-reference">reference<a class="anchor" aria-label="anchor" href="#arg-reference"></a></dt>

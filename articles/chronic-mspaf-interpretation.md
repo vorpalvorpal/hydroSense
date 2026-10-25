@@ -117,8 +117,8 @@ chr_mspaf     <- time_weighted_aggregate(
 
 This time-averages the toxic-response signal directly. It is more
 biologically defensible (the community integrates the effect over time,
-not the concentration) and is the default in the bundled
-`run_mspaf_pipeline.R` script.
+not the concentration) and is the default in
+[`mspaf_pipeline()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_pipeline.md).
 
 ### Pulsed exposures and Jensen’s inequality
 

@@ -65,7 +65,7 @@ builders, but uses all available samples without date filtering.</p>
 
 
 <dl><dt id="arg-override-df">override_df<a class="anchor" aria-label="anchor" href="#arg-override-df"></a></dt>
-<dd><p>Long-format dataframe in <code>data_df()</code> structure.
+<dd><p>Long-format dataframe.
 All samples are used; samples missing the LMF panel are dropped.</p></dd>
 
 
@@ -76,20 +76,16 @@ All samples are used; samples missing the LMF panel are dropped.</p></dd>
 
 <dt id="arg-min-leachate-samples">min_leachate_samples<a class="anchor" aria-label="anchor" href="#arg-min-leachate-samples"></a></dt>
 <dd><p>Minimum number of leachate samples with F
-measured required to include F in the panel. Applies the same threshold
-as <code><a href="build_leachate_endmember.html">build_leachate_endmember</a></code> so the two builders cannot
-disagree on panel composition for equivalent data. Ignored when
+measured required to include F in the panel. Ignored when
 <code>type = "reference"</code>. Default <code>10L</code>.</p></dd>
 
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>For <code>type = "reference"</code>: a list with the same structure as
-<code><a href="build_reference_endmember.html">build_reference_endmember</a></code>: <code>stats</code> (tibble of ion,
+    <p>For <code>type = "reference"</code>: a list with <code>stats</code> (tibble of ion,
 n_ref, R, sigma_R), <code>window_start</code>, <code>window_end</code>,
 <code>n_samples</code>.
-For <code>type = "leachate"</code>: a list with the same structure as
-<code><a href="build_leachate_endmember.html">build_leachate_endmember</a></code>: <code>L_values</code> (tibble of
+For <code>type = "leachate"</code>: a list with <code>L_values</code> (tibble of
 ion, mean_ratio, L), <code>cl_anchor</code>, <code>n_samples</code>,
 <code>f_included</code>, <code>window_start</code>, <code>window_end</code>.</p>
     </div>

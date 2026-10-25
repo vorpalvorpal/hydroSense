@@ -17,8 +17,8 @@ build_endmember_from_override(override_df, type, min_leachate_samples = 10L)
 
 - override_df:
 
-  Long-format dataframe in `data_df()` structure. All samples are used;
-  samples missing the LMF panel are dropped.
+  Long-format dataframe. All samples are used; samples missing the LMF
+  panel are dropped.
 
 - type:
 
@@ -28,18 +28,12 @@ build_endmember_from_override(override_df, type, min_leachate_samples = 10L)
 - min_leachate_samples:
 
   Minimum number of leachate samples with F measured required to include
-  F in the panel. Applies the same threshold as
-  [`build_leachate_endmember`](https://vorpalvorpal.github.io/hydroSense/reference/build_leachate_endmember.md)
-  so the two builders cannot disagree on panel composition for
-  equivalent data. Ignored when `type = "reference"`. Default `10L`.
+  F in the panel. Ignored when `type = "reference"`. Default `10L`.
 
 ## Value
 
-For `type = "reference"`: a list with the same structure as
-[`build_reference_endmember`](https://vorpalvorpal.github.io/hydroSense/reference/build_reference_endmember.md):
-`stats` (tibble of ion, n_ref, R, sigma_R), `window_start`,
-`window_end`, `n_samples`. For `type = "leachate"`: a list with the same
-structure as
-[`build_leachate_endmember`](https://vorpalvorpal.github.io/hydroSense/reference/build_leachate_endmember.md):
-`L_values` (tibble of ion, mean_ratio, L), `cl_anchor`, `n_samples`,
-`f_included`, `window_start`, `window_end`.
+For `type = "reference"`: a list with `stats` (tibble of ion, n_ref, R,
+sigma_R), `window_start`, `window_end`, `n_samples`. For
+`type = "leachate"`: a list with `L_values` (tibble of ion, mean_ratio,
+L), `cl_anchor`, `n_samples`, `f_included`, `window_start`,
+`window_end`.

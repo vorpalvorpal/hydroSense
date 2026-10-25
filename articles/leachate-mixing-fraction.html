@@ -154,13 +154,15 @@ a mixing model so the example is reproducible.)</p>
 <span><span class="co">#&gt; 3               2               40.08</span></span>
 <span><span class="co">#&gt; 4               2               24.31</span></span></code></pre></div>
 <p>Supplying the leachate and reference chemistry directly uses the
-caller-provided end-member path (no site-matching infrastructure
-required):</p>
+explicit end-member path:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">out</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/add_lmf.html">add_lmf</a></span><span class="op">(</span></span>
 <span>  df             <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">demo</span>, <span class="va">site_id</span> <span class="op">==</span> <span class="st">"downstream"</span><span class="op">)</span>,</span>
 <span>  leachate_data  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">demo</span>, <span class="va">site_id</span> <span class="op">==</span> <span class="st">"leachate"</span><span class="op">)</span>,</span>
-<span>  reference_data <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">demo</span>, <span class="va">site_id</span> <span class="op">==</span> <span class="st">"reference"</span><span class="op">)</span></span>
+<span>  reference_data <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">demo</span>, <span class="va">site_id</span> <span class="op">==</span> <span class="st">"reference"</span><span class="op">)</span>,</span>
+<span>  <span class="co"># The demo has only 6 samples per end-member; the defaults ask for 10.</span></span>
+<span>  min_ref_samples      <span class="op">=</span> <span class="fl">5</span>,</span>
+<span>  min_leachate_samples <span class="op">=</span> <span class="fl">5</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">lmf</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">out</span>, <span class="va">analyte</span> <span class="op">==</span> <span class="st">"LMF"</span>,</span>
@@ -169,12 +171,12 @@ required):</p>
 <span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 6 × 5</span></span></span>
 <span><span class="co">#&gt;   sample_id value sigma_lmf n_ions_used chi2_per_df</span></span>
 <span><span class="co">#&gt;   <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>       <span style="color: #949494; font-style: italic;">&lt;int&gt;</span>       <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">1</span> DS-01      14.9     0.472           8       0.163</span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">2</span> DS-02      14.7     0.467           8       0.208</span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">3</span> DS-03      14.7     0.465           8       0.155</span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">4</span> DS-04      15.1     0.476           8       0.129</span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">5</span> DS-05      14.6     0.463           8       0.201</span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">6</span> DS-06      14.9     0.471           8       0.268</span></span></code></pre></div>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">1</span> DS-01      15.0     0.448           9       0.160</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">2</span> DS-02      14.8     0.442           9       0.189</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">3</span> DS-03      14.7     0.464           9       0.244</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">4</span> DS-04      14.9     0.447           9       0.189</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">5</span> DS-05      14.7     0.440           9       0.187</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">6</span> DS-06      14.9     0.446           9       0.236</span></span></code></pre></div>
 <p>The downstream samples return an LMF of about 15% — consistent with
 how the demo data were constructed (a 15% leachate blend).
 <code>sigma_lmf</code> is the uncertainty on the estimate (percentage

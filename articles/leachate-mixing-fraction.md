@@ -83,15 +83,17 @@ head(subset(demo, site_id == "downstream"), 4)
 ```
 
 Supplying the leachate and reference chemistry directly uses the
-caller-provided end-member path (no site-matching infrastructure
-required):
+explicit end-member path:
 
 ``` r
 
 out <- add_lmf(
   df             = subset(demo, site_id == "downstream"),
   leachate_data  = subset(demo, site_id == "leachate"),
-  reference_data = subset(demo, site_id == "reference")
+  reference_data = subset(demo, site_id == "reference"),
+  # The demo has only 6 samples per end-member; the defaults ask for 10.
+  min_ref_samples      = 5,
+  min_leachate_samples = 5
 )
 
 lmf <- subset(out, analyte == "LMF",
@@ -100,12 +102,12 @@ lmf
 #> # A tibble: 6 × 5
 #>   sample_id value sigma_lmf n_ions_used chi2_per_df
 #>   <chr>     <dbl>     <dbl>       <int>       <dbl>
-#> 1 DS-01      14.9     0.472           8       0.163
-#> 2 DS-02      14.7     0.467           8       0.208
-#> 3 DS-03      14.7     0.465           8       0.155
-#> 4 DS-04      15.1     0.476           8       0.129
-#> 5 DS-05      14.6     0.463           8       0.201
-#> 6 DS-06      14.9     0.471           8       0.268
+#> 1 DS-01      15.0     0.448           9       0.160
+#> 2 DS-02      14.8     0.442           9       0.189
+#> 3 DS-03      14.7     0.464           9       0.244
+#> 4 DS-04      14.9     0.447           9       0.189
+#> 5 DS-05      14.7     0.440           9       0.187
+#> 6 DS-06      14.9     0.446           9       0.236
 ```
 
 The downstream samples return an LMF of about 15% — consistent with how

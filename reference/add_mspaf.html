@@ -85,12 +85,14 @@ detail.</p>
 <dd><p>Long-format monitoring dataframe. Required columns:
 <code>sample_id</code>, <code>site_id</code>, <code>analyte</code>, <code>value</code>. Toxicant concentrations must
 ultimately be in µg/L for SSD lookup; supply them either via a
-<code>units.analyte</code> column (one unit string per row, e.g. <code>"mg/L"</code>) or via the
-<code>conc_units</code> argument (applied uniformly to all SSD-eligible rows). Optional
+<code>units.analyte</code> column (or sampleTidy's <code>units</code>; one unit string per row,
+e.g. <code>"mg/L"</code>) or via the <code>conc_units</code> argument (applied uniformly to all SSD-eligible rows). Optional
 but recommended: <code>datetime</code> (propagated to msPAF rows if present),
 <code>detected</code> (assumed <code>TRUE</code> if absent), <code>imputed</code> (logical; if present,
 <code>n_analytes_imputed</code> is populated in output). Driver analytes needed for
-chemistry normalisation (e.g. pH, DOC) should be present as rows in <code>df</code>.</p></dd>
+chemistry normalisation (e.g. pH, DOC) should be present as rows in <code>df</code>.
+Analyte names may be hydroSense's or sampleTidy's (see
+<code><a href="analyte_aliases.html">analyte_aliases()</a></code>); the rows come back under the names supplied.</p></dd>
 
 
 <dt id="arg-reference">reference<a class="anchor" aria-label="anchor" href="#arg-reference"></a></dt>

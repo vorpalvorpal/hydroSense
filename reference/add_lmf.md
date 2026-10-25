@@ -13,6 +13,7 @@ add_lmf(
   leachate_data = NULL,
   reference_data = NULL,
   lmf_analyte_uuid = NA_character_,
+  calibration = c("window", "trailing"),
   calibration_window_years = 5,
   min_leachate_total_n = NULL,
   min_leachate_total_n_units = NULL,
@@ -34,30 +35,31 @@ add_lmf(
 - df:
 
   Long-format dataframe. Required columns: `sample_id`, `site_id`,
-  `analyte`, `value`, `detected`, `datetime`.
+  `analyte`, `value`, `detected`, `datetime`, and a unit column
+  (`units.analyte` or sampleTidy's `units`). Analyte names may be
+  hydroSense's or sampleTidy's (see
+  [`analyte_aliases()`](https://vorpalvorpal.github.io/hydroSense/reference/analyte_aliases.md));
+  `valence.analyte` and `atomic_mass.analyte` are optional (see
+  [`to_meq()`](https://vorpalvorpal.github.io/hydroSense/reference/to_meq.md)).
+  The LMF rows are appended to `df` as supplied.
 
 - leachate_data:
 
-  Optional long-format dataframe in the same structure as `df` providing
-  leachate end-member chemistry. Required columns: `sample_id`,
-  `analyte`, `value`, `detected`. When supplied, *all* samples are used
-  to build the leachate end-member regardless of date and regardless of
-  total-N content (the total-N quality filter is bypassed — supply
-  curated data). Samples missing the required LMF panel analytes are
-  silently dropped. `NULL` (default) uses the standard leachate feature
-  detection logic (requires dashboard infrastructure: `feature_df()`,
-  `data_df()`).
+  Required. Long-format dataframe in the same structure as `df`
+  providing leachate end-member chemistry. Required columns:
+  `sample_id`, `analyte`, `value`, `detected` (and `datetime` for
+  `calibration = "trailing"`). The total-N quality filter
+  (`min_leachate_total_n`) applies in both calibration modes: leachate
+  samples below it are ignored. Samples missing the required LMF panel
+  analytes are silently dropped.
 
 - reference_data:
 
-  Optional long-format dataframe in the same structure as `df` providing
-  reference site chemistry for end-member calibration. Required columns:
-  `sample_id`, `analyte`, `value`, `detected`. When supplied, *all*
-  samples are used to build the reference end-member regardless of date;
-  the calibration window is ignored. The same end-member is applied
-  globally to all features. `NULL` (default) uses the standard
-  per-feature matched reference site logic (requires dashboard
-  infrastructure: `feature_sfc()`, `data_df()`).
+  Required. Long-format dataframe in the same structure as `df`
+  providing reference site chemistry for end-member calibration.
+  Required columns: `sample_id`, `analyte`, `value`, `detected` (and
+  `datetime` for `calibration = "trailing"`). The same end-member is
+  applied to every site in `df`.
 
 - lmf_analyte_uuid:
 
@@ -65,20 +67,41 @@ add_lmf(
   Set to a fixed UUID if integrating with a data system that tracks
   analytes by UUID. Default `NA_character_`.
 
+- calibration:
+
+  How the end-members are calibrated. `"window"` (default) builds one
+  reference and one leachate end-member from *all* of `reference_data` /
+  `leachate_data`, regardless of date, and applies them to every sample.
+  `"trailing"` calibrates each sample separately, from only the rows of
+  `leachate_data` and `reference_data` whose `datetime` lies in
+  `[t - calibration_window_years, t]` (inclusive at both ends, where `t`
+  is the sample's own `datetime`). Bounds are compared as whole calendar
+  days, each `datetime`'s day taken in its own time zone (UTC when it
+  has none), so clock time never matters. A sample's LMF therefore
+  depends on data up to its own date only, and appending later samples
+  or later end-member data never changes it. A sample whose window has
+  no usable reference or leachate data (none, too few reference samples
+  to estimate spread, too few samples for `min_ref_samples` or
+  `min_leachate_samples`, or too few high-information ions) gets an `NA`
+  LMF with `lmf_reason` starting `"insufficient_calibration_data"`.
+  `"trailing"` requires a `datetime` column in both end-member data
+  frames.
+
 - calibration_window_years:
 
-  Number of years of calibration data to use. Window is centred on the
-  input data's date range and shifted backwards if future data are
-  unavailable. Default `5`.
+  Length in years of the trailing calibration window. Used only when
+  `calibration = "trailing"`. Default `5`.
 
 - min_leachate_total_n:
 
-  Minimum total N (sum of NH4-N + NO3-N + NO2-N) for a leachate sample
-  to qualify for end-member calibration. Excludes non-representative
-  samples (dilution events, treatment upsets). Total N is used rather
-  than NH4-N alone because aerated leachate features may have nitrified
-  NH4 to NO3. Numeric or `units` object; bare numeric requires
-  `min_leachate_total_n_units`. Default `NULL` → 20 mg/L.
+  Minimum total N (sum of NH3-N + NO3-N + NO2-N, each converted to mg/L
+  by its row's unit) for a leachate sample to qualify for end-member
+  calibration. Excludes non-representative samples (dilution events,
+  treatment upsets); samples below it do not contribute to the leachate
+  end-member at all. Total N is used rather than NH3-N alone because
+  aerated leachate may have nitrified NH3 to NO3. Numeric or `units`
+  object; bare numeric requires `min_leachate_total_n_units`. Default
+  `NULL` (20 mg/L).
 
 - min_leachate_total_n_units:
 
@@ -94,14 +117,20 @@ add_lmf(
 
 - min_ref_samples:
 
-  Minimum reference samples required in the calibration window. Features
-  matched to a reference site with fewer samples are skipped silently.
-  Default `10`.
+  Minimum number of reference samples (distinct `sample_id`s carrying at
+  least one LMF panel ion) in the calibration data – in the sample's
+  trailing window when `calibration = "trailing"`. Below it the LMF is
+  `NA` with `lmf_reason` `"insufficient_calibration_data"`. Default
+  `10`.
 
 - min_leachate_samples:
 
-  Minimum valid leachate samples required for end-member construction.
-  The function stops with an informative error if not met. Default `10`.
+  Minimum number of valid leachate samples (total N at least
+  `min_leachate_total_n`) in the calibration data (in the trailing
+  window for `calibration = "trailing"`); below it the LMF is `NA` with
+  `lmf_reason` `"insufficient_calibration_data"`. Also the number of
+  valid samples with fluoride measured needed for F to join the panel.
+  Default `10`.
 
 - max_sigma_lsi:
 
@@ -178,9 +207,9 @@ Christophersen N, Hooper RP (1992) Water Resources Research
 
 ## See also
 
-[`build_leachate_endmember`](https://vorpalvorpal.github.io/hydroSense/reference/build_leachate_endmember.md),
-[`build_reference_endmember`](https://vorpalvorpal.github.io/hydroSense/reference/build_reference_endmember.md),
-[`compute_lmf_for_sample`](https://vorpalvorpal.github.io/hydroSense/reference/compute_lmf_for_sample.md)
+[`compute_lmf_for_sample`](https://vorpalvorpal.github.io/hydroSense/reference/compute_lmf_for_sample.md),
+[`to_meq`](https://vorpalvorpal.github.io/hydroSense/reference/to_meq.md),
+[`analyte_aliases`](https://vorpalvorpal.github.io/hydroSense/reference/analyte_aliases.md)
 
 ## Examples
 
@@ -193,17 +222,20 @@ demo <- leachate_demo()
 out <- add_lmf(
   df             = subset(demo, site_id == "downstream"),
   leachate_data  = subset(demo, site_id == "leachate"),
-  reference_data = subset(demo, site_id == "reference")
+  reference_data = subset(demo, site_id == "reference"),
+  # the demo has 6 samples per end-member; the defaults ask for 10
+  min_ref_samples      = 5,
+  min_leachate_samples = 5
 )
 subset(out, analyte == "LMF", c("sample_id", "value"))
 #> # A tibble: 6 × 2
 #>   sample_id value
 #>   <chr>     <dbl>
-#> 1 DS-01      14.9
-#> 2 DS-02      14.7
+#> 1 DS-01      15.0
+#> 2 DS-02      14.8
 #> 3 DS-03      14.7
-#> 4 DS-04      15.1
-#> 5 DS-05      14.6
+#> 4 DS-04      14.9
+#> 5 DS-05      14.7
 #> 6 DS-06      14.9
 # }
 ```

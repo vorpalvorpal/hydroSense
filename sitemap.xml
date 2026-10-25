@@ -14,13 +14,11 @@
 <url><loc>https://vorpalvorpal.github.io/hydroSense/news/index.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/add_lmf.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/analyte_aliases.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/analyte_pafs.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/ara_summary.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/bdl_cap_summary.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/build_endmember_from_override.html</loc></url>
-<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/build_leachate_endmember.html</loc></url>
-<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/build_pooled_reference_endmember.html</loc></url>
-<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/build_reference_endmember.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/collapse_censored.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/collapse_species.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/compute_ca_group_mspaf.html</loc></url>
@@ -63,6 +61,7 @@
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-daily_tox_from_model.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-draw_domain.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-empty_daily_result.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-endmember_from_wide.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-estimate_ou_kalman_params.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-extract_coanalytes_for_sample.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-factor_condition.html</loc></url>
@@ -148,6 +147,7 @@
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/get_silo_air_temp.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/get_silo_rainfall.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/hydroSense-package.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/hydrosense_provenance.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/impute_chemistry.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/impute_coanalytes.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/impute_group.html</loc></url>

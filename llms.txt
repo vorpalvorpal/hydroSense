@@ -134,6 +134,10 @@ sample.
   : Compute the Leachate Mixing Fraction (LMF) for water quality samples
 - [`to_meq()`](https://vorpalvorpal.github.io/hydroSense/reference/to_meq.md)
   : Convert analyte concentrations to milliequivalents per litre
+- [`analyte_aliases()`](https://vorpalvorpal.github.io/hydroSense/reference/analyte_aliases.md)
+  : Analyte-name aliases
+- [`hydrosense_provenance()`](https://vorpalvorpal.github.io/hydroSense/reference/hydrosense_provenance.md)
+  : Record what computed a derived product
 
 ## Chemistry imputation
 
