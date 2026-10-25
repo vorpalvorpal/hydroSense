@@ -244,40 +244,35 @@ test_that("[smaller note] leachate ion:Cl ratio is unbiased under independent no
 
 
 ## ----------------------------------------------------------------------------
-## Bug B1 — if every feature is skipped (no/insufficient reference data),
+## Bug B1 — if every feature is skipped (nothing in df can be computed),
 ## group_modify() returns a frame with only site_id, and the subsequent
 ## left_join(..., by = "sample_id") errors on the missing column instead of
 ## returning df unchanged.
+##
+## The original spec reached "every feature skipped" through the dashboard
+## fallback (reference_data = NULL + a stubbed get_reference_site()). That
+## fallback has been removed (see test-lmf-explicit-inputs.R), so the same
+## contract is now exercised with explicit end-members and a df that carries
+## no LMF panel ions at all: nothing is computable, so df comes back unchanged.
 ## ----------------------------------------------------------------------------
 
 test_that("[bug B1] add_lmf returns df unchanged when every feature is skipped", {
   em <- .rev_endmembers()
-  q  <- .rev_samples(0.5, "q", "query", noise_sd = 0)
-
-  ## get_reference_site is a host-environment global (not a package binding);
-  ## stub it in the global env so the non-override path can run.
-  assign("get_reference_site", function(feature_id) list(uuid = "none"),
-         envir = globalenv())
-  withr::defer(suppressWarnings(rm("get_reference_site", envir = globalenv())))
-
-  ## Valid pooled reference (so informativeness/admission succeed) but every
-  ## per-feature reference build returns NULL -> every feature is skipped.
-  testthat::local_mocked_bindings(
-    build_pooled_reference_endmember = function(...) {
-      tibble::tibble(
-        ion     = c("Na_", "Cl_", "total_N_"),
-        n_ref   = 10L,
-        R       = c(0.4, 0.4, 0.05),
-        sigma_R = c(0.02, 0.02, 0.005)
-      )
-    },
-    build_reference_endmember = function(...) NULL,
-    .package = "hydroSense"
+  q  <- tibble::tibble(
+    sample_id           = c("q_1", "q_1", "q_2", "q_2"),
+    site_id             = c("query", "query", "other", "other"),
+    analyte             = c("pH", "EC", "pH", "EC"),
+    value               = c(7.1, 310, 6.9, 280),
+    detected            = TRUE,
+    datetime            = as.Date("2022-06-01"),
+    units.analyte       = c("pH", "uS/cm", "pH", "uS/cm"),
+    valence.analyte     = NA_real_,
+    atomic_mass.analyte = NA_real_
   )
 
   expect_no_error(
     out <- suppressMessages(
-      add_lmf(q, leachate_data = em$leachate, reference_data = NULL)
+      add_lmf(q, leachate_data = em$leachate, reference_data = em$reference)
     )
   )
   expect_false("LMF" %in% out$analyte)   # nothing computed
