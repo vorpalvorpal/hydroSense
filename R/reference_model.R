@@ -22,7 +22,8 @@
 ##   .aic_for_tau()                  AIC for a (tau_short, tau_long) candidate pair
 ##   .select_api_tau()               continuous tau selection by profiled GAM AIC (#49)
 ##   .resolve_ref_norm()             three-tier resolver dispatcher
-##   .resolve_ref_norm_instant()     per-sample (instantaneous) resolver
+##   .resolve_ref_norm_instant()     per-sample (instantaneous) resolver, all dates at once
+##   .match_ref_obs()                tier-1 contemporaneous match, all dates at once
 ##   .resolve_ref_norm_chronic()     per-sample (chronic window-integrated) resolver
 ##   .predict_ref_at_date()          predict value_norm from a fitted analyte model
 
