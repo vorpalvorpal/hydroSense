@@ -472,6 +472,30 @@ mspaf_daily <- function(
   ## both sides.  When reference = reference_model, ref cancels in C_excess.
   perturb_ref <- draws_mode && is.null(reference)
 
+  ## Reference norm on the daily grid, resolved ONCE for every point.  It
+  ## depends only on the date and the reference model (whose hydrology every
+  ## point shares), so each point looks its dates up in this table instead of
+  ## re-resolving them.  Each point's date set is the grid plus every day of
+  ## the external temperature series (.fill_external_temperature() does not
+  ## clip to start/end), so the table covers that union.  NULL (resolution
+  ## failed) leaves each point to resolve, and fail, on its own as before.
+  shared_ref_q <- NULL
+  if (interpolation == "model") {
+    ref_dates <- all_dates
+    if (!is.null(temperature)) {
+      ref_dates <- c(ref_dates, as.Date(temperature$datetime))
+    }
+    ref_dates <- sort(unique(ref_dates))
+    shared_ref_q <- tryCatch(
+      .resolve_ref_norm_instant(
+        reference_model,
+        tibble::tibble(sample_id = as.character(ref_dates), datetime = ref_dates)
+      ) |>
+        dplyr::mutate(date = as.Date(.data$sample_id)),
+      error = function(e) NULL
+    )
+  }
+
   .site_fn <- function(site) {
     site_rows <- dplyr::filter(df, .data$site_id == .env$site)
 
@@ -519,7 +543,8 @@ mspaf_daily <- function(
           kappa            = kappa,
           method           = method,
           guideline_dir    = guideline_dir,
-          transform        = transform
+          transform        = transform,
+          ref_q            = shared_ref_q
         )
 
         ## Diagnostics from forward-filled daily_long (counts grab dates,
@@ -787,7 +812,8 @@ mspaf_daily <- function(
           tox_analytes     = tox_analytes,
           method           = method,
           guideline_dir    = guideline_dir,
-          transform        = transform
+          transform        = transform,
+          ref_q            = shared_ref_q
         )
         impact_tiers <- attr(daily_long, "impact_tiers")
         diag <- .compute_daily_diag(daily_long, tox_analytes, site)
@@ -1342,13 +1368,17 @@ mspaf_daily <- function(
 #'   Forwarded to [fit_target_model()].
 #' @param daily_long Forward-filled daily chemistry for the site; supplies the
 #'   date grid (`qdates`) and co-analyte values.
+#' @param ref_q Optional pre-resolved reference norm
+#'   `(sample_id, analyte, ref_norm, ref_tier, date)` covering every date of
+#'   `qdates` (as resolved once per call by [mspaf_daily()]).  `NULL` resolves
+#'   it here.
 #' @return A named list (`fdm`) or `NULL` on model failure.
 #' @keywords internal
 .fit_daily_target <- function(site_rows, reference_model, imputation_model,
                               conc_units, meta, tox_analytes, daily_long,
                               ou_scale = 1, grab_cv = NULL, kappa = 0.5,
                               method = "multi", guideline_dir = NULL,
-                              transform = "pseudo_log") {
+                              transform = "pseudo_log", ref_q = NULL) {
   qdates <- sort(unique(daily_long$.date))
 
   tm <- tryCatch(
@@ -1378,15 +1408,21 @@ mspaf_daily <- function(
 
   ## Reference norm over the daily grid — static across draws (ARA cancels it),
   ## so resolve it ONCE here and reuse for the centre line and every draw,
-  ## rather than re-evaluating the reference GAM per draw.
-  ref_q <- tryCatch(
-    .resolve_ref_norm_instant(
-      tm$reference_model,
-      tibble::tibble(sample_id = as.character(qdates), datetime = qdates)
-    ) |>
-      dplyr::mutate(date = as.Date(.data$sample_id)),
-    error = function(e) NULL
-  )
+  ## rather than re-evaluating the reference GAM per draw.  mspaf_daily()
+  ## resolves it once for all points and passes the table in `ref_q` (keyed by
+  ## date; it may cover more dates than this point's qdates).
+  if (is.null(ref_q)) {
+    ref_q <- tryCatch(
+      .resolve_ref_norm_instant(
+        tm$reference_model,
+        tibble::tibble(sample_id = as.character(qdates), datetime = qdates)
+      ) |>
+        dplyr::mutate(date = as.Date(.data$sample_id)),
+      error = function(e) NULL
+    )
+  } else {
+    ref_q <- ref_q[ref_q$date %in% qdates, , drop = FALSE]
+  }
 
   ## Per-date co-analyte lookup (static across draws; Chunk D may override).
   co <- daily_long[!daily_long$analyte %in% tox_analytes &
@@ -1914,12 +1950,15 @@ mspaf_daily <- function(
 #' @param conc_units Units for `site_rows` toxicants when no `units.analyte`.
 #' @param meta Analyte metadata (normalisation formulas).
 #' @param tox_analytes SSD-eligible analyte names.
+#' @param ref_q Optional pre-resolved reference norm, forwarded to
+#'   [.fit_daily_target()].
 #' @return `daily_long` with modelled-toxicant rows replaced.
 #' @keywords internal
 .daily_tox_from_model <- function(daily_long, site_rows, reference_model,
                                   imputation_model, conc_units, meta,
                                   tox_analytes, method = "multi",
-                                  guideline_dir = NULL, transform = "pseudo_log") {
+                                  guideline_dir = NULL, transform = "pseudo_log",
+                                  ref_q = NULL) {
   fdm <- .fit_daily_target(
     site_rows        = site_rows,
     reference_model  = reference_model,
@@ -1930,7 +1969,8 @@ mspaf_daily <- function(
     daily_long       = daily_long,
     method           = method,
     guideline_dir    = guideline_dir,
-    transform        = transform
+    transform        = transform,
+    ref_q            = ref_q
   )
   if (is.null(fdm)) {
     return(daily_long)
