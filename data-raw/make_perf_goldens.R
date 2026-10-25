@@ -5,8 +5,9 @@
 ## the PRE-REFACTOR code returns on fully synthetic inputs, so the vectorised
 ## code can be held to "identical within 1e-10 relative".
 ##
-## The goldens were generated from commit 86891ab (origin/main before the
-## refactor).  DO NOT regenerate them with refactored code: that would make
+## The goldens were generated with the R/ sources of commit 86891ab
+## (origin/main before the refactor; R/ last changed in 0ddb0b2).  Each golden
+## records this in attr(, "golden_meta").  DO NOT regenerate them with refactored code: that would make
 ## the tests compare the new code with itself.  Regenerate only if the
 ## fixtures (tests/testthat/helper-perf-fixtures.R) change on purpose, and then
 ## from a checkout of the pre-refactor R/ sources.
@@ -29,13 +30,19 @@ sha <- tryCatch(
   system2("git", c("-C", pkg, "rev-parse", "--short", "HEAD"), stdout = TRUE),
   error = function(e) NA_character_
 )
+r_sha <- tryCatch(
+  system2("git", c("-C", pkg, "log", "-1", "--format=%h", "--", "R/"),
+          stdout = TRUE),
+  error = function(e) NA_character_
+)
 dirty <- tryCatch(
   length(system2("git", c("-C", pkg, "status", "--porcelain", "R/"),
                  stdout = TRUE)) > 0L,
   error = function(e) NA
 )
 stamp <- list(
-  generated_from = sha, r_sources_dirty = dirty,
+  generated_from = sha, r_sources_last_commit = r_sha,
+  r_sources_dirty = dirty,
   r_version = R.version.string, generated_on = as.character(Sys.Date())
 )
 

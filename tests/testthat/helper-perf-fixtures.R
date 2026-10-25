@@ -209,6 +209,8 @@
   tgt$imputed[stats::runif(nrow(tgt)) < 0.05] <- NA
   # A few NA values (dropped inside the weighted summary).
   tgt$value[which(tgt$analyte == "Zn")[c(4, 9)]] <- NA_real_
+  # An analyte that is entirely NA at one point (all-NA group -> NA value).
+  tgt$value[tgt$site_id == "P3" & tgt$analyte == "EC"] <- NA_real_
 
   # Focal dates: before the record, on the first sample, on sample dates
   # (zero-length final interval), around the duplicate same-day pair, inside
