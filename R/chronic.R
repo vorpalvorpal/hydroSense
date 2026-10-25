@@ -183,128 +183,23 @@ time_weighted_aggregate <- function(
     )
   }
 
-  # Split the data by site ONCE, up front, rather than re-filtering the full
-  # df inside every (focal_date × site_id) iteration below.  `split()` keys
-  # the resulting list by site_id, so each iteration is an O(1) list lookup
-  # instead of an O(nrow(df)) scan — a large saving when there are many focal
-  # dates.  (dplyr::group_split() would also work but returns an unnamed list,
-  # forcing a separate key lookup; base split() gives us the named list
-  # directly.)
-  df_by_site <- split(df, df$site_id)
+  # ── Chronic values for every (focal_date, site_id) at once ────────────────
+  # Vectorised over focal dates (see .twa_compute()): per point, the forward-
+  # step intervals of the whole sample schedule are computed once and every
+  # focal window is resolved from prefix sums, instead of re-filtering and
+  # re-summarising the point's samples once per focal date.
+  res <- .twa_compute(
+    df, focal_grid,
+    tau_days              = tau_days,
+    window_days           = window_days,
+    summary               = summary,
+    anchor_outside_window = anchor_outside_window,
+    eps                   = eps,
+    has_imputed           = has_imputed,
+    draws                 = draws
+  )
 
-  # ── Per (focal_date, site_id): compute chronic values ─────────────────────
-  results <- purrr::pmap(focal_grid, function(focal_date, site_id) {
-    window_start <- focal_date - window_days
-
-    # Samples for this feature (pre-split list lookup)
-    feat_df <- df_by_site[[site_id]]
-
-    if (is.null(feat_df) || nrow(feat_df) == 0L) {
-      return(NULL)
-    }
-
-    # Unique samples (one row per sample_id × date)
-    sample_dates <- feat_df |>
-      dplyr::distinct(.data$sample_id, .data$.date) |>
-      dplyr::arrange(.data$.date)
-
-    in_window <- sample_dates$.date >= window_start & sample_dates$.date <= focal_date
-
-    if (!any(in_window)) {
-      return(NULL)
-    }
-
-    # Identify anchor: most recent sample strictly before window_start
-    anchor_idx <- which(sample_dates$.date < window_start)
-    anchor_uid <- if (anchor_outside_window && length(anchor_idx) > 0L) {
-      sample_dates$sample_id[max(anchor_idx)]
-    } else {
-      NA_character_
-    }
-
-    # Samples to use: anchor (if any) + in-window samples
-    use_uids <- c(
-      if (!is.na(anchor_uid)) anchor_uid,
-      sample_dates$sample_id[in_window]
-    )
-    use_dates <- c(
-      if (!is.na(anchor_uid)) sample_dates$.date[max(anchor_idx)],
-      sample_dates$.date[in_window]
-    )
-
-    n_use <- length(use_uids)
-
-    # ── Forward-step interval boundaries ────────────────────────────────────
-    # Interval i: [use_dates[i], use_dates[i+1]) for i < n_use
-    # Last sample: [use_dates[n_use], focal_date]
-    interval_end   <- c(use_dates[-1L], focal_date)
-    interval_start <- use_dates
-
-    # Clip anchor interval to start at window_start
-    if (!is.na(anchor_uid) && n_use >= 1L) {
-      interval_start[1L] <- max(interval_start[1L], window_start)
-    }
-
-    delta_t   <- as.numeric(interval_end - interval_start)   # days
-    midpoints <- interval_start + delta_t / 2
-
-    # Exponential decay weights at midpoint
-    w_time <- exp(-as.numeric(focal_date - midpoints) / tau_days)
-    w      <- w_time * pmax(delta_t, 0)
-
-    # Map sample_id → (delta_t, midpoint, weight)
-    sample_wt <- tibble::tibble(
-      sample_id  = use_uids,
-      .weight    = w,
-      .n_in_win  = as.integer(in_window[match(use_uids, sample_dates$sample_id)])
-    )
-    # Anchor is not counted in n_samples_in_window (it's outside the window)
-    if (!is.na(anchor_uid)) {
-      sample_wt$.n_in_win[sample_wt$sample_id == anchor_uid] <- 0L
-    }
-
-    # Filter chemistry to used samples
-    chem_use <- feat_df |>
-      dplyr::filter(.data$sample_id %in% use_uids) |>
-      dplyr::left_join(sample_wt, by = "sample_id")
-
-    # ── Broadcast exact cells and aggregate per (analyte, draw) ──────────
-    # Weights and in-window flags are date-derived (draw-agnostic), so
-    # broadcasting copies them identically across draws — correct behaviour.
-    # In the point case draws=integer(0), broadcast adds draw_id=1L and
-    # the group key is effectively just analyte (one group per analyte).
-    chem_use <- .broadcast_draws(chem_use, draws)
-
-    synth_uid <- paste0("chronic_", focal_date, "_", site_id)
-
-    analyte_out <- chem_use |>
-      dplyr::group_by(.data$analyte, .data$draw_id) |>
-      dplyr::summarise(
-        value             = .aggregate_weighted(
-          .data$value, .data$.weight, summary, eps
-        ),
-        n_samples_in_window = sum(.data$.n_in_win, na.rm = TRUE),
-        n_imputed_in_window = if (has_imputed) {
-          sum(.data$imputed & .data$.n_in_win > 0L, na.rm = TRUE)
-        } else {
-          0L
-        },
-        .groups = "drop"
-      ) |>
-      dplyr::mutate(
-        focal_date = .env$focal_date,
-        site_id    = .env$site_id,
-        sample_id  = synth_uid,
-        detected   = TRUE,
-        .before    = 1L
-      )
-
-    analyte_out
-  })
-
-  results <- purrr::compact(results)
-
-  if (length(results) == 0L) {
+  if (is.null(res)) {
     cli::cli_abort(c(
       "No values could be aggregated for any (focal_date, site_id).",
       "i" = "Check that {.arg focal_dates} and {.arg df$datetime} overlap \\
@@ -313,15 +208,29 @@ time_weighted_aggregate <- function(
     ))
   }
 
-  out <- dplyr::bind_rows(results) |>
-    dplyr::select(
-      "focal_date", "site_id", "sample_id",
-      "analyte", "value", "detected",
-      "n_samples_in_window", "n_imputed_in_window",
-      dplyr::any_of("draw_id")
-    )
+  # One row per (focal_date, site_id, analyte, draw): focal-grid row order,
+  # then analyte (C locale) and draw_id within each row, as group_by() sorts.
+  focal_out <- focal_grid$focal_date[res$r]
+  site_out  <- focal_grid$site_id[res$r]
+  out <- tibble::tibble(
+    focal_date          = focal_out,
+    site_id             = site_out,
+    sample_id           = paste0("chronic_", focal_out, "_", site_out),
+    analyte             = res$analyte,
+    value               = res$value,
+    detected            = TRUE,
+    n_samples_in_window = res$n_in,
+    n_imputed_in_window = res$n_imp
+  )
+  if (is_draws_mode) {
+    # Same type as a broadcast draw_id column would carry.
+    out$draw_id <- if (is.double(df$draw_id)) {
+      as.double(res$draw)
+    } else {
+      as.integer(res$draw)
+    }
+  }
 
-  if (!is_draws_mode) out <- dplyr::select(out, -dplyr::any_of("draw_id"))
   if (return == "summary") out <- summarise_draws(out, interval, central)
   out
 }
@@ -356,25 +265,419 @@ expand_focal_dates <- function(start, end, by = "day") {
 }
 
 
-# ── Internal aggregation helper ───────────────────────────────────────────────
+# ── Internal: vectorised chronic aggregation ──────────────────────────────────
+#
+# For one point, sort its sample schedule (one entry per sample_id x date) by
+# date: d_1 <= ... <= d_n.  A focal date f with window start ws = f - window
+# uses
+#   * the in-window samples lo..hi (ws <= d_k <= f);
+#   * the anchor lo - 1 (the latest sample strictly before ws), if requested.
+# Sample k in lo..hi-1 represents [d_k, d_{k+1}] -- its forward-step interval
+# over the WHOLE schedule, whatever the analyte -- so its weight
+#   w_k = (d_{k+1} - d_k) * exp(-(f - m_k) / tau),  m_k the interval midpoint,
+# factors as exp(-f / tau) * [(d_{k+1} - d_k) * exp(m_k / tau)], and the window
+# sums of w and w * x over lo..hi-1 are differences of prefix sums.  Only the
+# last in-window sample ([d_hi, f]) and the anchor ([ws, d_lo]) depend on f;
+# they are added per focal date.  Prefix sums run per (analyte, draw) series
+# and per block of focal dates re-centred on the block's first date, so that
+# exp((m_k - centre) / tau) stays within double range.
+#
+# Matches the per-focal-date definition: zero-length intervals (same-day
+# duplicates, a sample on the focal date) carry no weight but count in
+# n_samples_in_window; the anchor never counts; a window whose values all have
+# zero weight is NA; a (focal date, point) with no in-window sample is dropped.
 
-.aggregate_weighted <- function(values, weights, method, eps) {
-  if (all(is.na(values))) return(NA_real_)
-  ok  <- !is.na(values) & !is.na(weights) & weights > 0
-  v   <- values[ok]
-  w   <- weights[ok]
-  if (length(v) == 0L) return(NA_real_)
+## Exponent span covered by one prefix-sum block (exp(300) ~ 2e130).
+.TWA_BLOCK_EXP <- 300
+## exp(-x) underflows to exactly 0 in double precision beyond this x.
+.TWA_EXP_UNDERFLOW <- 745.1332191019411
+## Target size of the per-chunk (focal date x series) work vectors.
+.TWA_CHUNK <- 2e6
 
-  switch(method,
-    geom_mean = exp(sum(w * log(v + eps)) / sum(w)),
-    arith_mean = sum(w * v) / sum(w),
-    p90 = {
-      # Duration-weighted pseudo-quantile: weight each value by its w, then
-      # find the 90th percentile of the weighted empirical distribution.
-      ord   <- order(v)
-      v_ord <- v[ord]
-      w_cum <- cumsum(w[ord]) / sum(w)
-      v_ord[which(w_cum >= 0.9)[1L]]
-    }
+#' Vectorised chronic aggregation over a focal grid
+#'
+#' @param df Long chemistry with a `.date` column (see
+#'   [time_weighted_aggregate()]).
+#' @param focal_grid Data frame `(focal_date, site_id)`; one output block per
+#'   row, in row order.
+#' @param tau_days,window_days,summary,anchor_outside_window,eps As in
+#'   [time_weighted_aggregate()].
+#' @param has_imputed Logical; `df` carries an `imputed` column.
+#' @param draws Active draw domain ([.draw_domain()]); `integer(0)` for point
+#'   input.
+#' @return `NULL` when nothing could be aggregated, else a data frame
+#'   `(r, analyte, draw, value, n_in, n_imp)` ordered by focal-grid row `r`,
+#'   then analyte (C locale), then draw.
+#' @keywords internal
+.twa_compute <- function(df, focal_grid, tau_days, window_days, summary,
+                         anchor_outside_window, eps, has_imputed, draws) {
+  cols <- list(
+    sample_id = df$sample_id,
+    date      = as.numeric(df$.date),
+    analyte   = df$analyte,
+    value     = df$value,
+    imputed   = if (has_imputed) {
+      x <- df$imputed & TRUE
+      !is.na(x) & x
+    } else {
+      rep(FALSE, nrow(df))
+    },
+    draw_id   = if (length(draws) > 0L) as.integer(df$draw_id) else NULL
   )
+
+  grid_key <- as.character(focal_grid$site_id)
+  grid_f   <- as.numeric(focal_grid$focal_date)
+  rows_by_site <- split(seq_len(nrow(df)), as.character(df$site_id))
+  sites <- intersect(unique(grid_key), names(rows_by_site))
+
+  pieces <- lapply(sites, function(s) {
+    rows <- rows_by_site[[s]]
+    r_idx <- which(grid_key == s)
+    .twa_site(
+      lapply(cols, function(v) if (is.null(v)) NULL else v[rows]),
+      f = grid_f[r_idx], r_idx = r_idx,
+      tau_days = tau_days, window_days = window_days, summary = summary,
+      anchor_outside_window = anchor_outside_window, eps = eps, draws = draws
+    )
+  })
+  pieces <- pieces[!vapply(pieces, is.null, logical(1L))]
+  if (length(pieces) == 0L) {
+    return(NULL)
+  }
+  res <- do.call(rbind, pieces)
+  if (nrow(res) == 0L) {
+    return(NULL)
+  }
+  # Each grid row belongs to one point and arrives in (analyte, draw) order,
+  # so a stable sort on the row index gives the final order.
+  res[order(res$r, method = "radix"), , drop = FALSE]
+}
+
+#' Chronic aggregation for one point over all of its focal dates
+#'
+#' @param x List of the point's row vectors: `sample_id`, `date` (numeric
+#'   days), `analyte`, `value`, `imputed` (logical), `draw_id` (or `NULL`).
+#' @param f Numeric focal dates (days); `r_idx` their focal-grid rows.
+#' @inheritParams .twa_compute
+#' @return Data frame `(r, analyte, draw, value, n_in, n_imp)` or `NULL`.
+#' @keywords internal
+.twa_site <- function(x, f, r_idx, tau_days, window_days, summary,
+                      anchor_outside_window, eps, draws) {
+  ## ── Sample schedule: one entry per (sample_id, date), sorted by date ──────
+  ## (stable, so same-day samples keep their order of appearance).
+  sid_u <- unique(x$sample_id)
+  first <- match(x$sample_id, sid_u)
+  d_first <- x$date[match(sid_u, x$sample_id)]
+  one_date <- identical(is.na(x$date), is.na(d_first[first])) &&
+    all(x$date == d_first[first], na.rm = TRUE)
+  if (one_date) {
+    sch_d <- d_first
+    k_row <- first
+  } else {
+    key <- paste(x$sample_id, x$date, sep = "\r")
+    key_u <- unique(key)
+    k_row <- match(key, key_u)
+    sch_d <- x$date[match(key_u, key)]
+  }
+  o <- order(sch_d, method = "radix") # stable; NA dates last
+  o <- o[!is.na(sch_d[o])]
+  n <- length(o)
+  if (n == 0L) {
+    return(NULL)
+  }
+  k_row <- match(k_row, o) # schedule position; NA for undated samples
+  sch_d <- sch_d[o]
+
+  dlt <- c(diff(sch_d), NA_real_) # forward-step interval length
+  mid <- sch_d + dlt / 2 # interval midpoint
+  dpos <- c(dlt[-n] > 0, FALSE)
+
+  ## ── Rows, broadcast across draws ──────────────────────────────────────────
+  keep <- which(!is.na(k_row))
+  pos <- keep
+  dr <- if (length(draws) == 0L) rep(1L, length(keep)) else x$draw_id[keep]
+  if (length(draws) > 0L && anyNA(dr)) {
+    ## Exact cells (draw_id = NA) join every draw, after the draw rows
+    ## (.broadcast_draws() order).
+    ex <- keep[is.na(dr)]
+    dk <- keep[!is.na(dr)]
+    nd <- length(draws)
+    pos <- c(dk, length(x$date) + rep(ex, times = nd))
+    dr <- c(dr[!is.na(dr)], rep(as.integer(draws), each = length(ex)))
+    keep <- c(dk, rep(ex, times = nd))
+  }
+  k_r <- k_row[keep]
+  v_r <- x$value[keep]
+  an_r <- x$analyte[keep]
+  imp_r <- x$imputed[keep]
+
+  ## Series = (analyte, draw), numbered in (analyte C-locale, draw) order.
+  an_lev <- sort(unique(an_r), method = "radix", na.last = TRUE)
+  nd1 <- max(dr) + 1
+  g_code <- (match(an_r, an_lev) - 1) * nd1 + dr
+  g_lev <- sort(unique(g_code))
+  g_r <- match(g_code, g_lev)
+  n_g <- length(g_lev)
+  grp_an <- an_lev[(g_lev - 1) %/% nd1 + 1]
+  grp_dr <- (g_lev - 1) %% nd1 + 1
+
+  ## Rows sorted by (series, schedule position, row order); cells are the
+  ## distinct (series, position) pairs.  Composite key = series * base + k.
+  base <- n + 2
+  ro <- order(g_r, k_r, pos, method = "radix")
+  g_r <- g_r[ro]
+  k_r <- k_r[ro]
+  v_r <- v_r[ro]
+  imp_r <- imp_r[ro]
+  pos <- pos[ro]
+  r_key <- g_r * base + k_r
+  new_cell <- c(TRUE, r_key[-1L] != r_key[-length(r_key)])
+  cell <- cumsum(new_cell)
+  c_key <- r_key[new_cell]
+  c_k <- k_r[new_cell]
+  non_na <- !is.na(v_r)
+
+  is_p90 <- summary == "p90"
+  xv <- if (is_p90) {
+    numeric(length(v_r))
+  } else if (summary == "arith_mean") {
+    as.numeric(v_r)
+  } else {
+    log(v_r + eps)
+  }
+  xv[!non_na] <- 0
+  fin <- is.finite(xv)
+  cm <- rowsum(
+    cbind(
+      rows  = 1,
+      nonna = non_na,
+      imp   = imp_r,
+      x     = ifelse(fin, xv, 0),
+      nan   = non_na & is.nan(xv),
+      pinf  = non_na & !is.na(xv) & xv == Inf,
+      ninf  = non_na & !is.na(xv) & xv == -Inf
+    ),
+    cell,
+    reorder = FALSE
+  )
+  c_dpos <- dpos[c_k]
+  cum0 <- function(z) c(0, cumsum(z))
+  cc_rows <- cum0(cm[, "rows"])
+  cc_imp <- cum0(cm[, "imp"])
+  # Middle samples (lo..hi-1) carry weight only on a positive interval.
+  cc_ok <- cum0(cm[, "nonna"] * c_dpos)
+  cc_nan <- cum0(cm[, "nan"] * c_dpos)
+  cc_pinf <- cum0(cm[, "pinf"] * c_dpos)
+  cc_ninf <- cum0(cm[, "ninf"] * c_dpos)
+
+  ## ── Focal windows ─────────────────────────────────────────────────────────
+  ws <- f - window_days
+  lo <- findInterval(ws, sch_d, left.open = TRUE) + 1L # first d_k >= ws
+  hi <- findInterval(f, sch_d) # last d_k <= f
+  valid <- !is.na(lo) & !is.na(hi) & lo <= hi
+  if (!any(valid)) {
+    return(NULL)
+  }
+  f <- f[valid]
+  ws <- ws[valid]
+  lo <- lo[valid]
+  hi <- hi[valid]
+  r_idx <- r_idx[valid]
+  has_a <- anchor_outside_window & lo > 1L
+  a_k <- lo - has_a # first schedule position in use
+
+  # Anchor: [ws, d_lo], clipped to the window; last in-window sample: [d_hi, f].
+  dlt_a <- sch_d[lo] - ws
+  w_a <- ifelse(
+    has_a, exp(-(f - (ws + dlt_a / 2)) / tau_days) * pmax(dlt_a, 0), 0
+  )
+  dlt_h <- f - sch_d[hi]
+  w_h <- exp(-(f - (sch_d[hi] + dlt_h / 2)) / tau_days) * pmax(dlt_h, 0)
+
+  # Middle samples whose weight exp(-(f - m_k) / tau) underflows to 0 carry
+  # none (only possible when window / tau is very large).
+  lo_v <- lo
+  if (window_days / tau_days > 700 && n > 1L) {
+    live <- findInterval(f - .TWA_EXP_UNDERFLOW * tau_days, mid[-n],
+      left.open = TRUE
+    ) + 1L
+    lo_v <- pmax(lo, live)
+  }
+
+  ## ── Prefix sums of the middle-sample weights, per block x series ─────────
+  if (!is_p90) {
+    span <- .TWA_BLOCK_EXP * tau_days
+    blk <- floor((f - min(f)) / span)
+    ublk <- sort(unique(blk))
+    b_i <- match(blk, ublk)
+    centre <- min(f) + ublk * span
+    n_b <- length(ublk)
+    k_lo_b <- as.numeric(lapply(split(lo_v, b_i), min))
+    k_hi_b <- as.numeric(lapply(split(hi, b_i), max)) - 1
+    bb <- rep(seq_len(n_b), each = n_g)
+    gg <- rep(seq_len(n_g), times = n_b)
+    from <- findInterval(gg * base + k_lo_b[bb] - 1, c_key) + 1L
+    to <- findInterval(gg * base + k_hi_b[bb], c_key)
+    cnt <- pmax(to - from + 1L, 0L)
+    e_cell <- sequence(cnt, from = from)
+    e_seg <- rep((bb - 1L) * n_g + gg, cnt)
+    e_b <- rep(bb, cnt)
+    e_k <- c_k[e_cell]
+    e_key <- e_seg * base + e_k
+    e_w <- ifelse(
+      c_dpos[e_cell], dlt[e_k] * exp((mid[e_k] - centre[e_b]) / tau_days), 0
+    )
+    cum_w <- if (length(e_w)) collapse::fcumsum(e_w * cm[e_cell, "nonna"], g = e_seg) else numeric(0)
+    cum_wx <- if (length(e_w)) collapse::fcumsum(e_w * cm[e_cell, "x"], g = e_seg) else numeric(0)
+    pref <- function(cum, seg, k) {
+      p <- findInterval(seg * base + k, e_key)
+      out <- numeric(length(p))
+      hit <- p > 0L
+      hit[hit] <- e_seg[p[hit]] == seg[hit]
+      out[hit] <- cum[p[hit]]
+      out
+    }
+  }
+
+  ## ── Resolve (focal date x series) in chunks ───────────────────────────────
+  n_f <- length(f)
+  chunk_f <- if (is_p90) {
+    rows_per_f <- length(k_r) / n_g * mean(hi - a_k + 1) / n
+    max(1L, floor(.TWA_CHUNK / (n_g * max(1, rows_per_f))))
+  } else {
+    max(1L, floor(.TWA_CHUNK / n_g))
+  }
+  chunks <- split(seq_len(n_f), ceiling(seq_len(n_f) / chunk_f))
+
+  out <- lapply(chunks, function(ii) {
+    qi <- rep(ii, each = n_g)
+    qg <- rep(seq_len(n_g), times = length(ii))
+    gb <- qg * base
+    rng <- function(cc, from_k, to_k) {
+      cc[findInterval(gb + to_k, c_key) + 1L] -
+        cc[findInterval(gb + from_k - 1, c_key) + 1L]
+    }
+    # A series is reported when it has any row in the samples in use.
+    exist <- rng(cc_rows, a_k[qi], hi[qi]) > 0
+    if (!any(exist)) {
+      return(NULL)
+    }
+    qi <- qi[exist]
+    qg <- qg[exist]
+    gb <- gb[exist]
+    n_in <- rng(cc_rows, lo[qi], hi[qi])
+    n_imp <- rng(cc_imp, lo[qi], hi[qi])
+
+    # Anchor and last-sample cells of each series (NA when absent).
+    ia <- match(gb + a_k[qi], c_key)
+    ia[!has_a[qi]] <- NA_integer_
+    ih <- match(gb + hi[qi], c_key)
+
+    value <- if (is_p90) {
+      .twa_p90(
+        qi, qg, gb, r_key, k_r, v_r, pos, mid, dlt, f, tau_days,
+        a_k, hi, has_a, w_a, w_h
+      )
+    } else {
+      wa <- w_a[qi]
+      wh <- w_h[qi]
+      ta <- !is.na(ia) & wa > 0
+      th <- !is.na(ih) & wh > 0
+      cell_sum <- function(col, idx, take) {
+        z <- numeric(length(idx))
+        z[take] <- cm[idx[take], col]
+        z
+      }
+      has_mid <- hi[qi] - 1L >= lo_v[qi]
+      mid_rng <- function(cc) {
+        z <- rng(cc, lo_v[qi], hi[qi] - 1L)
+        z[!has_mid] <- 0
+        z
+      }
+      n_ok <- mid_rng(cc_ok) + cell_sum("nonna", ia, ta) +
+        cell_sum("nonna", ih, th)
+      n_nan <- mid_rng(cc_nan) + cell_sum("nan", ia, ta) + cell_sum("nan", ih, th)
+      n_pinf <- mid_rng(cc_pinf) + cell_sum("pinf", ia, ta) +
+        cell_sum("pinf", ih, th)
+      n_ninf <- mid_rng(cc_ninf) + cell_sum("ninf", ia, ta) +
+        cell_sum("ninf", ih, th)
+
+      seg <- (b_i[qi] - 1L) * n_g + qg
+      fac <- exp((centre[b_i[qi]] - f[qi]) / tau_days)
+      mid_w <- fac * (pref(cum_w, seg, hi[qi] - 1L) - pref(cum_w, seg, lo_v[qi] - 1L))
+      mid_wx <- fac * (pref(cum_wx, seg, hi[qi] - 1L) - pref(cum_wx, seg, lo_v[qi] - 1L))
+      mid_w[!has_mid] <- 0
+      mid_wx[!has_mid] <- 0
+      sw <- mid_w + wa * cell_sum("nonna", ia, ta) + wh * cell_sum("nonna", ih, th)
+      swx <- mid_wx + wa * cell_sum("x", ia, ta) + wh * cell_sum("x", ih, th)
+
+      val <- swx / sw
+      if (summary == "geom_mean") val <- exp(val)
+      # Non-finite terms decide the sum, as they would in sum(w * x).
+      val[n_ninf > 0] <- if (summary == "geom_mean") 0 else -Inf
+      val[n_pinf > 0] <- Inf
+      val[n_nan > 0 | (n_pinf > 0 & n_ninf > 0)] <- NaN
+      val[n_ok == 0] <- NA_real_
+      val
+    }
+
+    data.frame(
+      r       = r_idx[qi],
+      analyte = grp_an[qg],
+      draw    = grp_dr[qg],
+      value   = value,
+      n_in    = as.integer(n_in),
+      n_imp   = as.integer(n_imp),
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- out[!vapply(out, is.null, logical(1L))]
+  if (length(out) == 0L) {
+    return(NULL)
+  }
+  do.call(rbind, out)
+}
+
+#' Duration-weighted 90th percentile for a set of (focal date x series) windows
+#'
+#' Expands each window to its rows, weights them exactly as the per-window
+#' definition does, and takes the first value (in value order, ties in row
+#' order) whose cumulative weight share reaches 0.9.
+#' @keywords internal
+.twa_p90 <- function(qi, qg, gb, r_key, k_r, v_r, pos, mid, dlt, f, tau_days,
+                     a_k, hi, has_a, w_a, w_h) {
+  n_q <- length(qi)
+  from <- findInterval(gb + a_k[qi] - 1, r_key) + 1L
+  to <- findInterval(gb + hi[qi], r_key)
+  cnt <- pmax(to - from + 1L, 0L)
+  pr <- sequence(cnt, from = from)
+  pq <- rep(seq_len(n_q), cnt)
+  k_p <- k_r[pr]
+  q_p <- qi[pq]
+  w_p <- exp(-(f[q_p] - mid[k_p]) / tau_days) * pmax(dlt[k_p], 0)
+  is_a <- has_a[q_p] & k_p == a_k[q_p]
+  is_h <- k_p == hi[q_p]
+  w_p[is_a] <- w_a[q_p][is_a]
+  w_p[is_h] <- w_h[q_p][is_h]
+  v_p <- v_r[pr]
+  ok <- !is.na(v_p) & !is.na(w_p) & w_p > 0
+
+  value <- rep(NA_real_, n_q)
+  if (!any(ok)) {
+    return(value)
+  }
+  pq <- pq[ok]
+  v_p <- v_p[ok]
+  w_p <- w_p[ok]
+  o <- order(pq, v_p, pos[pr][ok], method = "radix")
+  pq <- pq[o]
+  v_p <- v_p[o]
+  w_p <- w_p[o]
+  u_q <- unique(pq)
+  tot <- collapse::fsum(w_p, g = pq, use.g.names = FALSE)
+  share <- collapse::fcumsum(w_p, g = pq) / tot[match(pq, u_q)]
+  hit <- which(share >= 0.9)
+  hit <- hit[!duplicated(pq[hit])]
+  value[pq[hit]] <- v_p[hit]
+  value
 }
