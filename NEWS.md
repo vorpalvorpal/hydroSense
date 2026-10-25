@@ -7,8 +7,12 @@
   dashboard functions (`feature_df()`, `data_df()`, `feature_sfc()`,
   `get_reference_site()`) is removed, along with the internal builders that
   used them (`build_reference_endmember()`, `build_pooled_reference_endmember()`,
-  `build_leachate_endmember()`). `min_ref_samples` and `min_leachate_total_n`
-  are retained but no longer used.
+  `build_leachate_endmember()`). `min_ref_samples`, `min_leachate_samples` and
+  `min_leachate_total_n` are still enforced, in both calibration modes: below
+  a minimum the LMF is `NA` with `lmf_reason` `"insufficient_calibration_data"`
+  (no error). Total N is now converted from each row's unit to mg/L. The
+  bundled `leachate_demo()` has 6 samples per end-member, so pass
+  `min_ref_samples = 5, min_leachate_samples = 5` with it.
 * **New `add_lmf(calibration = "trailing")`** calibrates each sample from only
   the end-member rows dated in `[t - calibration_window_years, t]`, so new
   data never change an earlier sample's LMF. A sample whose window is unusable

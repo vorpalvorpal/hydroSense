@@ -196,26 +196,39 @@
 #'   depends on data up to its own date only, and appending later samples or
 #'   later end-member data never changes it. A sample whose window has no
 #'   usable reference or leachate data (none, too few reference samples to
-#'   estimate spread, or too few high-information ions) gets an \code{NA} LMF
+#'   estimate spread, too few samples for \code{min_ref_samples} or
+#'   \code{min_leachate_samples}, or too few high-information ions) gets an
+#'   \code{NA} LMF
 #'   with \code{lmf_reason} starting \code{"insufficient_calibration_data"}.
 #'   \code{"trailing"} requires a \code{datetime} column in both end-member
 #'   data frames.
 #' @param calibration_window_years Length in years of the trailing calibration
 #'   window. Used only when \code{calibration = "trailing"}. Default \code{5}.
-#' @param min_leachate_total_n Retained for compatibility; no longer used now
-#'   that the leachate data are supplied explicitly (and assumed curated).
-#'   Numeric or `units` object; bare numeric requires
-#'   `min_leachate_total_n_units`. Default \code{NULL}.
+#' @param min_leachate_total_n Minimum total N (sum of NH3-N + NO3-N + NO2-N,
+#'   each converted to mg/L by its row's unit) for a leachate sample to
+#'   qualify for end-member calibration. Excludes non-representative samples
+#'   (dilution events, treatment upsets); samples below it do not contribute to
+#'   the leachate end-member at all. Total N is used rather than NH3-N alone
+#'   because aerated leachate may have nitrified NH3 to NO3. Numeric or `units`
+#'   object; bare numeric requires `min_leachate_total_n_units`. Default
+#'   \code{NULL} (20 mg/L).
 #' @param min_leachate_total_n_units Character unit string for
 #'   `min_leachate_total_n` when it is bare numeric, e.g. `"mg/L"`. Ignored
 #'   when `min_leachate_total_n` is a `units` object or `NULL`.
 #' @param rsd_default Default relative analytical uncertainty, applied as
 #'   \code{sigma_meas = rsd_default * |x|} with a floor at
 #'   \code{rsd_default * |R|}. Default \code{0.05} (5% RSD).
-#' @param min_ref_samples Retained for compatibility; no longer used now that
-#'   the reference data are supplied explicitly. Default \code{10}.
-#' @param min_leachate_samples Minimum leachate samples with fluoride measured
-#'   for F to join the panel. Default \code{10}.
+#' @param min_ref_samples Minimum number of reference samples (distinct
+#'   \code{sample_id}s carrying at least one LMF panel ion) in the calibration
+#'   data -- in the sample's trailing window when \code{calibration =
+#'   "trailing"}. Below it the LMF is \code{NA} with \code{lmf_reason}
+#'   \code{"insufficient_calibration_data"}. Default \code{10}.
+#' @param min_leachate_samples Minimum number of valid leachate samples (total
+#'   N at least \code{min_leachate_total_n}) in the calibration data (in the
+#'   trailing window for \code{calibration = "trailing"}); below it the LMF is
+#'   \code{NA} with \code{lmf_reason} \code{"insufficient_calibration_data"}.
+#'   Also the number of valid samples with fluoride measured needed for F to
+#'   join the panel. Default \code{10}.
 #' @param max_sigma_lsi Maximum permitted \code{sigma_lmf} in percentage points
 #'   (uncertainty on the mixing fraction estimate). Samples above this threshold
 #'   return \code{NA} with reason code \code{"insufficient_precision"}.
@@ -295,7 +308,10 @@
 #' out <- add_lmf(
 #'   df             = subset(demo, site_id == "downstream"),
 #'   leachate_data  = subset(demo, site_id == "leachate"),
-#'   reference_data = subset(demo, site_id == "reference")
+#'   reference_data = subset(demo, site_id == "reference"),
+#'   # the demo has 6 samples per end-member; the defaults ask for 10
+#'   min_ref_samples      = 5,
+#'   min_leachate_samples = 5
 #' )
 #' subset(out, analyte == "LMF", c("sample_id", "value"))
 #' }
@@ -346,8 +362,9 @@ add_lmf <- function(
   }
   checkmate::assert_character(lmf_analyte_uuid, len = 1L)
   checkmate::assert_number(calibration_window_years, lower = 1)
-  if (!is.null(min_leachate_total_n)) {
-    ## Validated for backwards compatibility; the value is no longer used.
+  min_n_mgl <- if (is.null(min_leachate_total_n)) {
+    20
+  } else {
     .resolve_to(min_leachate_total_n, "mg/L", min_leachate_total_n_units,
                 "min_leachate_total_n")
   }
@@ -435,6 +452,9 @@ add_lmf <- function(
   ## weights.
   ## ================================================================
 
+  lea_wide <- .lmf_endmember_wide(leachate_data, min_n_mgl = min_n_mgl)
+  ref_wide <- .lmf_endmember_wide(reference_data)
+
   if (calibration == "window") {
     if (verbose) {
       cli::cli_inform(c(
@@ -450,32 +470,14 @@ add_lmf <- function(
         )
       ))
     }
-    leachate_em <- build_endmember_from_override(
-      override_df = leachate_data,
-      type = "leachate",
-      min_leachate_samples = min_leachate_samples
+    ## All rows, whatever their date; a builder failure is an error here.
+    fixed_cal <- .lmf_calibration(
+      lea_wide, ref_wide, min_ref_samples, min_leachate_samples,
+      informativeness_threshold, min_high_info_ions,
+      trailing = FALSE, verbose = verbose
     )
-    ref_endmember <- build_endmember_from_override(
-      override_df = reference_data,
-      type = "reference"
-    )
-    fixed_cal <- .lmf_calibrate(
-      ref_endmember, leachate_em, informativeness_threshold, min_high_info_ions,
-      verbose = verbose
-    )
-    ## Stop early if the full panel can never meet the minimum -- indicates
-    ## a misconfigured threshold or broken end-members.
-    if (!is.null(fixed_cal$reason)) {
-      stop(glue::glue(
-        "{fixed_cal$reason} ",
-        "Lower informativeness_threshold or min_high_info_ions, or check ",
-        "end-member data. Run with verbose = TRUE to inspect."
-      ))
-    }
     cal_for <- function(datetime) fixed_cal
   } else {
-    lea_wide <- .lmf_endmember_wide(leachate_data)
-    ref_wide <- .lmf_endmember_wide(reference_data)
     window_months <- as.integer(round(12 * calibration_window_years))
     cal_cache <- new.env(parent = emptyenv())
     cal_for <- function(datetime) {
@@ -485,10 +487,15 @@ add_lmf <- function(
       cal <- if (is.na(t)) {
         list(reason = "insufficient_calibration_data: sample has no datetime.")
       } else {
-        .lmf_trailing_calibration(
-          t, t_lo = lubridate::`%m-%`(t, lubridate::period(month = window_months)),
-          lea_wide, ref_wide, min_leachate_samples,
-          informativeness_threshold, min_high_info_ions
+        t_lo <- lubridate::`%m-%`(t, lubridate::period(month = window_months))
+        in_win <- function(w) {
+          w[!is.na(w$datetime) & w$datetime >= t_lo & w$datetime <= t, ,
+            drop = FALSE]
+        }
+        .lmf_calibration(
+          in_win(lea_wide), in_win(ref_wide), min_ref_samples,
+          min_leachate_samples, informativeness_threshold, min_high_info_ions,
+          trailing = TRUE
         )
       }
       assign(key, cal, envir = cal_cache)
@@ -653,50 +660,91 @@ add_lmf <- function(
 }
 
 ## End-member rows as a wide per-sample panel (meq/L, BDL halved, species
-## collapsed) with a POSIXct `datetime`; built once and then sliced per window.
-.lmf_endmember_wide <- function(data) {
+## collapsed) with a POSIXct `datetime` (when the data carry one); built once
+## and then sliced per window. With `min_n_mgl` (leachate), a logical `.valid_n`
+## column flags the samples whose total N -- NH3-N + NO3-N + NO2-N, each
+## converted to mg/L by its row's unit -- reaches it.
+.lmf_endmember_wide <- function(data, min_n_mgl = NULL) {
+  data <- .canonicalise_lmf_input(data)
   meq <-
     data |>
-    .canonicalise_lmf_input() |>
     to_meq() |>
     dplyr::filter(analyte %in% .LMF_ANALYTES_MEQ) |>
     dplyr::mutate(value = dplyr::if_else(!detected, value * 0.5, value))
-  wide <- collapse_species(meq, id_cols = c("sample_id", "datetime"))
-  wide$datetime <- .lmf_as_time(wide$datetime)
+  has_time <- "datetime" %in% names(meq)
+  wide <- collapse_species(
+    meq, id_cols = c("sample_id", if (has_time) "datetime")
+  )
+  wide$datetime <- if (has_time) .lmf_as_time(wide$datetime) else .lmf_as_time(NA)
+  wide$.valid_n <- TRUE
+  if (!is.null(min_n_mgl)) {
+    n_rows <- data[data$analyte %in% c("NH3-N", "NO3-N", "NO2-N"), , drop = FALSE]
+    u <- .normalise_units(n_rows[[.units_col(data)]])
+    fac <- vapply(unique(u), function(uu) {
+      if (is.na(uu)) return(NA_real_)
+      as.numeric(units::set_units(units::set_units(1, uu, mode = "standard"),
+                                  "mg/L", mode = "standard"))
+    }, numeric(1))
+    n_rows$mgl <- n_rows$value * fac[match(u, unique(u))]
+    total_n <- tapply(n_rows$mgl, n_rows$sample_id, sum, na.rm = TRUE)
+    tn <- as.numeric(total_n[wide$sample_id])
+    wide$.valid_n <- !is.na(tn) & tn >= min_n_mgl
+  }
   wide
 }
 
-## Calibration for one sample at time `t` from end-member rows dated in
-## [t_lo, t]. Returns the .lmf_calibrate() list, or list(reason = ...) with an
-## "insufficient_calibration_data" reason when the window is unusable.
-.lmf_trailing_calibration <- function(t, t_lo, lea_wide, ref_wide,
-                                      min_leachate_samples,
-                                      informativeness_threshold,
-                                      min_high_info_ions) {
+## Calibration from the wide end-member panels (already restricted to the
+## calibration window). Returns the .lmf_calibrate() list, or list(reason = ...)
+## with an "insufficient_calibration_data" reason when `trailing` and the
+## data cannot support LMF: too few reference samples (min_ref_samples), too
+## few valid leachate samples (min_leachate_samples), an end-member that cannot
+## be built, or too few high-information ions. Below a minimum, or with
+## `trailing = FALSE` for the rest, the reason still comes back as a reason
+## when it is a minimum (so every sample is NA, no error); an unbuildable
+## end-member or too few high-information ions is an error outside trailing.
+.lmf_calibration <- function(lea_w, ref_w, min_ref_samples, min_leachate_samples,
+                             informativeness_threshold, min_high_info_ions,
+                             trailing, verbose = FALSE) {
   insufficient <- function(why) {
     list(reason = paste0("insufficient_calibration_data: ", why))
   }
-  in_win <- function(w) {
-    w[!is.na(w$datetime) & w$datetime >= t_lo & w$datetime <= t, , drop = FALSE]
+  lea_w <- lea_w[lea_w$.valid_n, , drop = FALSE]
+  if (nrow(ref_w) < min_ref_samples) {
+    return(insufficient(sprintf(
+      "%d reference sample(s), fewer than min_ref_samples = %d.",
+      nrow(ref_w), as.integer(min_ref_samples))))
   }
-  lea_w <- in_win(lea_wide)
-  ref_w <- in_win(ref_wide)
-  if (nrow(lea_w) == 0L) return(insufficient("no leachate samples in the window."))
-  if (nrow(ref_w) == 0L) return(insufficient("no reference samples in the window."))
+  if (nrow(lea_w) < min_leachate_samples) {
+    return(insufficient(sprintf(
+      "%d valid leachate sample(s), fewer than min_leachate_samples = %d.",
+      nrow(lea_w), as.integer(min_leachate_samples))))
+  }
 
-  lea_em <- tryCatch(
-    .endmember_from_wide(lea_w, "leachate", min_leachate_samples, NA, NA),
-    error = function(e) NULL
-  )
-  ref_em <- tryCatch(
-    .endmember_from_wide(ref_w, "reference", min_leachate_samples, NA, NA),
-    error = function(e) NULL
-  )
+  build <- function(w, type) {
+    if (!trailing) {
+      return(.endmember_from_wide(w, type, min_leachate_samples, NA, NA))
+    }
+    tryCatch(
+      .endmember_from_wide(w, type, min_leachate_samples, NA, NA),
+      error = function(e) NULL
+    )
+  }
+  lea_em <- build(lea_w, "leachate")
+  ref_em <- build(ref_w, "reference")
   if (is.null(lea_em)) return(insufficient("leachate end-member cannot be built from the window."))
   if (is.null(ref_em)) return(insufficient("reference end-member cannot be built from the window."))
 
-  cal <- .lmf_calibrate(ref_em, lea_em, informativeness_threshold, min_high_info_ions)
-  if (!is.null(cal$reason)) return(insufficient(cal$reason))
+  cal <- .lmf_calibrate(ref_em, lea_em, informativeness_threshold,
+                        min_high_info_ions, verbose = verbose)
+  if (!is.null(cal$reason)) {
+    if (trailing) return(insufficient(cal$reason))
+    ## Misconfigured threshold or broken end-members.
+    stop(glue::glue(
+      "{cal$reason} ",
+      "Lower informativeness_threshold or min_high_info_ions, or check ",
+      "end-member data. Run with verbose = TRUE to inspect."
+    ))
+  }
   cal
 }
 

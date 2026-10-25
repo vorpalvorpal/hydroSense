@@ -64,7 +64,9 @@ sample separately, from only the rows of \code{leachate_data} and
 depends on data up to its own date only, and appending later samples or
 later end-member data never changes it. A sample whose window has no
 usable reference or leachate data (none, too few reference samples to
-estimate spread, or too few high-information ions) gets an \code{NA} LMF
+estimate spread, too few samples for \code{min_ref_samples} or
+\code{min_leachate_samples}, or too few high-information ions) gets an
+\code{NA} LMF
 with \code{lmf_reason} starting \code{"insufficient_calibration_data"}.
 \code{"trailing"} requires a \code{datetime} column in both end-member
 data frames.}
@@ -72,10 +74,14 @@ data frames.}
 \item{calibration_window_years}{Length in years of the trailing calibration
 window. Used only when \code{calibration = "trailing"}. Default \code{5}.}
 
-\item{min_leachate_total_n}{Retained for compatibility; no longer used now
-that the leachate data are supplied explicitly (and assumed curated).
-Numeric or \code{units} object; bare numeric requires
-\code{min_leachate_total_n_units}. Default \code{NULL}.}
+\item{min_leachate_total_n}{Minimum total N (sum of NH3-N + NO3-N + NO2-N,
+each converted to mg/L by its row's unit) for a leachate sample to
+qualify for end-member calibration. Excludes non-representative samples
+(dilution events, treatment upsets); samples below it do not contribute to
+the leachate end-member at all. Total N is used rather than NH3-N alone
+because aerated leachate may have nitrified NH3 to NO3. Numeric or \code{units}
+object; bare numeric requires \code{min_leachate_total_n_units}. Default
+\code{NULL} (20 mg/L).}
 
 \item{min_leachate_total_n_units}{Character unit string for
 \code{min_leachate_total_n} when it is bare numeric, e.g. \code{"mg/L"}. Ignored
@@ -85,11 +91,18 @@ when \code{min_leachate_total_n} is a \code{units} object or \code{NULL}.}
 \code{sigma_meas = rsd_default * |x|} with a floor at
 \code{rsd_default * |R|}. Default \code{0.05} (5\% RSD).}
 
-\item{min_ref_samples}{Retained for compatibility; no longer used now that
-the reference data are supplied explicitly. Default \code{10}.}
+\item{min_ref_samples}{Minimum number of reference samples (distinct
+\code{sample_id}s carrying at least one LMF panel ion) in the calibration
+data -- in the sample's trailing window when \code{calibration =
+  "trailing"}. Below it the LMF is \code{NA} with \code{lmf_reason}
+\code{"insufficient_calibration_data"}. Default \code{10}.}
 
-\item{min_leachate_samples}{Minimum leachate samples with fluoride measured
-for F to join the panel. Default \code{10}.}
+\item{min_leachate_samples}{Minimum number of valid leachate samples (total
+N at least \code{min_leachate_total_n}) in the calibration data (in the
+trailing window for \code{calibration = "trailing"}); below it the LMF is
+\code{NA} with \code{lmf_reason} \code{"insufficient_calibration_data"}.
+Also the number of valid samples with fluoride measured needed for F to
+join the panel. Default \code{10}.}
 
 \item{max_sigma_lsi}{Maximum permitted \code{sigma_lmf} in percentage points
 (uncertainty on the mixing fraction estimate). Samples above this threshold
@@ -159,7 +172,10 @@ demo <- leachate_demo()
 out <- add_lmf(
   df             = subset(demo, site_id == "downstream"),
   leachate_data  = subset(demo, site_id == "leachate"),
-  reference_data = subset(demo, site_id == "reference")
+  reference_data = subset(demo, site_id == "reference"),
+  # the demo has 6 samples per end-member; the defaults ask for 10
+  min_ref_samples      = 5,
+  min_leachate_samples = 5
 )
 subset(out, analyte == "LMF", c("sample_id", "value"))
 }
