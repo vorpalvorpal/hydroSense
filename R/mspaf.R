@@ -442,6 +442,17 @@ add_mspaf <- function(
   ## diagnostic attributes (analyte_pafs / dropped / ara_diag) would be stripped
   ## by group_modify's row-binding, so collect them explicitly. (issue #30)
   site_ids <- sort(unique(df$site_id))
+  ## Points with no SSD-eligible analyte have nothing to assess; say so.
+  no_ssd <- Filter(function(sid) {
+    !any(df$analyte[df$site_id == sid] %in% ssd_params$analyte)
+  }, site_ids)
+  if (length(no_ssd) > 0L) {
+    n_no_ssd <- length(no_ssd)
+    cli::cli_inform(c(
+      "i" = "add_mspaf: {n_no_ssd} point{?s} with no SSD-eligible analyte \
+             (no msPAF computed): {.val {no_ssd}}."
+    ))
+  }
   per_site <- lapply(site_ids, function(sid) {
     r <- compute_mspaf_per_sample(
       sample_data   = df[df$site_id == sid, , drop = FALSE],
@@ -741,6 +752,12 @@ compute_mspaf_per_sample <- function(
   ## there is no per-block dplyr loop. (issue #30)
   adj <- .mspaf_adjust(sample_data, ref_table, ssd_params, ara_enabled)
   tox <- adj$tox
+  if (nrow(tox) == 0L) {
+    ## No SSD-eligible analyte in this point: nothing to assess.
+    empty <- .mspaf_empty_row(with_sample_id = TRUE)
+    if (!is_draws_mode) empty <- dplyr::select(empty, -"draw_id")
+    return(empty)
+  }
   tox$imp_n <- if (has_imputed && "imputed" %in% names(tox))
     as.integer(tox$imputed) else 0L
 
