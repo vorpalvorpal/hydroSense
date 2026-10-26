@@ -85,8 +85,9 @@ store's tau.  Defaults \code{c(1, 30)} and \code{c(20, 365)}.}
 
 \item{pool}{Logical (default \code{TRUE}). When \code{TRUE}, the per-analyte hydro
 responses are \strong{partially pooled}: a single factor-smooth GAM
-(\code{bs = "fs"}) is fitted across all sufficiently-sampled analytes at one
-common AIC-selected window, shrinking each analyte's response toward a
+(\code{bs = "fsc"}, mgcv's \code{"fs"} with a canonical null-space basis) is
+fitted across all sufficiently-sampled analytes at one common
+AIC-selected window, shrinking each analyte's response toward a
 shared shape. This \emph{regularises} noisy, low-signal analytes (it does not
 add hydrological coverage -- co-sampled analytes already share the same
 regimes), and falls back to independent fits if it fails or doesn't beat an

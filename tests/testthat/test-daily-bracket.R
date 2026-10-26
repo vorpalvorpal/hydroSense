@@ -389,8 +389,12 @@ describe("mspaf_daily(gap_uncertainty=)", {
 
   it("ignorable median is the largest central tendency; deterministic ~ informative (Jensen)", {
     skip_if(is.null(.bf$rm), "Reference model not fitted")
+    # ndraws = 200, not 60: at 60 draws the per-day medians carry enough
+    # Monte-Carlo noise that the day-fraction asserted last below (> 0.6) is a
+    # coin toss -- over seeds 1..10 its minimum was 0.497 on main. At 200 draws
+    # the minimum over seeds 1..6 is 0.73 (~6 s per run).
     out <- run_daily(
-      ndraws = 60L, seed = 9L, return = "summary",
+      ndraws = 200L, seed = 9L, return = "summary",
       central = "median"
     )
     tol <- 1e-6

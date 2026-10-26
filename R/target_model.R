@@ -120,8 +120,9 @@
 #'   `f(hydro)` GAM. Below this, the analyte uses the bridge tier. Default `12L`.
 #' @param pool Logical (default `TRUE`). When `TRUE`, the per-analyte hydro
 #'   responses are **partially pooled**: a single factor-smooth GAM
-#'   (`bs = "fs"`) is fitted across all sufficiently-sampled analytes at one
-#'   common AIC-selected window, shrinking each analyte's response toward a
+#'   (`bs = "fsc"`, mgcv's `"fs"` with a canonical null-space basis) is
+#'   fitted across all sufficiently-sampled analytes at one common
+#'   AIC-selected window, shrinking each analyte's response toward a
 #'   shared shape. This *regularises* noisy, low-signal analytes (it does not
 #'   add hydrological coverage -- co-sampled analytes already share the same
 #'   regimes), and falls back to independent fits if it fails or doesn't beat an
@@ -640,13 +641,17 @@ fit_target_model <- function(
   fit_pool <- function(df_m) {
     nlev <- nlevels(df_m$analyte)
     k_h <- max(3L, min(4L, floor(nrow(df_m) / nlev) - 1L))
+    ## bs = "fsc" is the fs factor smooth with a canonical null-space basis
+    ## (smooth.construct.fsc.smooth.spec): plain fs rotates its null space
+    ## under ulp changes in hydro_*, which makes AIC(tau) discontinuous and
+    ## the tau optimisation jumpy.
     ## Factor-smooth fits routinely emit benign convergence warnings -- suppress
     ## them but keep the fit (only a hard error means "unusable").
     tryCatch(
       suppressWarnings(
         mgcv::gam(
-          z ~ s(hydro_short, analyte, bs = "fs", k = k_h) +
-            s(hydro_long, analyte, bs = "fs", k = k_h),
+          z ~ s(hydro_short, analyte, bs = "fsc", k = k_h) +
+            s(hydro_long, analyte, bs = "fsc", k = k_h),
           data = df_m, method = "REML"
         )
       ),
