@@ -869,14 +869,44 @@ print.reference_model <- function(x, ...) {
   list(ref_norm = exp(log_pred), ref_tier = "model")
 }
 
+#' Predict a GAM on many rows, losing only the rows whose own prediction errors
+#'
+#' One batched `predict()` when nothing errors.  When the batch errors, it is
+#' bisected until the failing rows are isolated (a single failing row costs
+#' O(log n) extra calls), so every other row keeps its prediction, exactly as
+#' row-by-row prediction would.
+#' @return Numeric vector, `NA` for rows whose prediction errors.
+#' @keywords internal
+.predict_bisect <- function(fit, newdata) {
+  n <- nrow(newdata)
+  out <- rep(NA_real_, n)
+  go <- function(idx) {
+    r <- tryCatch(
+      as.numeric(stats::predict(fit, newdata = newdata[idx, , drop = FALSE])),
+      error = function(e) NULL
+    )
+    if (!is.null(r) && length(r) == length(idx)) {
+      out[idx] <<- r
+    } else if (length(idx) > 1L) {
+      h <- length(idx) %/% 2L
+      go(idx[seq_len(h)])
+      go(idx[-seq_len(h)])
+    }
+  }
+  go(seq_len(n))
+  out
+}
+
 #' Resolve ref_norm for instantaneous target samples (one date per sample)
 #'
 #' Vectorised over target dates: the antecedent precipitation index is
 #' evaluated in one pass over all distinct dates (one event-API pass for the
 #' tier-1 gate, one short- and one long-store pass per tier-2 analyte model),
 #' and each tier-2 reference GAM is predicted once on a frame of every date
-#' left unmatched by tier 1.  Results are identical to resolving each date on
-#' its own.
+#' left unmatched by tier 1 (a failing batch is bisected, so only dates whose
+#' own prediction errors fall back to static).  Results are identical to
+#' resolving each date on its own, including the error fallback; an NA date
+#' resolves to static (the per-date code errored on it).
 #'
 #' Tiers, per (sample, analyte):
 #' \enumerate{
@@ -910,8 +940,8 @@ print.reference_model <- function(x, ...) {
   hydro_dates <- as.Date(ref_model$hydro$date)
   mwd <- ref_model$match_window_days
 
-  ## Tier-1 gate: event API at every date in one pass (an NA date sees an
-  ## empty reservoir, as the per-date evaluation did).
+  ## Tier-1 gate: event API at every date in one pass (an NA date is not
+  ## evaluated and resolves to static; the per-date code errored on it).
   event_api <- numeric(n_u)
   if (any(ok_date)) {
     event_api[ok_date] <- .compute_api(
@@ -960,13 +990,7 @@ print.reference_model <- function(x, ...) {
       hydro_short = feats$hydro_short,
       hydro_long  = feats$hydro_long
     )
-    log_pred <- tryCatch(
-      as.numeric(stats::predict(m$gamm_fit, newdata = newdata)),
-      error = function(e) rep(NA_real_, length(pred_idx))
-    )
-    if (length(log_pred) != length(pred_idx)) {
-      log_pred <- rep(NA_real_, length(pred_idx))
-    }
+    log_pred <- .predict_bisect(m$gamm_fit, newdata)
     has_pred <- !is.na(log_pred)
     ref_norm[pred_idx[has_pred], j] <- exp(log_pred[has_pred])
     ref_tier[pred_idx[has_pred], j] <- "model"
