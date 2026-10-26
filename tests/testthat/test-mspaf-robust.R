@@ -362,6 +362,7 @@ describe("D2: fit_imputation_model() is invariant to training-row order", {
 
 
 describe("D2: mspaf_pipeline() chronic golden case on a shuffled reference", {
+  .pf_skip_unless_golden_platform()
 
   it("matches the unshuffled (golden) result to 1e-10 relative", {
     golden <- readRDS(.pf_golden_path("mspaf_pipeline_chronic"))
