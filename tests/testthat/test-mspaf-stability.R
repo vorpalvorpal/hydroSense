@@ -26,7 +26,7 @@
 ##     match so prediction via the fs Predict.matrix reproduces the fit.
 ##       * model matrix stable: x -> x * (1 + 1e-12) changes the fsc model
 ##         matrix by < 1e-8 max abs (plain fs: up to ~4.6 on the same data);
-##       * predict(fit, newdata = training data) == fitted(fit) to 1e-10;
+##       * predict(fit, newdata = training data) == fitted(fit) to 1e-8;
 ##       * same column space as fs: near-unpenalised (sp = 1e-12) fsc and fs
 ##         fits agree to 1e-8 (fitted and predicted), and every fsc column is
 ##         in the span of the fs columns;
@@ -153,8 +153,12 @@ describe("S1: the fsc factor-smooth basis", {
   it("predicts its own training data exactly (P matches the basis)", {
     d <- .ms_fs_data()
     fit <- .ms_fit2(d, "fsc")
+    # 1e-8, not 1e-10: this model is rank-deficient (per-level intercepts plus
+    # a global one, kappa ~ 1e16), so mgcv's stored fitted() differs from
+    # X %*% beta by ~2e-10 for plain fs too. predict(newdata) matching to 1e-8
+    # still catches a P that does not match the basis.
     expect_lt(max(abs(stats::predict(fit, newdata = d) - stats::fitted(fit))),
-              1e-10)
+              1e-8)
   })
 
   it("spans the same column space as fs", {
@@ -163,7 +167,7 @@ describe("S1: the fsc factor-smooth basis", {
     Xc <- .ms_smooth(d, "fsc")$X
     expect_identical(dim(Xc), dim(Xs))
     # Every fsc column is a linear combination of the fs columns.
-    res <- stats::qr.resid(qr(Xs), Xc)
+    res <- base::qr.resid(qr(Xs), Xc)
     expect_lt(max(abs(res)) / max(abs(Xc)), 1e-8)
 
     # Near-unpenalised fits are the same projection (differences O(sp)).

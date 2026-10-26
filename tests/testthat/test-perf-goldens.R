@@ -23,6 +23,14 @@
 ##
 ## Structural (vectorisation) expectations live in test-perf-structure.R.
 ##
+## PIPELINE GOLDEN.  The end-to-end mspaf_pipeline() golden is the one
+## exception to "pre-refactor code": the stability fix (fsc basis for the
+## pooled tau GAM, REML and a PC gate for the marginal imputation GAMs)
+## deliberately changed its results, so it was regenerated from the fixed code
+## by data-raw/make_pipeline_golden.R and is compared at 1e-6 relative. The
+## perturbation test in test-mspaf-stability.R shows ulp-level input changes
+## now move it by ~1e-11, far inside that bar.
+##
 ## PLATFORM.  The component goldens are portable. The end-to-end
 ## mspaf_pipeline() golden is not: the target model chooses tau by optimising
 ## a fit score that jumps (a REML/GCV optimum switch), so ulp-level BLAS or
@@ -44,7 +52,7 @@ library(testthat)
 }
 
 ## Element-wise relative comparison of two numeric vectors.
-.pf_expect_num <- function(actual, golden, label) {
+.pf_expect_num <- function(actual, golden, label, rel = 1e-10) {
   expect_type(actual, "double")
   expect_identical(length(actual), length(golden), label = label)
   expect_identical(is.na(actual), is.na(golden),
@@ -52,17 +60,17 @@ library(testthat)
   ok <- !is.na(golden) & !is.na(actual)
   diff  <- abs(actual[ok] - golden[ok])
   scale <- pmax(abs(golden[ok]), abs(actual[ok]))
-  bad <- diff > 1e-10 * scale & diff > 1e-12
+  bad <- diff > rel * scale & diff > 1e-12
   expect(
     !any(bad),
-    sprintf("%s: %d value(s) differ by more than 1e-10 relative; first at [%d]: actual %.17g, golden %.17g",
-            label, sum(bad), which(ok)[which(bad)[1L]],
+    sprintf("%s: %d value(s) differ by more than %g relative; first at [%d]: actual %.17g, golden %.17g",
+            label, sum(bad), rel, which(ok)[which(bad)[1L]],
             actual[ok][which(bad)[1L]], golden[ok][which(bad)[1L]])
   )
 }
 
 ## Full data-frame comparison (see CONTRACT above).
-.pf_expect_frame <- function(actual, golden, label) {
+.pf_expect_frame <- function(actual, golden, label, rel = 1e-10) {
   expect_identical(class(actual), class(golden), label = paste(label, "class"))
   expect_identical(names(actual), names(golden), label = paste(label, "names"))
   expect_identical(nrow(actual), nrow(golden), label = paste(label, "nrow"))
@@ -75,7 +83,7 @@ library(testthat)
     g <- golden[[nm]]
     lab <- paste0(label, "$", nm)
     if (is.double(g) && !inherits(g, c("Date", "POSIXt"))) {
-      .pf_expect_num(as.numeric(a), as.numeric(g), lab)
+      .pf_expect_num(as.numeric(a), as.numeric(g), lab, rel = rel)
       expect_identical(class(a), class(g), label = paste(lab, "class"))
     } else {
       expect_identical(a, g, label = lab)
@@ -182,7 +190,7 @@ describe("mspaf_pipeline() chronic golden", {
     local({
       part <- part
       it(paste("matches the pre-refactor pipeline output:", part), {
-        .pf_expect_frame(actual[[part]], golden[[part]], part)
+        .pf_expect_frame(actual[[part]], golden[[part]], part, rel = 1e-6)
       })
     })
   }
