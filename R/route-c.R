@@ -173,6 +173,10 @@ rhat.route_c_stanfit <- function(x, ...) {
 #' `Lambda`. Empirically `Sigma` converges cleanly (Rhat ~ 1.0) even when a
 #' `Lambda` element trips a naive `max(rhat(fit))` gate.
 #'
+#' `sigma_rhat` is the Rhat of the full implied covariance
+#' `Lambda Lambda' + Psi` (diagonal includes `psi`), computed per chain on an
+#' iterations x chains matrix.
+#'
 #' @param group A fitted `factor`-method group (from [.fit_group_model_factor()]).
 #' @return A list with `sigma_rhat`, `psi_rhat`, `lp_rhat` (max Rhat over the
 #'   `Sigma` entries, over `psi`, and for `lp__`); all `NA` for a degenerate
@@ -190,11 +194,14 @@ rhat.route_c_stanfit <- function(x, ...) {
   psi_rhat <- max(s$rhat[grepl("^psi\\[", s$variable)], na.rm = TRUE)
   lp_rhat  <- max(s$rhat[s$variable == "lp__"], na.rm = TRUE)
 
-  # Implied Sigma = Lambda Lambda' (rotation-invariant), Rhat per unique entry.
+  # Full implied Sigma = Lambda Lambda' + Psi (rotation-invariant), Rhat per
+  # unique entry, computed per chain.
   ld   <- posterior::as_draws_array(fit$draws("Lambda"))  # iter x chain x param
   vn   <- dimnames(ld)[[3]]
   ij   <- do.call(rbind, lapply(vn, function(v)
     as.integer(strsplit(gsub("Lambda\\[|\\]", "", v), ",")[[1]])))
+  pd <- posterior::as_draws_array(fit$draws("psi"))
+  pn <- dimnames(pd)[[3]]
   pairs <- which(upper.tri(matrix(0, J, J), diag = TRUE), arr.ind = TRUE)
   sigma_rhats <- vapply(seq_len(nrow(pairs)), function(p) {
     a <- pairs[p, 1]; b <- pairs[p, 2]
@@ -204,7 +211,12 @@ rhat.route_c_stanfit <- function(x, ...) {
       ib <- which(ij[, 1] == b & ij[, 2] == kk)
       acc <- acc + ld[, , ia] * ld[, , ib]
     }
-    posterior::rhat(acc)   # acc is iterations x chains
+    if (a == b) {
+      ip  <- which(pn == sprintf("psi[%d]", a))
+      acc <- acc + pd[, , ip]
+    }
+    # iterations x chains matrix, so Rhat is computed across chains
+    posterior::rhat(matrix(acc, nrow = dim(ld)[1]))
   }, numeric(1))
 
   list(sigma_rhat = max(sigma_rhats, na.rm = TRUE),
@@ -337,6 +349,11 @@ rhat.route_c_stanfit <- function(x, ...) {
     list(...)
   )
   sample_args$data <- standata
+  if (is.null(sample_args$output_dir)) {
+    od <- tempfile("route-c-")
+    dir.create(od, recursive = TRUE)
+    sample_args$output_dir <- od
+  }
 
   cli::cli_inform(c(
     "i" = "Stan {group_name} (factor, k = {k}): {J} analyte{?s} x {N} \\
@@ -350,6 +367,9 @@ rhat.route_c_stanfit <- function(x, ...) {
       "x" = "{conditionMessage(e)}"
     ))
   )
+  # Read the draws into memory so a saved fit does not depend on temp CSVs.
+  fit$draws()
+  try(fit$sampler_diagnostics(), silent = TRUE)
   class(fit) <- c("route_c_stanfit", class(fit))
 
   # -- Posterior-mean point summaries (diagnostics; draws live in `fit`) ------

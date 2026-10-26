@@ -392,8 +392,17 @@
 ## on the full record and the chronic windows run off the start of the daily
 ## series.  Returns the chronic frame plus the daily (mspaf_daily point-mode)
 ## frame and its per-analyte PAF breakdown.
-.pf_pipeline_case <- function() {
+##
+## `reference` (default NULL = the scenario's reference) replaces the reference
+## frame everywhere the pipeline reads it (the imputation/reference fits and the
+## static-ARA daily_args$reference); used by test-mspaf-robust.R to rerun the
+## golden case on a row-shuffled copy of the same reference.
+.pf_pipeline_case <- function(reference = NULL) {
   args <- .pf_pipeline_args()
+  if (!is.null(reference)) {
+    args$reference <- reference
+    args$daily_args$reference <- reference
+  }
   args$daily_args$start <- as.Date("2023-06-01")
   args$daily_args$end   <- as.Date("2023-12-12")
   # The external temperature series deliberately extends beyond the daily grid
@@ -469,4 +478,19 @@
     res
   }
   list(static_ara = run(sc$reference), temporal_ara = run(rm))
+}
+
+## Where the end-to-end pipeline golden was generated (see PLATFORM above).
+.pf_golden_platform <- list(platform = "aarch64-apple-darwin20",
+                            r_version = "R version 4.4.3 (2025-02-28)",
+                            blas = "libRblas")
+
+.pf_skip_unless_golden_platform <- function() {
+  si <- utils::sessionInfo()
+  same <- identical(R.version$platform, .pf_golden_platform$platform) &&
+    identical(R.version.string, .pf_golden_platform$r_version) &&
+    grepl(.pf_golden_platform$blas, si$BLAS %||% "", fixed = TRUE)
+  testthat::skip_if_not(same, paste(
+    "end-to-end pipeline golden is platform-specific: tau selection amplifies",
+    "ulp-level BLAS/libm differences"))
 }

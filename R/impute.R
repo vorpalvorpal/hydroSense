@@ -625,6 +625,13 @@ fit_imputation_model <- function(
   checkmate::assert_number(min_target_detect_freq, lower = 0, upper = 1)
   checkmate::assert_count(min_target_detect_n)
 
+  # Canonical training-row order: the PCA pivot (column order, row order and
+  # the order of floating-point summation) then depends only on the keys, not
+  # on how the caller happened to arrange or collate the rows.  Radix order is
+  # locale-independent.
+  df <- df[order(df$sample_id, df$analyte, df$datetime, df$value,
+                 method = "radix"), , drop = FALSE]
+
   # ── 1. BDL required-variable handling ────────────────────────────────────
   # For required vars (pH, EC) where a value is BDL, use the stored DL value.
   # These are genuine low-level conditions; the sample is retained.

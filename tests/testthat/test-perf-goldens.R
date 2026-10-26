@@ -43,21 +43,6 @@ library(testthat)
   g
 }
 
-## Where the end-to-end pipeline golden was generated (see PLATFORM above).
-.pf_golden_platform <- list(platform = "aarch64-apple-darwin20",
-                            r_version = "R version 4.4.3 (2025-02-28)",
-                            blas = "libRblas")
-
-.pf_skip_unless_golden_platform <- function() {
-  si <- utils::sessionInfo()
-  same <- identical(R.version$platform, .pf_golden_platform$platform) &&
-    identical(R.version.string, .pf_golden_platform$r_version) &&
-    grepl(.pf_golden_platform$blas, si$BLAS %||% "", fixed = TRUE)
-  testthat::skip_if_not(same, paste(
-    "end-to-end pipeline golden is platform-specific: tau selection amplifies",
-    "ulp-level BLAS/libm differences"))
-}
-
 ## Element-wise relative comparison of two numeric vectors.
 .pf_expect_num <- function(actual, golden, label) {
   expect_type(actual, "double")
