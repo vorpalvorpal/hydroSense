@@ -131,6 +131,44 @@ describe("factor conditional draws (.factor_condition_draw)", {
 
 
 ## ----------------------------------------------------------------------------
+## §A'' Convergence diagnostic on hand-built draws (Stan-free)
+## ----------------------------------------------------------------------------
+describe("convergence diagnostic (.route_c_convergence)", {
+
+  it("reports the Rhat of the full Sigma = Lambda Lambda' + Psi", {
+    ## Lambda Lambda' disagrees across chains (chains 1-2 load analyte 1,
+    ## chains 3-4 load analyte 2) but psi absorbs the difference, so the
+    ## identified Sigma agrees. The check must report the full-Sigma Rhat
+    ## (~1.0), not the Rhat of the unidentified Lambda Lambda' part.
+    d <- .rc_tradeoff_draws()
+    grp <- list(fit = .rc_fake_fit(d), analytes = c("Cu", "Zn"), k = 1L,
+                degenerate = FALSE)
+
+    ## The fixture discriminates: Lambda Lambda'[1,1] alone is far from mixed.
+    ll11 <- unclass(d)[, , "Lambda[1,1]"]^2
+    expect_gt(posterior::rhat(ll11), 1.5)
+
+    conv <- hydroSense:::.route_c_convergence(grp)
+    expect_equal(conv$sigma_rhat, .rc_full_sigma_rhat(d), tolerance = 1e-8)
+    expect_lt(conv$sigma_rhat, 1.01)
+  })
+
+  it("compares chains with each other, not halves of the pooled draws", {
+    ## Sigma[1,1] sits near 5 in chains 1 and 3 and near 6.3 in chains 2 and 4.
+    ## A per-chain (iterations x chains) Rhat flags this; a split-Rhat of all
+    ## chains concatenated into one sequence does not.
+    d <- .rc_interleaved_draws()
+    grp <- list(fit = .rc_fake_fit(d), analytes = c("Cu", "Zn"), k = 1L,
+                degenerate = FALSE)
+
+    conv <- hydroSense:::.route_c_convergence(grp)
+    expect_gt(conv$sigma_rhat, 1.1)
+    expect_equal(conv$sigma_rhat, .rc_full_sigma_rhat(d), tolerance = 1e-8)
+  })
+})
+
+
+## ----------------------------------------------------------------------------
 ## §B  Fit — the two-stage censored factor model (needs cmdstanr)
 ## ----------------------------------------------------------------------------
 describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
@@ -168,7 +206,7 @@ describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
     )
   })
 
-  it("converges in the rotation-invariant quantities that drive imputation", {
+  it("converges in the identified implied covariance that drives imputation", {
     .skip_if_no_cmdstan()
 
     df    <- .imp_chem(n = 80, seed = 3)
@@ -176,15 +214,19 @@ describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
       df, impute_method = "factor",
       groups = list(impute_group("metals", targets = c("Cu", "Zn", "Cd"),
                                  hurdle = c("Cu", "Zn", "Cd"))),
-      iter = 800, warmup = 400, chains = 2
+      iter = 800, warmup = 400, chains = 4, seed = 14
     )
     ## A factor model is identified only up to rotation of Lambda, so a raw
     ## max(rhat(fit)) over Lambda elements is NOT a meaningful convergence gate.
-    ## Prediction uses only the rotation-INVARIANT Sigma = Lambda Lambda' + Psi,
-    ## which mixes cleanly (~1.0) even when a Lambda element is noisier.
+    ## Nor are Lambda Lambda' or psi on their own: in a low-df group (here
+    ## J = 2, k = 1) the shared and idiosyncratic variances trade off, so
+    ## neither is identified. Prediction uses only the full, identified
+    ## Sigma = Lambda Lambda' + Psi, so that is what must converge.
+    ##
+    ## Seed 14 with 4 chains gives a full-Sigma Rhat of ~1.02 whether the
+    ## training rows arrive in caller order or in the canonical sorted order.
     conv <- hydroSense:::.route_c_convergence(model$groups[["metals"]])
     expect_lt(conv$sigma_rhat, 1.1)
-    expect_lt(conv$psi_rhat,   1.1)
   })
 
   it("fits the K > 1 Stan construction for a J >= 4 group (k = 2)", {
@@ -192,46 +234,88 @@ describe("factor model fit (.fit_group_model, impute_method = 'factor')", {
 
     ## 4 target analytes -> default k = min(2, J - 1) = 2, exercising the
     ## lower-triangular top block + free Lambda_rest rows (untested at J = 2/3,
-    ## where k = 1 collapses to a single free-diagonal column). Cu/Cd share a
-    ## latent axis and Zn/Pb share a second one, both with substantial
+    ## where k = 1 collapses to a single free-diagonal column). Cd/Pb share a
+    ## latent axis and Cu/Zn share a second one, both with substantial
     ## idiosyncratic noise, so the two-factor structure has genuine signal to
     ## identify without landing near a Heywood-case boundary.
     ##
-    ## Convergence is asserted on the rotation-INVARIANT implied covariance
-    ## Sigma = Lambda Lambda' + Psi, not raw Lambda: at this sample size the
-    ## individual Lambda elements are rotation-redundant and mix less well (a
-    ## naive max(rhat(fit)) lands ~1.14), but the Sigma entries -- the only
-    ## thing prediction uses -- converge cleanly (~1.0). See
-    ## .route_c_convergence(). The real convergence question on production-size
-    ## data is validated offline in dev/bench-route-c.R, not in a unit test.
+    ## The identifying lower-triangular block is the FIRST k analytes. The rows
+    ## are built in alphabetical analyte order (Cd, Cu, Pb, Zn), which is also
+    ## the canonical sorted order fit_imputation_model() uses, so the anchor
+    ## block is Cd + Cu -- one analyte per factor -- whichever order applies.
+    ## (Two analytes on the SAME factor as anchors leave the second column
+    ## nearly unidentified, and the fit mixes badly.)
+    ##
+    ## Convergence is asserted on the identified implied covariance
+    ## Sigma = Lambda Lambda' + Psi, not raw Lambda: the individual Lambda
+    ## elements are rotation-redundant and mix less well, but Sigma -- the only
+    ## thing prediction uses -- converges cleanly (seed 14, 4 chains: ~1.015).
+    ## See .route_c_convergence(). The real convergence question on
+    ## production-size data is validated offline in dev/bench-route-c.R, not in
+    ## a unit test.
     set.seed(33)
     n   <- 100
     ids <- paste0("s", seq_len(n))
     base_chem <- .imp_chem(n = n, seed = 33)
     f1 <- stats::rnorm(n); f2 <- stats::rnorm(n)
-    lv_cu <- 0.0 + 0.8 * f1 + stats::rnorm(n, 0, 0.6)
-    lv_cd <- 0.5 + 0.8 * f1 + stats::rnorm(n, 0, 0.6)
-    lv_zn <- 1.0 + 0.8 * f2 + stats::rnorm(n, 0, 0.6)
-    lv_pb <- 1.5 + 0.8 * f2 + stats::rnorm(n, 0, 0.6)
-    base_chem$value[base_chem$analyte == "Cu"] <- exp(lv_cu)
-    base_chem$value[base_chem$analyte == "Zn"] <- exp(lv_zn)
+    lv_cd <- 0.0 + 0.8 * f1 + stats::rnorm(n, 0, 0.6)
+    lv_pb <- 0.5 + 0.8 * f1 + stats::rnorm(n, 0, 0.6)
+    lv_cu <- 1.0 + 0.8 * f2 + stats::rnorm(n, 0, 0.6)
+    lv_zn <- 1.5 + 0.8 * f2 + stats::rnorm(n, 0, 0.6)
     df  <- dplyr::bind_rows(
-      base_chem,
+      base_chem[!base_chem$analyte %in% c("Cu", "Zn"), ],
       .imp_rows(ids, "Cd", exp(lv_cd)),
-      .imp_rows(ids, "Pb", exp(lv_pb))
+      .imp_rows(ids, "Cu", exp(lv_cu)),
+      .imp_rows(ids, "Pb", exp(lv_pb)),
+      .imp_rows(ids, "Zn", exp(lv_zn))
     )
     model <- fit_imputation_model(
       df, impute_method = "factor",
-      groups = list(impute_group("metals", targets = c("Cu", "Zn", "Cd", "Pb"),
-                                 hurdle = c("Cu", "Zn", "Cd", "Pb"))),
-      iter = 1500, warmup = 750, chains = 2, adapt_delta = 0.95, seed = 42
+      groups = list(impute_group("metals", targets = c("Cd", "Cu", "Pb", "Zn"),
+                                 hurdle = c("Cd", "Cu", "Pb", "Zn"))),
+      iter = 1500, warmup = 750, chains = 4, adapt_delta = 0.95, seed = 14
     )
     grp <- model$groups[["metals"]]
 
     expect_equal(grp$k, 2L)
     expect_equal(dim(grp$Lambda), c(4L, 2L))
+    expect_equal(grp$analytes[1:2], c("Cd", "Cu"))  # one anchor per factor
     conv <- hydroSense:::.route_c_convergence(grp)
     expect_lt(conv$sigma_rhat, 1.1)
+  })
+
+  it("keeps a fit's draws readable after an earlier same-seed fit is collected", {
+    .skip_if_no_cmdstan()
+
+    ## cmdstanr names its output CSVs from the minute, runif() and the PID, so
+    ## two fits made from the same R RNG state within one minute get the SAME
+    ## paths in tempdir(). When the first fit is garbage-collected its
+    ## finalizer deletes those files -- which the second fit now owns -- and
+    ## any later read of the second fit fails ("File does not exist ...csv").
+    ## Each fit must own its output (or hold its draws in memory).
+    fit_once <- function() {
+      set.seed(1)
+      fit_imputation_model(
+        .imp_chem(n = 40, seed = 1), impute_method = "factor",
+        groups = list(impute_group("metals", targets = c("Cu", "Zn"),
+                                   hurdle = c("Cu", "Zn"))),
+        iter = 150, warmup = 75, chains = 2
+      )
+    }
+    ## Both fits must start in the same minute for their file names to clash.
+    secs <- as.numeric(format(Sys.time(), "%S"))
+    if (secs > 50) Sys.sleep(61 - secs)
+
+    first  <- suppressMessages(fit_once())
+    second <- suppressMessages(fit_once())
+    rm(first); invisible(gc()); invisible(gc())
+
+    fit <- second$groups[["metals"]]$fit
+    draws <- expect_no_error(fit$draws())
+    expect_true(posterior::ndraws(draws) == 2L * 75L)
+    expect_true("lp__" %in% posterior::variables(draws))
+    expect_length(expect_no_error(fit$lp()), 2L * 75L)
+    expect_no_error(fit$sampler_diagnostics())
   })
 
   it("fits a single-analyte group via the Stage-1-only degenerate path", {
