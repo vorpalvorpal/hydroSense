@@ -26,7 +26,8 @@ perturbed target model and OU-sampled `eps_paths`) for draw mode.
   kappa = 0.5,
   method = "multi",
   guideline_dir = NULL,
-  transform = "pseudo_log"
+  transform = "pseudo_log",
+  ref_q = NULL
 )
 ```
 
@@ -45,6 +46,14 @@ perturbed target model and OU-sampled `eps_paths`) for draw mode.
 
   Forward-filled daily chemistry for the site; supplies the date grid
   (`qdates`) and co-analyte values.
+
+- ref_q:
+
+  Optional pre-resolved reference norm
+  `(sample_id, analyte, ref_norm, ref_tier, date)` covering every date
+  of `qdates` (as resolved once per call by
+  [`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)).
+  `NULL` resolves it here.
 
 ## Value
 

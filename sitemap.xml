@@ -89,6 +89,7 @@
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-log_transform_pca.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-loo_anchor_coverage.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-loo_coverage_series.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-match_ref_obs.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-meta_cache_env.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-mspaf_add_paf.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-mspaf_adjust.html</loc></url>
@@ -137,6 +138,9 @@
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-summarise_ara_coverage.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-summarise_bracket.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-summarise_mspaf_diagnostics.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-twa_compute.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-twa_p90.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-twa_site.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-validate_impute_groups.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/draw_measurement_error.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/estimate_water_temp.html</loc></url>

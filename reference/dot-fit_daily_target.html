@@ -73,7 +73,8 @@ target model and OU-sampled <code>eps_paths</code>) for draw mode.</p>
 <span>  kappa <span class="op">=</span> <span class="fl">0.5</span>,</span>
 <span>  method <span class="op">=</span> <span class="st">"multi"</span>,</span>
 <span>  guideline_dir <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  transform <span class="op">=</span> <span class="st">"pseudo_log"</span></span>
+<span>  transform <span class="op">=</span> <span class="st">"pseudo_log"</span>,</span>
+<span>  ref_q <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -92,6 +93,13 @@ target model and OU-sampled <code>eps_paths</code>) for draw mode.</p>
 <dt id="arg-daily-long">daily_long<a class="anchor" aria-label="anchor" href="#arg-daily-long"></a></dt>
 <dd><p>Forward-filled daily chemistry for the site; supplies the
 date grid (<code>qdates</code>) and co-analyte values.</p></dd>
+
+
+<dt id="arg-ref-q">ref_q<a class="anchor" aria-label="anchor" href="#arg-ref-q"></a></dt>
+<dd><p>Optional pre-resolved reference norm
+<code>(sample_id, analyte, ref_norm, ref_tier, date)</code> covering every date of
+<code>qdates</code> (as resolved once per call by <code><a href="mspaf_daily.html">mspaf_daily()</a></code>).  <code>NULL</code> resolves
+it here.</p></dd>
 
 </dl></div>
     <div class="section level2">

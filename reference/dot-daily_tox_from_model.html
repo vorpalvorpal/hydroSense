@@ -64,7 +64,8 @@ any failure the input is returned unchanged.</p>
 <span>  <span class="va">tox_analytes</span>,</span>
 <span>  method <span class="op">=</span> <span class="st">"multi"</span>,</span>
 <span>  guideline_dir <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  transform <span class="op">=</span> <span class="st">"pseudo_log"</span></span>
+<span>  transform <span class="op">=</span> <span class="st">"pseudo_log"</span>,</span>
+<span>  ref_q <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -98,6 +99,11 @@ any failure the input is returned unchanged.</p>
 
 <dt id="arg-tox-analytes">tox_analytes<a class="anchor" aria-label="anchor" href="#arg-tox-analytes"></a></dt>
 <dd><p>SSD-eligible analyte names.</p></dd>
+
+
+<dt id="arg-ref-q">ref_q<a class="anchor" aria-label="anchor" href="#arg-ref-q"></a></dt>
+<dd><p>Optional pre-resolved reference norm, forwarded to
+<code><a href="dot-fit_daily_target.html">.fit_daily_target()</a></code>.</p></dd>
 
 </dl></div>
     <div class="section level2">

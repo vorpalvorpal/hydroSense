@@ -21,7 +21,8 @@ any failure the input is returned unchanged.
   tox_analytes,
   method = "multi",
   guideline_dir = NULL,
-  transform = "pseudo_log"
+  transform = "pseudo_log",
+  ref_q = NULL
 )
 ```
 
@@ -56,6 +57,11 @@ any failure the input is returned unchanged.
 - tox_analytes:
 
   SSD-eligible analyte names.
+
+- ref_q:
+
+  Optional pre-resolved reference norm, forwarded to
+  [`.fit_daily_target()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-fit_daily_target.md).
 
 ## Value
 
