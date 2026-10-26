@@ -55,12 +55,19 @@ smooth.construct.fsc.smooth.spec <- function(object, data, knots) {
       length(ob$base$term) != 1L) {
     return(ob)
   }
+  x <- data[[ob$base$term]]
+  if (!is.numeric(x)) return(ob)
+  .fsc_canonicalise(ob, x)
+}
+
+## Canonicalise a plain fs object: fixed null-space orientation and a fixed
+## sign for every penalised (range) column.  Returns `ob` unchanged when the
+## fs structure is not the 2-D-null-space case.  S is never touched.
+.fsc_canonicalise <- function(ob, x) {
   p  <- ncol(ob$P)
   rk <- ob$base$rank
   if (p - rk != 2L) return(ob)
 
-  x <- data[[ob$base$term]]
-  if (!is.numeric(x)) return(ob)
   sx <- stats::sd(x)
   if (!is.finite(sx) || sx <= 0) return(ob)
 
@@ -83,6 +90,21 @@ smooth.construct.fsc.smooth.spec <- function(object, data, knots) {
   ## training data reproduces the fit; N %*% Q equals Tm to rounding.
   ob$P[, null_ind] <- ob$P[, null_ind, drop = FALSE] %*% Q
   Xb[, null_ind] <- N %*% Q
+
+  ## Sign of each range column, from a continuous criterion against fixed
+  ## monomials of the standardised x (re-signed, never rotated: the range
+  ## penalty must stay diagonal).
+  xs <- (x - mean(x)) / sx
+  Z <- vapply(2:max(3L, rk + 1L), function(d) {
+    z <- xs^d
+    z / sqrt(sum(z^2))
+  }, numeric(length(xs)))
+  ip <- crossprod(Xb[, seq_len(rk), drop = FALSE], Z)
+  sg <- sign(rowSums(ip * abs(ip)))
+  sg[sg == 0] <- 1
+  Fm <- c(sg, rep(1, p - rk))
+  ob$P <- sweep(ob$P, 2, Fm, `*`)
+  Xb   <- sweep(Xb, 2, Fm, `*`)
 
   if (gamm) {
     ob$X <- Xb
