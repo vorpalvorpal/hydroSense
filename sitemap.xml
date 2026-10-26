@@ -89,6 +89,7 @@
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-log_transform_pca.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-loo_anchor_coverage.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-loo_coverage_series.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-marginal_gam_rhs.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-match_ref_obs.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-meta_cache_env.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-mspaf_add_paf.html</loc></url>
@@ -165,6 +166,7 @@
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/prepare_reference.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/prescreen_analytes.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/rhat.route_c_stanfit.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/smooth.construct.fsc.smooth.spec.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/ssd_hc50.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/ssd_paf.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/ssd_pct.html</loc></url>

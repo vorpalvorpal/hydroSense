@@ -20,3 +20,13 @@ mis-condition anything).
   group_name = "group"
 )
 ```
+
+## Details
+
+Each GAM is fitted by REML on the first `m` PC scores only (see
+[`.marginal_gam_rhs()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-marginal_gam_rhs.md)):
+the number of smooths is gated on the analyte's detected count so that
+thin analytes are not fitted with more flexibility than their data
+support. GCV on the full five-smooth model saturated such analytes (edf
+equal to the number of points), which made their imputations sensitive
+to ulp-level changes in the inputs.

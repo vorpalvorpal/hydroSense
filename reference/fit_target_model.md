@@ -129,15 +129,16 @@ fit_target_model(
 - pool:
 
   Logical (default `TRUE`). When `TRUE`, the per-analyte hydro responses
-  are **partially pooled**: a single factor-smooth GAM (`bs = "fs"`) is
-  fitted across all sufficiently-sampled analytes at one common
-  AIC-selected window, shrinking each analyte's response toward a shared
-  shape. This *regularises* noisy, low-signal analytes (it does not add
-  hydrological coverage – co-sampled analytes already share the same
-  regimes), and falls back to independent fits if it fails or doesn't
-  beat an analyte-intercept null. Set `pool = FALSE` to force
-  independent per-analyte fits (appropriate only when all analytes are
-  densely sampled).
+  are **partially pooled**: a single factor-smooth GAM (`bs = "fsc"`,
+  mgcv's `"fs"` with a canonical null-space basis) is fitted across all
+  sufficiently-sampled analytes at one common AIC-selected window,
+  shrinking each analyte's response toward a shared shape. This
+  *regularises* noisy, low-signal analytes (it does not add hydrological
+  coverage – co-sampled analytes already share the same regimes), and
+  falls back to independent fits if it fails or doesn't beat an
+  analyte-intercept null. Set `pool = FALSE` to force independent
+  per-analyte fits (appropriate only when all analytes are densely
+  sampled).
 
 - eps:
 
