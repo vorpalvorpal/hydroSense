@@ -17,7 +17,8 @@
   kappa = 0.5,
   method = "multi",
   guideline_dir = NULL,
-  transform = "pseudo_log"
+  transform = "pseudo_log",
+  ref_q = NULL
 )
 }
 \arguments{
@@ -27,6 +28,11 @@
 
 \item{daily_long}{Forward-filled daily chemistry for the site; supplies the
 date grid (\code{qdates}) and co-analyte values.}
+
+\item{ref_q}{Optional pre-resolved reference norm
+\verb{(sample_id, analyte, ref_norm, ref_tier, date)} covering every date of
+\code{qdates} (as resolved once per call by \code{\link[=mspaf_daily]{mspaf_daily()}}).  \code{NULL} resolves
+it here.}
 }
 \value{
 A named list (\code{fdm}) or \code{NULL} on model failure.

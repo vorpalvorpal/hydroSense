@@ -14,7 +14,8 @@
   tox_analytes,
   method = "multi",
   guideline_dir = NULL,
-  transform = "pseudo_log"
+  transform = "pseudo_log",
+  ref_q = NULL
 )
 }
 \arguments{
@@ -31,6 +32,9 @@
 \item{meta}{Analyte metadata (normalisation formulas).}
 
 \item{tox_analytes}{SSD-eligible analyte names.}
+
+\item{ref_q}{Optional pre-resolved reference norm, forwarded to
+\code{\link[=.fit_daily_target]{.fit_daily_target()}}.}
 }
 \value{
 \code{daily_long} with modelled-toxicant rows replaced.

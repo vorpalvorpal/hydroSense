@@ -22,7 +22,8 @@
 ##   .aic_for_tau()                  AIC for a (tau_short, tau_long) candidate pair
 ##   .select_api_tau()               continuous tau selection by profiled GAM AIC (#49)
 ##   .resolve_ref_norm()             three-tier resolver dispatcher
-##   .resolve_ref_norm_instant()     per-sample (instantaneous) resolver
+##   .resolve_ref_norm_instant()     per-sample (instantaneous) resolver, all dates at once
+##   .match_ref_obs()                tier-1 contemporaneous match, all dates at once
 ##   .resolve_ref_norm_chronic()     per-sample (chronic window-integrated) resolver
 ##   .predict_ref_at_date()          predict value_norm from a fitted analyte model
 
@@ -868,7 +869,55 @@ print.reference_model <- function(x, ...) {
   list(ref_norm = exp(log_pred), ref_tier = "model")
 }
 
+#' Predict a GAM on many rows, losing only the rows whose own prediction errors
+#'
+#' One batched `predict()` when nothing errors.  When the batch errors, it is
+#' bisected until the failing rows are isolated (a single failing row costs
+#' O(log n) extra calls), so every other row keeps its prediction, exactly as
+#' row-by-row prediction would.
+#' @return Numeric vector, `NA` for rows whose prediction errors.
+#' @keywords internal
+.predict_bisect <- function(fit, newdata) {
+  n <- nrow(newdata)
+  out <- rep(NA_real_, n)
+  go <- function(idx) {
+    r <- tryCatch(
+      as.numeric(stats::predict(fit, newdata = newdata[idx, , drop = FALSE])),
+      error = function(e) NULL
+    )
+    if (!is.null(r) && length(r) == length(idx)) {
+      out[idx] <<- r
+    } else if (length(idx) > 1L) {
+      h <- length(idx) %/% 2L
+      go(idx[seq_len(h)])
+      go(idx[-seq_len(h)])
+    }
+  }
+  go(seq_len(n))
+  out
+}
+
 #' Resolve ref_norm for instantaneous target samples (one date per sample)
+#'
+#' Vectorised over target dates: the antecedent precipitation index is
+#' evaluated in one pass over all distinct dates (one event-API pass for the
+#' tier-1 gate, one short- and one long-store pass per tier-2 analyte model),
+#' and each tier-2 reference GAM is predicted once on a frame of every date
+#' left unmatched by tier 1 (a failing batch is bisected, so only dates whose
+#' own prediction errors fall back to static).  Results are identical to
+#' resolving each date on its own, including the error fallback; an NA date
+#' resolves to static (the per-date code errored on it).
+#'
+#' Tiers, per (sample, analyte):
+#' \enumerate{
+#'   \item `"matched"`: a reference observation within `match_window_days`
+#'     whose stored `hydro_short` lies within `match_hydro_tol` of the
+#'     target's event API (computed at `tau = match_window_days`); the closest
+#'     in time wins, ties going to the earlier observation in `m$obs`.
+#'   \item `"model"`: the reference GAM's prediction at the date.
+#'   \item `"static"`: the static reference value (also the fallback when the
+#'     prediction is unavailable).
+#' }
 #'
 #' @param ref_model A `reference_model` object.
 #' @param target_df Tibble with columns `sample_id`, `datetime` (Date).
@@ -877,53 +926,161 @@ print.reference_model <- function(x, ...) {
 .resolve_ref_norm_instant <- function(ref_model, target_df) {
   target_df <- dplyr::mutate(target_df, .date = as.Date(.data$datetime))
   sample_dates <- dplyr::distinct(target_df, .data$sample_id, .data$.date)
+  model_nms <- names(ref_model$models)
+  if (nrow(sample_dates) == 0L || length(model_nms) == 0L) {
+    return(tibble::tibble())
+  }
 
-  results <- purrr::pmap_dfr(sample_dates, function(sample_id, .date) {
-    target_date <- .date
-    target_event_api <- .compute_api(
-      ref_model$hydro$value, as.Date(ref_model$hydro$date),
-      target_date, ref_model$match_window_days
+  ## Work on the distinct dates; every sample on a date shares its resolution.
+  udates <- unique(sample_dates$.date)
+  date_idx <- match(sample_dates$.date, udates)
+  n_u <- length(udates)
+  ok_date <- !is.na(udates)
+
+  hydro_dates <- as.Date(ref_model$hydro$date)
+  mwd <- ref_model$match_window_days
+
+  ## Tier-1 gate: event API at every date in one pass (an NA date is not
+  ## evaluated and resolves to static; the per-date code errored on it).
+  event_api <- numeric(n_u)
+  if (any(ok_date)) {
+    event_api[ok_date] <- .compute_api(
+      ref_model$hydro$value, hydro_dates, udates[ok_date], mwd
     )
+  }
 
-    purrr::map_dfr(names(ref_model$models), function(nm) {
-      m <- ref_model$models[[nm]]
+  ref_norm <- matrix(NA_real_, n_u, length(model_nms))
+  ref_tier <- matrix(NA_character_, n_u, length(model_nms))
 
-      # Tier 1: direct contemporaneous match
-      obs <- m$obs
-      if (!is.null(obs) && nrow(obs) > 0L) {
-        dt_diff <- abs(as.numeric(obs$date - target_date))
-        time_ok <- dt_diff <= ref_model$match_window_days
+  for (j in seq_along(model_nms)) {
+    m <- ref_model$models[[model_nms[j]]]
+    static_val <- as.numeric(m$static_ref %||% NA_real_)
 
-        # Use short-window hydro for the gate; stored as hydro_short on the obs
-        hydro_diff <- abs(obs$hydro_short - target_event_api)
-        hydro_ok <- hydro_diff <= ref_model$match_hydro_tol
+    ## Tier 1: direct contemporaneous match
+    best <- rep(NA_integer_, n_u)
+    matched <- rep(FALSE, n_u)
+    obs <- m$obs
+    if (!is.null(obs) && nrow(obs) > 0L) {
+      mt <- .match_ref_obs(
+        obs$date, obs$hydro_short, udates, event_api,
+        mwd, ref_model$match_hydro_tol
+      )
+      matched <- mt$matched
+      best <- mt$best
+      ref_norm[matched, j] <- obs$value_norm[best[matched]]
+      ref_tier[matched, j] <- "matched"
+    }
 
-        candidate_mask <- time_ok & hydro_ok
-        if (any(candidate_mask, na.rm = TRUE)) {
-          best_idx <- which(candidate_mask)[which.min(dt_diff[candidate_mask])]
-          return(tibble::tibble(
-            sample_id = sample_id,
-            analyte   = nm,
-            ref_norm  = obs$value_norm[best_idx],
-            ref_tier  = "matched"
-          ))
-        }
+    ## Tier 2 / 3 for the dates tier 1 left unresolved
+    rest <- which(!matched)
+    if (length(rest) == 0L) next
+    ref_norm[rest, j] <- static_val
+    ref_tier[rest, j] <- "static"
+    if (m$tier == "static" || is.null(m$gamm_fit)) next
+
+    pred_idx <- rest[ok_date[rest]]
+    if (length(pred_idx) == 0L) next
+    pred_dates <- udates[pred_idx]
+    feats <- .compute_hydro_features(
+      ref_model$hydro, pred_dates, m$tau_short, m$tau_long,
+      ref_model$hydro_type
+    )
+    newdata <- tibble::tibble(
+      doy         = as.integer(format(pred_dates, "%j")),
+      hydro_short = feats$hydro_short,
+      hydro_long  = feats$hydro_long
+    )
+    log_pred <- .predict_bisect(m$gamm_fit, newdata)
+    has_pred <- !is.na(log_pred)
+    ref_norm[pred_idx[has_pred], j] <- exp(log_pred[has_pred])
+    ref_tier[pred_idx[has_pred], j] <- "model"
+  }
+
+  ## One row per (sample, analyte), samples outer, analytes in model order.
+  n_s <- nrow(sample_dates)
+  n_m <- length(model_nms)
+  tibble::tibble(
+    sample_id = rep(sample_dates$sample_id, each = n_m),
+    analyte   = rep(model_nms, times = n_s),
+    ref_norm  = as.vector(t(ref_norm[date_idx, , drop = FALSE])),
+    ref_tier  = as.vector(t(ref_tier[date_idx, , drop = FALSE]))
+  )
+}
+
+#' Tier-1 contemporaneous match of target dates to reference observations
+#'
+#' For each target date, the candidate observations are those within
+#' `match_window_days` of it whose `hydro_short` is within `match_hydro_tol`
+#' of the target's event API.  The closest candidate in time is chosen, ties
+#' going to the first in `obs` order (`which.min()` semantics).
+#'
+#' The common case (no missing dates or hydrology) is resolved for all dates
+#' at once from the observations inside each date's time window.  Inputs with
+#' missing values take the per-date path, which reproduces the per-date
+#' `which(mask)[which.min(dt[mask])]` selection exactly, including its
+#' behaviour when the mask itself holds `NA`.
+#'
+#' @param obs_date,obs_hydro Reference observation dates and stored
+#'   `hydro_short`.
+#' @param target_dates Distinct target dates.
+#' @param target_api Event API at `target_dates`.
+#' @param match_window_days,match_hydro_tol Tier-1 tolerances.
+#' @return List `(matched, best)`: a logical vector (a candidate exists) and
+#'   the selected observation index (`NA` where unmatched).
+#' @keywords internal
+.match_ref_obs <- function(obs_date, obs_hydro, target_dates, target_api,
+                           match_window_days, match_hydro_tol) {
+  n_t <- length(target_dates)
+  matched <- rep(FALSE, n_t)
+  best <- rep(NA_integer_, n_t)
+  od <- as.numeric(obs_date)
+  td <- as.numeric(target_dates)
+
+  clean <- !anyNA(od) && !anyNA(obs_hydro) && !anyNA(td) &&
+    !anyNA(target_api) && !is.na(match_hydro_tol) &&
+    !is.na(match_window_days)
+
+  if (!clean) {
+    for (i in seq_len(n_t)) {
+      dt_diff <- abs(as.numeric(obs_date - target_dates[i]))
+      time_ok <- dt_diff <= match_window_days
+      hydro_ok <- abs(obs_hydro - target_api[i]) <= match_hydro_tol
+      candidate_mask <- time_ok & hydro_ok
+      if (any(candidate_mask, na.rm = TRUE)) {
+        matched[i] <- TRUE
+        best[i] <- which(candidate_mask)[which.min(dt_diff[candidate_mask])]
       }
+    }
+    return(list(matched = matched, best = best))
+  }
 
-      # Tier 2 / 3
-      pred <- .predict_ref_at_date(
-        m, target_date, ref_model$hydro, ref_model$hydro_type
-      )
-      tibble::tibble(
-        sample_id = sample_id,
-        analyte   = nm,
-        ref_norm  = pred$ref_norm,
-        ref_tier  = pred$ref_tier
-      )
-    })
-  })
+  ## Observations inside each target's (slightly widened) time window; the
+  ## exact |dt| <= match_window_days test is re-applied to the pairs below.
+  ord <- order(od, method = "radix")
+  sod <- od[ord]
+  lo <- findInterval(td - match_window_days - 1, sod) + 1L
+  hi <- findInterval(td + match_window_days + 1, sod)
+  cnt <- pmax(hi - lo + 1L, 0L)
+  if (sum(cnt) == 0L) {
+    return(list(matched = matched, best = best))
+  }
+  ti <- rep.int(seq_len(n_t), cnt)
+  oj <- ord[sequence(cnt[cnt > 0L], from = lo[cnt > 0L])]
 
-  results
+  dt_diff <- abs(od[oj] - td[ti])
+  cand <- dt_diff <= match_window_days &
+    abs(obs_hydro[oj] - target_api[ti]) <= match_hydro_tol
+  if (!any(cand)) {
+    return(list(matched = matched, best = best))
+  }
+  ti <- ti[cand]
+  oj <- oj[cand]
+  dt_diff <- dt_diff[cand]
+  o <- order(ti, dt_diff, oj, method = "radix")
+  first <- o[!duplicated(ti[o])]
+  matched[ti[first]] <- TRUE
+  best[ti[first]] <- oj[first]
+  list(matched = matched, best = best)
 }
 
 #' Resolve ref_norm for chronic target samples (window-integrated)
