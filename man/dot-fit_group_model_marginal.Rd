@@ -21,4 +21,12 @@ cmdstanr. The "borrowing" the factor model attempts is skipped entirely, so
 this is the robust choice on panels where cross-analyte correlation is weak
 or ragged (sparse analytes' spurious loadings can't mis-condition anything).
 }
+\details{
+Each GAM is fitted by REML on the first \code{m} PC scores only (see
+\code{\link[=.marginal_gam_rhs]{.marginal_gam_rhs()}}): the number of smooths is gated on the analyte's
+detected count so that thin analytes are not fitted with more flexibility
+than their data support. GCV on the full five-smooth model saturated such
+analytes (edf equal to the number of points), which made their imputations
+sensitive to ulp-level changes in the inputs.
+}
 \keyword{internal}

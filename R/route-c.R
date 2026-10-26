@@ -479,12 +479,18 @@ rhat.route_c_stanfit <- function(x, ...) {
 #' cmdstanr. The "borrowing" the factor model attempts is skipped entirely, so
 #' this is the robust choice on panels where cross-analyte correlation is weak
 #' or ragged (sparse analytes' spurious loadings can't mis-condition anything).
+#'
+#' Each GAM is fitted by REML on the first `m` PC scores only (see
+#' [.marginal_gam_rhs()]): the number of smooths is gated on the analyte's
+#' detected count so that thin analytes are not fitted with more flexibility
+#' than their data support. GCV on the full five-smooth model saturated such
+#' analytes (edf equal to the number of points), which made their imputations
+#' sensitive to ulp-level changes in the inputs.
 #' @keywords internal
 .fit_group_model_marginal <- function(target_analytes, safe_analytes, base,
                                       pc_wide, pc_cols, log_floors,
                                       group_name = "group") {
   J   <- length(target_analytes)
-  rhs <- paste(paste0("s(", pc_cols, ")"), collapse = " + ")
   gams <- stats::setNames(vector("list", J), target_analytes)
 
   for (a in target_analytes) {
@@ -498,9 +504,10 @@ rhat.route_c_stanfit <- function(x, ...) {
          observations with PC scores; got {n_detected}."
       ))
     }
+    rhs <- .marginal_gam_rhs(pc_cols, n_detected)
     gams[[a]] <- mgcv::gam(stats::as.formula(paste0("lv ~ ", rhs)),
                           data = dat[dat$detected, , drop = FALSE],
-                          family = stats::gaussian())
+                          family = stats::gaussian(), method = "REML")
   }
 
   cli::cli_inform(c(
@@ -516,6 +523,29 @@ rhat.route_c_stanfit <- function(x, ...) {
     log_floors    = log_floors,
     impute_method = "marginal"
   )
+}
+
+#' Right-hand side of a marginal Stage-1 GAM, gated on the detected count
+#'
+#' Uses the first `m = min(P, floor(n_det / 3) - 1)` PC scores, one smooth
+#' each, so the unpenalised part of the model (intercept plus one linear term
+#' per smooth) has at most `n_det / 3` coefficients. `m = 0` (fewer than six
+#' detected values) gives the intercept-only model `lv ~ 1`. Each smooth's
+#' basis dimension is `k = min(10, floor((n_det - 3) / m) + 1)`, mgcv's default
+#' `k = 10` whenever there are enough points. The model then has at most
+#' `1 + m * (k - 1) <= n_det - 2` coefficients, so its edf is at most
+#' `n_det - 2` by construction (REML on a larger basis can still interpolate
+#' a thin analyte), and `k >= 4` always, since `m <= n_det / 3 - 1`.
+#'
+#' @param pc_cols Character vector of PC score columns, in order (`PC1`, ...).
+#' @param n_det Number of detected observations the GAM is fitted to.
+#' @return A single string, e.g. `"s(PC1, k = 10) + s(PC2, k = 10)"` or `"1"`.
+#' @keywords internal
+.marginal_gam_rhs <- function(pc_cols, n_det) {
+  m <- min(length(pc_cols), floor(n_det / 3) - 1L)
+  if (m < 1L) return("1")
+  k <- min(10L, as.integer(floor((n_det - 3) / m)) + 1L)
+  paste(sprintf("s(%s, k = %d)", pc_cols[seq_len(m)], k), collapse = " + ")
 }
 
 #' Posterior-predictive prediction for the marginal method
