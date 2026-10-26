@@ -23,9 +23,20 @@
 ##     mgcv::smooth.construct, so s(x, f, bs = "fsc") works in plain mgcv
 ##     calls): the fs factor smooth with the null space spanned in a fixed,
 ##     canonical orientation r * [1, (x - mean(x)) / sd(x)], with P updated to
-##     match so prediction via the fs Predict.matrix reproduces the fit.
+##     match so prediction via the fs Predict.matrix reproduces the fit.  The
+##     penalised (range) columns, which nat.param() returns only up to sign,
+##     get a fixed sign too (re-signed, never rotated, so the range penalty
+##     stays diagonal).  Both steps live in the internal
+##     .fsc_canonicalise(ob, x), applied to the plain fs object.
+##       * canonical: any re-signing of the range columns plus any 2x2
+##         orthogonal map of the null-space pair of an fs object gives the same
+##         canonicalised X, Xb and P to 1e-10, and S is unchanged;
 ##       * model matrix stable: x -> x * (1 + 1e-12) changes the fsc model
-##         matrix by < 1e-8 max abs (plain fs: up to ~4.6 on the same data);
+##         matrix by < 1e-8 max abs over seeds 1..50 at k = 4 and 10 (plain
+##         fs: up to ~4.6 on the same data; a range-column sign flip gave 12.6
+##         on macOS CI);
+##       * a range-column sign flip is model-invariant: fsc fits on x and
+##         x * (1 + 1e-12) agree to 1e-8 in fitted values and REML score;
 ##       * predict(fit, newdata = training data) == fitted(fit) to 1e-8;
 ##       * same column space as fs: near-unpenalised (sp = 1e-12) fsc and fs
 ##         fits agree to 1e-8 (fitted and predicted), and every fsc column is
@@ -121,6 +132,35 @@ library(testthat)
   mgcv::smoothCon(spec, data = d, knots = NULL)[[1L]]
 }
 
+## The fs per-level model matrix: block i of p columns is Xb on level i, 0 else.
+.ms_per_level <- function(Xb, fac, flev) {
+  do.call(cbind, lapply(flev, function(l) Xb * as.numeric(fac == l)))
+}
+
+## An equally valid fs basis that LAPACK could have returned: flip the sign of
+## a random non-empty subset of the range (penalised) columns and rotate (or
+## reflect) the null-space pair by a random 2x2 orthogonal matrix.  Applied to
+## Xb, P and every per-level block of X alike, so X = basis %*% P still holds.
+.ms_scramble_fs <- function(ob, seed) {
+  p  <- ncol(ob$P)
+  rk <- ob$base$rank
+  M <- withr::with_seed(seed, {
+    s <- sample(c(-1, 1), rk, replace = TRUE)
+    s[sample.int(rk, 1L)] <- -1
+    th <- stats::runif(1L, 0.3, 2 * pi - 0.3)
+    R <- matrix(c(cos(th), sin(th), -sin(th), cos(th)), 2L)
+    R[, 2L] <- R[, 2L] * sample(c(-1, 1), 1L)
+    M <- matrix(0, p, p)
+    M[seq_len(rk), seq_len(rk)] <- diag(s, rk)
+    M[(rk + 1L):p, (rk + 1L):p] <- R
+    M
+  })
+  ob$P  <- ob$P %*% M
+  ob$Xb <- ob$Xb %*% M
+  ob$X  <- .ms_per_level(ob$Xb, ob$fac, ob$flev)
+  ob
+}
+
 .ms_fit2 <- function(d, bs, sp = NULL) {
   form <- stats::as.formula(sprintf(
     "y ~ s(x, f, bs = '%s', k = 4) + s(x2, f, bs = '%s', k = 4)", bs, bs))
@@ -140,13 +180,99 @@ describe("S1: the fsc factor-smooth basis", {
   })
 
   it("has a model matrix stable to a 1e-12 relative change in x", {
-    # Plain fs on seed 2: max |dX| ~ 4.6 (the null-space pair rotates).
-    for (seed in 1:6) {
+    # Plain fs on seed 2: max |dX| ~ 4.6 (the null-space pair rotates).  Plain
+    # fs also flips the SIGN of single penalised (range) columns under this
+    # change -- in 20 / 52 / 100 of 200 seeds at k = 4 / 6 / 10 on reference
+    # LAPACK, and on macOS CI at seed 1 (|dX| = 12.6) -- so the bar covers 50
+    # seeds at both the default k and k = 10.  Only canonicalising the null
+    # space leaves those flips in (locally: k = 4 seeds 23, 48; k = 10 most
+    # seeds, e.g. 1, 2, 48).
+    for (k in c(4L, 10L)) {
+      dX <- vapply(1:50, function(seed) {
+        d  <- .ms_fs_data(seed)
+        d2 <- d
+        d2$x <- d$x * (1 + 1e-12)
+        max(abs(.ms_smooth(d, "fsc", k = k)$X - .ms_smooth(d2, "fsc", k = k)$X))
+      }, numeric(1))
+      bad <- which(dX >= 1e-8)
+      expect_lt(max(dX), 1e-8, label = sprintf(
+        "fsc max |dX| at k = %d (seeds over 1e-8: %s)", k,
+        if (length(bad)) paste(bad, collapse = ", ") else "none"))
+    }
+  })
+
+  it("canonicalises every column: same result from any sign / rotation of fs", {
+    # .fsc_canonicalise(ob, x) maps a plain fs object to the fsc basis.  The fs
+    # basis is defined only up to (i) the sign of each penalised (range)
+    # column and (ii) a rotation of the degenerate null-space pair, and LAPACK
+    # may return any of them.  Scramble both and the canonical result must not
+    # move.  Platform-independent: the scrambling is explicit, not left to
+    # LAPACK.
+    canon <- hydroSense:::.fsc_canonicalise
+    for (k in c(4L, 6L, 10L)) for (m in list(NA, 2L)) for (seed in 1:5) {
+      lab <- sprintf("k = %d, m = %s, seed %d", k, format(m), seed)
+      d  <- .ms_fs_data(seed)
+      ob <- .ms_smooth(d, "fs", k = k, m = m)
+      p  <- ncol(ob$P)
+      rk <- ob$base$rank
+      expect_identical(p - rk, 2, label = paste("null-space dim,", lab))
+      sc <- .ms_scramble_fs(ob, seed = 100L * k + seed)
+      # The scramble really changed the basis.
+      expect_gt(max(abs(sc$X - ob$X)), 1e-3, label = paste("scramble,", lab))
+
+      c0 <- canon(ob, d$x)
+      c1 <- canon(sc, d$x)
+      expect_lt(max(abs(c0$X  - c1$X)),  1e-10, label = paste("X,", lab))
+      expect_lt(max(abs(c0$Xb - c1$Xb)), 1e-10, label = paste("Xb,", lab))
+      expect_lt(max(abs(c0$P  - c1$P)),  1e-10, label = paste("P,", lab))
+
+      # X stays the per-level copy of Xb.
+      expect_lt(max(abs(c0$X - .ms_per_level(c0$Xb, c0$fac, c0$flev))),
+                1e-12, label = paste("X = per-level Xb,", lab))
+      # Range columns are only re-signed, never rotated or rescaled: their
+      # penalty stays diagonal (smooth2random.fs.interaction reads diag(S)).
+      ri <- seq_len(rk)
+      expect_lt(max(abs(abs(c0$Xb[, ri]) - abs(ob$Xb[, ri]))), 1e-12,
+                label = paste("range columns re-signed only,", lab))
+      # Penalties are untouched by canonicalisation.
+      expect_identical(c0$S, ob$S, label = paste("S (original),", lab))
+      expect_identical(c1$S, ob$S, label = paste("S (scrambled),", lab))
+    }
+  })
+
+  it("is what the fsc constructor returns", {
+    # Raw constructor output, not smoothCon(): smoothCon() rescales S by the
+    # size of X, which legitimately differs between fs and fsc.
+    d <- .ms_fs_data(1L)
+    build <- function(bs, k) {
+      mgcv::smooth.construct(mgcv::s(x, f, bs = bs, k = k), data = d,
+                             knots = NULL)
+    }
+    for (k in c(4L, 10L)) {
+      ref <- hydroSense:::.fsc_canonicalise(build("fs", k), d$x)
+      got <- build("fsc", k)
+      expect_equal(got$X, ref$X, tolerance = 1e-12)
+      expect_equal(got$P, ref$P, tolerance = 1e-12)
+      expect_identical(got$S, ref$S)
+    }
+  })
+
+  it("fits identically on x and x * (1 + 1e-12) where fs flips a sign (guard)", {
+    # Seeds 23 and 48 at k = 4: plain fs flips a range column under this change
+    # on reference LAPACK.  The flip is model-invariant, so fsc fits agree with
+    # or without the fix; this guards that the fix keeps it so.
+    for (seed in c(23L, 48L)) {
       d  <- .ms_fs_data(seed)
       d2 <- d
       d2$x <- d$x * (1 + 1e-12)
-      dX <- max(abs(.ms_smooth(d, "fsc")$X - .ms_smooth(d2, "fsc")$X))
-      expect_lt(dX, 1e-8, label = sprintf("fsc max |dX| (seed %d)", seed))
+      g1 <- .ms_q(mgcv::gam(y ~ s(x, f, bs = "fsc", k = 4), data = d,
+                            method = "REML"))
+      g2 <- .ms_q(mgcv::gam(y ~ s(x, f, bs = "fsc", k = 4), data = d2,
+                            method = "REML"))
+      expect_lt(max(abs(stats::fitted(g1) - stats::fitted(g2))), 1e-8,
+                label = sprintf("|d fitted| (seed %d)", seed))
+      expect_lt(abs(g1$gcv.ubre - g2$gcv.ubre), 1e-8,
+                label = sprintf("|d REML| (seed %d)", seed))
     }
   })
 
