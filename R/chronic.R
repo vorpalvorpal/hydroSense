@@ -527,15 +527,17 @@ expand_focal_dates <- function(start, end, by = "day") {
     e_w <- ifelse(
       c_dpos[e_cell], dlt[e_k] * exp((mid[e_k] - centre[e_b]) / tau_days), 0
     )
-    cum_w <- if (length(e_w)) collapse::fcumsum(e_w * cm[e_cell, "nonna"], g = e_seg) else numeric(0)
-    cum_wx <- if (length(e_w)) collapse::fcumsum(e_w * cm[e_cell, "x"], g = e_seg) else numeric(0)
-    pref <- function(cum, seg, k) {
-      p <- findInterval(seg * base + k, e_key)
-      out <- numeric(length(p))
-      hit <- p > 0L
-      hit[hit] <- e_seg[p[hit]] == seg[hit]
-      out[hit] <- cum[p[hit]]
-      out
+    ## Window sums are read from segment trees over the weighted terms, not
+    ## from differences of prefix sums: a window is the sum of O(log n)
+    ## aligned partial sums, so terms outside it (possibly many orders of
+    ## magnitude larger) never enter and nothing cancels.
+    tree_w <- .twa_tree(e_w * cm[e_cell, "nonna"])
+    tree_wx <- .twa_tree(e_w * cm[e_cell, "x"])
+    ## Entries of segment `seg` with cell index in [k_from, k_to].
+    ent_rng <- function(seg, k_from, k_to) {
+      p <- findInterval(seg * base + k_from - 1, e_key)
+      q <- findInterval(seg * base + k_to, e_key)
+      list(l = p, r = pmax(q, p))
     }
   }
 
@@ -604,8 +606,9 @@ expand_focal_dates <- function(start, end, by = "day") {
 
       seg <- (b_i[qi] - 1L) * n_g + qg
       fac <- exp((centre[b_i[qi]] - f[qi]) / tau_days)
-      mid_w <- fac * (pref(cum_w, seg, hi[qi] - 1L) - pref(cum_w, seg, lo_v[qi] - 1L))
-      mid_wx <- fac * (pref(cum_wx, seg, hi[qi] - 1L) - pref(cum_wx, seg, lo_v[qi] - 1L))
+      er <- ent_rng(seg, lo_v[qi], hi[qi] - 1L)
+      mid_w <- fac * .twa_tree_sum(tree_w, er$l, er$r)
+      mid_wx <- fac * .twa_tree_sum(tree_wx, er$l, er$r)
       mid_w[!has_mid] <- 0
       mid_wx[!has_mid] <- 0
       sw <- mid_w + wa * cell_sum("nonna", ia, ta) + wh * cell_sum("nonna", ih, th)
@@ -636,6 +639,40 @@ expand_focal_dates <- function(start, end, by = "day") {
     return(NULL)
   }
   do.call(rbind, out)
+}
+
+#' Segment tree of partial sums over a vector (level 0 is the vector itself)
+#' @keywords internal
+.twa_tree <- function(v) {
+  lv <- list(v)
+  while (length(x <- lv[[length(lv)]]) > 1L) {
+    if (length(x) %% 2L) x <- c(x, 0)
+    lv[[length(lv) + 1L]] <- x[c(TRUE, FALSE)] + x[c(FALSE, TRUE)]
+  }
+  lv
+}
+
+#' Sums over the half-open 0-based ranges `[l, r)` of a [.twa_tree()]
+#'
+#' Adds only aligned nodes lying wholly inside each range, so no term outside
+#' the range is ever added or subtracted.
+#' @keywords internal
+.twa_tree_sum <- function(tree, l, r) {
+  res <- numeric(length(l))
+  for (lv in seq_along(tree)) {
+    act <- l < r
+    if (!any(act)) break
+    t <- tree[[lv]]
+    m <- act & (l %% 2L == 1L)
+    res[m] <- res[m] + t[l[m] + 1L]
+    l[m] <- l[m] + 1L
+    m <- act & (r %% 2L == 1L)
+    r[m] <- r[m] - 1L
+    res[m] <- res[m] + t[r[m] + 1L]
+    l <- l %/% 2L
+    r <- r %/% 2L
+  }
+  res
 }
 
 #' Duration-weighted 90th percentile for a set of (focal date x series) windows
