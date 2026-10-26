@@ -392,8 +392,17 @@
 ## on the full record and the chronic windows run off the start of the daily
 ## series.  Returns the chronic frame plus the daily (mspaf_daily point-mode)
 ## frame and its per-analyte PAF breakdown.
-.pf_pipeline_case <- function() {
+##
+## `reference` (default NULL = the scenario's reference) replaces the reference
+## frame everywhere the pipeline reads it (the imputation/reference fits and the
+## static-ARA daily_args$reference); used by test-mspaf-robust.R to rerun the
+## golden case on a row-shuffled copy of the same reference.
+.pf_pipeline_case <- function(reference = NULL) {
   args <- .pf_pipeline_args()
+  if (!is.null(reference)) {
+    args$reference <- reference
+    args$daily_args$reference <- reference
+  }
   args$daily_args$start <- as.Date("2023-06-01")
   args$daily_args$end   <- as.Date("2023-12-12")
   # The external temperature series deliberately extends beyond the daily grid
