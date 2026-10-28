@@ -1,5 +1,17 @@
 # hydroSense (development)
 
+## Total msPAF alongside ARA msPAF from one run
+
+* **New `also_total = FALSE` on `mspaf_daily()` and `mspaf_pipeline()`.** In
+  point mode, `TRUE` adds the total-concentration (no ARA background
+  subtraction) msPAF next to the ARA one without refitting anything: the
+  static `reference` only enters at `add_mspaf()`, so `mspaf_daily()` makes a
+  second `add_mspaf(reference = NULL)` pass over the same synthetic daily
+  chemistry and returns it as `mspaf_total`, and `mspaf_pipeline()`
+  aggregates that series as it does the ARA one and returns `value_total`.
+  With no reference the total equals the ARA value. Draws mode is not
+  supported (error class `hydroSense_also_total_draws`).
+
 ## Explicit inputs, trailing LMF calibration, optional brms (breaking)
 
 * **`add_lmf()` takes explicit end-member data.** `leachate_data` and
