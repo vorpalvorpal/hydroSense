@@ -35,7 +35,8 @@ mspaf_pipeline(
   window = NULL,
   chronic_summary = "arith_mean",
   also_total = FALSE,
-  ara = c("static", "contemporaneous", "none")
+  ara = c("static", "contemporaneous", "none"),
+  contributions = FALSE
 )
 ```
 
@@ -203,6 +204,26 @@ mspaf_pipeline(
   versions: static ARA if `daily_args$reference` is given, otherwise
   none. Conflicting combinations are errors raised before any model is
   fitted.
+
+- contributions:
+
+  Logical (default `FALSE`). Point mode only. When `TRUE`, the result
+  carries attribute `"contributions"`: the chronic msPAF apportioned to
+  analytes and mode-of-action groups, with columns `site_id`,
+  `focal_date`, `analyte`, `group` and `contribution` (%). Each
+  analyte's daily contribution series (from
+  [`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md);
+  zero on days it did not enter the msPAF) is aggregated with the same
+  time weights, window and rows as the chronic `value`, so the
+  contributions sum to `value` for every (site, focal date). With
+  `also_total = TRUE` a `variant` column (`"ara"` / `"total"`)
+  distinguishes the contributions to `value` and `value_total`. Requires
+  `chronic_summary = "arith_mean"` (the only additive aggregation) when
+  `chronic = TRUE`. An error of class `hydroSense_contributions_draws`
+  in draws mode (`daily_args$ndraws` set). With `chronic = FALSE` the
+  daily breakdown from
+  [`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)
+  is attached to the daily result instead.
 
 ## Value
 

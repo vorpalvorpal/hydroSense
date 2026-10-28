@@ -83,7 +83,8 @@ analysis, visualisation, and downstream <code><a href="time_weighted_aggregate.h
 <span>  couple_residuals <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  gap_uncertainty <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"bracket"</span>, <span class="st">"ignorable"</span>, <span class="st">"informative"</span><span class="op">)</span>,</span>
 <span>  transform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"pseudo_log"</span>, <span class="st">"additive"</span><span class="op">)</span>,</span>
-<span>  also_total <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>  also_total <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  contributions <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -316,6 +317,19 @@ background subtraction) from a second <code><a href="add_mspaf.html">add_mspaf()
 ARA <code>mspaf</code>. Nothing is refitted or re-predicted, so it costs one extra
 toxicity pass. With <code>reference = NULL</code>, <code>mspaf_total</code> is a copy of
 <code>mspaf</code>. An error in draws mode (<code>ndraws</code> set).</p></dd>
+
+
+<dt id="arg-contributions">contributions<a class="anchor" aria-label="anchor" href="#arg-contributions"></a></dt>
+<dd><p>Logical (default <code>FALSE</code>). Point mode only. When
+<code>TRUE</code>, the result carries attribute <code>"contributions"</code>: the daily
+per-analyte and per-group breakdown of the returned <code>mspaf</code>, from
+<code><a href="add_mspaf.html">add_mspaf()</a></code>'s <code>contributions</code> (same apportioning rule), keyed by
+<code>site_id</code> and <code>date</code> with columns <code>analyte</code>, <code>group</code>, <code>c_adj</code>, <code>tu</code>,
+<code>paf</code>, <code>group_mspaf</code> and <code>contribution</code> (%). Contributions sum to <code>mspaf</code>
+for each (site, day). With <code>also_total = TRUE</code> the table gains a
+<code>variant</code> column (<code>"ara"</code> / <code>"total"</code>; the latter sums to <code>mspaf_total</code>).
+An error of class <code>hydroSense_contributions_draws</code> in draws mode
+(<code>ndraws</code> set).</p></dd>
 
 </dl></div>
     <div class="section level2">

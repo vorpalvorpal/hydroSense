@@ -25,7 +25,8 @@ add_mspaf(
   window_units = "day",
   return = c("summary", "draws"),
   interval = 0.9,
-  central = c("median", "mean")
+  central = c("median", "mean"),
+  contributions = FALSE
 )
 ```
 
@@ -160,6 +161,22 @@ add_mspaf(
 
   Central-tendency statistic when `return = "summary"`: `"median"`
   (default) or `"mean"`.
+
+- contributions:
+
+  Logical (default `FALSE`). When `TRUE`, the result carries an extra
+  attribute `"contributions"`: a long table apportioning each sample's
+  msPAF to mode-of-action groups and to analytes, so that the
+  contributions sum exactly to the msPAF. Within each group `g` the
+  group PAF `p_g` is clamped to at most `1 - 1e-12`,
+  `L_g = -log(1 - p_g)`, and the group contribution is
+  `msPAF * L_g / sum(L)`; each analyte then takes its share of its group
+  in proportion to its toxic units (`TU`). Columns: `sample_id`,
+  `site_id`, `datetime` (when the input has it), `analyte`, `group`,
+  `c_adj`, `tu`, `paf` (single-analyte PAF, %), `group_mspaf` (%) and
+  `contribution` (%). Point mode only: an error of class
+  `hydroSense_contributions_draws` for draw-carrier input. The default
+  leaves every output unchanged.
 
 ## Value
 

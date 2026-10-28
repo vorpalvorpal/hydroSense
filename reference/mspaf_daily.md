@@ -39,7 +39,8 @@ mspaf_daily(
   couple_residuals = TRUE,
   gap_uncertainty = c("bracket", "ignorable", "informative"),
   transform = c("pseudo_log", "additive"),
-  also_total = FALSE
+  also_total = FALSE,
+  contributions = FALSE
 )
 ```
 
@@ -293,6 +294,20 @@ mspaf_daily(
   alongside the ARA `mspaf`. Nothing is refitted or re-predicted, so it
   costs one extra toxicity pass. With `reference = NULL`, `mspaf_total`
   is a copy of `mspaf`. An error in draws mode (`ndraws` set).
+
+- contributions:
+
+  Logical (default `FALSE`). Point mode only. When `TRUE`, the result
+  carries attribute `"contributions"`: the daily per-analyte and
+  per-group breakdown of the returned `mspaf`, from
+  [`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)'s
+  `contributions` (same apportioning rule), keyed by `site_id` and
+  `date` with columns `analyte`, `group`, `c_adj`, `tu`, `paf`,
+  `group_mspaf` and `contribution` (%). Contributions sum to `mspaf` for
+  each (site, day). With `also_total = TRUE` the table gains a `variant`
+  column (`"ara"` / `"total"`; the latter sums to `mspaf_total`). An
+  error of class `hydroSense_contributions_draws` in draws mode
+  (`ndraws` set).
 
 ## Value
 

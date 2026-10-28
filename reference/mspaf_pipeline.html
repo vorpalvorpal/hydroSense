@@ -84,7 +84,8 @@ entirely-absent analytes are filled before the toxicity calculation.</p>
 <span>  window <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  chronic_summary <span class="op">=</span> <span class="st">"arith_mean"</span>,</span>
 <span>  also_total <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  ara <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"static"</span>, <span class="st">"contemporaneous"</span>, <span class="st">"none"</span><span class="op">)</span></span>
+<span>  ara <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"static"</span>, <span class="st">"contemporaneous"</span>, <span class="st">"none"</span><span class="op">)</span>,</span>
+<span>  contributions <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -222,6 +223,23 @@ is fitted once and reused. <code>daily_args$reference</code> must not be given.<
 <p>When <code>ara</code> is not supplied the behaviour is unchanged from earlier
 versions: static ARA if <code>daily_args$reference</code> is given, otherwise none.
 Conflicting combinations are errors raised before any model is fitted.</p></dd>
+
+
+<dt id="arg-contributions">contributions<a class="anchor" aria-label="anchor" href="#arg-contributions"></a></dt>
+<dd><p>Logical (default <code>FALSE</code>). Point mode only. When
+<code>TRUE</code>, the result carries attribute <code>"contributions"</code>: the chronic msPAF
+apportioned to analytes and mode-of-action groups, with columns
+<code>site_id</code>, <code>focal_date</code>, <code>analyte</code>, <code>group</code> and <code>contribution</code> (%).
+Each analyte's daily contribution series (from <code><a href="mspaf_daily.html">mspaf_daily()</a></code>; zero on
+days it did not enter the msPAF) is aggregated with the same time weights,
+window and rows as the chronic <code>value</code>, so the contributions sum to
+<code>value</code> for every (site, focal date). With <code>also_total = TRUE</code> a
+<code>variant</code> column (<code>"ara"</code> / <code>"total"</code>) distinguishes the contributions to
+<code>value</code> and <code>value_total</code>. Requires <code>chronic_summary = "arith_mean"</code> (the
+only additive aggregation) when <code>chronic = TRUE</code>. An error of class
+<code>hydroSense_contributions_draws</code> in draws mode (<code>daily_args$ndraws</code> set).
+With <code>chronic = FALSE</code> the daily breakdown from <code><a href="mspaf_daily.html">mspaf_daily()</a></code> is
+attached to the daily result instead.</p></dd>
 
 </dl></div>
     <div class="section level2">
