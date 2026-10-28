@@ -10,6 +10,22 @@
 #' @importFrom rlang .data .env :=
 NULL
 
+# mgcv must be LOADED whenever hydroSense is.  The package stores fitted
+# mgcv::gam objects (reference_model$models[[.]]$gamm_fit, target-model
+# wq_fit / impact_fit, imputation-model GAMs) and calls the stats generics on
+# them -- stats::predict(), stats::AIC(), stats::vcov() and so on.  Those
+# dispatch to predict.gam / logLik.gam / vcov.gam only when the mgcv namespace
+# is loaded, because only then are mgcv's S3 methods registered.  A gam object
+# also inherits from "glm" and "lm", so without mgcv loaded the generics fall
+# through to the glm/lm methods: predict() errors ("lm object does not have a
+# proper 'qr' component") and a fallback catches the error; AIC() and vcov()
+# silently return glm answers.  A `mgcv::` call loads mgcv only when it runs,
+# and a fresh R session -- a future::multisession worker, or a session that
+# reads a saved model -- can predict on a shipped or saved model before any
+# such call.  Importing one mgcv function makes loading hydroSense load mgcv.
+#' @importFrom mgcv gam
+NULL
+
 # testthat can only mock a binding that exists in the package namespace. brms
 # is an optional dependency (Suggests), and the specs that exercise its absence
 # mock requireNamespace() through this placeholder, as documented in
