@@ -13,7 +13,8 @@
   tau_bounds_long,
   auto_select,
   min_obs_model,
-  eps
+  eps,
+  api_cache = NULL
 )
 }
 \value{
