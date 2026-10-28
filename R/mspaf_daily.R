@@ -1458,6 +1458,11 @@ mspaf_daily <- function(
 
   modelled <- names(tm$models)
 
+  ## API cache over the daily grid for the fitted hydro series: pooled analytes
+  ## share one tau pair, so the smoothers' hydro z-scores and the static
+  ## features below evaluate the API once per tau.
+  api_cache <- .api_cache_new(tm$hydro, tm$hydro_type, qdates)
+
   ## Reference norm over the daily grid — static across draws (ARA cancels it),
   ## so resolve it ONCE here and reuse for the centre line and every draw,
   ## rather than re-evaluating the reference GAM per draw.  mspaf_daily()
@@ -1562,7 +1567,7 @@ mspaf_daily <- function(
       ## Centre smoother (r -> 0): posterior mean = deterministic centre line.
       sm_c <- .analyte_residual_smoother(m, tm, qdates,
         kappa = kappa,
-        scale = a_scale, r_vec = NULL
+        scale = a_scale, r_vec = NULL, api_cache = api_cache
       )
       if (is.null(sm_c)) {
         return(empty)
@@ -1621,7 +1626,7 @@ mspaf_daily <- function(
           }
           sm_d <- .analyte_residual_smoother(m, tm, qdates,
             kappa = kappa,
-            scale = a_scale, r_vec = r_vec
+            scale = a_scale, r_vec = r_vec, api_cache = api_cache
           )
           if (!is.null(sm_d) && !is.null(sm_d$model)) draw_model <- sm_d$model
         }
@@ -1676,10 +1681,7 @@ mspaf_daily <- function(
 
   static <- stats::setNames(lapply(modelled, function(nm) {
     m <- tm$models[[nm]]
-    feats <- .compute_hydro_features(
-      tm$hydro, qdates, m$tau_short,
-      m$tau_long, tm$hydro_type
-    )
+    feats <- .api_cache_features(api_cache, qdates, m$tau_short, m$tau_long)
     ref_lk <- stats::setNames(
       ref_q$ref_norm[ref_q$analyte == nm],
       as.character(ref_q$date[ref_q$analyte == nm])
