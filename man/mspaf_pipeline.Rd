@@ -22,7 +22,8 @@ mspaf_pipeline(
   window = NULL,
   chronic_summary = "arith_mean",
   also_total = FALSE,
-  ara = c("static", "contemporaneous", "none")
+  ara = c("static", "contemporaneous", "none"),
+  contributions = FALSE
 )
 }
 \arguments{
@@ -128,6 +129,21 @@ With \code{reference = NULL}, \code{"contemporaneous"} (and \code{"static"} with
 When \code{ara} is not supplied the behaviour is unchanged from earlier
 versions: static ARA if \code{daily_args$reference} is given, otherwise none.
 Conflicting combinations are errors raised before any model is fitted.}
+
+\item{contributions}{Logical (default \code{FALSE}). Point mode only. When
+\code{TRUE}, the result carries attribute \code{"contributions"}: the chronic msPAF
+apportioned to analytes and mode-of-action groups, with columns
+\code{site_id}, \code{focal_date}, \code{analyte}, \code{group} and \code{contribution} (\%).
+Each analyte's daily contribution series (from \code{\link[=mspaf_daily]{mspaf_daily()}}; zero on
+days it did not enter the msPAF) is aggregated with the same time weights,
+window and rows as the chronic \code{value}, so the contributions sum to
+\code{value} for every (site, focal date). With \code{also_total = TRUE} a
+\code{variant} column (\code{"ara"} / \code{"total"}) distinguishes the contributions to
+\code{value} and \code{value_total}. Requires \code{chronic_summary = "arith_mean"} (the
+only additive aggregation) when \code{chronic = TRUE}. An error of class
+\code{hydroSense_contributions_draws} in draws mode (\code{daily_args$ndraws} set).
+With \code{chronic = FALSE} the daily breakdown from \code{\link[=mspaf_daily]{mspaf_daily()}} is
+attached to the daily result instead.}
 }
 \value{
 When \code{chronic = TRUE} (default), the chronic msPAF frame, one row per

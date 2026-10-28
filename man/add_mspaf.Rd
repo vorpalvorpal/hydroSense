@@ -20,7 +20,8 @@ add_mspaf(
   window_units = "day",
   return = c("summary", "draws"),
   interval = 0.9,
-  central = c("median", "mean")
+  central = c("median", "mean"),
+  contributions = FALSE
 )
 }
 \arguments{
@@ -107,6 +108,19 @@ Default \code{0.90} (5th/95th percentile bounds).}
 
 \item{central}{Central-tendency statistic when \code{return = "summary"}:
 \code{"median"} (default) or \code{"mean"}.}
+
+\item{contributions}{Logical (default \code{FALSE}). When \code{TRUE}, the result
+carries an extra attribute \code{"contributions"}: a long table apportioning
+each sample's msPAF to mode-of-action groups and to analytes, so that the
+contributions sum exactly to the msPAF. Within each group \code{g} the group
+PAF \code{p_g} is clamped to at most \code{1 - 1e-12}, \code{L_g = -log(1 - p_g)}, and the
+group contribution is \code{msPAF * L_g / sum(L)}; each analyte then takes its
+share of its group in proportion to its toxic units (\code{TU}). Columns:
+\code{sample_id}, \code{site_id}, \code{datetime} (when the input has it), \code{analyte},
+\code{group}, \code{c_adj}, \code{tu}, \code{paf} (single-analyte PAF, \%), \code{group_mspaf} (\%)
+and \code{contribution} (\%). Point mode only: an error of class
+\code{hydroSense_contributions_draws} for draw-carrier input. The default
+leaves every output unchanged.}
 }
 \value{
 The input \code{df} with msPAF rows appended. Each msPAF row carries:
