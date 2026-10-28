@@ -16,7 +16,8 @@ residual `S = I - fitted` as the bridge-interpolation state.
   tau_bounds_long,
   auto_select,
   min_obs_model,
-  eps
+  eps,
+  api_cache = NULL
 )
 ```
 
