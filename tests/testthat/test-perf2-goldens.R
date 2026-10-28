@@ -192,6 +192,9 @@ describe(".pivot_chem_wide() golden", {
 })
 
 describe(".compute_pca_scores() golden", {
+  ## The fixture PCA is fitted by iterative nipals, whose convergence moves
+  ## ~0.5% across platforms/BLAS; .pivot_chem_wide() is checked portably above.
+  .pf_skip_unless_golden_platform()
   .pf2_check_set(.pf2_read_golden("pca_scores"), .pf2_pca_cases(),
                  ".compute_pca_scores()")
 })

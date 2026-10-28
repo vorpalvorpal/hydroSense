@@ -1261,7 +1261,8 @@ mspaf_daily <- function(
   out_meas <- exact
 
   tibble::tibble(
-    .date     = target_dates[out_keep],
+    .date     = structure(as.numeric(unclass(target_dates))[out_keep],
+                          class = "Date"),
     value     = out_val[out_keep],
     detected  = out_det[out_keep],
     .measured = out_meas[out_keep]
