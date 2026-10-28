@@ -79,12 +79,20 @@
 #' @param chronic_summary Aggregation method for the chronic step, passed to
 #'   [time_weighted_aggregate()]'s `summary`. Default `"arith_mean"` (the
 #'   recommended aggregation for bounded msPAF percentages).
+#' @param also_total Logical (default `FALSE`). Point mode only. Passed to
+#'   [mspaf_daily()], which adds a total-concentration (no ARA) `mspaf_total`
+#'   daily series alongside the ARA one; the chronic step aggregates it exactly
+#'   as it aggregates `mspaf` and returns it as `value_total`. The static ARA
+#'   reference is `daily_args$reference` (the `reference` argument here is the
+#'   reference-model fit data); without it `value_total` equals `value`. An
+#'   error in draws mode (`daily_args$ndraws` set).
 #'
 #' @return When `chronic = TRUE` (default), the chronic msPAF frame, one row per
 #'   (focal date × site):
 #'   - **point mode** (`ndraws` absent): columns `focal_date`, `site_id`,
 #'     `sample_id`, `analyte`, `value`, `detected`, `n_samples_in_window`,
-#'     `n_imputed_in_window` (a single chronic `value`, no interval columns).
+#'     `n_imputed_in_window` (a single chronic `value`, no interval columns),
+#'     plus `value_total` when `also_total = TRUE`.
 #'   - **draws mode** (`ndraws` set): columns `focal_date`, `site_id` plus the
 #'     bracket envelope summary (`median_*`/`lo_*`/`hi_*` per envelope, and
 #'     `precautionary_lo`/`precautionary_hi` in `"bracket"` mode).
@@ -122,7 +130,8 @@ mspaf_pipeline <- function(target,
                            focal_by = "day",
                            tau = NULL,
                            window = NULL,
-                           chronic_summary = "arith_mean") {
+                           chronic_summary = "arith_mean",
+                           also_total = FALSE) {
   checkmate::assert_data_frame(target)
   checkmate::assert_data_frame(reference)
   checkmate::assert_flag(impute)
@@ -131,6 +140,14 @@ mspaf_pipeline <- function(target,
   checkmate::assert_list(daily_args)
   checkmate::assert_flag(chronic)
   checkmate::assert_string(chronic_summary)
+  checkmate::assert_flag(also_total)
+  # Fail before any model is fitted rather than inside mspaf_daily().
+  if (also_total && !is.null(daily_args$ndraws)) {
+    cli::cli_abort(c(
+      "{.code also_total = TRUE} is supported in point mode only.",
+      "i" = "Drop {.code daily_args$ndraws}."
+    ), class = "hydroSense_also_total_draws")
+  }
 
   # Accept sampleTidy's analyte names and `units` column.
   target    <- .canonicalise_mspaf_input(target)
@@ -168,6 +185,7 @@ mspaf_pipeline <- function(target,
   # When chronic && draws_mode, force per-draw rows so they can be propagated
   # into the chronic summary; otherwise honour daily_call$return.
   if (chronic && draws_mode) daily_call$return <- "draws"
+  if (also_total) daily_call$also_total <- TRUE
   daily <- do.call(
     mspaf_daily,
     c(
@@ -199,7 +217,8 @@ mspaf_pipeline <- function(target,
     window          = window,
     chronic_summary = chronic_summary,
     interval        = interval,
-    central         = central
+    central         = central,
+    also_total      = also_total
   )
 
   attr(out, "daily")            <- daily
@@ -216,12 +235,14 @@ mspaf_pipeline <- function(target,
 #' [time_weighted_aggregate()] requires, then aggregates. In point mode the daily
 #' `mspaf` line is smeared into a single chronic value per (focal date × site);
 #' in draws mode each envelope column (`mspaf_ignorable` / `mspaf_informative`)
-#' is propagated per draw and collapsed with [.summarise_bracket()].
+#' is propagated per draw and collapsed with [.summarise_bracket()]. With
+#' `also_total` (point mode) the daily `mspaf_total` line is aggregated the
+#' same way and joined as `value_total`.
 #'
 #' @keywords internal
 .chronic_from_daily <- function(daily, draws_mode, gap_uncertainty, focal,
                                 tau, window, chronic_summary, interval,
-                                central) {
+                                central, also_total = FALSE) {
   # Reshape a daily frame to the long msPAF schema, taking the value from
   # `value_col` and carrying `draw_id` when present.
   to_long <- function(value_col) {
@@ -238,17 +259,27 @@ mspaf_pipeline <- function(target,
   }
 
   if (!draws_mode) {
-    long <- to_long("mspaf")
-    return(time_weighted_aggregate(
-      long,
-      focal_dates  = focal,
-      tau          = tau,
-      tau_units    = "d",
-      window       = window,
-      window_units = "d",
-      summary      = chronic_summary,
-      return       = "summary"
-    ))
+    point_agg <- function(value_col) {
+      time_weighted_aggregate(
+        to_long(value_col),
+        focal_dates  = focal,
+        tau          = tau,
+        tau_units    = "d",
+        window       = window,
+        window_units = "d",
+        summary      = chronic_summary,
+        return       = "summary"
+      )
+    }
+    out <- point_agg("mspaf")
+    if (also_total) {
+      tot <- dplyr::select(point_agg("mspaf_total"),
+        "focal_date", "site_id", value_total = "value"
+      )
+      out <- dplyr::left_join(out, tot, by = c("focal_date", "site_id"))
+      out <- dplyr::relocate(out, "value_total", .after = "value")
+    }
+    return(out)
   }
 
   # Draws mode: aggregate each present envelope's draws, then bracket-summarise.

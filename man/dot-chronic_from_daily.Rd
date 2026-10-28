@@ -13,7 +13,8 @@
   window,
   chronic_summary,
   interval,
-  central
+  central,
+  also_total = FALSE
 )
 }
 \description{
@@ -21,6 +22,8 @@ Reshapes the \code{\link[=mspaf_daily]{mspaf_daily()}} output into the long \cod
 \code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}} requires, then aggregates. In point mode the daily
 \code{mspaf} line is smeared into a single chronic value per (focal date × site);
 in draws mode each envelope column (\code{mspaf_ignorable} / \code{mspaf_informative})
-is propagated per draw and collapsed with \code{\link[=.summarise_bracket]{.summarise_bracket()}}.
+is propagated per draw and collapsed with \code{\link[=.summarise_bracket]{.summarise_bracket()}}. With
+\code{also_total} (point mode) the daily \code{mspaf_total} line is aggregated the
+same way and joined as \code{value_total}.
 }
 \keyword{internal}

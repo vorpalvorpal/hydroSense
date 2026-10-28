@@ -20,7 +20,8 @@ mspaf_pipeline(
   focal_by = "day",
   tau = NULL,
   window = NULL,
-  chronic_summary = "arith_mean"
+  chronic_summary = "arith_mean",
+  also_total = FALSE
 )
 }
 \arguments{
@@ -89,6 +90,14 @@ days.}
 \item{chronic_summary}{Aggregation method for the chronic step, passed to
 \code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}'s \code{summary}. Default \code{"arith_mean"} (the
 recommended aggregation for bounded msPAF percentages).}
+
+\item{also_total}{Logical (default \code{FALSE}). Point mode only. Passed to
+\code{\link[=mspaf_daily]{mspaf_daily()}}, which adds a total-concentration (no ARA) \code{mspaf_total}
+daily series alongside the ARA one; the chronic step aggregates it exactly
+as it aggregates \code{mspaf} and returns it as \code{value_total}. The static ARA
+reference is \code{daily_args$reference} (the \code{reference} argument here is the
+reference-model fit data); without it \code{value_total} equals \code{value}. An
+error in draws mode (\code{daily_args$ndraws} set).}
 }
 \value{
 When \code{chronic = TRUE} (default), the chronic msPAF frame, one row per
@@ -96,7 +105,8 @@ When \code{chronic = TRUE} (default), the chronic msPAF frame, one row per
 \itemize{
 \item \strong{point mode} (\code{ndraws} absent): columns \code{focal_date}, \code{site_id},
 \code{sample_id}, \code{analyte}, \code{value}, \code{detected}, \code{n_samples_in_window},
-\code{n_imputed_in_window} (a single chronic \code{value}, no interval columns).
+\code{n_imputed_in_window} (a single chronic \code{value}, no interval columns),
+plus \code{value_total} when \code{also_total = TRUE}.
 \item \strong{draws mode} (\code{ndraws} set): columns \code{focal_date}, \code{site_id} plus the
 bracket envelope summary (\verb{median_*}/\verb{lo_*}/\verb{hi_*} per envelope, and
 \code{precautionary_lo}/\code{precautionary_hi} in \code{"bracket"} mode).
