@@ -1386,35 +1386,61 @@ impute_coanalytes <- function(
 #' are treated as fully detected — no halving.
 #' @keywords internal
 .pivot_chem_wide <- function(df, wq_vars, no_log_vars) {
-  if (!"detected" %in% names(df)) df$detected <- TRUE
-  df |>
-    dplyr::filter(.data$analyte %in% .env$wq_vars) |>
-    dplyr::select("sample_id", "analyte", "value", "detected") |>
-    # A below-detection concentration cell carries no trustworthy quantitative
-    # value for the predictor PCA. Rather than substitute a magic number (its
-    # detection limit, or DL/2 — the substitution hacks this package exists to
-    # avoid), drop it to NA and let NIPALS score the sample from its observed
-    # predictors (its native missing-cell handling). The interval-scale
-    # no_log_vars (pH, temperature, ORP, DO) are kept as-is when BDL: "below
-    # DL" is a concentration idea, and they are essentially never BDL anyway.
-    # (Quantitatively recovering the "it's low" signal is Route C's job, via a
-    # censored predictor treatment; the honest interim is to omit, not invent.)
-    dplyr::mutate(
-      value = dplyr::if_else(
-        .data$detected | .data$analyte %in% .env$no_log_vars,
-        .data$value, NA_real_
-      )
-    ) |>
-    dplyr::summarise(
-      value = if (dplyr::first(.data$analyte) %in% .env$no_log_vars) {
-        mean(.data$value, na.rm = TRUE)
+  keep <- df$analyte %in% wq_vars
+  sid <- df$sample_id[keep]
+  analyte <- df$analyte[keep]
+  value <- as.double(df$value[keep])
+  detected <- if ("detected" %in% names(df)) df$detected[keep] else TRUE
+
+  # A below-detection concentration cell carries no trustworthy quantitative
+  # value for the predictor PCA. Rather than substitute a magic number (its
+  # detection limit, or DL/2 — the substitution hacks this package exists to
+  # avoid), drop it to NA and let NIPALS score the sample from its observed
+  # predictors (its native missing-cell handling). The interval-scale
+  # no_log_vars (pH, temperature, ORP, DO) are kept as-is when BDL: "below
+  # DL" is a concentration idea, and they are essentially never BDL anyway.
+  # (Quantitatively recovering the "it's low" signal is Route C's job, via a
+  # censored predictor treatment; the honest interim is to omit, not invent.)
+  no_log <- analyte %in% no_log_vars
+  use <- detected | no_log
+  value[is.na(use) | !use] <- NA_real_
+
+  # One cell per (sample_id, analyte); rows and columns in order of first
+  # appearance (as pivot_wider() of a `.by` summary orders them).
+  sid_u <- unique(sid)
+  an_u <- unique(analyte)
+  row_i <- match(sid, sid_u)
+  col_j <- match(analyte, an_u)
+  cell <- (row_i - 1L) * length(an_u) + col_j
+
+  # Collapse to one value per cell: arithmetic mean for no_log_vars, geometric
+  # mean otherwise. A single-row cell is its own mean, so only the duplicated
+  # cells call mean() (in their input row order, as the grouped summary did).
+  collapsed <- value
+  collapsed[!no_log] <- exp(log(pmax(value[!no_log], .Machine$double.eps)))
+  dup <- duplicated(cell) | duplicated(cell, fromLast = TRUE)
+  if (any(dup)) {
+    dup_rows <- split(which(dup), cell[dup])
+    first <- vapply(dup_rows, `[`, integer(1), 1L)
+    collapsed[first] <- vapply(dup_rows, function(r) {
+      if (no_log[r[1L]]) {
+        mean(value[r], na.rm = TRUE)
       } else {
-        exp(mean(log(pmax(.data$value, .Machine$double.eps)), na.rm = TRUE))
-      },
-      .by = c("sample_id", "analyte")
-    ) |>
-    dplyr::mutate(value = dplyr::if_else(is.nan(.data$value), NA_real_, .data$value)) |>
-    tidyr::pivot_wider(names_from = "analyte", values_from = "value")
+        exp(mean(log(pmax(value[r], .Machine$double.eps)), na.rm = TRUE))
+      }
+    }, numeric(1))
+  }
+  # An all-NA cell collapses to NaN; it reaches NIPALS as missing.
+  collapsed[is.nan(collapsed)] <- NA_real_
+
+  wide <- matrix(NA_real_, nrow = length(sid_u), ncol = length(an_u))
+  first_row <- !duplicated(cell)
+  wide[cbind(row_i, col_j)[first_row, , drop = FALSE]] <- collapsed[first_row]
+  cols <- stats::setNames(
+    lapply(seq_along(an_u), function(j) wide[, j]),
+    an_u
+  )
+  tibble::new_tibble(c(list(sample_id = sid_u), cols), nrow = length(sid_u))
 }
 
 #' Fit the unified chemistry PCA on training data
