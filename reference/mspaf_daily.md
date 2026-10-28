@@ -38,7 +38,8 @@ mspaf_daily(
   parallel = FALSE,
   couple_residuals = TRUE,
   gap_uncertainty = c("bracket", "ignorable", "informative"),
-  transform = c("pseudo_log", "additive")
+  transform = c("pseudo_log", "additive"),
+  also_total = FALSE
 )
 ```
 
@@ -282,11 +283,24 @@ mspaf_daily(
   [`fit_target_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_target_model.md);
   ignored unless `interpolation = "model"`.
 
+- also_total:
+
+  Logical (default `FALSE`). Point mode only. When `TRUE`, adds a column
+  `mspaf_total`: the **total**-concentration msPAF (no ARA background
+  subtraction) from a second
+  [`add_mspaf()`](https://vorpalvorpal.github.io/hydroSense/reference/add_mspaf.md)
+  pass with `reference = NULL` over the same synthetic daily chemistry,
+  alongside the ARA `mspaf`. Nothing is refitted or re-predicted, so it
+  costs one extra toxicity pass. With `reference = NULL`, `mspaf_total`
+  is a copy of `mspaf`. An error in draws mode (`ndraws` set).
+
 ## Value
 
 **Point mode** (`ndraws = NULL`): a tibble with one row per (site
 \\\times\\ day) for days with sufficient analyte coverage; `mspaf` is
-the deterministic daily estimate.
+the deterministic daily estimate. With `also_total = TRUE`, a
+`mspaf_total` column (total-concentration msPAF, no ARA) follows
+`mspaf`.
 
 **Draws mode** (`ndraws > 0`, `return = "summary"`): one row per (site
 \\\times\\ day) with the `deterministic` centre line and the envelope

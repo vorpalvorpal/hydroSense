@@ -9,6 +9,8 @@ smeared into a single chronic value per (focal date × site); in draws
 mode each envelope column (`mspaf_ignorable` / `mspaf_informative`) is
 propagated per draw and collapsed with
 [`.summarise_bracket()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-summarise_bracket.md).
+With `also_total` (point mode) the daily `mspaf_total` line is
+aggregated the same way and joined as `value_total`.
 
 ## Usage
 
@@ -22,6 +24,7 @@ propagated per draw and collapsed with
   window,
   chronic_summary,
   interval,
-  central
+  central,
+  also_total = FALSE
 )
 ```

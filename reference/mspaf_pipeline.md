@@ -33,7 +33,8 @@ mspaf_pipeline(
   focal_by = "day",
   tau = NULL,
   window = NULL,
-  chronic_summary = "arith_mean"
+  chronic_summary = "arith_mean",
+  also_total = FALSE
 )
 ```
 
@@ -152,6 +153,17 @@ mspaf_pipeline(
   `summary`. Default `"arith_mean"` (the recommended aggregation for
   bounded msPAF percentages).
 
+- also_total:
+
+  Logical (default `FALSE`). Point mode only. Passed to
+  [`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md),
+  which adds a total-concentration (no ARA) `mspaf_total` daily series
+  alongside the ARA one; the chronic step aggregates it exactly as it
+  aggregates `mspaf` and returns it as `value_total`. The static ARA
+  reference is `daily_args$reference` (the `reference` argument here is
+  the reference-model fit data); without it `value_total` equals
+  `value`. An error in draws mode (`daily_args$ndraws` set).
+
 ## Value
 
 When `chronic = TRUE` (default), the chronic msPAF frame, one row per
@@ -159,7 +171,8 @@ When `chronic = TRUE` (default), the chronic msPAF frame, one row per
 
 - **point mode** (`ndraws` absent): columns `focal_date`, `site_id`,
   `sample_id`, `analyte`, `value`, `detected`, `n_samples_in_window`,
-  `n_imputed_in_window` (a single chronic `value`, no interval columns).
+  `n_imputed_in_window` (a single chronic `value`, no interval columns),
+  plus `value_total` when `also_total = TRUE`.
 
 - **draws mode** (`ndraws` set): columns `focal_date`, `site_id` plus
   the bracket envelope summary (`median_*`/`lo_*`/`hi_*` per envelope,

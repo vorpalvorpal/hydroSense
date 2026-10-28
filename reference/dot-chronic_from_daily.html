@@ -3,11 +3,15 @@
 time_weighted_aggregate() requires, then aggregates. In point mode the daily
 mspaf line is smeared into a single chronic value per (focal date × site);
 in draws mode each envelope column (mspaf_ignorable / mspaf_informative)
-is propagated per draw and collapsed with .summarise_bracket().'><meta property="og:description" content='Reshapes the mspaf_daily() output into the long analyte = "msPAF" schema
+is propagated per draw and collapsed with .summarise_bracket(). With
+also_total (point mode) the daily mspaf_total line is aggregated the
+same way and joined as value_total.'><meta property="og:description" content='Reshapes the mspaf_daily() output into the long analyte = "msPAF" schema
 time_weighted_aggregate() requires, then aggregates. In point mode the daily
 mspaf line is smeared into a single chronic value per (focal date × site);
 in draws mode each envelope column (mspaf_ignorable / mspaf_informative)
-is propagated per draw and collapsed with .summarise_bracket().'></head><body>
+is propagated per draw and collapsed with .summarise_bracket(). With
+also_total (point mode) the daily mspaf_total line is aggregated the
+same way and joined as value_total.'></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -52,7 +56,9 @@ is propagated per draw and collapsed with .summarise_bracket().'></head><body>
 <code><a href="time_weighted_aggregate.html">time_weighted_aggregate()</a></code> requires, then aggregates. In point mode the daily
 <code>mspaf</code> line is smeared into a single chronic value per (focal date × site);
 in draws mode each envelope column (<code>mspaf_ignorable</code> / <code>mspaf_informative</code>)
-is propagated per draw and collapsed with <code><a href="dot-summarise_bracket.html">.summarise_bracket()</a></code>.</p>
+is propagated per draw and collapsed with <code><a href="dot-summarise_bracket.html">.summarise_bracket()</a></code>. With
+<code>also_total</code> (point mode) the daily <code>mspaf_total</code> line is aggregated the
+same way and joined as <code>value_total</code>.</p>
     </div>
 
     <div class="section level2">
@@ -66,7 +72,8 @@ is propagated per draw and collapsed with <code><a href="dot-summarise_bracket.h
 <span>  <span class="va">window</span>,</span>
 <span>  <span class="va">chronic_summary</span>,</span>
 <span>  <span class="va">interval</span>,</span>
-<span>  <span class="va">central</span></span>
+<span>  <span class="va">central</span>,</span>
+<span>  also_total <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 

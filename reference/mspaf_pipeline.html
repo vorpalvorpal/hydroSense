@@ -82,7 +82,8 @@ entirely-absent analytes are filled before the toxicity calculation.</p>
 <span>  focal_by <span class="op">=</span> <span class="st">"day"</span>,</span>
 <span>  tau <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  window <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  chronic_summary <span class="op">=</span> <span class="st">"arith_mean"</span></span>
+<span>  chronic_summary <span class="op">=</span> <span class="st">"arith_mean"</span>,</span>
+<span>  also_total <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -185,13 +186,24 @@ days.</p></dd>
 <code><a href="time_weighted_aggregate.html">time_weighted_aggregate()</a></code>'s <code>summary</code>. Default <code>"arith_mean"</code> (the
 recommended aggregation for bounded msPAF percentages).</p></dd>
 
+
+<dt id="arg-also-total">also_total<a class="anchor" aria-label="anchor" href="#arg-also-total"></a></dt>
+<dd><p>Logical (default <code>FALSE</code>). Point mode only. Passed to
+<code><a href="mspaf_daily.html">mspaf_daily()</a></code>, which adds a total-concentration (no ARA) <code>mspaf_total</code>
+daily series alongside the ARA one; the chronic step aggregates it exactly
+as it aggregates <code>mspaf</code> and returns it as <code>value_total</code>. The static ARA
+reference is <code>daily_args$reference</code> (the <code>reference</code> argument here is the
+reference-model fit data); without it <code>value_total</code> equals <code>value</code>. An
+error in draws mode (<code>daily_args$ndraws</code> set).</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>When <code>chronic = TRUE</code> (default), the chronic msPAF frame, one row per
 (focal date × site):</p><ul><li><p><strong>point mode</strong> (<code>ndraws</code> absent): columns <code>focal_date</code>, <code>site_id</code>,
 <code>sample_id</code>, <code>analyte</code>, <code>value</code>, <code>detected</code>, <code>n_samples_in_window</code>,
-<code>n_imputed_in_window</code> (a single chronic <code>value</code>, no interval columns).</p></li>
+<code>n_imputed_in_window</code> (a single chronic <code>value</code>, no interval columns),
+plus <code>value_total</code> when <code>also_total = TRUE</code>.</p></li>
 <li><p><strong>draws mode</strong> (<code>ndraws</code> set): columns <code>focal_date</code>, <code>site_id</code> plus the
 bracket envelope summary (<code>median_*</code>/<code>lo_*</code>/<code>hi_*</code> per envelope, and
 <code>precautionary_lo</code>/<code>precautionary_hi</code> in <code>"bracket"</code> mode).

@@ -82,7 +82,8 @@ analysis, visualisation, and downstream <code><a href="time_weighted_aggregate.h
 <span>  parallel <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  couple_residuals <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  gap_uncertainty <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"bracket"</span>, <span class="st">"ignorable"</span>, <span class="st">"informative"</span><span class="op">)</span>,</span>
-<span>  transform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"pseudo_log"</span>, <span class="st">"additive"</span><span class="op">)</span></span>
+<span>  transform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"pseudo_log"</span>, <span class="st">"additive"</span><span class="op">)</span>,</span>
+<span>  also_total <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -306,12 +307,23 @@ variance-stabilising transform for the daily impact residual smoother.
 Forwarded to <code><a href="fit_target_model.html">fit_target_model()</a></code>; ignored unless
 <code>interpolation = "model"</code>.</p></dd>
 
+
+<dt id="arg-also-total">also_total<a class="anchor" aria-label="anchor" href="#arg-also-total"></a></dt>
+<dd><p>Logical (default <code>FALSE</code>). Point mode only. When <code>TRUE</code>,
+adds a column <code>mspaf_total</code>: the <strong>total</strong>-concentration msPAF (no ARA
+background subtraction) from a second <code><a href="add_mspaf.html">add_mspaf()</a></code> pass with
+<code>reference = NULL</code> over the same synthetic daily chemistry, alongside the
+ARA <code>mspaf</code>. Nothing is refitted or re-predicted, so it costs one extra
+toxicity pass. With <code>reference = NULL</code>, <code>mspaf_total</code> is a copy of
+<code>mspaf</code>. An error in draws mode (<code>ndraws</code> set).</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p><strong>Point mode</strong> (<code>ndraws = NULL</code>): a tibble with one row per (site
 \(\times\) day) for days with sufficient analyte coverage; <code>mspaf</code> is
-the deterministic daily estimate.</p>
+the deterministic daily estimate. With <code>also_total = TRUE</code>, a
+<code>mspaf_total</code> column (total-concentration msPAF, no ARA) follows <code>mspaf</code>.</p>
 <p><strong>Draws mode</strong> (<code>ndraws &gt; 0</code>, <code>return = "summary"</code>): one row per (site
 \(\times\) day) with the <code>deterministic</code> centre line and the envelope
 columns for the chosen <code>gap_uncertainty</code>: <code>median_*</code>, <code>lo_*</code>, <code>hi_*</code> per
