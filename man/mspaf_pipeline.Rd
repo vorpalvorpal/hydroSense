@@ -21,7 +21,8 @@ mspaf_pipeline(
   tau = NULL,
   window = NULL,
   chronic_summary = "arith_mean",
-  also_total = FALSE
+  also_total = FALSE,
+  ara = c("static", "contemporaneous", "none")
 )
 }
 \arguments{
@@ -97,7 +98,25 @@ daily series alongside the ARA one; the chronic step aggregates it exactly
 as it aggregates \code{mspaf} and returns it as \code{value_total}. The static ARA
 reference is \code{daily_args$reference} (the \code{reference} argument here is the
 reference-model fit data); without it \code{value_total} equals \code{value}. An
-error in draws mode (\code{daily_args$ndraws} set).}
+error in draws mode (\code{daily_args$ndraws} set). Composes with every \code{ara}
+mode: \code{value_total} is always the no-ARA value.}
+
+\item{ara}{Area-reference adjustment (ARA) applied by \code{\link[=mspaf_daily]{mspaf_daily()}}:
+\itemize{
+\item \code{"static"}: static ARA against the per-analyte summary of
+\code{daily_args$reference} (a raw reference chemistry frame, see
+\code{\link[=prepare_reference]{prepare_reference()}}), which is then required.
+\item \code{"contemporaneous"}: the reference model this pipeline fits is passed
+to \code{\link[=mspaf_daily]{mspaf_daily()}} as \code{reference}, so each day is adjusted by the
+reference model's resolution for that day (tier-1 match, GAM
+prediction or static fallback; see \code{\link[=fit_reference_model]{fit_reference_model()}}). The model
+is fitted once and reused. \code{daily_args$reference} must not be given.
+\item \code{"none"}: no ARA. \code{daily_args$reference} must not be given.
+}
+
+When \code{ara} is not supplied the behaviour is unchanged from earlier
+versions: static ARA if \code{daily_args$reference} is given, otherwise none.
+Conflicting combinations are errors raised before any model is fitted.}
 }
 \value{
 When \code{chronic = TRUE} (default), the chronic msPAF frame, one row per

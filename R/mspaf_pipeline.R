@@ -85,7 +85,22 @@
 #'   as it aggregates `mspaf` and returns it as `value_total`. The static ARA
 #'   reference is `daily_args$reference` (the `reference` argument here is the
 #'   reference-model fit data); without it `value_total` equals `value`. An
-#'   error in draws mode (`daily_args$ndraws` set).
+#'   error in draws mode (`daily_args$ndraws` set). Composes with every `ara`
+#'   mode: `value_total` is always the no-ARA value.
+#' @param ara Area-reference adjustment (ARA) applied by [mspaf_daily()]:
+#'   - `"static"`: static ARA against the per-analyte summary of
+#'     `daily_args$reference` (a raw reference chemistry frame, see
+#'     [prepare_reference()]), which is then required.
+#'   - `"contemporaneous"`: the reference model this pipeline fits is passed
+#'     to [mspaf_daily()] as `reference`, so each day is adjusted by the
+#'     reference model's resolution for that day (tier-1 match, GAM
+#'     prediction or static fallback; see [fit_reference_model()]). The model
+#'     is fitted once and reused. `daily_args$reference` must not be given.
+#'   - `"none"`: no ARA. `daily_args$reference` must not be given.
+#'
+#'   When `ara` is not supplied the behaviour is unchanged from earlier
+#'   versions: static ARA if `daily_args$reference` is given, otherwise none.
+#'   Conflicting combinations are errors raised before any model is fitted.
 #'
 #' @return When `chronic = TRUE` (default), the chronic msPAF frame, one row per
 #'   (focal date × site):
@@ -131,7 +146,8 @@ mspaf_pipeline <- function(target,
                            tau = NULL,
                            window = NULL,
                            chronic_summary = "arith_mean",
-                           also_total = FALSE) {
+                           also_total = FALSE,
+                           ara = c("static", "contemporaneous", "none")) {
   checkmate::assert_data_frame(target)
   checkmate::assert_data_frame(reference)
   checkmate::assert_flag(impute)
@@ -147,6 +163,30 @@ mspaf_pipeline <- function(target,
       "{.code also_total = TRUE} is supported in point mode only.",
       "i" = "Drop {.code daily_args$ndraws}."
     ), class = "hydroSense_also_total_draws")
+  }
+  # Resolve the ARA mode, also before any fitting. Without `ara`, the presence
+  # of daily_args$reference decides (static or none), exactly as before the
+  # argument existed.
+  has_static_ref <- !is.null(daily_args$reference)
+  ara <- if (missing(ara)) {
+    if (has_static_ref) "static" else "none"
+  } else {
+    match.arg(ara)
+  }
+  if (ara == "static" && !has_static_ref) {
+    cli::cli_abort(c(
+      "{.code ara = \"static\"} needs a raw reference frame in \\
+       {.code daily_args$reference}.",
+      "i" = "Use {.code ara = \"contemporaneous\"} to adjust against the \\
+             fitted reference model instead."
+    ), class = "hydroSense_ara_static_needs_reference")
+  }
+  if (ara != "static" && has_static_ref) {
+    cli::cli_abort(c(
+      "{.code ara = \"{ara}\"} conflicts with {.code daily_args$reference}.",
+      "i" = "Drop {.code daily_args$reference}, or use \\
+             {.code ara = \"static\"}."
+    ), class = "hydroSense_ara_conflict")
   }
 
   # Accept sampleTidy's analyte names and `units` column.
@@ -186,6 +226,8 @@ mspaf_pipeline <- function(target,
   # into the chronic summary; otherwise honour daily_call$return.
   if (chronic && draws_mode) daily_call$return <- "draws"
   if (also_total) daily_call$also_total <- TRUE
+  # Contemporaneous ARA: the reference model fitted above is the reference.
+  if (ara == "contemporaneous") daily_call$reference <- ref_model
   daily <- do.call(
     mspaf_daily,
     c(
