@@ -12,7 +12,8 @@
   tau_short,
   tau_long,
   min_obs_model,
-  scale_c = NA_real_
+  scale_c = NA_real_,
+  api_cache = NULL
 )
 }
 \value{
