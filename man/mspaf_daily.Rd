@@ -213,6 +213,11 @@ toxicity pass. With \code{reference = NULL}, \code{mspaf_total} is a copy of
 the deterministic daily estimate. With \code{also_total = TRUE}, a
 \code{mspaf_total} column (total-concentration msPAF, no ARA) follows \code{mspaf}.
 
+All modes carry a logical, never-\code{NA} column \code{imputed}: \code{TRUE} when that
+site had no grab sample on that day (chemistry model-predicted or
+forward-filled), \code{FALSE} on grab days (grab day = \code{as.Date(datetime)}).
+In draws mode it is the same for every draw of a (site, day).
+
 \strong{Draws mode} (\code{ndraws > 0}, \code{return = "summary"}): one row per (site
 \eqn{\times} day) with the \code{deterministic} centre line and the envelope
 columns for the chosen \code{gap_uncertainty}: \verb{median_*}, \verb{lo_*}, \verb{hi_*} per

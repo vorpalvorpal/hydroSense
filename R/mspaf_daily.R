@@ -260,6 +260,11 @@
 #'   the deterministic daily estimate. With `also_total = TRUE`, a
 #'   `mspaf_total` column (total-concentration msPAF, no ARA) follows `mspaf`.
 #'
+#' All modes carry a logical, never-`NA` column `imputed`: `TRUE` when that
+#'   site had no grab sample on that day (chemistry model-predicted or
+#'   forward-filled), `FALSE` on grab days (grab day = `as.Date(datetime)`).
+#'   In draws mode it is the same for every draw of a (site, day).
+#'
 #' **Draws mode** (`ndraws > 0`, `return = "summary"`): one row per (site
 #'   \eqn{\times} day) with the `deterministic` centre line and the envelope
 #'   columns for the chosen `gap_uncertainty`: `median_*`, `lo_*`, `hi_*` per
@@ -1082,6 +1087,12 @@ mspaf_daily <- function(
       result <- dplyr::relocate(result, "mspaf_total", .after = "mspaf")
     }
   }
+
+  ## `imputed`: TRUE when the (site, day) had no grab sample (same date
+  ## derivation as the daily grid: as.Date(datetime)); FALSE on grab days.
+  grab_key <- paste(df$site_id, as.Date(df$datetime))
+  result$imputed <- !(paste(result$site_id, result$date) %in% grab_key)
+  result <- dplyr::relocate(result, "imputed", .after = "days_since_last_sample")
 
   ## Per-analyte PAF breakdown, re-keyed from the synthetic sample_id to date.
   apafs <- attr(mspaf_out, "analyte_pafs")
@@ -2058,6 +2069,7 @@ mspaf_daily <- function(
     max_paf                = numeric(),
     n_measured_analytes    = integer(),
     days_since_last_sample = integer(),
+    imputed                = logical(),
     analyte_pafs           = list()
   )
   if (mode == "point") {
