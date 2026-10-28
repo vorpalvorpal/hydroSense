@@ -1,5 +1,61 @@
 # hydroSense (development)
 
+## Contemporaneous ARA from `mspaf_pipeline()`; tier-1 matching fixed
+
+* **`mspaf_pipeline()` accepts `reference = NULL`.** No reference model is
+  fitted; `ara` defaults to `"none"`, daily interpolation to `"linear"` and
+  `impute_on` to `"target"`. `ara = "contemporaneous"` (or `"static"`
+  without `daily_args$reference`), `daily_args$interpolation = "model"` and
+  an explicit `impute_on = "reference"` with `impute = TRUE` are errors of
+  class `hydroSense_ara_needs_reference`, `hydroSense_model_needs_reference`
+  and `hydroSense_impute_needs_reference`, raised before any fitting. The
+  `reference_model` attribute is `NULL`.
+* **New `ara = c("static", "contemporaneous", "none")` on
+  `mspaf_pipeline()`.** `"contemporaneous"` passes the reference model the
+  pipeline fits to `mspaf_daily()` as `reference`, so each day is adjusted
+  by that model's resolution for the day, with no second model fit.
+  `"static"` requires `daily_args$reference` (error class
+  `hydroSense_ara_static_needs_reference`); `"contemporaneous"` or `"none"`
+  together with `daily_args$reference` is an error of class
+  `hydroSense_ara_conflict`. Leaving `ara` unset keeps the old behaviour
+  (static ARA iff `daily_args$reference` is given). With `also_total = TRUE`,
+  `value_total` is always the no-ARA value.
+* **Tier-1 direct matching in reference models now fires (behaviour
+  change).** The gate compared a reference observation's API at
+  `tau = max(api_tau_bounds_short)` (30 d by default) with the target's API
+  at `tau = match_window_days` (5 d), within a tolerance taken from the API
+  at `tau = api_tau_bounds_short[1]` (1 d). The API is an un-normalised store
+  whose level grows with tau, so even a same-day, same-site pair was usually
+  tens of mm apart and tier 1 almost never matched. All three now use the API
+  at `tau = match_window_days`. Reference observations within the window and
+  with similar antecedent rain now resolve at tier 1 (`ref_tier =
+  "matched"`) rather than from the model or static tier, which changes
+  contemporaneous ARA results, including the reference resolution inside
+  `interpolation = "model"`. Reference model `obs` frames now carry
+  `hydro_event` in place of `hydro_short`/`hydro_long`.
+
+## Chronic `n_imputed_in_window` was always 0
+
+* **`mspaf_daily()` gains a logical, never-`NA` `imputed` column** (also in
+  empty results and, identically per draw, in draws mode): `TRUE` when the
+  site had no grab sample that day (chemistry model-predicted or
+  forward-filled), `FALSE` on grab days. `mspaf_pipeline()` now carries it
+  into the chronic aggregation, so `n_imputed_in_window` counts the imputed
+  daily rows in the window instead of always reporting 0. The chronic
+  `value` is unchanged.
+
+## Total msPAF alongside ARA msPAF from one run
+
+* **New `also_total = FALSE` on `mspaf_daily()` and `mspaf_pipeline()`.** In
+  point mode, `TRUE` adds the total-concentration (no ARA background
+  subtraction) msPAF next to the ARA one without refitting anything: the
+  static `reference` only enters at `add_mspaf()`, so `mspaf_daily()` makes a
+  second `add_mspaf(reference = NULL)` pass over the same synthetic daily
+  chemistry and returns it as `mspaf_total`, and `mspaf_pipeline()`
+  aggregates that series as it does the ARA one and returns `value_total`.
+  With no reference the total equals the ARA value. Draws mode is not
+  supported (error class `hydroSense_also_total_draws`).
+
 ## Explicit inputs, trailing LMF calibration, optional brms (breaking)
 
 * **`add_lmf()` takes explicit end-member data.** `leachate_data` and

@@ -17,6 +17,7 @@
 ##   .compute_api()                  API — recursive linear reservoir (#49)
 ##   .compute_antecedent_mean()      rolling mean for stage/discharge
 ##   .compute_hydro_features()       dispatcher; returns (date, hydro_short, hydro_long)
+##   .tier1_event_index()            the one API definition the tier-1 gate compares
 ##   .build_analyte_model_df()       assemble (y, doy, hydro_short, hydro_long) for one analyte
 ##   .fit_ref_gam()                  fit mgcv::gam with gamm fallback
 ##   .aic_for_tau()                  AIC for a (tau_short, tau_long) candidate pair
@@ -119,6 +120,97 @@
   out
 }
 
+#' Per-fit cache of the antecedent precipitation index
+#'
+#' A tau search evaluates the API of ONE rain series at dozens of tau values,
+#' for every analyte, then again at the chosen tau for the anchors, the WQ
+#' layer, the static daily features and the smoother's hydro z-score.  The
+#' cache sits in front of [.compute_api()]: the first request for a tau
+#' evaluates the API once over every day of `[min(dates), max(dates)]` (the
+#' dates the fit will ask for); later requests at that tau index into it.
+#' Because the reservoir recursion runs forward from the first hydro day, a
+#' longer evaluation grid leaves every earlier value unchanged, so a lookup is
+#' exactly what `.compute_api()` returns for those targets.
+#'
+#' The cache belongs to one hydro series and lives for one fit: create it per
+#' [fit_target_model()] / [.fit_daily_target()] call and pass it down.
+#' Stage / discharge hydrology is not cached ([.compute_antecedent_mean()]).
+#'
+#' @param hydro Data frame with `date` and `value` (as for
+#'   [.compute_hydro_features()]).
+#' @param hydro_type `"rainfall"`, `"stage"` or `"discharge"`.
+#' @param dates Every date the fit will request features for (the window).
+#' @return An environment read by [.api_cache_features()].
+#' @keywords internal
+.api_cache_new <- function(hydro, hydro_type, dates) {
+  cache <- new.env(parent = emptyenv())
+  cache$hdates <- as.Date(hydro$date)
+  cache$hvals <- hydro$value
+  cache$hydro_type <- hydro_type
+  dates <- as.Date(dates)
+  dates <- dates[!is.na(dates)]
+  ## Whole-day window only: fractional Dates would index the grid differently.
+  ok <- length(dates) > 0L && all(unclass(dates) == round(unclass(dates)))
+  cache$lo <- if (ok) min(dates) else NULL
+  cache$hi <- if (ok) max(dates) else NULL
+  cache$api <- list() # tau key -> API over the window
+  cache
+}
+
+#' API at `target_dates` for one tau, through the per-fit cache
+#'
+#' Targets outside the cache window (or a cache without one) are evaluated
+#' directly by [.compute_api()] and not stored.
+#' @keywords internal
+.api_cache_get <- function(cache, target_dates, tau) {
+  td <- as.Date(target_dates)
+  if (length(td) == 0L) {
+    return(numeric(0))
+  }
+  if (is.null(cache$lo)) {
+    return(.compute_api(cache$hvals, cache$hdates, td, tau))
+  }
+  pos <- as.integer(td - cache$lo) + 1L
+  span <- as.integer(cache$hi - cache$lo) + 1L
+  inside <- !is.na(pos) & pos >= 1L & pos <= span &
+    unclass(td) == round(unclass(td))
+  if (!all(inside)) {
+    return(.compute_api(cache$hvals, cache$hdates, td, tau))
+  }
+  key <- sprintf("%.17g", tau)
+  api <- cache$api[[key]]
+  if (is.null(api)) {
+    api <- .compute_api(
+      cache$hvals, cache$hdates, seq(cache$lo, cache$hi, by = "day"), tau
+    )
+    cache$api[[key]] <- api
+  }
+  api[pos]
+}
+
+#' Hydro features (`hydro_short`, `hydro_long`) through the per-fit cache
+#'
+#' Same values as [.compute_hydro_features()], as a plain list (no tibble, so
+#' it is cheap inside a tau search).
+#' @keywords internal
+.api_cache_features <- function(cache, target_dates, tau_short, tau_long) {
+  if (cache$hydro_type == "rainfall") {
+    list(
+      hydro_short = .api_cache_get(cache, target_dates, tau_short),
+      hydro_long  = .api_cache_get(cache, target_dates, tau_long)
+    )
+  } else {
+    list(
+      hydro_short = .compute_antecedent_mean(
+        cache$hvals, cache$hdates, target_dates, tau_short
+      ),
+      hydro_long = .compute_antecedent_mean(
+        cache$hvals, cache$hdates, target_dates, tau_long
+      )
+    )
+  }
+}
+
 #' Antecedent mean for stage or discharge
 #'
 #' Rolling mean over `[t - window_days, t]`.  Returns `NA` for target dates
@@ -166,6 +258,37 @@
   }
 
   tibble::tibble(date = target_dates, hydro_short = short, hydro_long = long)
+}
+
+#' Tier-1 event index: the antecedent rain index behind the matching gate
+#'
+#' The single definition of the hydrological index that tier-1 direct matching
+#' compares.  It is used for all three quantities in the gate -- the index
+#' stored on each reference observation (`obs$hydro_event`), the target date's
+#' index, and the IQR-based default tolerance `match_hydro_tol` -- so that the
+#' comparison and its tolerance are on one scale.  [.compute_api()] is an
+#' un-normalised store whose level grows roughly with `tau`, so mixing taus
+#' (as the gate once did: a 30-d store against a 5-d one, gated by the spread
+#' of a 1-d one) leaves same-day, same-rain pairs tens of mm apart and tier 1
+#' practically never fires.
+#'
+#' The memory constant is `match_window_days`: the gate asks whether the rain
+#' over roughly the matching window differs between the two dates, which is
+#' the time scale on which a grab within that window is a valid proxy.  It is
+#' floored at 1 day so `match_window_days = 0` (same-day matches only) still
+#' yields a valid reservoir.
+#'
+#' @param hydro_values,hydro_dates Daily hydrology series.
+#' @param target_dates Date vector; the index is evaluated at each.
+#' @param match_window_days Tier-1 time window (days).
+#' @return Numeric vector, same length as `target_dates`.
+#' @keywords internal
+.tier1_event_index <- function(hydro_values, hydro_dates, target_dates,
+                               match_window_days) {
+  .compute_api(
+    hydro_values, as.Date(hydro_dates), target_dates,
+    max(as.numeric(match_window_days), 1)
+  )
 }
 
 
@@ -399,8 +522,9 @@
 #' **Three-tier resolver** (evaluated per analyte × target date):
 #' \enumerate{
 #'   \item **Tier 1 — direct match.** A reference observation within
-#'     `±match_window_days` days whose event-API is within `match_hydro_tol`
-#'     (default: `0.5 × IQR` of the reference API series).  This gate rejects
+#'     `±match_window_days` days whose event-API (the API at
+#'     `tau = match_window_days`, on both sides) is within `match_hydro_tol`
+#'     (default: `0.5 × IQR` of that same API over the reference dates).  This gate rejects
 #'     time-close but hydrologically-mismatched grabs (e.g. a dry-weather
 #'     reference next to a wet-event target).
 #'   \item **Tier 2 — GAM prediction.** A per-analyte `mgcv::gam` with
@@ -451,7 +575,8 @@
 #'   only).
 #' @param match_window_days Integer; tier-1 time tolerance in days (default 5).
 #' @param match_hydro_tol Numeric; tier-1 hydro tolerance (default `NULL` →
-#'   `0.5 × IQR` of the reference event-API series).
+#'   `0.5 × IQR` of the reference event-API series, the API at
+#'   `tau = match_window_days`).
 #' @param api_tau_bounds_short Length-2 numeric `c(lo, hi)` search range (days)
 #'   for the short-store recession constant `tau_short` (default `c(1, 30)`).
 #'   A degenerate `c(x, x)` fixes `tau_short = x`.
@@ -478,7 +603,7 @@
 #'     \item{`$models`}{Named list (one per analyte) carrying `gamm_fit`,
 #'       `tau_short`, `tau_long`, `best_aic`, `null_aic`, `tier`,
 #'       `n_obs`, `static_ref`, and `obs` (normalised observations with
-#'       hydro features — used for tier-1 matching).}
+#'       their tier-1 event index `hydro_event`).}
 #'     \item{`$hydro`}{Daily hydro series used for index computation.}
 #'     \item{`$hydro_type`}{`"rainfall"`, `"stage"`, or `"discharge"`.}
 #'     \item{`$match_window_days`}{Tier-1 time window.}
@@ -689,14 +814,13 @@ fit_reference_model <- function(
     static_val <- static_ref$ref_norm[static_ref$analyte == nm]
     static_val <- if (length(static_val)) static_val[1L] else NA_real_
 
-    # Add hydro features at observation dates (longest-memory tau in each store)
-    # for tier-1 matching; stored regardless of tier
-    max_short <- max(api_tau_bounds_short)
-    max_long <- max(api_tau_bounds_long)
-    obs_feats <- .compute_hydro_features(
-      hydro, obs$date, max_short, max_long, hydro_type
+    # Tier-1 event index at the observation dates, stored regardless of tier.
+    # It must use the same definition as the target-side index and the
+    # tolerance below (see .tier1_event_index()).
+    obs_with_feats <- obs
+    obs_with_feats$hydro_event <- .tier1_event_index(
+      hydro$value, hydro$date, obs$date, match_window_days
     )
-    obs_with_feats <- dplyr::bind_cols(obs, dplyr::select(obs_feats, -"date"))
 
     if (n_obs < min_obs_model) {
       models[[nm]] <- list(
@@ -766,12 +890,12 @@ fit_reference_model <- function(
   }
 
   ## ── Tier-1 hydro tolerance ────────────────────────────────────────────────
-  # Compute using the shortest-memory short tau on the reference observations
+  # 0.5 x IQR of the tier-1 event index over the reference observations: the
+  # same index the gate compares, so the tolerance is on the gate's own scale.
   if (is.null(match_hydro_tol)) {
     all_obs_dates <- as.Date(reference$datetime)
-    event_api <- .compute_api(
-      hydro$value, as.Date(hydro$date),
-      all_obs_dates, api_tau_bounds_short[1L]
+    event_api <- .tier1_event_index(
+      hydro$value, hydro$date, all_obs_dates, match_window_days
     )
     match_hydro_tol <- 0.5 * stats::IQR(event_api, na.rm = TRUE)
     if (match_hydro_tol < 1e-6) match_hydro_tol <- Inf # no variability → no gate
@@ -861,7 +985,11 @@ print.reference_model <- function(x, ...) {
   )
   log_pred <- tryCatch(
     as.numeric(stats::predict(m$gamm_fit, newdata = newdata)),
-    error = function(e) NA_real_
+    error = function(e) {
+      .warn_predict_fallback(e, "Reference GAM prediction failed;",
+                             "the static reference is used")
+      NA_real_
+    }
   )
   if (is.na(log_pred)) {
     return(list(ref_norm = m$static_ref %||% NA_real_, ref_tier = "static"))
@@ -880,10 +1008,15 @@ print.reference_model <- function(x, ...) {
 .predict_bisect <- function(fit, newdata) {
   n <- nrow(newdata)
   out <- rep(NA_real_, n)
+  n_failed <- 0L
+  first_err <- NULL
   go <- function(idx) {
     r <- tryCatch(
       as.numeric(stats::predict(fit, newdata = newdata[idx, , drop = FALSE])),
-      error = function(e) NULL
+      error = function(e) {
+        if (is.null(first_err)) first_err <<- e
+        NULL
+      }
     )
     if (!is.null(r) && length(r) == length(idx)) {
       out[idx] <<- r
@@ -891,10 +1024,36 @@ print.reference_model <- function(x, ...) {
       h <- length(idx) %/% 2L
       go(idx[seq_len(h)])
       go(idx[-seq_len(h)])
+    } else {
+      n_failed <<- n_failed + 1L
     }
   }
   go(seq_len(n))
+  if (n_failed > 0L) {
+    .warn_predict_fallback(
+      first_err %||% simpleError("prediction returned the wrong length"),
+      sprintf("Reference GAM prediction failed for %d of %d date(s);", n_failed, n),
+      "those dates use the static reference"
+    )
+  }
   out
+}
+
+#' Warn that a model prediction failed and a fallback is being used
+#'
+#' The prediction fallbacks in the reference and daily paths keep a run going
+#' when a GAM cannot be evaluated, but a silent fallback hides real faults (a
+#' fresh R session without mgcv loaded once sent every prediction to
+#' `predict.glm()`, which errors on a gam).  Every such fallback reports here.
+#' @param e The caught condition.
+#' @param what What failed (start of the message).
+#' @param fallback What is used instead.
+#' @keywords internal
+.warn_predict_fallback <- function(e, what, fallback) {
+  cli::cli_warn(
+    c("{what} {fallback}.", "x" = "{conditionMessage(e)}"),
+    class = "hydroSense_predict_fallback"
+  )
 }
 
 #' Resolve ref_norm for instantaneous target samples (one date per sample)
@@ -911,9 +1070,11 @@ print.reference_model <- function(x, ...) {
 #' Tiers, per (sample, analyte):
 #' \enumerate{
 #'   \item `"matched"`: a reference observation within `match_window_days`
-#'     whose stored `hydro_short` lies within `match_hydro_tol` of the
-#'     target's event API (computed at `tau = match_window_days`); the closest
-#'     in time wins, ties going to the earlier observation in `m$obs`.
+#'     whose stored event index (`hydro_event`) lies within `match_hydro_tol`
+#'     of the target's; both are [.tier1_event_index()] (the API at
+#'     `tau = match_window_days`), the scale `match_hydro_tol` is fitted on.
+#'     The closest in time wins, ties going to the earlier observation in
+#'     `m$obs`.
 #'   \item `"model"`: the reference GAM's prediction at the date.
 #'   \item `"static"`: the static reference value (also the fallback when the
 #'     prediction is unavailable).
@@ -940,11 +1101,13 @@ print.reference_model <- function(x, ...) {
   hydro_dates <- as.Date(ref_model$hydro$date)
   mwd <- ref_model$match_window_days
 
-  ## Tier-1 gate: event API at every date in one pass (an NA date is not
-  ## evaluated and resolves to static; the per-date code errored on it).
+  ## Tier-1 gate: event index at every date in one pass (an NA date is not
+  ## evaluated and resolves to static; the per-date code errored on it).  The
+  ## same .tier1_event_index() definition as the stored obs$hydro_event and
+  ## the fitted match_hydro_tol, so all three are on one scale.
   event_api <- numeric(n_u)
   if (any(ok_date)) {
-    event_api[ok_date] <- .compute_api(
+    event_api[ok_date] <- .tier1_event_index(
       ref_model$hydro$value, hydro_dates, udates[ok_date], mwd
     )
   }
@@ -961,8 +1124,13 @@ print.reference_model <- function(x, ...) {
     matched <- rep(FALSE, n_u)
     obs <- m$obs
     if (!is.null(obs) && nrow(obs) > 0L) {
+      ## A model fitted before obs$hydro_event existed: derive the index from
+      ## the stored hydrology so both sides of the gate still agree.
+      obs_event <- obs$hydro_event %||% .tier1_event_index(
+        ref_model$hydro$value, hydro_dates, obs$date, mwd
+      )
       mt <- .match_ref_obs(
-        obs$date, obs$hydro_short, udates, event_api,
+        obs$date, obs_event, udates, event_api,
         mwd, ref_model$match_hydro_tol
       )
       matched <- mt$matched
@@ -1010,9 +1178,10 @@ print.reference_model <- function(x, ...) {
 #' Tier-1 contemporaneous match of target dates to reference observations
 #'
 #' For each target date, the candidate observations are those within
-#' `match_window_days` of it whose `hydro_short` is within `match_hydro_tol`
-#' of the target's event API.  The closest candidate in time is chosen, ties
-#' going to the first in `obs` order (`which.min()` semantics).
+#' `match_window_days` of it whose event index is within `match_hydro_tol`
+#' of the target's (both [.tier1_event_index()]).  The closest candidate in
+#' time is chosen, ties going to the first in `obs` order (`which.min()`
+#' semantics).
 #'
 #' The common case (no missing dates or hydrology) is resolved for all dates
 #' at once from the observations inside each date's time window.  Inputs with
@@ -1020,8 +1189,8 @@ print.reference_model <- function(x, ...) {
 #' `which(mask)[which.min(dt[mask])]` selection exactly, including its
 #' behaviour when the mask itself holds `NA`.
 #'
-#' @param obs_date,obs_hydro Reference observation dates and stored
-#'   `hydro_short`.
+#' @param obs_date,obs_hydro Reference observation dates and stored event
+#'   index (`hydro_event`).
 #' @param target_dates Distinct target dates.
 #' @param target_api Event API at `target_dates`.
 #' @param match_window_days,match_hydro_tol Tier-1 tolerances.
@@ -1132,7 +1301,11 @@ print.reference_model <- function(x, ...) {
       )
       log_preds <- tryCatch(
         as.numeric(stats::predict(m$gamm_fit, newdata = newdata)),
-        error = function(e) rep(NA_real_, length(dates_in_window))
+        error = function(e) {
+          .warn_predict_fallback(e, "Reference GAM prediction failed;",
+                                 "the static reference is used")
+          rep(NA_real_, length(dates_in_window))
+        }
       )
 
       if (all(is.na(log_preds))) {

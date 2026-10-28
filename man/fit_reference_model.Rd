@@ -58,7 +58,8 @@ only).}
 \item{match_window_days}{Integer; tier-1 time tolerance in days (default 5).}
 
 \item{match_hydro_tol}{Numeric; tier-1 hydro tolerance (default \code{NULL} →
-\verb{0.5 × IQR} of the reference event-API series).}
+\verb{0.5 × IQR} of the reference event-API series, the API at
+\code{tau = match_window_days}).}
 
 \item{api_tau_bounds_short}{Length-2 numeric \code{c(lo, hi)} search range (days)
 for the short-store recession constant \code{tau_short} (default \code{c(1, 30)}).
@@ -94,7 +95,7 @@ An object of class \code{reference_model}:
 \item{\verb{$models}}{Named list (one per analyte) carrying \code{gamm_fit},
 \code{tau_short}, \code{tau_long}, \code{best_aic}, \code{null_aic}, \code{tier},
 \code{n_obs}, \code{static_ref}, and \code{obs} (normalised observations with
-hydro features — used for tier-1 matching).}
+their tier-1 event index \code{hydro_event}).}
 \item{\verb{$hydro}}{Daily hydro series used for index computation.}
 \item{\verb{$hydro_type}}{\code{"rainfall"}, \code{"stage"}, or \code{"discharge"}.}
 \item{\verb{$match_window_days}}{Tier-1 time window.}
@@ -120,8 +121,9 @@ a downstream target in the same sub-catchment.
 \strong{Three-tier resolver} (evaluated per analyte × target date):
 \enumerate{
 \item \strong{Tier 1 — direct match.} A reference observation within
-\verb{±match_window_days} days whose event-API is within \code{match_hydro_tol}
-(default: \verb{0.5 × IQR} of the reference API series).  This gate rejects
+\verb{±match_window_days} days whose event-API (the API at
+\code{tau = match_window_days}, on both sides) is within \code{match_hydro_tol}
+(default: \verb{0.5 × IQR} of that same API over the reference dates).  This gate rejects
 time-close but hydrologically-mismatched grabs (e.g. a dry-weather
 reference next to a wet-event target).
 \item \strong{Tier 2 — GAM prediction.} A per-analyte \code{mgcv::gam} with

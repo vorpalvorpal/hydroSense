@@ -209,6 +209,13 @@
 #'   (issue #15); `"additive"` keeps `g = I` (pre-#15 behaviour, no HC5 scaling).
 #'   Forwarded to [fit_target_model()]; ignored unless
 #'   `interpolation = "model"`.
+#' @param also_total Logical (default `FALSE`). Point mode only. When `TRUE`,
+#'   adds a column `mspaf_total`: the **total**-concentration msPAF (no ARA
+#'   background subtraction) from a second [add_mspaf()] pass with
+#'   `reference = NULL` over the same synthetic daily chemistry, alongside the
+#'   ARA `mspaf`. Nothing is refitted or re-predicted, so it costs one extra
+#'   toxicity pass. With `reference = NULL`, `mspaf_total` is a copy of
+#'   `mspaf`. An error in draws mode (`ndraws` set).
 #'
 #' @details
 #' `mspaf_daily()` returns one of **two distinct products**, chosen by
@@ -250,7 +257,13 @@
 #' @return
 #' **Point mode** (`ndraws = NULL`): a tibble with one row per (site
 #'   \eqn{\times} day) for days with sufficient analyte coverage; `mspaf` is
-#'   the deterministic daily estimate.
+#'   the deterministic daily estimate. With `also_total = TRUE`, a
+#'   `mspaf_total` column (total-concentration msPAF, no ARA) follows `mspaf`.
+#'
+#' All modes carry a logical, never-`NA` column `imputed`: `TRUE` when that
+#'   site had no grab sample on that day (chemistry model-predicted or
+#'   forward-filled), `FALSE` on grab days (grab day = `as.Date(datetime)`).
+#'   In draws mode it is the same for every draw of a (site, day).
 #'
 #' **Draws mode** (`ndraws > 0`, `return = "summary"`): one row per (site
 #'   \eqn{\times} day) with the `deterministic` centre line and the envelope
@@ -323,7 +336,8 @@ mspaf_daily <- function(
   parallel = FALSE,
   couple_residuals = TRUE,
   gap_uncertainty = c("bracket", "ignorable", "informative"),
-  transform = c("pseudo_log", "additive")
+  transform = c("pseudo_log", "additive"),
+  also_total = FALSE
 ) {
   ## --- Validate inputs -------------------------------------------------------
   checkmate::assert_data_frame(df)
@@ -353,6 +367,7 @@ mspaf_daily <- function(
   }
   checkmate::assert_flag(parallel)
   checkmate::assert_flag(couple_residuals)
+  checkmate::assert_flag(also_total)
   gap_uncertainty <- match.arg(gap_uncertainty)
   transform <- match.arg(transform)
   if (parallel && !requireNamespace("future.apply", quietly = TRUE)) {
@@ -382,6 +397,14 @@ mspaf_daily <- function(
   }
 
   draws_mode <- !is.null(ndraws)
+
+  if (also_total && draws_mode) {
+    cli::cli_abort(c(
+      "{.code also_total = TRUE} is supported in point mode only.",
+      "i" = "Drop {.arg ndraws}, or run draws mode twice (with and without \\
+             {.arg reference}) for a total-concentration envelope."
+    ), class = "hydroSense_also_total_draws")
+  }
 
   ## interpolation = "model" needs a fitted reference_model to predict the
   ## site impact; co-analytes are still forward-filled (toxicants come from the
@@ -492,7 +515,11 @@ mspaf_daily <- function(
         tibble::tibble(sample_id = as.character(ref_dates), datetime = ref_dates)
       ) |>
         dplyr::mutate(date = as.Date(.data$sample_id)),
-      error = function(e) NULL
+      error = function(e) {
+        .warn_predict_fallback(e, "Shared reference-norm resolution failed;",
+                               "each point resolves its own")
+        NULL
+      }
     )
   }
 
@@ -851,7 +878,11 @@ mspaf_daily <- function(
   if (length(site_results) == 0L) {
     cli::cli_warn("No daily chemistry could be built. Returning empty tibble.")
     empty_mode <- if (!draws_mode) "point" else if (return == "draws") "draws" else "summary"
-    return(.empty_daily_result(empty_mode, gap_uncertainty))
+    result <- .empty_daily_result(empty_mode, gap_uncertainty)
+    if (also_total) {
+      result <- dplyr::mutate(result, mspaf_total = numeric(), .after = "mspaf")
+    }
+    return(result)
   }
 
   all_synth <- dplyr::bind_rows(lapply(site_results, `[[`, "synth"))
@@ -908,6 +939,9 @@ mspaf_daily <- function(
     )
     empty_mode <- if (!draws_mode) "point" else if (return == "draws") "draws" else "summary"
     result <- .empty_daily_result(empty_mode, gap_uncertainty)
+    if (also_total) {
+      result <- dplyr::mutate(result, mspaf_total = numeric(), .after = "mspaf")
+    }
     attr(result, "ara_summary") <- ara_summ
     return(result)
   }
@@ -1029,7 +1063,40 @@ mspaf_daily <- function(
         "n_measured_analytes", "days_since_last_sample"
       ) |>
       dplyr::arrange(.data$site_id, .data$date)
+
+    ## also_total: the static ARA reference enters only at add_mspaf(), so a
+    ## second pass with reference = NULL over the same synthetic chemistry is
+    ## the total-concentration msPAF; nothing upstream is refitted.  With no
+    ## reference the first pass already is the total.
+    if (also_total) {
+      if (is.null(reference)) {
+        result$mspaf_total <- result$mspaf
+      } else {
+        tot_out <- add_mspaf(
+          df                  = all_synth_clean,
+          reference           = NULL,
+          analyte_metadata    = analyte_metadata,
+          method              = method,
+          guideline_dir       = guideline_dir,
+          min_analytes        = min_analytes,
+          conc_units          = conc_units,
+          require_temperature = require_temperature,
+          return              = "summary"
+        )
+        tot_dated <- dplyr::filter(tot_out, .data$analyte == "msPAF") |>
+          dplyr::left_join(id_date_map, by = c("sample_id", "site_id")) |>
+          dplyr::select(date = ".date", "site_id", mspaf_total = "value")
+        result <- dplyr::left_join(result, tot_dated, by = c("date", "site_id"))
+      }
+      result <- dplyr::relocate(result, "mspaf_total", .after = "mspaf")
+    }
   }
+
+  ## `imputed`: TRUE when the (site, day) had no grab sample (same date
+  ## derivation as the daily grid: as.Date(datetime)); FALSE on grab days.
+  grab_key <- paste(df$site_id, as.Date(df$datetime))
+  result$imputed <- !(paste(result$site_id, result$date) %in% grab_key)
+  result <- dplyr::relocate(result, "imputed", .after = "days_since_last_sample")
 
   ## Per-analyte PAF breakdown, re-keyed from the synthetic sample_id to date.
   apafs <- attr(mspaf_out, "analyte_pafs")
@@ -1077,19 +1144,33 @@ mspaf_daily <- function(
     )
   )
 
-  rows_per_analyte <- lapply(analytes, function(a) {
-    a_rows <- dplyr::filter(site_rows, .data$analyte == .env$a) |>
-      dplyr::arrange(.data$datetime)
+  ## Row indices per analyte, each in datetime order: one stable order() over
+  ## (analyte, datetime) split by analyte, rather than a filter + arrange per
+  ## analyte.  Ties keep their input order and NA datetimes sort last, as
+  ## dplyr::arrange() does.
+  grp <- match(site_rows$analyte, analytes)
+  ord <- order(grp, site_rows$datetime)
+  idx_per_analyte <- split(ord, factor(grp[ord], levels = seq_along(analytes)))
+  datetime <- site_rows$datetime
+  value <- site_rows$value
+  detected <- site_rows$detected
+
+  rows_per_analyte <- lapply(seq_along(analytes), function(j) {
+    a <- analytes[j]
+    a_idx <- idx_per_analyte[[j]]
+    ## An NA analyte matches no rows under `analyte == a`.
+    if (is.na(a)) {
+      return(NULL)
+    }
 
     ## Use detected rows as interpolation anchors; fall back to all rows if none.
-    obs <- dplyr::filter(a_rows, .data$detected)
-    if (nrow(obs) == 0L) obs <- a_rows
-    obs <- dplyr::arrange(obs, .data$datetime)
+    obs_idx <- a_idx[!is.na(detected[a_idx]) & detected[a_idx]]
+    if (length(obs_idx) == 0L) obs_idx <- a_idx
 
     interp <- .interpolate_analyte(
-      obs_dates     = obs$datetime,
-      obs_values    = obs$value,
-      obs_detected  = obs$detected,
+      obs_dates     = datetime[obs_idx],
+      obs_values    = value[obs_idx],
+      obs_detected  = detected[obs_idx],
       target_dates  = dates,
       interpolation = interpolation,
       leading_edge  = leading_edge,
@@ -1102,10 +1183,9 @@ mspaf_daily <- function(
 
     interp$analyte <- a
     ## Propagate ancillary columns from the last observed row.
+    last <- a_idx[length(a_idx)]
     for (col in passthru_cols) {
-      if (col %in% names(a_rows)) {
-        interp[[col]] <- a_rows[[col]][nrow(a_rows)]
-      }
+      interp[[col]] <- site_rows[[col]][last]
     }
     interp
   })
@@ -1151,70 +1231,53 @@ mspaf_daily <- function(
     obs_v_work <- obs_v
   }
 
-  n <- length(target_dates)
-  out_val <- numeric(n)
-  out_det <- logical(n)
-  out_meas <- logical(n)
-  out_keep <- logical(n)
-
   ## For each target date find its bracketing observations.
   ## findInterval returns 0 when d < obs_d[1], else the index of the largest
-  ## obs_d <= d.
+  ## obs_d <= d.  Every case below is resolved for all target dates at once.
+  n <- length(target_dates)
   prev_idx <- findInterval(as.numeric(target_dates), as.numeric(obs_d))
+  has_prev <- prev_idx > 0L
 
-  for (i in seq_len(n)) {
-    d <- target_dates[i]
-    pid <- prev_idx[i]
+  ## Exact match: the target date is an observation date (measured).
+  exact <- has_prev
+  exact[has_prev] <- obs_d[prev_idx[has_prev]] == target_dates[has_prev]
 
-    exact_match <- pid > 0L && obs_d[pid] == d
+  ## Before the first observation: backfill from it, or drop.
+  lead <- !has_prev
+  out_keep <- exact | has_prev | (lead & leading_edge == "backfill")
 
-    if (exact_match) {
-      raw <- obs_v_work[pid]
-      out_val[i] <- if (log_space) exp(raw) else raw
-      out_det[i] <- obs_det[pid]
-      out_meas[i] <- TRUE
-      out_keep[i] <- TRUE
-      next
-    }
+  ## Between observations (no exact match): linear / log-linear interpolation
+  ## between pid and nid = pid + 1, unless forward-filling or past the last
+  ## observation (carry forward).
+  nid <- prev_idx + 1L
+  gap <- has_prev & !exact
+  interp <- gap & interpolation != "forward_fill" & nid <= length(obs_d)
 
-    if (pid == 0L) {
-      ## Before the first observation.
-      if (leading_edge == "backfill") {
-        raw <- obs_v_work[1L]
-        out_val[i] <- if (log_space) exp(raw) else raw
-        out_det[i] <- obs_det[1L]
-        out_meas[i] <- FALSE
-        out_keep[i] <- TRUE
-      }
-      ## else: drop (out_keep stays FALSE)
-      next
-    }
+  ## Source observation for every non-interpolated kept date: its own (exact /
+  ## carry-forward) or the first (backfill).
+  src <- ifelse(has_prev, prev_idx, 1L)
+  raw <- rep(NA_real_, n)
+  out_det <- logical(n)
+  carry <- out_keep & !interp
+  raw[carry] <- obs_v_work[src[carry]]
+  out_det[carry] <- obs_det[src[carry]]
 
-    ## We have a previous observation but no exact match.
-    nid <- pid + 1L ## index of the next observation (may be out-of-bounds)
-
-    if (interpolation == "forward_fill" || nid > length(obs_d)) {
-      ## Forward-fill, or past the last observation: carry forward.
-      raw <- obs_v_work[pid]
-      out_val[i] <- if (log_space) exp(raw) else raw
-      out_det[i] <- obs_det[pid]
-      out_meas[i] <- FALSE
-      out_keep[i] <- TRUE
-    } else {
-      ## Linear / log-linear interpolation between pid and nid.
-      frac <- as.numeric(d - obs_d[pid]) /
-        as.numeric(obs_d[nid] - obs_d[pid])
-      raw <- obs_v_work[pid] + frac * (obs_v_work[nid] - obs_v_work[pid])
-      out_val[i] <- if (log_space) exp(raw) else raw
-      ## A gap between detected/BDL passes detected only if both anchors are.
-      out_det[i] <- obs_det[pid] && obs_det[nid]
-      out_meas[i] <- FALSE
-      out_keep[i] <- TRUE
-    }
+  if (any(interp)) {
+    pid <- prev_idx[interp]
+    nid <- nid[interp]
+    frac <- as.numeric(target_dates[interp] - obs_d[pid]) /
+      as.numeric(obs_d[nid] - obs_d[pid])
+    raw[interp] <- obs_v_work[pid] + frac * (obs_v_work[nid] - obs_v_work[pid])
+    ## A gap between detected/BDL passes detected only if both anchors are.
+    out_det[interp] <- obs_det[pid] & obs_det[nid]
   }
 
+  out_val <- if (log_space) exp(raw) else raw
+  out_meas <- exact
+
   tibble::tibble(
-    .date     = target_dates[out_keep],
+    .date     = structure(as.numeric(unclass(target_dates))[out_keep],
+                          class = "Date"),
     value     = out_val[out_keep],
     detected  = out_det[out_keep],
     .measured = out_meas[out_keep]
@@ -1291,21 +1354,26 @@ mspaf_daily <- function(
   ## All dates on which any SSD-eligible analyte had a grab measurement.
   grab_dates <- sort(unique(tox_rows$.date[tox_rows$.measured]))
 
-  purrr::map_dfr(daily_dates, function(d) {
-    n_meas <- sum(tox_rows$.date == d & tox_rows$.measured, na.rm = TRUE)
-    prev <- grab_dates[grab_dates <= d]
-    days_since <- if (length(prev) > 0L) {
-      as.integer(d - max(prev))
-    } else {
-      NA_integer_
-    }
-    tibble::tibble(
-      date = d,
-      site_id = site,
-      n_measured_analytes = as.integer(n_meas),
-      days_since_last_sample = days_since
-    )
-  })
+  ## Measured rows per day (rows, not analytes: a duplicated measured row
+  ## counts twice; NA .measured counts as not measured).
+  meas <- !is.na(tox_rows$.measured) & tox_rows$.measured
+  day_idx <- match(tox_rows$.date[meas], daily_dates)
+  n_meas <- tabulate(day_idx[!is.na(day_idx)], nbins = length(daily_dates))
+
+  ## Most recent grab on or before each day (findInterval: 0 = none yet).
+  prev_idx <- findInterval(as.numeric(daily_dates), as.numeric(grab_dates))
+  days_since <- rep(NA_integer_, length(daily_dates))
+  has_prev <- prev_idx > 0L
+  days_since[has_prev] <- as.integer(
+    daily_dates[has_prev] - grab_dates[prev_idx[has_prev]]
+  )
+
+  tibble::tibble(
+    date = daily_dates,
+    site_id = rep(site, length(daily_dates)),
+    n_measured_analytes = as.integer(n_meas),
+    days_since_last_sample = days_since
+  )
 }
 
 
@@ -1406,6 +1474,11 @@ mspaf_daily <- function(
 
   modelled <- names(tm$models)
 
+  ## API cache over the daily grid for the fitted hydro series: pooled analytes
+  ## share one tau pair, so the smoothers' hydro z-scores and the static
+  ## features below evaluate the API once per tau.
+  api_cache <- .api_cache_new(tm$hydro, tm$hydro_type, qdates)
+
   ## Reference norm over the daily grid — static across draws (ARA cancels it),
   ## so resolve it ONCE here and reuse for the centre line and every draw,
   ## rather than re-evaluating the reference GAM per draw.  mspaf_daily()
@@ -1418,7 +1491,11 @@ mspaf_daily <- function(
         tibble::tibble(sample_id = as.character(qdates), datetime = qdates)
       ) |>
         dplyr::mutate(date = as.Date(.data$sample_id)),
-      error = function(e) NULL
+      error = function(e) {
+        .warn_predict_fallback(e, "Reference-norm resolution failed;",
+                               "the daily reference is treated as 0")
+        NULL
+      }
     )
   } else {
     ref_q <- ref_q[ref_q$date %in% qdates, , drop = FALSE]
@@ -1510,7 +1587,7 @@ mspaf_daily <- function(
       ## Centre smoother (r -> 0): posterior mean = deterministic centre line.
       sm_c <- .analyte_residual_smoother(m, tm, qdates,
         kappa = kappa,
-        scale = a_scale, r_vec = NULL
+        scale = a_scale, r_vec = NULL, api_cache = api_cache
       )
       if (is.null(sm_c)) {
         return(empty)
@@ -1552,7 +1629,13 @@ mspaf_daily <- function(
               NULL
             }
           },
-          error = function(e) NULL
+          error = function(e) {
+            .warn_predict_fallback(
+              e, sprintf("Anchor concentration for %s failed;", nm),
+              "its grab measurement error is not added to the draws"
+            )
+            NULL
+          }
         )
         if (!is.null(c_norm_obs)) {
           ## S6 is a concentration-space variance; the smoother now works on the
@@ -1569,7 +1652,7 @@ mspaf_daily <- function(
           }
           sm_d <- .analyte_residual_smoother(m, tm, qdates,
             kappa = kappa,
-            scale = a_scale, r_vec = r_vec
+            scale = a_scale, r_vec = r_vec, api_cache = api_cache
           )
           if (!is.null(sm_d) && !is.null(sm_d$model)) draw_model <- sm_d$model
         }
@@ -1624,10 +1707,7 @@ mspaf_daily <- function(
 
   static <- stats::setNames(lapply(modelled, function(nm) {
     m <- tm$models[[nm]]
-    feats <- .compute_hydro_features(
-      tm$hydro, qdates, m$tau_short,
-      m$tau_long, tm$hydro_type
-    )
+    feats <- .api_cache_features(api_cache, qdates, m$tau_short, m$tau_long)
     ref_lk <- stats::setNames(
       ref_q$ref_norm[ref_q$analyte == nm],
       as.character(ref_q$date[ref_q$analyte == nm])
@@ -1642,7 +1722,13 @@ mspaf_daily <- function(
       )
       if (isTRUE(m$pooled)) nd$analyte <- factor(m$analyte, levels = m$pool_levels)
       lp <- tryCatch(stats::predict(m$impact_fit, newdata = nd, type = "lpmatrix"),
-        error = function(e) NULL
+        error = function(e) {
+          .warn_predict_fallback(
+            e, sprintf("Impact-GAM design matrix for %s failed;", nm),
+            "its hydrological term is dropped (set to 0)"
+          )
+          NULL
+        }
       )
     }
     parsed <- fac_lookup[[nm]]$parsed
@@ -2006,6 +2092,7 @@ mspaf_daily <- function(
     max_paf                = numeric(),
     n_measured_analytes    = integer(),
     days_since_last_sample = integer(),
+    imputed                = logical(),
     analyte_pafs           = list()
   )
   if (mode == "point") {

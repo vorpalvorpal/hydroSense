@@ -10,7 +10,8 @@
   qdates,
   kappa = 0.5,
   scale = 1,
-  r_vec = NULL
+  r_vec = NULL,
+  api_cache = NULL
 )
 }
 \description{

@@ -19,16 +19,20 @@ Vectorised over target dates: the antecedent precipitation index is
 evaluated in one pass over all distinct dates (one event-API pass for the
 tier-1 gate, one short- and one long-store pass per tier-2 analyte model),
 and each tier-2 reference GAM is predicted once on a frame of every date
-left unmatched by tier 1.  Results are identical to resolving each date on
-its own.
+left unmatched by tier 1 (a failing batch is bisected, so only dates whose
+own prediction errors fall back to static).  Results are identical to
+resolving each date on its own, including the error fallback; an NA date
+resolves to static (the per-date code errored on it).
 }
 \details{
 Tiers, per (sample, analyte):
 \enumerate{
 \item \code{"matched"}: a reference observation within \code{match_window_days}
-whose stored \code{hydro_short} lies within \code{match_hydro_tol} of the
-target's event API (computed at \code{tau = match_window_days}); the closest
-in time wins, ties going to the earlier observation in \code{m$obs}.
+whose stored event index (\code{hydro_event}) lies within \code{match_hydro_tol}
+of the target's; both are \code{\link[=.tier1_event_index]{.tier1_event_index()}} (the API at
+\code{tau = match_window_days}), the scale \code{match_hydro_tol} is fitted on.
+The closest in time wins, ties going to the earlier observation in
+\code{m$obs}.
 \item \code{"model"}: the reference GAM's prediction at the date.
 \item \code{"static"}: the static reference value (also the fallback when the
 prediction is unavailable).

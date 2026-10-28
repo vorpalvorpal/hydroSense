@@ -32,7 +32,8 @@ mspaf_daily(
   parallel = FALSE,
   couple_residuals = TRUE,
   gap_uncertainty = c("bracket", "ignorable", "informative"),
-  transform = c("pseudo_log", "additive")
+  transform = c("pseudo_log", "additive"),
+  also_total = FALSE
 )
 }
 \arguments{
@@ -197,11 +198,25 @@ variance-stabilising transform for the daily impact residual smoother.
 (issue #15); \code{"additive"} keeps \code{g = I} (pre-#15 behaviour, no HC5 scaling).
 Forwarded to \code{\link[=fit_target_model]{fit_target_model()}}; ignored unless
 \code{interpolation = "model"}.}
+
+\item{also_total}{Logical (default \code{FALSE}). Point mode only. When \code{TRUE},
+adds a column \code{mspaf_total}: the \strong{total}-concentration msPAF (no ARA
+background subtraction) from a second \code{\link[=add_mspaf]{add_mspaf()}} pass with
+\code{reference = NULL} over the same synthetic daily chemistry, alongside the
+ARA \code{mspaf}. Nothing is refitted or re-predicted, so it costs one extra
+toxicity pass. With \code{reference = NULL}, \code{mspaf_total} is a copy of
+\code{mspaf}. An error in draws mode (\code{ndraws} set).}
 }
 \value{
 \strong{Point mode} (\code{ndraws = NULL}): a tibble with one row per (site
 \eqn{\times} day) for days with sufficient analyte coverage; \code{mspaf} is
-the deterministic daily estimate.
+the deterministic daily estimate. With \code{also_total = TRUE}, a
+\code{mspaf_total} column (total-concentration msPAF, no ARA) follows \code{mspaf}.
+
+All modes carry a logical, never-\code{NA} column \code{imputed}: \code{TRUE} when that
+site had no grab sample on that day (chemistry model-predicted or
+forward-filled), \code{FALSE} on grab days (grab day = \code{as.Date(datetime)}).
+In draws mode it is the same for every draw of a (site, day).
 
 \strong{Draws mode} (\code{ndraws > 0}, \code{return = "summary"}): one row per (site
 \eqn{\times} day) with the \code{deterministic} centre line and the envelope

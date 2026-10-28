@@ -14,8 +14,8 @@
 )
 }
 \arguments{
-\item{obs_date, obs_hydro}{Reference observation dates and stored
-\code{hydro_short}.}
+\item{obs_date, obs_hydro}{Reference observation dates and stored event
+index (\code{hydro_event}).}
 
 \item{target_dates}{Distinct target dates.}
 
@@ -29,9 +29,10 @@ the selected observation index (\code{NA} where unmatched).
 }
 \description{
 For each target date, the candidate observations are those within
-\code{match_window_days} of it whose \code{hydro_short} is within \code{match_hydro_tol}
-of the target's event API.  The closest candidate in time is chosen, ties
-going to the first in \code{obs} order (\code{which.min()} semantics).
+\code{match_window_days} of it whose event index is within \code{match_hydro_tol}
+of the target's (both \code{\link[=.tier1_event_index]{.tier1_event_index()}}).  The closest candidate in
+time is chosen, ties going to the first in \code{obs} order (\code{which.min()}
+semantics).
 }
 \details{
 The common case (no missing dates or hydrology) is resolved for all dates

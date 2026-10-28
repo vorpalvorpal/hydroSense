@@ -257,6 +257,9 @@ fit_target_model <- function(
   }
 
   target <- dplyr::mutate(target, .date = as.Date(.data$datetime))
+  ## One API cache for this fit (every anchor date is a target date): the tau
+  ## searches, anchors and WQ layer evaluate the API once per tau.
+  api_cache <- .api_cache_new(hydro, hydro_type, target$.date)
   norm_all <- .normalise_ref_observations(target, target, meta)
   norm_det <- dplyr::filter(
     norm_all, .data$detected, !is.na(.data$value_norm),
@@ -315,7 +318,8 @@ fit_target_model <- function(
   if (pool && length(target_analytes) >= 2L) {
     base_models <- .fit_pooled_impact_response(
       anchors_all, target_analytes, hydro, hydro_type,
-      api_tau_bounds_short, api_tau_bounds_long, auto_select, min_obs_model, eps
+      api_tau_bounds_short, api_tau_bounds_long, auto_select, min_obs_model, eps,
+      api_cache = api_cache
     )
   } else {
     base_models <- stats::setNames(
@@ -323,14 +327,16 @@ fit_target_model <- function(
         obs <- anchors_all |>
           dplyr::filter(.data$analyte == .env$nm) |>
           dplyr::arrange(.data$date)
-        feats <- .compute_hydro_features(
-          hydro, obs$date, max(api_tau_bounds_short), max(api_tau_bounds_long),
-          hydro_type
+        feats <- .api_cache_features(
+          api_cache, obs$date, max(api_tau_bounds_short),
+          max(api_tau_bounds_long)
         )
-        obs <- dplyr::bind_cols(obs, dplyr::select(feats, -"date"))
+        obs$hydro_short <- feats$hydro_short
+        obs$hydro_long <- feats$hydro_long
         .fit_impact_response(
           obs, hydro, hydro_type, api_tau_bounds_short,
-          api_tau_bounds_long, auto_select, min_obs_model, eps
+          api_tau_bounds_long, auto_select, min_obs_model, eps,
+          api_cache = api_cache
         )
       }),
       target_analytes
@@ -350,7 +356,7 @@ fit_target_model <- function(
       fit_res <- c(fit_res, .fit_wq_layer(
         os_nm, pc_cols, hydro, hydro_type,
         fit_res$tau_short, fit_res$tau_long, min_obs_model,
-        scale_c = fit_res$scale_c
+        scale_c = fit_res$scale_c, api_cache = api_cache
       ))
     }
     models[[nm]] <- fit_res
@@ -382,7 +388,7 @@ fit_target_model <- function(
 #' @keywords internal
 .fit_wq_layer <- function(os_nm, pc_cols, hydro, hydro_type,
                           tau_short, tau_long, min_obs_model,
-                          scale_c = NA_real_) {
+                          scale_c = NA_real_, api_cache = NULL) {
   os_nm <- os_nm[stats::complete.cases(os_nm[, pc_cols, drop = FALSE]), , drop = FALSE]
   if (nrow(os_nm) < min_obs_model) {
     return(list(wq_fit = NULL, d_anchors = NULL))
@@ -419,7 +425,8 @@ fit_target_model <- function(
   d_anch <- os_nm |>
     dplyr::summarise(S = mean(.data$d, na.rm = TRUE), .by = "date") |>
     dplyr::arrange(.data$date)
-  feats <- .compute_hydro_features(hydro, d_anch$date, tau_short, tau_long, hydro_type)
+  if (is.null(api_cache)) api_cache <- .api_cache_new(hydro, hydro_type, d_anch$date)
+  feats <- .api_cache_features(api_cache, d_anch$date, tau_short, tau_long)
   d_anch$hydro_short <- feats$hydro_short
   d_anch$hydro_long <- feats$hydro_long
 
@@ -443,7 +450,8 @@ fit_target_model <- function(
 #' @keywords internal
 .fit_impact_response <- function(obs, hydro, hydro_type,
                                  tau_bounds_short, tau_bounds_long,
-                                 auto_select, min_obs_model, eps) {
+                                 auto_select, min_obs_model, eps,
+                                 api_cache = NULL) {
   n_obs <- nrow(obs)
 
   flat <- function(ts, tl) {
@@ -463,9 +471,11 @@ fit_target_model <- function(
     return(flat(ts0, tl0))
   }
 
-  ## Profiled-AIC tau selection (season-blind 2-smooth model on the indices)
+  ## Profiled-AIC tau selection (season-blind 2-smooth model on the indices).
+  ## Hydro features come through the per-fit API cache (one API per tau).
+  if (is.null(api_cache)) api_cache <- .api_cache_new(hydro, hydro_type, obs$date)
   fit_one <- function(ts, tl) {
-    feats <- .compute_hydro_features(hydro, obs$date, ts, tl, hydro_type)
+    feats <- .api_cache_features(api_cache, obs$date, ts, tl)
     df_m <- tibble::tibble(
       g           = obs$g, # variance-stabilised impact (issue #15)
       hydro_short = feats$hydro_short,
@@ -509,9 +519,9 @@ fit_target_model <- function(
     return(flat(best_ts, best_tl))
   }
 
-  ## Recompute anchors' hydro features at the chosen tau; store residual S
+  ## Anchors' hydro features at the chosen tau (cached); store residual S
   ## in the transformed (g) space (issue #15).
-  feats <- .compute_hydro_features(hydro, obs$date, best_ts, best_tl, hydro_type)
+  feats <- .api_cache_features(api_cache, obs$date, best_ts, best_tl)
   anchors <- obs
   anchors$hydro_short <- feats$hydro_short
   anchors$hydro_long <- feats$hydro_long
@@ -558,12 +568,21 @@ fit_target_model <- function(
 .fit_pooled_impact_response <- function(anchors_all, target_analytes, hydro,
                                         hydro_type, tau_bounds_short,
                                         tau_bounds_long, auto_select,
-                                        min_obs_model, eps) {
-  anchors_for <- function(nm, ts, tl) {
-    obs <- anchors_all |>
+                                        min_obs_model, eps,
+                                        api_cache = NULL) {
+  ## Hydro features come through the per-fit API cache (one API per tau,
+  ## shared by every analyte and every optimiser evaluation).
+  if (is.null(api_cache)) {
+    api_cache <- .api_cache_new(hydro, hydro_type, anchors_all$date)
+  }
+  obs_for <- function(nm) {
+    anchors_all |>
       dplyr::filter(.data$analyte == .env$nm) |>
       dplyr::arrange(.data$date)
-    f <- .compute_hydro_features(hydro, obs$date, ts, tl, hydro_type)
+  }
+  anchors_for <- function(nm, ts, tl) {
+    obs <- obs_for(nm)
+    f <- .api_cache_features(api_cache, obs$date, ts, tl)
     obs$hydro_short <- f$hydro_short
     obs$hydro_long <- f$hydro_long
     obs
@@ -572,7 +591,8 @@ fit_target_model <- function(
     obs <- anchors_for(nm, max(tau_bounds_short), max(tau_bounds_long))
     .fit_impact_response(
       obs, hydro, hydro_type, tau_bounds_short,
-      tau_bounds_long, auto_select, min_obs_model, eps
+      tau_bounds_long, auto_select, min_obs_model, eps,
+      api_cache = api_cache
     )
   }
 
@@ -628,15 +648,22 @@ fit_target_model <- function(
   zmu <- function(nm) zstats$mu[zstats$analyte == nm]
 
   ## Profiled-AIC select a common (short, long) tau for the pooled factor-smooth
-  ## fit, fitted on the standardised response z = (I - mu_a) / sd_a.
+  ## fit, fitted on the standardised response z = (I - mu_a) / sd_a.  The
+  ## stacked (date, z, analyte) columns do not depend on tau, so they are built
+  ## once; each evaluation only looks up the hydro features (no per-evaluation
+  ## frame rebuilding).
+  pool_obs <- lapply(poolable, obs_for)
+  pool_dates <- do.call(c, lapply(pool_obs, function(o) o$date))
+  pool_z <- unlist(lapply(seq_along(poolable), function(i) {
+    (pool_obs[[i]]$g - zmu(poolable[i])) / zsd(poolable[i])
+  }))
+  pool_analyte <- factor(rep(poolable, vapply(pool_obs, nrow, integer(1))))
   build_df <- function(ts, tl) {
-    purrr::map_dfr(poolable, function(nm) {
-      o <- anchors_for(nm, ts, tl)
-      tibble::tibble(
-        z = (o$g - zmu(nm)) / zsd(nm), hydro_short = o$hydro_short,
-        hydro_long = o$hydro_long, analyte = nm
-      )
-    }) |> dplyr::mutate(analyte = factor(.data$analyte))
+    f <- .api_cache_features(api_cache, pool_dates, ts, tl)
+    data.frame(
+      z = pool_z, hydro_short = f$hydro_short, hydro_long = f$hydro_long,
+      analyte = pool_analyte
+    )
   }
   fit_pool <- function(df_m) {
     nlev <- nlevels(df_m$analyte)
@@ -719,14 +746,20 @@ fit_target_model <- function(
 #' Standardised short-window hydro feature over query dates (q-modulation input)
 #'
 #' Drives the hydrology-modulated process variance of the residual smoother
-#' (`q_mult = exp(kappa * z)`).
+#' (`q_mult = exp(kappa * z)`).  `api_cache` (from [.api_cache_new()] over
+#' `target_model$hydro`) shares the API across analytes at the same tau.
 #' @keywords internal
-.hydro_zscore <- function(target_model, qdates, m) {
-  feats <- .compute_hydro_features(
-    target_model$hydro, qdates, m$tau_short,
-    m$tau_long, target_model$hydro_type
-  )
-  zs <- feats$hydro_short
+.hydro_zscore <- function(target_model, qdates, m, api_cache = NULL) {
+  zs <- if (is.null(api_cache)) {
+    .compute_hydro_features(
+      target_model$hydro, qdates, m$tau_short,
+      m$tau_long, target_model$hydro_type
+    )$hydro_short
+  } else if (api_cache$hydro_type == "rainfall") {
+    .api_cache_get(api_cache, qdates, m$tau_short) # only the short index
+  } else {
+    .api_cache_features(api_cache, qdates, m$tau_short, m$tau_long)$hydro_short
+  }
   sdv <- stats::sd(zs, na.rm = TRUE)
   if (!is.finite(sdv) || sdv == 0) sdv <- 1
   (zs - mean(zs, na.rm = TRUE)) / sdv
@@ -760,13 +793,14 @@ fit_target_model <- function(
 #' [.residual_smoother()].
 #' @keywords internal
 .analyte_residual_smoother <- function(m, target_model, qdates, kappa = 0.5,
-                                       scale = 1, r_vec = NULL) {
+                                       scale = 1, r_vec = NULL,
+                                       api_cache = NULL) {
   use_wq <- !is.null(m$wq_fit) && !is.null(m$d_anchors) && nrow(m$d_anchors) >= 2L
   anch <- if (use_wq) m$d_anchors else m$anchors
   if (is.null(anch) || nrow(anch) < 1L) {
     return(NULL)
   }
-  z_hydro <- .hydro_zscore(target_model, qdates, m)
+  z_hydro <- .hydro_zscore(target_model, qdates, m, api_cache = api_cache)
   .residual_smoother(anch$date, anch$S, qdates,
     z_hydro = z_hydro,
     kappa = kappa, scale = scale, r_vec = r_vec
@@ -833,6 +867,9 @@ fit_target_model <- function(
     pc_q <- .compute_pca_scores(wq, target_model$pca)
   }
 
+  ## Pooled analytes share one tau pair: evaluate the API once per tau.
+  api_cache <- .api_cache_new(target_model$hydro, target_model$hydro_type, qdates)
+
   out <- vector("list", length(analytes))
   for (j in seq_along(analytes)) {
     nm <- analytes[j]
@@ -853,10 +890,7 @@ fit_target_model <- function(
         rep(0, length(qdates))
       }
     } else {
-      feats <- .compute_hydro_features(
-        target_model$hydro, qdates, m$tau_short, m$tau_long,
-        target_model$hydro_type
-      )
+      feats <- .api_cache_features(api_cache, qdates, m$tau_short, m$tau_long)
       ref_norm_nm <- ref_q$ref_norm[ref_q$analyte == nm]
       ref_dates_nm <- ref_q$date[ref_q$analyte == nm]
       ref_lookup <- stats::setNames(ref_norm_nm, as.character(ref_dates_nm))
@@ -872,7 +906,7 @@ fit_target_model <- function(
     if (is.null(rp)) {
       sm <- .analyte_residual_smoother(m, target_model, qdates,
         kappa = kappa,
-        scale = scale
+        scale = scale, api_cache = api_cache
       )
       rp <- if (is.null(sm)) {
         rep(NA_real_, length(qdates))

@@ -4,10 +4,11 @@
 \alias{.hydro_zscore}
 \title{Standardised short-window hydro feature over query dates (q-modulation input)}
 \usage{
-.hydro_zscore(target_model, qdates, m)
+.hydro_zscore(target_model, qdates, m, api_cache = NULL)
 }
 \description{
 Drives the hydrology-modulated process variance of the residual smoother
-(\code{q_mult = exp(kappa * z)}).
+(\code{q_mult = exp(kappa * z)}).  \code{api_cache} (from \code{\link[=.api_cache_new]{.api_cache_new()}} over
+\code{target_model$hydro}) shares the API across analytes at the same tau.
 }
 \keyword{internal}
