@@ -28,19 +28,31 @@
 #' `impute = FALSE` to reproduce the non-imputed behaviour of calling
 #' [fit_reference_model()] and [mspaf_daily()] directly.
 #'
+#' With `reference = NULL` (no reference site of the right water type) no
+#' reference model is fitted. `daily_args$interpolation = "model"` is then an
+#' error (class `hydroSense_model_needs_reference`); the default is
+#' `"linear"`. All such argument errors are raised before any model is fitted.
+#'
 #' @param target Long-format target-site chemistry (same schema as
 #'   [mspaf_daily()]'s `df`): `sample_id`, `site_id`, `datetime`, `analyte`,
 #'   `value`, `detected`, and a unit column (`units.analyte`, or sampleTidy's
 #'   `units`). Analyte names may be hydroSense's or sampleTidy's (see
 #'   [analyte_aliases()]).
 #' @param reference Long-format reference-site chemistry passed to
-#'   [fit_reference_model()].
+#'   [fit_reference_model()]. `NULL` (default) runs the pipeline without a
+#'   reference site: no reference model is fitted (the `reference_model`
+#'   attribute is `NULL`), `ara` defaults to `"none"`, daily interpolation
+#'   defaults to `"linear"` and `impute_on` defaults to `"target"`. See
+#'   Details.
 #' @param hydro Optional hydrology series forwarded to [fit_reference_model()].
 #' @param impute Logical. Fit and apply a Bayesian imputation model? Default
 #'   `TRUE`. When `FALSE`, no imputation model is fitted and `NULL` is passed
 #'   downstream (identical to chaining the functions by hand without one).
 #' @param impute_on Which chemistry to fit the imputation model on:
 #'   `"reference"` (default, matching the documented design) or `"target"`.
+#'   With `reference = NULL` the default becomes `"target"`; an explicit
+#'   `"reference"` is an error of class `hydroSense_impute_needs_reference`
+#'   when `impute = TRUE`.
 #' @param required_vars Passed to [fit_imputation_model()]. Default
 #'   `c("pH", "EC")`.
 #' @param impute_groups Optional `groups` for [fit_imputation_model()]; `NULL`
@@ -98,6 +110,10 @@
 #'     is fitted once and reused. `daily_args$reference` must not be given.
 #'   - `"none"`: no ARA. `daily_args$reference` must not be given.
 #'
+#'   With `reference = NULL`, `"contemporaneous"` (and `"static"` without
+#'   `daily_args$reference`) is an error of class
+#'   `hydroSense_ara_needs_reference`.
+#'
 #'   When `ara` is not supplied the behaviour is unchanged from earlier
 #'   versions: static ARA if `daily_args$reference` is given, otherwise none.
 #'   Conflicting combinations are errors raised before any model is fitted.
@@ -131,7 +147,7 @@
 #' }
 #' @export
 mspaf_pipeline <- function(target,
-                           reference,
+                           reference = NULL,
                            hydro = NULL,
                            impute = TRUE,
                            impute_on = c("reference", "target"),
@@ -149,9 +165,12 @@ mspaf_pipeline <- function(target,
                            also_total = FALSE,
                            ara = c("static", "contemporaneous", "none")) {
   checkmate::assert_data_frame(target)
-  checkmate::assert_data_frame(reference)
+  checkmate::assert_data_frame(reference, null.ok = TRUE)
+  no_ref <- is.null(reference)
   checkmate::assert_flag(impute)
+  impute_on_default <- missing(impute_on)
   impute_on <- match.arg(impute_on)
+  if (no_ref && impute_on_default) impute_on <- "target"
   checkmate::assert_list(reference_args)
   checkmate::assert_list(daily_args)
   checkmate::assert_flag(chronic)
@@ -173,6 +192,29 @@ mspaf_pipeline <- function(target,
   } else {
     match.arg(ara)
   }
+  if (no_ref) {
+    if (ara == "contemporaneous" || (ara == "static" && !has_static_ref)) {
+      cli::cli_abort(c(
+        "{.code ara = \"{ara}\"} needs a reference site.",
+        "i" = "With {.code reference = NULL} use {.code ara = \"none\"}, or \
+               {.code ara = \"static\"} with {.code daily_args$reference}."
+      ), class = "hydroSense_ara_needs_reference")
+    }
+    if (identical(daily_args$interpolation, "model")) {
+      cli::cli_abort(c(
+        "{.code daily_args$interpolation = \"model\"} needs a reference \
+         model.",
+        "i" = "With {.code reference = NULL} use {.code \"linear\"} \
+               (the default) or another non-model interpolation."
+      ), class = "hydroSense_model_needs_reference")
+    }
+    if (impute && impute_on == "reference") {
+      cli::cli_abort(c(
+        "{.code impute_on = \"reference\"} needs a reference site.",
+        "i" = "Use {.code impute_on = \"target\"} or {.code impute = FALSE}."
+      ), class = "hydroSense_impute_needs_reference")
+    }
+  }
   if (ara == "static" && !has_static_ref) {
     cli::cli_abort(c(
       "{.code ara = \"static\"} needs a raw reference frame in \\
@@ -191,7 +233,7 @@ mspaf_pipeline <- function(target,
 
   # Accept sampleTidy's analyte names and `units` column.
   target    <- .canonicalise_mspaf_input(target)
-  reference <- .canonicalise_mspaf_input(reference)
+  if (!no_ref) reference <- .canonicalise_mspaf_input(reference)
 
   # ── 1. (Optional) imputation model — fit once, thread into both steps ───────
   imodel <- NULL
@@ -214,13 +256,20 @@ mspaf_pipeline <- function(target,
   }
 
   # ── 2. Reference / impact model ─────────────────────────────────────────────
-  ref_model <- do.call(
-    fit_reference_model,
-    c(list(reference, hydro = hydro, imputation_model = imodel), reference_args)
-  )
+  ref_model <- if (no_ref) {
+    NULL
+  } else {
+    do.call(
+      fit_reference_model,
+      c(list(reference, hydro = hydro, imputation_model = imodel),
+        reference_args)
+    )
+  }
 
   # ── 3. Daily msPAF on the target ────────────────────────────────────────────
-  daily_call <- utils::modifyList(list(interpolation = "model"), daily_args)
+  daily_call <- utils::modifyList(
+    list(interpolation = if (no_ref) "linear" else "model"), daily_args
+  )
   draws_mode <- !is.null(daily_call$ndraws)
   # When chronic && draws_mode, force per-draw rows so they can be propagated
   # into the chronic summary; otherwise honour daily_call$return.

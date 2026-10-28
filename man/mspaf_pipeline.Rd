@@ -6,7 +6,7 @@
 \usage{
 mspaf_pipeline(
   target,
-  reference,
+  reference = NULL,
   hydro = NULL,
   impute = TRUE,
   impute_on = c("reference", "target"),
@@ -33,7 +33,11 @@ mspaf_pipeline(
 \code{\link[=analyte_aliases]{analyte_aliases()}}).}
 
 \item{reference}{Long-format reference-site chemistry passed to
-\code{\link[=fit_reference_model]{fit_reference_model()}}.}
+\code{\link[=fit_reference_model]{fit_reference_model()}}. \code{NULL} (default) runs the pipeline without a
+reference site: no reference model is fitted (the \code{reference_model}
+attribute is \code{NULL}), \code{ara} defaults to \code{"none"}, daily interpolation
+defaults to \code{"linear"} and \code{impute_on} defaults to \code{"target"}. See
+Details.}
 
 \item{hydro}{Optional hydrology series forwarded to \code{\link[=fit_reference_model]{fit_reference_model()}}.}
 
@@ -42,7 +46,10 @@ mspaf_pipeline(
 downstream (identical to chaining the functions by hand without one).}
 
 \item{impute_on}{Which chemistry to fit the imputation model on:
-\code{"reference"} (default, matching the documented design) or \code{"target"}.}
+\code{"reference"} (default, matching the documented design) or \code{"target"}.
+With \code{reference = NULL} the default becomes \code{"target"}; an explicit
+\code{"reference"} is an error of class \code{hydroSense_impute_needs_reference}
+when \code{impute = TRUE}.}
 
 \item{required_vars}{Passed to \code{\link[=fit_imputation_model]{fit_imputation_model()}}. Default
 \code{c("pH", "EC")}.}
@@ -114,6 +121,10 @@ is fitted once and reused. \code{daily_args$reference} must not be given.
 \item \code{"none"}: no ARA. \code{daily_args$reference} must not be given.
 }
 
+With \code{reference = NULL}, \code{"contemporaneous"} (and \code{"static"} without
+\code{daily_args$reference}) is an error of class
+\code{hydroSense_ara_needs_reference}.
+
 When \code{ara} is not supplied the behaviour is unchanged from earlier
 versions: static ARA if \code{daily_args$reference} is given, otherwise none.
 Conflicting combinations are errors raised before any model is fitted.}
@@ -164,6 +175,11 @@ generally \emph{moves} the msPAF result. Whether that is appropriate is a
 missingness (MAR/MNAR) modelling judgement, not a neutral default. Set
 \code{impute = FALSE} to reproduce the non-imputed behaviour of calling
 \code{\link[=fit_reference_model]{fit_reference_model()}} and \code{\link[=mspaf_daily]{mspaf_daily()}} directly.
+
+With \code{reference = NULL} (no reference site of the right water type) no
+reference model is fitted. \code{daily_args$interpolation = "model"} is then an
+error (class \code{hydroSense_model_needs_reference}); the default is
+\code{"linear"}. All such argument errors are raised before any model is fitted.
 }
 \examples{
 \dontrun{

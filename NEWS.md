@@ -2,6 +2,14 @@
 
 ## Contemporaneous ARA from `mspaf_pipeline()`; tier-1 matching fixed
 
+* **`mspaf_pipeline()` accepts `reference = NULL`.** No reference model is
+  fitted; `ara` defaults to `"none"`, daily interpolation to `"linear"` and
+  `impute_on` to `"target"`. `ara = "contemporaneous"` (or `"static"`
+  without `daily_args$reference`), `daily_args$interpolation = "model"` and
+  an explicit `impute_on = "reference"` with `impute = TRUE` are errors of
+  class `hydroSense_ara_needs_reference`, `hydroSense_model_needs_reference`
+  and `hydroSense_impute_needs_reference`, raised before any fitting. The
+  `reference_model` attribute is `NULL`.
 * **New `ara = c("static", "contemporaneous", "none")` on
   `mspaf_pipeline()`.** `"contemporaneous"` passes the reference model the
   pipeline fits to `mspaf_daily()` as `reference`, so each day is adjusted
