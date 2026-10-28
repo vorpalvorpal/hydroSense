@@ -231,7 +231,8 @@ describe("N3: output structure and equality", {
 
   it("has the same columns as a normal run with a reference", {
     normal <- .nr_get("normal", function() .nr_run(
-      reference = .nr_sc()$reference, reference_args = .nr_ref_args()))
+      reference = .nr_sc()$reference, reference_args = .nr_ref_args(),
+      also_total = TRUE))
     expect_null(normal$err)
     expect_identical(names(.nr_noimp()$out), names(normal$out))
   })
