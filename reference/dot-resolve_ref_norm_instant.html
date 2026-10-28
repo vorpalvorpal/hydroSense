@@ -3,13 +3,17 @@
 evaluated in one pass over all distinct dates (one event-API pass for the
 tier-1 gate, one short- and one long-store pass per tier-2 analyte model),
 and each tier-2 reference GAM is predicted once on a frame of every date
-left unmatched by tier 1.  Results are identical to resolving each date on
-its own."><meta property="og:description" content="Vectorised over target dates: the antecedent precipitation index is
+left unmatched by tier 1 (a failing batch is bisected, so only dates whose
+own prediction errors fall back to static).  Results are identical to
+resolving each date on its own, including the error fallback; an NA date
+resolves to static (the per-date code errored on it)."><meta property="og:description" content="Vectorised over target dates: the antecedent precipitation index is
 evaluated in one pass over all distinct dates (one event-API pass for the
 tier-1 gate, one short- and one long-store pass per tier-2 analyte model),
 and each tier-2 reference GAM is predicted once on a frame of every date
-left unmatched by tier 1.  Results are identical to resolving each date on
-its own."></head><body>
+left unmatched by tier 1 (a failing batch is bisected, so only dates whose
+own prediction errors fall back to static).  Results are identical to
+resolving each date on its own, including the error fallback; an NA date
+resolves to static (the per-date code errored on it)."></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -54,8 +58,10 @@ its own."></head><body>
 evaluated in one pass over all distinct dates (one event-API pass for the
 tier-1 gate, one short- and one long-store pass per tier-2 analyte model),
 and each tier-2 reference GAM is predicted once on a frame of every date
-left unmatched by tier 1.  Results are identical to resolving each date on
-its own.</p>
+left unmatched by tier 1 (a failing batch is bisected, so only dates whose
+own prediction errors fall back to static).  Results are identical to
+resolving each date on its own, including the error fallback; an NA date
+resolves to static (the per-date code errored on it).</p>
     </div>
 
     <div class="section level2">
@@ -82,9 +88,11 @@ its own.</p>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>Tiers, per (sample, analyte):</p><ol><li><p><code>"matched"</code>: a reference observation within <code>match_window_days</code>
-whose stored <code>hydro_short</code> lies within <code>match_hydro_tol</code> of the
-target's event API (computed at <code>tau = match_window_days</code>); the closest
-in time wins, ties going to the earlier observation in <code>m$obs</code>.</p></li>
+whose stored event index (<code>hydro_event</code>) lies within <code>match_hydro_tol</code>
+of the target's; both are <code><a href="dot-tier1_event_index.html">.tier1_event_index()</a></code> (the API at
+<code>tau = match_window_days</code>), the scale <code>match_hydro_tol</code> is fitted on.
+The closest in time wins, ties going to the earlier observation in
+<code>m$obs</code>.</p></li>
 <li><p><code>"model"</code>: the reference GAM's prediction at the date.</p></li>
 <li><p><code>"static"</code>: the static reference value (also the fallback when the
 prediction is unavailable).</p></li>

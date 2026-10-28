@@ -84,7 +84,7 @@ fit_reference_model(
 - match_hydro_tol:
 
   Numeric; tier-1 hydro tolerance (default `NULL` → `0.5 × IQR` of the
-  reference event-API series).
+  reference event-API series, the API at `tau = match_window_days`).
 
 - api_tau_bounds_short:
 
@@ -139,8 +139,8 @@ An object of class `reference_model`:
 
   Named list (one per analyte) carrying `gamm_fit`, `tau_short`,
   `tau_long`, `best_aic`, `null_aic`, `tier`, `n_obs`, `static_ref`, and
-  `obs` (normalised observations with hydro features — used for tier-1
-  matching).
+  `obs` (normalised observations with their tier-1 event index
+  `hydro_event`).
 
 - `$hydro`:
 
@@ -177,10 +177,12 @@ paired with a downstream target in the same sub-catchment.
 **Three-tier resolver** (evaluated per analyte × target date):
 
 1.  **Tier 1 — direct match.** A reference observation within
-    `±match_window_days` days whose event-API is within
-    `match_hydro_tol` (default: `0.5 × IQR` of the reference API
-    series). This gate rejects time-close but hydrologically-mismatched
-    grabs (e.g. a dry-weather reference next to a wet-event target).
+    `±match_window_days` days whose event-API (the API at
+    `tau = match_window_days`, on both sides) is within
+    `match_hydro_tol` (default: `0.5 × IQR` of that same API over the
+    reference dates). This gate rejects time-close but
+    hydrologically-mismatched grabs (e.g. a dry-weather reference next
+    to a wet-event target).
 
 2.  **Tier 2 — GAM prediction.** A per-analyte
     [`mgcv::gam`](https://rdrr.io/pkg/mgcv/man/gam.html) with

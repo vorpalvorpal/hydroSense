@@ -129,7 +129,8 @@ only).</p></dd>
 
 <dt id="arg-match-hydro-tol">match_hydro_tol<a class="anchor" aria-label="anchor" href="#arg-match-hydro-tol"></a></dt>
 <dd><p>Numeric; tier-1 hydro tolerance (default <code>NULL</code> →
-<code>0.5 × IQR</code> of the reference event-API series).</p></dd>
+<code>0.5 × IQR</code> of the reference event-API series, the API at
+<code>tau = match_window_days</code>).</p></dd>
 
 
 <dt id="arg-api-tau-bounds-short">api_tau_bounds_short<a class="anchor" aria-label="anchor" href="#arg-api-tau-bounds-short"></a></dt>
@@ -182,7 +183,7 @@ enough burn-in (about 5 tau) to converge before the first observation.</p></dd>
 <dd><p>Named list (one per analyte) carrying <code>gamm_fit</code>,
 <code>tau_short</code>, <code>tau_long</code>, <code>best_aic</code>, <code>null_aic</code>, <code>tier</code>,
 <code>n_obs</code>, <code>static_ref</code>, and <code>obs</code> (normalised observations with
-hydro features — used for tier-1 matching).</p></dd>
+their tier-1 event index <code>hydro_event</code>).</p></dd>
 
 <dt><code>$hydro</code></dt>
 <dd><p>Daily hydro series used for index computation.</p></dd>
@@ -213,8 +214,9 @@ from SILO) applies to both sites.  This invariant should hold for
 near-field leachate assessments where a headwater reference is paired with
 a downstream target in the same sub-catchment.</p>
 <p><strong>Three-tier resolver</strong> (evaluated per analyte × target date):</p><ol><li><p><strong>Tier 1 — direct match.</strong> A reference observation within
-<code>±match_window_days</code> days whose event-API is within <code>match_hydro_tol</code>
-(default: <code>0.5 × IQR</code> of the reference API series).  This gate rejects
+<code>±match_window_days</code> days whose event-API (the API at
+<code>tau = match_window_days</code>, on both sides) is within <code>match_hydro_tol</code>
+(default: <code>0.5 × IQR</code> of that same API over the reference dates).  This gate rejects
 time-close but hydrologically-mismatched grabs (e.g. a dry-weather
 reference next to a wet-event target).</p></li>
 <li><p><strong>Tier 2 — GAM prediction.</strong> A per-analyte <code><a href="https://rdrr.io/pkg/mgcv/man/gam.html" class="external-link">mgcv::gam</a></code> with

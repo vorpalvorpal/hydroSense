@@ -19,7 +19,7 @@ filled before the toxicity calculation.
 ``` r
 mspaf_pipeline(
   target,
-  reference,
+  reference = NULL,
   hydro = NULL,
   impute = TRUE,
   impute_on = c("reference", "target"),
@@ -34,7 +34,8 @@ mspaf_pipeline(
   tau = NULL,
   window = NULL,
   chronic_summary = "arith_mean",
-  also_total = FALSE
+  also_total = FALSE,
+  ara = c("static", "contemporaneous", "none")
 )
 ```
 
@@ -53,6 +54,10 @@ mspaf_pipeline(
 
   Long-format reference-site chemistry passed to
   [`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md).
+  `NULL` (default) runs the pipeline without a reference site: no
+  reference model is fitted (the `reference_model` attribute is `NULL`),
+  `ara` defaults to `"none"`, daily interpolation defaults to `"linear"`
+  and `impute_on` defaults to `"target"`. See Details.
 
 - hydro:
 
@@ -68,7 +73,10 @@ mspaf_pipeline(
 - impute_on:
 
   Which chemistry to fit the imputation model on: `"reference"`
-  (default, matching the documented design) or `"target"`.
+  (default, matching the documented design) or `"target"`. With
+  `reference = NULL` the default becomes `"target"`; an explicit
+  `"reference"` is an error of class `hydroSense_impute_needs_reference`
+  when `impute = TRUE`.
 
 - required_vars:
 
@@ -162,7 +170,39 @@ mspaf_pipeline(
   aggregates `mspaf` and returns it as `value_total`. The static ARA
   reference is `daily_args$reference` (the `reference` argument here is
   the reference-model fit data); without it `value_total` equals
-  `value`. An error in draws mode (`daily_args$ndraws` set).
+  `value`. An error in draws mode (`daily_args$ndraws` set). Composes
+  with every `ara` mode: `value_total` is always the no-ARA value.
+
+- ara:
+
+  Area-reference adjustment (ARA) applied by
+  [`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md):
+
+  - `"static"`: static ARA against the per-analyte summary of
+    `daily_args$reference` (a raw reference chemistry frame, see
+    [`prepare_reference()`](https://vorpalvorpal.github.io/hydroSense/reference/prepare_reference.md)),
+    which is then required.
+
+  - `"contemporaneous"`: the reference model this pipeline fits is
+    passed to
+    [`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)
+    as `reference`, so each day is adjusted by the reference model's
+    resolution for that day (tier-1 match, GAM prediction or static
+    fallback; see
+    [`fit_reference_model()`](https://vorpalvorpal.github.io/hydroSense/reference/fit_reference_model.md)).
+    The model is fitted once and reused. `daily_args$reference` must not
+    be given.
+
+  - `"none"`: no ARA. `daily_args$reference` must not be given.
+
+  With `reference = NULL`, `"contemporaneous"` (and `"static"` without
+  `daily_args$reference`) is an error of class
+  `hydroSense_ara_needs_reference`.
+
+  When `ara` is not supplied the behaviour is unchanged from earlier
+  versions: static ARA if `daily_args$reference` is given, otherwise
+  none. Conflicting combinations are errors raised before any model is
+  fitted.
 
 ## Value
 
@@ -210,6 +250,12 @@ non-imputed behaviour of calling
 and
 [`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)
 directly.
+
+With `reference = NULL` (no reference site of the right water type) no
+reference model is fitted. `daily_args$interpolation = "model"` is then
+an error (class `hydroSense_model_needs_reference`); the default is
+`"linear"`. All such argument errors are raised before any model is
+fitted.
 
 ## See also
 

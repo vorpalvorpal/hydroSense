@@ -68,7 +68,7 @@ entirely-absent analytes are filled before the toxicity calculation.</p>
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">mspaf_pipeline</span><span class="op">(</span></span>
 <span>  <span class="va">target</span>,</span>
-<span>  <span class="va">reference</span>,</span>
+<span>  reference <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  hydro <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  impute <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  impute_on <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"reference"</span>, <span class="st">"target"</span><span class="op">)</span>,</span>
@@ -83,7 +83,8 @@ entirely-absent analytes are filled before the toxicity calculation.</p>
 <span>  tau <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  window <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  chronic_summary <span class="op">=</span> <span class="st">"arith_mean"</span>,</span>
-<span>  also_total <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>  also_total <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  ara <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"static"</span>, <span class="st">"contemporaneous"</span>, <span class="st">"none"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -101,7 +102,11 @@ entirely-absent analytes are filled before the toxicity calculation.</p>
 
 <dt id="arg-reference">reference<a class="anchor" aria-label="anchor" href="#arg-reference"></a></dt>
 <dd><p>Long-format reference-site chemistry passed to
-<code><a href="fit_reference_model.html">fit_reference_model()</a></code>.</p></dd>
+<code><a href="fit_reference_model.html">fit_reference_model()</a></code>. <code>NULL</code> (default) runs the pipeline without a
+reference site: no reference model is fitted (the <code>reference_model</code>
+attribute is <code>NULL</code>), <code>ara</code> defaults to <code>"none"</code>, daily interpolation
+defaults to <code>"linear"</code> and <code>impute_on</code> defaults to <code>"target"</code>. See
+Details.</p></dd>
 
 
 <dt id="arg-hydro">hydro<a class="anchor" aria-label="anchor" href="#arg-hydro"></a></dt>
@@ -116,7 +121,10 @@ downstream (identical to chaining the functions by hand without one).</p></dd>
 
 <dt id="arg-impute-on">impute_on<a class="anchor" aria-label="anchor" href="#arg-impute-on"></a></dt>
 <dd><p>Which chemistry to fit the imputation model on:
-<code>"reference"</code> (default, matching the documented design) or <code>"target"</code>.</p></dd>
+<code>"reference"</code> (default, matching the documented design) or <code>"target"</code>.
+With <code>reference = NULL</code> the default becomes <code>"target"</code>; an explicit
+<code>"reference"</code> is an error of class <code>hydroSense_impute_needs_reference</code>
+when <code>impute = TRUE</code>.</p></dd>
 
 
 <dt id="arg-required-vars">required_vars<a class="anchor" aria-label="anchor" href="#arg-required-vars"></a></dt>
@@ -194,7 +202,26 @@ daily series alongside the ARA one; the chronic step aggregates it exactly
 as it aggregates <code>mspaf</code> and returns it as <code>value_total</code>. The static ARA
 reference is <code>daily_args$reference</code> (the <code>reference</code> argument here is the
 reference-model fit data); without it <code>value_total</code> equals <code>value</code>. An
-error in draws mode (<code>daily_args$ndraws</code> set).</p></dd>
+error in draws mode (<code>daily_args$ndraws</code> set). Composes with every <code>ara</code>
+mode: <code>value_total</code> is always the no-ARA value.</p></dd>
+
+
+<dt id="arg-ara">ara<a class="anchor" aria-label="anchor" href="#arg-ara"></a></dt>
+<dd><p>Area-reference adjustment (ARA) applied by <code><a href="mspaf_daily.html">mspaf_daily()</a></code>:</p><ul><li><p><code>"static"</code>: static ARA against the per-analyte summary of
+<code>daily_args$reference</code> (a raw reference chemistry frame, see
+<code><a href="prepare_reference.html">prepare_reference()</a></code>), which is then required.</p></li>
+<li><p><code>"contemporaneous"</code>: the reference model this pipeline fits is passed
+to <code><a href="mspaf_daily.html">mspaf_daily()</a></code> as <code>reference</code>, so each day is adjusted by the
+reference model's resolution for that day (tier-1 match, GAM
+prediction or static fallback; see <code><a href="fit_reference_model.html">fit_reference_model()</a></code>). The model
+is fitted once and reused. <code>daily_args$reference</code> must not be given.</p></li>
+<li><p><code>"none"</code>: no ARA. <code>daily_args$reference</code> must not be given.</p></li>
+</ul><p>With <code>reference = NULL</code>, <code>"contemporaneous"</code> (and <code>"static"</code> without
+<code>daily_args$reference</code>) is an error of class
+<code>hydroSense_ara_needs_reference</code>.</p>
+<p>When <code>ara</code> is not supplied the behaviour is unchanged from earlier
+versions: static ARA if <code>daily_args$reference</code> is given, otherwise none.
+Conflicting combinations are errors raised before any model is fitted.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -233,6 +260,10 @@ generally <em>moves</em> the msPAF result. Whether that is appropriate is a
 missingness (MAR/MNAR) modelling judgement, not a neutral default. Set
 <code>impute = FALSE</code> to reproduce the non-imputed behaviour of calling
 <code><a href="fit_reference_model.html">fit_reference_model()</a></code> and <code><a href="mspaf_daily.html">mspaf_daily()</a></code> directly.</p>
+<p>With <code>reference = NULL</code> (no reference site of the right water type) no
+reference model is fitted. <code>daily_args$interpolation = "model"</code> is then an
+error (class <code>hydroSense_model_needs_reference</code>); the default is
+<code>"linear"</code>. All such argument errors are raised before any model is fitted.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

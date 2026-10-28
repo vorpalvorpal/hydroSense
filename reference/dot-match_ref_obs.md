@@ -1,10 +1,12 @@
 # Tier-1 contemporaneous match of target dates to reference observations
 
 For each target date, the candidate observations are those within
-`match_window_days` of it whose `hydro_short` is within
-`match_hydro_tol` of the target's event API. The closest candidate in
-time is chosen, ties going to the first in `obs` order
-([`which.min()`](https://rdrr.io/r/base/which.min.html) semantics).
+`match_window_days` of it whose event index is within `match_hydro_tol`
+of the target's (both
+[`.tier1_event_index()`](https://vorpalvorpal.github.io/hydroSense/reference/dot-tier1_event_index.md)).
+The closest candidate in time is chosen, ties going to the first in
+`obs` order ([`which.min()`](https://rdrr.io/r/base/which.min.html)
+semantics).
 
 ## Usage
 
@@ -23,7 +25,7 @@ time is chosen, ties going to the first in `obs` order
 
 - obs_date, obs_hydro:
 
-  Reference observation dates and stored `hydro_short`.
+  Reference observation dates and stored event index (`hydro_event`).
 
 - target_dates:
 
