@@ -17,6 +17,7 @@
 ##   .compute_api()                  API — recursive linear reservoir (#49)
 ##   .compute_antecedent_mean()      rolling mean for stage/discharge
 ##   .compute_hydro_features()       dispatcher; returns (date, hydro_short, hydro_long)
+##   .tier1_event_index()            the one API definition the tier-1 gate compares
 ##   .build_analyte_model_df()       assemble (y, doy, hydro_short, hydro_long) for one analyte
 ##   .fit_ref_gam()                  fit mgcv::gam with gamm fallback
 ##   .aic_for_tau()                  AIC for a (tau_short, tau_long) candidate pair
@@ -259,6 +260,37 @@
   tibble::tibble(date = target_dates, hydro_short = short, hydro_long = long)
 }
 
+#' Tier-1 event index: the antecedent rain index behind the matching gate
+#'
+#' The single definition of the hydrological index that tier-1 direct matching
+#' compares.  It is used for all three quantities in the gate -- the index
+#' stored on each reference observation (`obs$hydro_event`), the target date's
+#' index, and the IQR-based default tolerance `match_hydro_tol` -- so that the
+#' comparison and its tolerance are on one scale.  [.compute_api()] is an
+#' un-normalised store whose level grows roughly with `tau`, so mixing taus
+#' (as the gate once did: a 30-d store against a 5-d one, gated by the spread
+#' of a 1-d one) leaves same-day, same-rain pairs tens of mm apart and tier 1
+#' practically never fires.
+#'
+#' The memory constant is `match_window_days`: the gate asks whether the rain
+#' over roughly the matching window differs between the two dates, which is
+#' the time scale on which a grab within that window is a valid proxy.  It is
+#' floored at 1 day so `match_window_days = 0` (same-day matches only) still
+#' yields a valid reservoir.
+#'
+#' @param hydro_values,hydro_dates Daily hydrology series.
+#' @param target_dates Date vector; the index is evaluated at each.
+#' @param match_window_days Tier-1 time window (days).
+#' @return Numeric vector, same length as `target_dates`.
+#' @keywords internal
+.tier1_event_index <- function(hydro_values, hydro_dates, target_dates,
+                               match_window_days) {
+  .compute_api(
+    hydro_values, as.Date(hydro_dates), target_dates,
+    max(as.numeric(match_window_days), 1)
+  )
+}
+
 
 ## ============================================================================
 ## Internal GAM helpers
@@ -490,8 +522,9 @@
 #' **Three-tier resolver** (evaluated per analyte × target date):
 #' \enumerate{
 #'   \item **Tier 1 — direct match.** A reference observation within
-#'     `±match_window_days` days whose event-API is within `match_hydro_tol`
-#'     (default: `0.5 × IQR` of the reference API series).  This gate rejects
+#'     `±match_window_days` days whose event-API (the API at
+#'     `tau = match_window_days`, on both sides) is within `match_hydro_tol`
+#'     (default: `0.5 × IQR` of that same API over the reference dates).  This gate rejects
 #'     time-close but hydrologically-mismatched grabs (e.g. a dry-weather
 #'     reference next to a wet-event target).
 #'   \item **Tier 2 — GAM prediction.** A per-analyte `mgcv::gam` with
@@ -542,7 +575,8 @@
 #'   only).
 #' @param match_window_days Integer; tier-1 time tolerance in days (default 5).
 #' @param match_hydro_tol Numeric; tier-1 hydro tolerance (default `NULL` →
-#'   `0.5 × IQR` of the reference event-API series).
+#'   `0.5 × IQR` of the reference event-API series, the API at
+#'   `tau = match_window_days`).
 #' @param api_tau_bounds_short Length-2 numeric `c(lo, hi)` search range (days)
 #'   for the short-store recession constant `tau_short` (default `c(1, 30)`).
 #'   A degenerate `c(x, x)` fixes `tau_short = x`.
@@ -569,7 +603,7 @@
 #'     \item{`$models`}{Named list (one per analyte) carrying `gamm_fit`,
 #'       `tau_short`, `tau_long`, `best_aic`, `null_aic`, `tier`,
 #'       `n_obs`, `static_ref`, and `obs` (normalised observations with
-#'       hydro features — used for tier-1 matching).}
+#'       their tier-1 event index `hydro_event`).}
 #'     \item{`$hydro`}{Daily hydro series used for index computation.}
 #'     \item{`$hydro_type`}{`"rainfall"`, `"stage"`, or `"discharge"`.}
 #'     \item{`$match_window_days`}{Tier-1 time window.}
@@ -780,14 +814,13 @@ fit_reference_model <- function(
     static_val <- static_ref$ref_norm[static_ref$analyte == nm]
     static_val <- if (length(static_val)) static_val[1L] else NA_real_
 
-    # Add hydro features at observation dates (longest-memory tau in each store)
-    # for tier-1 matching; stored regardless of tier
-    max_short <- max(api_tau_bounds_short)
-    max_long <- max(api_tau_bounds_long)
-    obs_feats <- .compute_hydro_features(
-      hydro, obs$date, max_short, max_long, hydro_type
+    # Tier-1 event index at the observation dates, stored regardless of tier.
+    # It must use the same definition as the target-side index and the
+    # tolerance below (see .tier1_event_index()).
+    obs_with_feats <- obs
+    obs_with_feats$hydro_event <- .tier1_event_index(
+      hydro$value, hydro$date, obs$date, match_window_days
     )
-    obs_with_feats <- dplyr::bind_cols(obs, dplyr::select(obs_feats, -"date"))
 
     if (n_obs < min_obs_model) {
       models[[nm]] <- list(
@@ -857,12 +890,12 @@ fit_reference_model <- function(
   }
 
   ## ── Tier-1 hydro tolerance ────────────────────────────────────────────────
-  # Compute using the shortest-memory short tau on the reference observations
+  # 0.5 x IQR of the tier-1 event index over the reference observations: the
+  # same index the gate compares, so the tolerance is on the gate's own scale.
   if (is.null(match_hydro_tol)) {
     all_obs_dates <- as.Date(reference$datetime)
-    event_api <- .compute_api(
-      hydro$value, as.Date(hydro$date),
-      all_obs_dates, api_tau_bounds_short[1L]
+    event_api <- .tier1_event_index(
+      hydro$value, hydro$date, all_obs_dates, match_window_days
     )
     match_hydro_tol <- 0.5 * stats::IQR(event_api, na.rm = TRUE)
     if (match_hydro_tol < 1e-6) match_hydro_tol <- Inf # no variability → no gate
@@ -1037,9 +1070,11 @@ print.reference_model <- function(x, ...) {
 #' Tiers, per (sample, analyte):
 #' \enumerate{
 #'   \item `"matched"`: a reference observation within `match_window_days`
-#'     whose stored `hydro_short` lies within `match_hydro_tol` of the
-#'     target's event API (computed at `tau = match_window_days`); the closest
-#'     in time wins, ties going to the earlier observation in `m$obs`.
+#'     whose stored event index (`hydro_event`) lies within `match_hydro_tol`
+#'     of the target's; both are [.tier1_event_index()] (the API at
+#'     `tau = match_window_days`), the scale `match_hydro_tol` is fitted on.
+#'     The closest in time wins, ties going to the earlier observation in
+#'     `m$obs`.
 #'   \item `"model"`: the reference GAM's prediction at the date.
 #'   \item `"static"`: the static reference value (also the fallback when the
 #'     prediction is unavailable).
@@ -1066,11 +1101,13 @@ print.reference_model <- function(x, ...) {
   hydro_dates <- as.Date(ref_model$hydro$date)
   mwd <- ref_model$match_window_days
 
-  ## Tier-1 gate: event API at every date in one pass (an NA date is not
-  ## evaluated and resolves to static; the per-date code errored on it).
+  ## Tier-1 gate: event index at every date in one pass (an NA date is not
+  ## evaluated and resolves to static; the per-date code errored on it).  The
+  ## same .tier1_event_index() definition as the stored obs$hydro_event and
+  ## the fitted match_hydro_tol, so all three are on one scale.
   event_api <- numeric(n_u)
   if (any(ok_date)) {
-    event_api[ok_date] <- .compute_api(
+    event_api[ok_date] <- .tier1_event_index(
       ref_model$hydro$value, hydro_dates, udates[ok_date], mwd
     )
   }
@@ -1087,8 +1124,13 @@ print.reference_model <- function(x, ...) {
     matched <- rep(FALSE, n_u)
     obs <- m$obs
     if (!is.null(obs) && nrow(obs) > 0L) {
+      ## A model fitted before obs$hydro_event existed: derive the index from
+      ## the stored hydrology so both sides of the gate still agree.
+      obs_event <- obs$hydro_event %||% .tier1_event_index(
+        ref_model$hydro$value, hydro_dates, obs$date, mwd
+      )
       mt <- .match_ref_obs(
-        obs$date, obs$hydro_short, udates, event_api,
+        obs$date, obs_event, udates, event_api,
         mwd, ref_model$match_hydro_tol
       )
       matched <- mt$matched
@@ -1136,9 +1178,10 @@ print.reference_model <- function(x, ...) {
 #' Tier-1 contemporaneous match of target dates to reference observations
 #'
 #' For each target date, the candidate observations are those within
-#' `match_window_days` of it whose `hydro_short` is within `match_hydro_tol`
-#' of the target's event API.  The closest candidate in time is chosen, ties
-#' going to the first in `obs` order (`which.min()` semantics).
+#' `match_window_days` of it whose event index is within `match_hydro_tol`
+#' of the target's (both [.tier1_event_index()]).  The closest candidate in
+#' time is chosen, ties going to the first in `obs` order (`which.min()`
+#' semantics).
 #'
 #' The common case (no missing dates or hydrology) is resolved for all dates
 #' at once from the observations inside each date's time window.  Inputs with
@@ -1146,8 +1189,8 @@ print.reference_model <- function(x, ...) {
 #' `which(mask)[which.min(dt[mask])]` selection exactly, including its
 #' behaviour when the mask itself holds `NA`.
 #'
-#' @param obs_date,obs_hydro Reference observation dates and stored
-#'   `hydro_short`.
+#' @param obs_date,obs_hydro Reference observation dates and stored event
+#'   index (`hydro_event`).
 #' @param target_dates Distinct target dates.
 #' @param target_api Event API at `target_dates`.
 #' @param match_window_days,match_hydro_tol Tier-1 tolerances.

@@ -1,5 +1,39 @@
 # hydroSense (development)
 
+## Contemporaneous ARA from `mspaf_pipeline()`; tier-1 matching fixed
+
+* **`mspaf_pipeline()` accepts `reference = NULL`.** No reference model is
+  fitted; `ara` defaults to `"none"`, daily interpolation to `"linear"` and
+  `impute_on` to `"target"`. `ara = "contemporaneous"` (or `"static"`
+  without `daily_args$reference`), `daily_args$interpolation = "model"` and
+  an explicit `impute_on = "reference"` with `impute = TRUE` are errors of
+  class `hydroSense_ara_needs_reference`, `hydroSense_model_needs_reference`
+  and `hydroSense_impute_needs_reference`, raised before any fitting. The
+  `reference_model` attribute is `NULL`.
+* **New `ara = c("static", "contemporaneous", "none")` on
+  `mspaf_pipeline()`.** `"contemporaneous"` passes the reference model the
+  pipeline fits to `mspaf_daily()` as `reference`, so each day is adjusted
+  by that model's resolution for the day, with no second model fit.
+  `"static"` requires `daily_args$reference` (error class
+  `hydroSense_ara_static_needs_reference`); `"contemporaneous"` or `"none"`
+  together with `daily_args$reference` is an error of class
+  `hydroSense_ara_conflict`. Leaving `ara` unset keeps the old behaviour
+  (static ARA iff `daily_args$reference` is given). With `also_total = TRUE`,
+  `value_total` is always the no-ARA value.
+* **Tier-1 direct matching in reference models now fires (behaviour
+  change).** The gate compared a reference observation's API at
+  `tau = max(api_tau_bounds_short)` (30 d by default) with the target's API
+  at `tau = match_window_days` (5 d), within a tolerance taken from the API
+  at `tau = api_tau_bounds_short[1]` (1 d). The API is an un-normalised store
+  whose level grows with tau, so even a same-day, same-site pair was usually
+  tens of mm apart and tier 1 almost never matched. All three now use the API
+  at `tau = match_window_days`. Reference observations within the window and
+  with similar antecedent rain now resolve at tier 1 (`ref_tier =
+  "matched"`) rather than from the model or static tier, which changes
+  contemporaneous ARA results, including the reference resolution inside
+  `interpolation = "model"`. Reference model `obs` frames now carry
+  `hydro_event` in place of `hydro_short`/`hydro_long`.
+
 ## Chronic `n_imputed_in_window` was always 0
 
 * **`mspaf_daily()` gains a logical, never-`NA` `imputed` column** (also in
