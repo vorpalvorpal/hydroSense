@@ -202,7 +202,9 @@ error in draws mode (<code>daily_args$ndraws</code> set).</p></dd>
     <p>When <code>chronic = TRUE</code> (default), the chronic msPAF frame, one row per
 (focal date × site):</p><ul><li><p><strong>point mode</strong> (<code>ndraws</code> absent): columns <code>focal_date</code>, <code>site_id</code>,
 <code>sample_id</code>, <code>analyte</code>, <code>value</code>, <code>detected</code>, <code>n_samples_in_window</code>,
-<code>n_imputed_in_window</code> (a single chronic <code>value</code>, no interval columns),
+<code>n_imputed_in_window</code> (the number of daily rows in the window with no grab
+sample, i.e. model-predicted or forward-filled; a single chronic <code>value</code>,
+no interval columns),
 plus <code>value_total</code> when <code>also_total = TRUE</code>.</p></li>
 <li><p><strong>draws mode</strong> (<code>ndraws</code> set): columns <code>focal_date</code>, <code>site_id</code> plus the
 bracket envelope summary (<code>median_*</code>/<code>lo_*</code>/<code>hi_*</code> per envelope, and

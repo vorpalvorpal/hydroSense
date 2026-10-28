@@ -324,6 +324,10 @@ toxicity pass. With <code>reference = NULL</code>, <code>mspaf_total</code> is a
 \(\times\) day) for days with sufficient analyte coverage; <code>mspaf</code> is
 the deterministic daily estimate. With <code>also_total = TRUE</code>, a
 <code>mspaf_total</code> column (total-concentration msPAF, no ARA) follows <code>mspaf</code>.</p>
+<p>All modes carry a logical, never-<code>NA</code> column <code>imputed</code>: <code>TRUE</code> when that
+site had no grab sample on that day (chemistry model-predicted or
+forward-filled), <code>FALSE</code> on grab days (grab day = <code>as.Date(datetime)</code>).
+In draws mode it is the same for every draw of a (site, day).</p>
 <p><strong>Draws mode</strong> (<code>ndraws &gt; 0</code>, <code>return = "summary"</code>): one row per (site
 \(\times\) day) with the <code>deterministic</code> centre line and the envelope
 columns for the chosen <code>gap_uncertainty</code>: <code>median_*</code>, <code>lo_*</code>, <code>hi_*</code> per

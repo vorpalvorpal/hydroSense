@@ -302,6 +302,11 @@ the deterministic daily estimate. With `also_total = TRUE`, a
 `mspaf_total` column (total-concentration msPAF, no ARA) follows
 `mspaf`.
 
+All modes carry a logical, never-`NA` column `imputed`: `TRUE` when that
+site had no grab sample on that day (chemistry model-predicted or
+forward-filled), `FALSE` on grab days (grab day = `as.Date(datetime)`).
+In draws mode it is the same for every draw of a (site, day).
+
 **Draws mode** (`ndraws > 0`, `return = "summary"`): one row per (site
 \\\times\\ day) with the `deterministic` centre line and the envelope
 columns for the chosen `gap_uncertainty`: `median_*`, `lo_*`, `hi_*` per
