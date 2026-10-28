@@ -952,7 +952,11 @@ print.reference_model <- function(x, ...) {
   )
   log_pred <- tryCatch(
     as.numeric(stats::predict(m$gamm_fit, newdata = newdata)),
-    error = function(e) NA_real_
+    error = function(e) {
+      .warn_predict_fallback(e, "Reference GAM prediction failed;",
+                             "the static reference is used")
+      NA_real_
+    }
   )
   if (is.na(log_pred)) {
     return(list(ref_norm = m$static_ref %||% NA_real_, ref_tier = "static"))
@@ -971,10 +975,15 @@ print.reference_model <- function(x, ...) {
 .predict_bisect <- function(fit, newdata) {
   n <- nrow(newdata)
   out <- rep(NA_real_, n)
+  n_failed <- 0L
+  first_err <- NULL
   go <- function(idx) {
     r <- tryCatch(
       as.numeric(stats::predict(fit, newdata = newdata[idx, , drop = FALSE])),
-      error = function(e) NULL
+      error = function(e) {
+        if (is.null(first_err)) first_err <<- e
+        NULL
+      }
     )
     if (!is.null(r) && length(r) == length(idx)) {
       out[idx] <<- r
@@ -982,10 +991,36 @@ print.reference_model <- function(x, ...) {
       h <- length(idx) %/% 2L
       go(idx[seq_len(h)])
       go(idx[-seq_len(h)])
+    } else {
+      n_failed <<- n_failed + 1L
     }
   }
   go(seq_len(n))
+  if (n_failed > 0L) {
+    .warn_predict_fallback(
+      first_err %||% simpleError("prediction returned the wrong length"),
+      sprintf("Reference GAM prediction failed for %d of %d date(s);", n_failed, n),
+      "those dates use the static reference"
+    )
+  }
   out
+}
+
+#' Warn that a model prediction failed and a fallback is being used
+#'
+#' The prediction fallbacks in the reference and daily paths keep a run going
+#' when a GAM cannot be evaluated, but a silent fallback hides real faults (a
+#' fresh R session without mgcv loaded once sent every prediction to
+#' `predict.glm()`, which errors on a gam).  Every such fallback reports here.
+#' @param e The caught condition.
+#' @param what What failed (start of the message).
+#' @param fallback What is used instead.
+#' @keywords internal
+.warn_predict_fallback <- function(e, what, fallback) {
+  cli::cli_warn(
+    c("{what} {fallback}.", "x" = "{conditionMessage(e)}"),
+    class = "hydroSense_predict_fallback"
+  )
 }
 
 #' Resolve ref_norm for instantaneous target samples (one date per sample)
@@ -1223,7 +1258,11 @@ print.reference_model <- function(x, ...) {
       )
       log_preds <- tryCatch(
         as.numeric(stats::predict(m$gamm_fit, newdata = newdata)),
-        error = function(e) rep(NA_real_, length(dates_in_window))
+        error = function(e) {
+          .warn_predict_fallback(e, "Reference GAM prediction failed;",
+                                 "the static reference is used")
+          rep(NA_real_, length(dates_in_window))
+        }
       )
 
       if (all(is.na(log_preds))) {
