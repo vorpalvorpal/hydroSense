@@ -209,6 +209,13 @@
 #'   (issue #15); `"additive"` keeps `g = I` (pre-#15 behaviour, no HC5 scaling).
 #'   Forwarded to [fit_target_model()]; ignored unless
 #'   `interpolation = "model"`.
+#' @param also_total Logical (default `FALSE`). Point mode only. When `TRUE`,
+#'   adds a column `mspaf_total`: the **total**-concentration msPAF (no ARA
+#'   background subtraction) from a second [add_mspaf()] pass with
+#'   `reference = NULL` over the same synthetic daily chemistry, alongside the
+#'   ARA `mspaf`. Nothing is refitted or re-predicted, so it costs one extra
+#'   toxicity pass. With `reference = NULL`, `mspaf_total` is a copy of
+#'   `mspaf`. An error in draws mode (`ndraws` set).
 #'
 #' @details
 #' `mspaf_daily()` returns one of **two distinct products**, chosen by
@@ -250,7 +257,8 @@
 #' @return
 #' **Point mode** (`ndraws = NULL`): a tibble with one row per (site
 #'   \eqn{\times} day) for days with sufficient analyte coverage; `mspaf` is
-#'   the deterministic daily estimate.
+#'   the deterministic daily estimate. With `also_total = TRUE`, a
+#'   `mspaf_total` column (total-concentration msPAF, no ARA) follows `mspaf`.
 #'
 #' **Draws mode** (`ndraws > 0`, `return = "summary"`): one row per (site
 #'   \eqn{\times} day) with the `deterministic` centre line and the envelope
@@ -323,7 +331,8 @@ mspaf_daily <- function(
   parallel = FALSE,
   couple_residuals = TRUE,
   gap_uncertainty = c("bracket", "ignorable", "informative"),
-  transform = c("pseudo_log", "additive")
+  transform = c("pseudo_log", "additive"),
+  also_total = FALSE
 ) {
   ## --- Validate inputs -------------------------------------------------------
   checkmate::assert_data_frame(df)
@@ -353,6 +362,7 @@ mspaf_daily <- function(
   }
   checkmate::assert_flag(parallel)
   checkmate::assert_flag(couple_residuals)
+  checkmate::assert_flag(also_total)
   gap_uncertainty <- match.arg(gap_uncertainty)
   transform <- match.arg(transform)
   if (parallel && !requireNamespace("future.apply", quietly = TRUE)) {
@@ -382,6 +392,14 @@ mspaf_daily <- function(
   }
 
   draws_mode <- !is.null(ndraws)
+
+  if (also_total && draws_mode) {
+    cli::cli_abort(c(
+      "{.code also_total = TRUE} is supported in point mode only.",
+      "i" = "Drop {.arg ndraws}, or run draws mode twice (with and without \\
+             {.arg reference}) for a total-concentration envelope."
+    ), class = "hydroSense_also_total_draws")
+  }
 
   ## interpolation = "model" needs a fitted reference_model to predict the
   ## site impact; co-analytes are still forward-filled (toxicants come from the
@@ -851,7 +869,11 @@ mspaf_daily <- function(
   if (length(site_results) == 0L) {
     cli::cli_warn("No daily chemistry could be built. Returning empty tibble.")
     empty_mode <- if (!draws_mode) "point" else if (return == "draws") "draws" else "summary"
-    return(.empty_daily_result(empty_mode, gap_uncertainty))
+    result <- .empty_daily_result(empty_mode, gap_uncertainty)
+    if (also_total) {
+      result <- dplyr::mutate(result, mspaf_total = numeric(), .after = "mspaf")
+    }
+    return(result)
   }
 
   all_synth <- dplyr::bind_rows(lapply(site_results, `[[`, "synth"))
@@ -908,6 +930,9 @@ mspaf_daily <- function(
     )
     empty_mode <- if (!draws_mode) "point" else if (return == "draws") "draws" else "summary"
     result <- .empty_daily_result(empty_mode, gap_uncertainty)
+    if (also_total) {
+      result <- dplyr::mutate(result, mspaf_total = numeric(), .after = "mspaf")
+    }
     attr(result, "ara_summary") <- ara_summ
     return(result)
   }
@@ -1029,6 +1054,33 @@ mspaf_daily <- function(
         "n_measured_analytes", "days_since_last_sample"
       ) |>
       dplyr::arrange(.data$site_id, .data$date)
+
+    ## also_total: the static ARA reference enters only at add_mspaf(), so a
+    ## second pass with reference = NULL over the same synthetic chemistry is
+    ## the total-concentration msPAF; nothing upstream is refitted.  With no
+    ## reference the first pass already is the total.
+    if (also_total) {
+      if (is.null(reference)) {
+        result$mspaf_total <- result$mspaf
+      } else {
+        tot_out <- add_mspaf(
+          df                  = all_synth_clean,
+          reference           = NULL,
+          analyte_metadata    = analyte_metadata,
+          method              = method,
+          guideline_dir       = guideline_dir,
+          min_analytes        = min_analytes,
+          conc_units          = conc_units,
+          require_temperature = require_temperature,
+          return              = "summary"
+        )
+        tot_dated <- dplyr::filter(tot_out, .data$analyte == "msPAF") |>
+          dplyr::left_join(id_date_map, by = c("sample_id", "site_id")) |>
+          dplyr::select(date = ".date", "site_id", mspaf_total = "value")
+        result <- dplyr::left_join(result, tot_dated, by = c("date", "site_id"))
+      }
+      result <- dplyr::relocate(result, "mspaf_total", .after = "mspaf")
+    }
   }
 
   ## Per-analyte PAF breakdown, re-keyed from the synthetic sample_id to date.
