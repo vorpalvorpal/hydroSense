@@ -515,7 +515,11 @@ mspaf_daily <- function(
         tibble::tibble(sample_id = as.character(ref_dates), datetime = ref_dates)
       ) |>
         dplyr::mutate(date = as.Date(.data$sample_id)),
-      error = function(e) NULL
+      error = function(e) {
+        .warn_predict_fallback(e, "Shared reference-norm resolution failed;",
+                               "each point resolves its own")
+        NULL
+      }
     )
   }
 
@@ -1487,7 +1491,11 @@ mspaf_daily <- function(
         tibble::tibble(sample_id = as.character(qdates), datetime = qdates)
       ) |>
         dplyr::mutate(date = as.Date(.data$sample_id)),
-      error = function(e) NULL
+      error = function(e) {
+        .warn_predict_fallback(e, "Reference-norm resolution failed;",
+                               "the daily reference is treated as 0")
+        NULL
+      }
     )
   } else {
     ref_q <- ref_q[ref_q$date %in% qdates, , drop = FALSE]
@@ -1621,7 +1629,13 @@ mspaf_daily <- function(
               NULL
             }
           },
-          error = function(e) NULL
+          error = function(e) {
+            .warn_predict_fallback(
+              e, sprintf("Anchor concentration for %s failed;", nm),
+              "its grab measurement error is not added to the draws"
+            )
+            NULL
+          }
         )
         if (!is.null(c_norm_obs)) {
           ## S6 is a concentration-space variance; the smoother now works on the
@@ -1708,7 +1722,13 @@ mspaf_daily <- function(
       )
       if (isTRUE(m$pooled)) nd$analyte <- factor(m$analyte, levels = m$pool_levels)
       lp <- tryCatch(stats::predict(m$impact_fit, newdata = nd, type = "lpmatrix"),
-        error = function(e) NULL
+        error = function(e) {
+          .warn_predict_fallback(
+            e, sprintf("Impact-GAM design matrix for %s failed;", nm),
+            "its hydrological term is dropped (set to 0)"
+          )
+          NULL
+        }
       )
     }
     parsed <- fac_lookup[[nm]]$parsed
