@@ -216,6 +216,16 @@
 #'   ARA `mspaf`. Nothing is refitted or re-predicted, so it costs one extra
 #'   toxicity pass. With `reference = NULL`, `mspaf_total` is a copy of
 #'   `mspaf`. An error in draws mode (`ndraws` set).
+#' @param contributions Logical (default `FALSE`). Point mode only. When
+#'   `TRUE`, the result carries attribute `"contributions"`: the daily
+#'   per-analyte and per-group breakdown of the returned `mspaf`, from
+#'   [add_mspaf()]'s `contributions` (same apportioning rule), keyed by
+#'   `site_id` and `date` with columns `analyte`, `group`, `c_adj`, `tu`,
+#'   `paf`, `group_mspaf` and `contribution` (%). Contributions sum to `mspaf`
+#'   for each (site, day). With `also_total = TRUE` the table gains a
+#'   `variant` column (`"ara"` / `"total"`; the latter sums to `mspaf_total`).
+#'   An error of class `hydroSense_contributions_draws` in draws mode
+#'   (`ndraws` set).
 #'
 #' @details
 #' `mspaf_daily()` returns one of **two distinct products**, chosen by
@@ -337,7 +347,8 @@ mspaf_daily <- function(
   couple_residuals = TRUE,
   gap_uncertainty = c("bracket", "ignorable", "informative"),
   transform = c("pseudo_log", "additive"),
-  also_total = FALSE
+  also_total = FALSE,
+  contributions = FALSE
 ) {
   ## --- Validate inputs -------------------------------------------------------
   checkmate::assert_data_frame(df)
@@ -368,6 +379,7 @@ mspaf_daily <- function(
   checkmate::assert_flag(parallel)
   checkmate::assert_flag(couple_residuals)
   checkmate::assert_flag(also_total)
+  checkmate::assert_flag(contributions)
   gap_uncertainty <- match.arg(gap_uncertainty)
   transform <- match.arg(transform)
   if (parallel && !requireNamespace("future.apply", quietly = TRUE)) {
@@ -404,6 +416,13 @@ mspaf_daily <- function(
       "i" = "Drop {.arg ndraws}, or run draws mode twice (with and without \\
              {.arg reference}) for a total-concentration envelope."
     ), class = "hydroSense_also_total_draws")
+  }
+
+  if (contributions && draws_mode) {
+    cli::cli_abort(c(
+      "{.code contributions = TRUE} is supported in point mode only.",
+      "i" = "Drop {.arg ndraws}."
+    ), class = "hydroSense_contributions_draws")
   }
 
   ## interpolation = "model" needs a fitted reference_model to predict the
@@ -909,7 +928,8 @@ mspaf_daily <- function(
     min_analytes        = min_analytes,
     conc_units          = conc_units,
     require_temperature = require_temperature,
-    return              = if (draws_mode) "draws" else "summary"
+    return              = if (draws_mode) "draws" else "summary",
+    contributions       = contributions
   )
 
   ara_summ <- attr(mspaf_out, "ara_summary")
@@ -1068,9 +1088,11 @@ mspaf_daily <- function(
     ## second pass with reference = NULL over the same synthetic chemistry is
     ## the total-concentration msPAF; nothing upstream is refitted.  With no
     ## reference the first pass already is the total.
+    tot_ctb <- NULL
     if (also_total) {
       if (is.null(reference)) {
         result$mspaf_total <- result$mspaf
+        tot_ctb <- attr(mspaf_out, "contributions")
       } else {
         tot_out <- add_mspaf(
           df                  = all_synth_clean,
@@ -1081,8 +1103,10 @@ mspaf_daily <- function(
           min_analytes        = min_analytes,
           conc_units          = conc_units,
           require_temperature = require_temperature,
-          return              = "summary"
+          return              = "summary",
+          contributions       = contributions
         )
+        tot_ctb <- attr(tot_out, "contributions")
         tot_dated <- dplyr::filter(tot_out, .data$analyte == "msPAF") |>
           dplyr::left_join(id_date_map, by = c("sample_id", "site_id")) |>
           dplyr::select(date = ".date", "site_id", mspaf_total = "value")
@@ -1111,7 +1135,39 @@ mspaf_daily <- function(
   }
   attr(result, "analyte_pafs") <- apafs
   attr(result, "ara_summary") <- ara_summ
+
+  if (contributions) {
+    ctb <- .daily_contributions(attr(mspaf_out, "contributions"), id_date_map)
+    if (also_total) {
+      ctb <- dplyr::bind_rows(
+        dplyr::mutate(ctb, variant = "ara", .before = 1L),
+        dplyr::mutate(.daily_contributions(tot_ctb, id_date_map),
+                      variant = "total", .before = 1L)
+      )
+    }
+    attr(result, "contributions") <- ctb
+  }
   result
+}
+
+
+#' Re-key an add_mspaf() contributions table from synthetic sample to date
+#'
+#' @param ctb The `"contributions"` attribute of an [add_mspaf()] result.
+#' @param id_date_map `(sample_id, site_id, .date)` lookup.
+#' @return Tibble keyed by `site_id`, `date`, ordered by site, date, analyte.
+#' @keywords internal
+.daily_contributions <- function(ctb, id_date_map) {
+  ctb <- ctb |>
+    dplyr::left_join(
+      dplyr::distinct(id_date_map, .data$sample_id, .data$site_id, .data$.date),
+      by = c("sample_id", "site_id")
+    ) |>
+    dplyr::rename(date = ".date") |>
+    dplyr::select("site_id", "date", "analyte", "group", "c_adj", "tu", "paf",
+                  "group_mspaf", "contribution") |>
+    dplyr::arrange(.data$site_id, .data$date, .data$analyte)
+  ctb
 }
 
 

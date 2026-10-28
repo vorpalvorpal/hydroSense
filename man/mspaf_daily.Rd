@@ -33,7 +33,8 @@ mspaf_daily(
   couple_residuals = TRUE,
   gap_uncertainty = c("bracket", "ignorable", "informative"),
   transform = c("pseudo_log", "additive"),
-  also_total = FALSE
+  also_total = FALSE,
+  contributions = FALSE
 )
 }
 \arguments{
@@ -206,6 +207,17 @@ background subtraction) from a second \code{\link[=add_mspaf]{add_mspaf()}} pass
 ARA \code{mspaf}. Nothing is refitted or re-predicted, so it costs one extra
 toxicity pass. With \code{reference = NULL}, \code{mspaf_total} is a copy of
 \code{mspaf}. An error in draws mode (\code{ndraws} set).}
+
+\item{contributions}{Logical (default \code{FALSE}). Point mode only. When
+\code{TRUE}, the result carries attribute \code{"contributions"}: the daily
+per-analyte and per-group breakdown of the returned \code{mspaf}, from
+\code{\link[=add_mspaf]{add_mspaf()}}'s \code{contributions} (same apportioning rule), keyed by
+\code{site_id} and \code{date} with columns \code{analyte}, \code{group}, \code{c_adj}, \code{tu},
+\code{paf}, \code{group_mspaf} and \code{contribution} (\%). Contributions sum to \code{mspaf}
+for each (site, day). With \code{also_total = TRUE} the table gains a
+\code{variant} column (\code{"ara"} / \code{"total"}; the latter sums to \code{mspaf_total}).
+An error of class \code{hydroSense_contributions_draws} in draws mode
+(\code{ndraws} set).}
 }
 \value{
 \strong{Point mode} (\code{ndraws = NULL}): a tibble with one row per (site

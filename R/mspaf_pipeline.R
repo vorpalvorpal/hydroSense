@@ -117,6 +117,20 @@
 #'   When `ara` is not supplied the behaviour is unchanged from earlier
 #'   versions: static ARA if `daily_args$reference` is given, otherwise none.
 #'   Conflicting combinations are errors raised before any model is fitted.
+#' @param contributions Logical (default `FALSE`). Point mode only. When
+#'   `TRUE`, the result carries attribute `"contributions"`: the chronic msPAF
+#'   apportioned to analytes and mode-of-action groups, with columns
+#'   `site_id`, `focal_date`, `analyte`, `group` and `contribution` (%).
+#'   Each analyte's daily contribution series (from [mspaf_daily()]; zero on
+#'   days it did not enter the msPAF) is aggregated with the same time weights,
+#'   window and rows as the chronic `value`, so the contributions sum to
+#'   `value` for every (site, focal date). With `also_total = TRUE` a
+#'   `variant` column (`"ara"` / `"total"`) distinguishes the contributions to
+#'   `value` and `value_total`. Requires `chronic_summary = "arith_mean"` (the
+#'   only additive aggregation) when `chronic = TRUE`. An error of class
+#'   `hydroSense_contributions_draws` in draws mode (`daily_args$ndraws` set).
+#'   With `chronic = FALSE` the daily breakdown from [mspaf_daily()] is
+#'   attached to the daily result instead.
 #'
 #' @return When `chronic = TRUE` (default), the chronic msPAF frame, one row per
 #'   (focal date × site):
@@ -165,7 +179,8 @@ mspaf_pipeline <- function(target,
                            window = NULL,
                            chronic_summary = "arith_mean",
                            also_total = FALSE,
-                           ara = c("static", "contemporaneous", "none")) {
+                           ara = c("static", "contemporaneous", "none"),
+                           contributions = FALSE) {
   checkmate::assert_data_frame(target)
   checkmate::assert_data_frame(reference, null.ok = TRUE)
   no_ref <- is.null(reference)
@@ -178,6 +193,21 @@ mspaf_pipeline <- function(target,
   checkmate::assert_flag(chronic)
   checkmate::assert_string(chronic_summary)
   checkmate::assert_flag(also_total)
+  checkmate::assert_flag(contributions)
+  if (contributions && !is.null(daily_args$ndraws)) {
+    cli::cli_abort(c(
+      "{.code contributions = TRUE} is supported in point mode only.",
+      "i" = "Drop {.code daily_args$ndraws}."
+    ), class = "hydroSense_contributions_draws")
+  }
+  if (contributions && chronic && chronic_summary != "arith_mean") {
+    cli::cli_abort(c(
+      "{.code contributions = TRUE} needs {.code chronic_summary = \
+       \"arith_mean\"}.",
+      "i" = "Only the arithmetic time-weighted mean is additive across \
+             analytes."
+    ), class = "hydroSense_contributions_summary")
+  }
   # Fail before any model is fitted rather than inside mspaf_daily().
   if (also_total && !is.null(daily_args$ndraws)) {
     cli::cli_abort(c(
@@ -277,6 +307,7 @@ mspaf_pipeline <- function(target,
   # into the chronic summary; otherwise honour daily_call$return.
   if (chronic && draws_mode) daily_call$return <- "draws"
   if (also_total) daily_call$also_total <- TRUE
+  if (contributions) daily_call$contributions <- TRUE
   # Contemporaneous ARA: the reference model fitted above is the reference.
   if (ara == "contemporaneous") daily_call$reference <- ref_model
   daily <- do.call(
@@ -313,6 +344,16 @@ mspaf_pipeline <- function(target,
     central         = central,
     also_total      = also_total
   )
+
+  if (contributions) {
+    attr(out, "contributions") <- .chronic_contributions(
+      daily, focal = focal, tau = tau, window = window,
+      chronic_summary = chronic_summary, also_total = also_total
+    )
+    # The daily breakdown is folded into the chronic one; keep the attached
+    # daily frame identical to a run without contributions.
+    attr(daily, "contributions") <- NULL
+  }
 
   attr(out, "daily")            <- daily
   attr(out, "reference_model")  <- ref_model
@@ -412,4 +453,62 @@ mspaf_pipeline <- function(target,
     gap_uncertainty = gap_uncertainty
   )
   dplyr::rename(summ, focal_date = "date")
+}
+
+
+# ── .chronic_contributions() ──────────────────────────────────────────────────
+
+#' Aggregate daily msPAF contributions into chronic contributions
+#'
+#' Each analyte's daily contribution series (zero on days it did not enter that
+#' day's msPAF) is passed through [time_weighted_aggregate()] with the same
+#' arguments, focal grid and daily schedule as the chronic msPAF itself, so the
+#' chronic contributions sum to the chronic value.
+#'
+#' @param daily [mspaf_daily()] result carrying a `"contributions"` attribute.
+#' @inheritParams .chronic_from_daily
+#' @return Tibble `(site_id, focal_date, analyte, group, contribution)`, plus a
+#'   leading `variant` column when `also_total`.
+#' @keywords internal
+.chronic_contributions <- function(daily, focal, tau, window, chronic_summary,
+                                   also_total = FALSE) {
+  ctb <- attr(daily, "contributions")
+  one_variant <- function(x) {
+    groups <- dplyr::distinct(x, .data$analyte, .data$group)
+    sched <- dplyr::distinct(daily[!is.na(daily$mspaf), , drop = FALSE],
+                             .data$site_id, .data$date,
+                             .data$imputed)
+    sites <- unique(x$site_id)
+    long <- dplyr::bind_rows(lapply(sites, function(sid) {
+      an <- unique(x$analyte[x$site_id == sid])
+      sc <- sched[sched$site_id == sid, , drop = FALSE]
+      do.call(rbind, lapply(an, function(a) {
+        xa <- x[x$site_id == sid & x$analyte == a, , drop = FALSE]
+        v  <- xa$contribution[match(sc$date, xa$date)]
+        v[is.na(v)] <- 0
+        data.frame(
+          sample_id = paste0("daily_", sid, "_", sc$date),
+          site_id = sid, datetime = sc$date, analyte = a, detected = TRUE,
+          value = v, imputed = sc$imputed, stringsAsFactors = FALSE
+        )
+      }))
+    }))
+    agg <- time_weighted_aggregate(
+      long, focal_dates = focal, tau = tau, tau_units = "d",
+      window = window, window_units = "d", summary = chronic_summary,
+      return = "summary"
+    )
+    agg |>
+      dplyr::left_join(groups, by = "analyte") |>
+      dplyr::select("site_id", "focal_date", "analyte", "group",
+                    contribution = "value") |>
+      dplyr::arrange(.data$site_id, .data$focal_date, .data$analyte)
+  }
+  if (!also_total) return(one_variant(ctb))
+  dplyr::bind_rows(
+    dplyr::mutate(one_variant(ctb[ctb$variant == "ara", , drop = FALSE]),
+                  variant = "ara", .before = 1L),
+    dplyr::mutate(one_variant(ctb[ctb$variant == "total", , drop = FALSE]),
+                  variant = "total", .before = 1L)
+  )
 }

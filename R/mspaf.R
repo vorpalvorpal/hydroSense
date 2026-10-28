@@ -283,6 +283,18 @@
 #'   Default `0.90` (5th/95th percentile bounds).
 #' @param central Central-tendency statistic when `return = "summary"`:
 #'   `"median"` (default) or `"mean"`.
+#' @param contributions Logical (default `FALSE`). When `TRUE`, the result
+#'   carries an extra attribute `"contributions"`: a long table apportioning
+#'   each sample's msPAF to mode-of-action groups and to analytes, so that the
+#'   contributions sum exactly to the msPAF. Within each group `g` the group
+#'   PAF `p_g` is clamped to at most `1 - 1e-12`, `L_g = -log(1 - p_g)`, and the
+#'   group contribution is `msPAF * L_g / sum(L)`; each analyte then takes its
+#'   share of its group in proportion to its toxic units (`TU`). Columns:
+#'   `sample_id`, `site_id`, `datetime` (when the input has it), `analyte`,
+#'   `group`, `c_adj`, `tu`, `paf` (single-analyte PAF, %), `group_mspaf` (%)
+#'   and `contribution` (%). Point mode only: an error of class
+#'   `hydroSense_contributions_draws` for draw-carrier input. The default
+#'   leaves every output unchanged.
 #'
 #' @return The input `df` with msPAF rows appended. Each msPAF row carries:
 #'   `value` (msPAF as a percentage, 0–100+), `detected = TRUE`,
@@ -339,7 +351,8 @@ add_mspaf <- function(
     window_units     = "day",
     return           = c("summary", "draws"),
     interval         = 0.90,
-    central          = c("median", "mean")
+    central          = c("median", "mean"),
+    contributions    = FALSE
 ) {
   checkmate::assert_data_frame(df)
   checkmate::assert_names(
@@ -352,6 +365,13 @@ add_mspaf <- function(
   central     <- match.arg(central)
   checkmate::assert_int(min_analytes, lower = 1L)
   checkmate::assert_flag(require_temperature)
+  checkmate::assert_flag(contributions)
+  if (contributions && "draw_id" %in% names(df) && !all(is.na(df[["draw_id"]]))) {
+    cli::cli_abort(c(
+      "{.code contributions = TRUE} is supported in point mode only.",
+      "i" = "Drop {.arg contributions} for draw-carrier input."
+    ), class = "hydroSense_contributions_draws")
+  }
 
   ## Accept sampleTidy's analyte names and `units` column: compute on a
   ## canonicalised, unit-converted copy, and hand the caller's own rows back
@@ -540,7 +560,91 @@ add_mspaf <- function(
   attr(result, "ara_summary")  <- ara_summary_out
   attr(result, "analyte_pafs") <- analyte_pafs_flat
 
+  if (contributions) {
+    ctb <- .mspaf_contributions(analyte_pafs_flat, ssd_params)
+    for (k in c("datetime", "focal_date")) {
+      if (k %in% names(df) && "sample_id" %in% names(ctb)) {
+        lk <- dplyr::distinct(df, .data$sample_id, .data[[k]])
+        ctb <- dplyr::left_join(ctb, lk, by = "sample_id")
+      }
+    }
+    ctb <- dplyr::relocate(ctb, dplyr::any_of(c("datetime", "focal_date")),
+                           .after = "site_id")
+    attr(result, "contributions") <- ctb
+  }
+
   result
+}
+
+
+#' Apportion msPAF to mode-of-action groups and analytes
+#'
+#' Rebuilds the concentration-addition / independent-action arithmetic of
+#' [compute_mspaf_per_sample()] from the per-analyte breakdown and splits each
+#' sample's msPAF into additive contributions. Per sample, group PAF `p_g` is
+#' clamped to `1 - 1e-12`, `L_g = -log(1 - p_g)`, the group takes
+#' `msPAF * L_g / sum(L)` and each analyte its `TU / sum(TU)` share of the
+#' group (an equal split if the group's TU sum to zero), so the contributions
+#' sum to the msPAF.
+#'
+#' @param pafs Flat `analyte_pafs` breakdown (point mode: `sample_id`,
+#'   `site_id`, `analyte`, `C_adj`, `PAF`, `moa_group`).
+#' @param ssd_params Tibble from [derive_ssd_params()] (`hc50`, `sigma`).
+#' @return Tibble `(sample_id, site_id, analyte, group, c_adj, tu, paf,
+#'   group_mspaf, contribution)`, percentages in `paf`, `group_mspaf` and
+#'   `contribution`.
+#' @keywords internal
+.mspaf_contributions <- function(pafs, ssd_params) {
+  cols <- c("sample_id", "site_id", "analyte", "group", "c_adj", "tu", "paf",
+            "group_mspaf", "contribution")
+  if (is.null(pafs) || nrow(pafs) == 0L) {
+    return(tibble::tibble(
+      sample_id = character(0), site_id = character(0),
+      analyte = character(0), group = character(0), c_adj = numeric(0),
+      tu = numeric(0), paf = numeric(0), group_mspaf = numeric(0),
+      contribution = numeric(0)
+    ))
+  }
+  d <- as.data.frame(pafs[!is.na(pafs$moa_group), , drop = FALSE])
+  m <- match(d$analyte, ssd_params$analyte)
+  hc50  <- ssd_params$hc50[m]
+  sigma <- ssd_params$sigma[m]
+  in_ca <- d$C_adj > 0 & is.finite(hc50) & hc50 > 0 &
+    is.finite(sigma) & sigma > 0
+  in_ca[is.na(in_ca)] <- FALSE
+  tu <- ifelse(in_ca, d$C_adj / hc50, 0)
+
+  skey <- paste(d$site_id, d$sample_id, sep = "\r")
+  gkey <- paste(skey, d$moa_group, sep = "\r")
+  sum_tu <- ave(tu, gkey, FUN = sum)
+  sig_mx <- ave(ifelse(in_ca, sigma, NA_real_), gkey,
+                FUN = function(v) mean(v, na.rm = TRUE))
+  p_g <- ifelse(sum_tu > 0, stats::pnorm(log10(sum_tu) / sig_mx), 0)
+
+  first_g <- !duplicated(gkey)
+  grp <- data.frame(skey = skey[first_g], gkey = gkey[first_g],
+                    p = p_g[first_g], stringsAsFactors = FALSE)
+  grp$L <- -log(1 - pmin(grp$p, 1 - 1e-12))
+  sum_l  <- tapply(grp$L, grp$skey, sum)
+  prod_q <- tapply(1 - grp$p, grp$skey, prod)
+  mspaf  <- 100 * (1 - prod_q[skey])
+  l_g    <- grp$L[match(gkey, grp$gkey)]
+  tot_l  <- sum_l[skey]
+  c_g    <- ifelse(tot_l > 0, mspaf * l_g / tot_l, 0)
+  n_g    <- ave(tu, gkey, FUN = length)
+  share  <- ifelse(sum_tu > 0, tu / sum_tu, ifelse(c_g > 0, 1 / n_g, 0))
+
+  tibble::tibble(
+    sample_id    = d$sample_id,
+    site_id      = d$site_id,
+    analyte      = d$analyte,
+    group        = d$moa_group,
+    c_adj        = d$C_adj,
+    tu           = tu,
+    paf          = 100 * d$PAF,
+    group_mspaf  = 100 * p_g,
+    contribution = as.vector(c_g * share)
+  )[, cols]
 }
 
 
