@@ -122,7 +122,9 @@
 #'   (focal date × site):
 #'   - **point mode** (`ndraws` absent): columns `focal_date`, `site_id`,
 #'     `sample_id`, `analyte`, `value`, `detected`, `n_samples_in_window`,
-#'     `n_imputed_in_window` (a single chronic `value`, no interval columns),
+#'     `n_imputed_in_window` (the number of daily rows in the window with no grab
+#'     sample, i.e. model-predicted or forward-filled; a single chronic `value`,
+#'     no interval columns),
 #'     plus `value_total` when `also_total = TRUE`.
 #'   - **draws mode** (`ndraws` set): columns `focal_date`, `site_id` plus the
 #'     bracket envelope summary (`median_*`/`lo_*`/`hi_*` per envelope, and
@@ -343,7 +345,8 @@ mspaf_pipeline <- function(target,
       datetime  = daily$date,
       analyte   = "msPAF",
       detected  = TRUE,
-      value     = daily[[value_col]]
+      value     = daily[[value_col]],
+      imputed   = if ("imputed" %in% names(daily)) daily$imputed else FALSE
     )
     if (draws_mode) long$draw_id <- daily$draw_id
     long

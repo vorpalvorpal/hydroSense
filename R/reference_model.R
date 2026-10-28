@@ -120,6 +120,97 @@
   out
 }
 
+#' Per-fit cache of the antecedent precipitation index
+#'
+#' A tau search evaluates the API of ONE rain series at dozens of tau values,
+#' for every analyte, then again at the chosen tau for the anchors, the WQ
+#' layer, the static daily features and the smoother's hydro z-score.  The
+#' cache sits in front of [.compute_api()]: the first request for a tau
+#' evaluates the API once over every day of `[min(dates), max(dates)]` (the
+#' dates the fit will ask for); later requests at that tau index into it.
+#' Because the reservoir recursion runs forward from the first hydro day, a
+#' longer evaluation grid leaves every earlier value unchanged, so a lookup is
+#' exactly what `.compute_api()` returns for those targets.
+#'
+#' The cache belongs to one hydro series and lives for one fit: create it per
+#' [fit_target_model()] / [.fit_daily_target()] call and pass it down.
+#' Stage / discharge hydrology is not cached ([.compute_antecedent_mean()]).
+#'
+#' @param hydro Data frame with `date` and `value` (as for
+#'   [.compute_hydro_features()]).
+#' @param hydro_type `"rainfall"`, `"stage"` or `"discharge"`.
+#' @param dates Every date the fit will request features for (the window).
+#' @return An environment read by [.api_cache_features()].
+#' @keywords internal
+.api_cache_new <- function(hydro, hydro_type, dates) {
+  cache <- new.env(parent = emptyenv())
+  cache$hdates <- as.Date(hydro$date)
+  cache$hvals <- hydro$value
+  cache$hydro_type <- hydro_type
+  dates <- as.Date(dates)
+  dates <- dates[!is.na(dates)]
+  ## Whole-day window only: fractional Dates would index the grid differently.
+  ok <- length(dates) > 0L && all(unclass(dates) == round(unclass(dates)))
+  cache$lo <- if (ok) min(dates) else NULL
+  cache$hi <- if (ok) max(dates) else NULL
+  cache$api <- list() # tau key -> API over the window
+  cache
+}
+
+#' API at `target_dates` for one tau, through the per-fit cache
+#'
+#' Targets outside the cache window (or a cache without one) are evaluated
+#' directly by [.compute_api()] and not stored.
+#' @keywords internal
+.api_cache_get <- function(cache, target_dates, tau) {
+  td <- as.Date(target_dates)
+  if (length(td) == 0L) {
+    return(numeric(0))
+  }
+  if (is.null(cache$lo)) {
+    return(.compute_api(cache$hvals, cache$hdates, td, tau))
+  }
+  pos <- as.integer(td - cache$lo) + 1L
+  span <- as.integer(cache$hi - cache$lo) + 1L
+  inside <- !is.na(pos) & pos >= 1L & pos <= span &
+    unclass(td) == round(unclass(td))
+  if (!all(inside)) {
+    return(.compute_api(cache$hvals, cache$hdates, td, tau))
+  }
+  key <- sprintf("%.17g", tau)
+  api <- cache$api[[key]]
+  if (is.null(api)) {
+    api <- .compute_api(
+      cache$hvals, cache$hdates, seq(cache$lo, cache$hi, by = "day"), tau
+    )
+    cache$api[[key]] <- api
+  }
+  api[pos]
+}
+
+#' Hydro features (`hydro_short`, `hydro_long`) through the per-fit cache
+#'
+#' Same values as [.compute_hydro_features()], as a plain list (no tibble, so
+#' it is cheap inside a tau search).
+#' @keywords internal
+.api_cache_features <- function(cache, target_dates, tau_short, tau_long) {
+  if (cache$hydro_type == "rainfall") {
+    list(
+      hydro_short = .api_cache_get(cache, target_dates, tau_short),
+      hydro_long  = .api_cache_get(cache, target_dates, tau_long)
+    )
+  } else {
+    list(
+      hydro_short = .compute_antecedent_mean(
+        cache$hvals, cache$hdates, target_dates, tau_short
+      ),
+      hydro_long = .compute_antecedent_mean(
+        cache$hvals, cache$hdates, target_dates, tau_long
+      )
+    )
+  }
+}
+
 #' Antecedent mean for stage or discharge
 #'
 #' Rolling mean over `[t - window_days, t]`.  Returns `NA` for target dates

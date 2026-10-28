@@ -135,7 +135,9 @@ When \code{chronic = TRUE} (default), the chronic msPAF frame, one row per
 \itemize{
 \item \strong{point mode} (\code{ndraws} absent): columns \code{focal_date}, \code{site_id},
 \code{sample_id}, \code{analyte}, \code{value}, \code{detected}, \code{n_samples_in_window},
-\code{n_imputed_in_window} (a single chronic \code{value}, no interval columns),
+\code{n_imputed_in_window} (the number of daily rows in the window with no grab
+sample, i.e. model-predicted or forward-filled; a single chronic \code{value},
+no interval columns),
 plus \code{value_total} when \code{also_total = TRUE}.
 \item \strong{draws mode} (\code{ndraws} set): columns \code{focal_date}, \code{site_id} plus the
 bracket envelope summary (\verb{median_*}/\verb{lo_*}/\verb{hi_*} per envelope, and

@@ -34,6 +34,16 @@
   `interpolation = "model"`. Reference model `obs` frames now carry
   `hydro_event` in place of `hydro_short`/`hydro_long`.
 
+## Chronic `n_imputed_in_window` was always 0
+
+* **`mspaf_daily()` gains a logical, never-`NA` `imputed` column** (also in
+  empty results and, identically per draw, in draws mode): `TRUE` when the
+  site had no grab sample that day (chemistry model-predicted or
+  forward-filled), `FALSE` on grab days. `mspaf_pipeline()` now carries it
+  into the chronic aggregation, so `n_imputed_in_window` counts the imputed
+  daily rows in the window instead of always reporting 0. The chronic
+  `value` is unchanged.
+
 ## Total msPAF alongside ARA msPAF from one run
 
 * **New `also_total = FALSE` on `mspaf_daily()` and `mspaf_pipeline()`.** In
