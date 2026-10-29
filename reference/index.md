@@ -76,6 +76,9 @@ background adjustment. Includes the static and temporal
 - [`mspaf_daily()`](https://vorpalvorpal.github.io/hydroSense/reference/mspaf_daily.md)
   : Continuous daily msPAF time series from interpolated grab chemistry
 
+- [`interpolate_loglinear()`](https://vorpalvorpal.github.io/hydroSense/reference/interpolate_loglinear.md)
+  : Log-linear daily interpolation of grab samples, with a span cap
+
 - [`prepare_reference()`](https://vorpalvorpal.github.io/hydroSense/reference/prepare_reference.md)
   : Prepare reference chemistry for msPAF background subtraction
 

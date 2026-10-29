@@ -33,6 +33,9 @@
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-METAL_ANALYTES.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-PCA_NO_LOG_VARS.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-WQ_BLOCK_CANDIDATES.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-added_hazard_pipeline.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-ah_reduce_input.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-ah_validate.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-aic_for_tau.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-analyte_c.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/dot-analyte_residual_smoother.html</loc></url>
@@ -164,6 +167,7 @@
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/impute_coanalytes.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/impute_group.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/index.html</loc></url>
+<url><loc>https://vorpalvorpal.github.io/hydroSense/reference/interpolate_loglinear.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/leachate_demo.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/leachate_impute_groups.html</loc></url>
 <url><loc>https://vorpalvorpal.github.io/hydroSense/reference/loo_anchor_coverage.html</loc></url>
