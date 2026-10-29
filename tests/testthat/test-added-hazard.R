@@ -755,7 +755,9 @@ describe("regression: the 120-day cap stops a 16-year-old sample being carried",
   it("is NA with zero coverage years after the old sample under the default cap", {
     s <- mk()
     out <- as.data.frame(.ah_run(s$target, s$reference, focal_dates = fd))
-    expect_false(is.na(out$value[out$focal_date == fd[1]]))   # within 120 d
+    ## The old sample sits in a 16-year gap, so only its own day is covered:
+    ## a month later the covered kernel weight is far below the gate.
+    expect_true(is.na(out$value[out$focal_date == fd[1]]))
     expect_true(is.na(out$value[out$focal_date == fd[2]]))
     expect_equal(out$coverage[out$focal_date == fd[2]], 0)
     expect_false(is.na(out$value[out$focal_date == fd[3]]))
