@@ -306,7 +306,7 @@ below-detection analyte-day contributes 0) the same way and sums to
 
 \strong{Output.} One row per (target site, focal date): \code{focal_date}, \code{site_id},
 \code{sample_id} (\code{"chronic_<focal_date>_<site_id>"}), \code{analyte} (\code{"msPAF"}),
-\code{value}, \code{\link{value_total}}, \code{detected}, \code{n_samples_in_window} (target sample
+\code{value}, \code{value_total} (with \code{also_total}), \code{detected}, \code{n_samples_in_window} (target sample
 dates with a toxicant result in the window), \code{n_imputed_in_window}
 (covered days in the window that are not sample dates) and \code{coverage}.
 Attribute \code{"daily"} holds \code{date}, \code{site_id}, \code{mspaf} (\verb{100 D}),

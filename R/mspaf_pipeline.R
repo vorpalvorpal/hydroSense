@@ -234,7 +234,7 @@
 #'
 #' **Output.** One row per (target site, focal date): `focal_date`, `site_id`,
 #' `sample_id` (`"chronic_<focal_date>_<site_id>"`), `analyte` (`"msPAF"`),
-#' `value`, [`value_total`], `detected`, `n_samples_in_window` (target sample
+#' `value`, `value_total` (with `also_total`), `detected`, `n_samples_in_window` (target sample
 #' dates with a toxicant result in the window), `n_imputed_in_window`
 #' (covered days in the window that are not sample dates) and `coverage`.
 #' Attribute `"daily"` holds `date`, `site_id`, `mspaf` (`100 D`),
