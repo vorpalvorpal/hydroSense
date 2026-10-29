@@ -13,7 +13,10 @@
   that is never below LOR/2), forms the daily added hazard
   `D = max((msPAF_T - msPAF_R) / (1 - msPAF_R), 0)` and time-weights it over
   the covered days. Days the cap leaves uncovered lower the new `coverage`
-  column; `value` is `NA` below `min_coverage`. Attributes `"daily"`,
+  column; `value` is `NA` below `min_coverage`. With `also_total = TRUE`,
+  `value_total` is the target's own msPAF with no reference (below-detection
+  analyte-days at 0, on the same analytes as that day's `D`), time-weighted
+  over the same covered days. Attributes `"daily"`,
   `"sample_days"` (the pairing flag) and, with `contributions = TRUE`, the
   apportionment of `D` by added single-substance PAF. No model is fitted and
   nothing is imputed. Conflicting arguments (`ara = "static"`,

@@ -23,6 +23,9 @@ See \code{\link[=mspaf_pipeline]{mspaf_pipeline()}}.
 }
 \description{
 Engine of \code{mspaf_pipeline(ara_form = "added_hazard")}; arguments are
-validated by \code{\link[=.ah_validate]{.ah_validate()}} first.
+validated by \code{\link[=.ah_validate]{.ah_validate()}} first. Per target and day it forms the added
+hazard \code{D = max((msT - msR) / (1 - msR), 0)} and the total \code{msT0} (the
+target alone, below-detection analyte-days at concentration 0, on the same
+analytes as \code{D}); both are time-weighted over the days where \code{D} exists.
 }
 \keyword{internal}

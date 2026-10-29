@@ -288,16 +288,21 @@ days by default). A day is covered when \code{D} exists. The chronic \code{value
 \verb{100 * sum(w D) / sum(w)} over the covered days; \code{coverage} is the covered
 share of all the weights. \code{value} is \code{NA} when \code{coverage < min_coverage} or
 nothing is covered. \code{value_total} (with \code{also_total = TRUE}) is the same
-with \code{msT} in place of \code{D}.
+time-weighting (same weights, covered days and \code{NA} gate) of \code{msT0}, the
+target's own msPAF with no reference: its normalised values with
+below-detection analyte-days at concentration 0, on the same analytes as
+that day's \code{D}. Non-detects are therefore not counted at the reference's
+level in the total.
 
 \strong{Contributions.} Per analyte and day the added single-substance PAF is
 \code{max(PAF_i(T) - PAF_i(R), 0)}, with \code{PAF_i(C) = pnorm(log10(C / HC50_i) / sigma_i)}. The day's \code{D} is apportioned in proportion to it (all zero when
 no analyte adds any), and the shares are time-weighted with exactly the
 weights and denominator of \code{value}, so the contributions of a focal date sum
 to \code{value} and are \code{NA} where it is. A target below detection gives that
-analyte exactly zero. The \code{"total"} variant apportions \code{msT} by
-\code{PAF_i(T)} and sums to \code{value_total}. A group's contribution is the sum
-over its analytes.
+analyte exactly zero. The \code{"total"} variant apportions \code{msT0} by
+\code{PAF_i(T0)} (\code{T0} the target's values with below-detection days at 0, so a
+below-detection analyte-day contributes 0) the same way and sums to
+\code{value_total}. A group's contribution is the sum over its analytes.
 
 \strong{Output.} One row per (target site, focal date): \code{focal_date}, \code{site_id},
 \code{sample_id} (\code{"chronic_<focal_date>_<site_id>"}), \code{analyte} (\code{"msPAF"}),
@@ -305,7 +310,7 @@ over its analytes.
 dates with a toxicant result in the window), \code{n_imputed_in_window}
 (covered days in the window that are not sample dates) and \code{coverage}.
 Attribute \code{"daily"} holds \code{date}, \code{site_id}, \code{mspaf} (\verb{100 D}),
-\code{mspaf_total}, \code{mspaf_reference} and \code{n_analytes}; attribute
+\code{mspaf_total} (\verb{100 msT0}), \code{mspaf_reference} and \code{n_analytes}; attribute
 \code{"sample_days"} has one row per target sample date (\code{site_id}, \code{date},
 \code{paired}, \code{TRUE} when the reference has a toxicant result that day). With
 \code{chronic = FALSE} the daily frame is returned, carrying \code{"sample_days"}

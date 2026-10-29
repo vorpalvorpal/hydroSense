@@ -215,7 +215,11 @@
 #' `100 * sum(w D) / sum(w)` over the covered days; `coverage` is the covered
 #' share of all the weights. `value` is `NA` when `coverage < min_coverage` or
 #' nothing is covered. `value_total` (with `also_total = TRUE`) is the same
-#' with `msT` in place of `D`.
+#' time-weighting (same weights, covered days and `NA` gate) of `msT0`, the
+#' target's own msPAF with no reference: its normalised values with
+#' below-detection analyte-days at concentration 0, on the same analytes as
+#' that day's `D`. Non-detects are therefore not counted at the reference's
+#' level in the total.
 #'
 #' **Contributions.** Per analyte and day the added single-substance PAF is
 #' `max(PAF_i(T) - PAF_i(R), 0)`, with `PAF_i(C) = pnorm(log10(C / HC50_i) /
@@ -223,9 +227,10 @@
 #' no analyte adds any), and the shares are time-weighted with exactly the
 #' weights and denominator of `value`, so the contributions of a focal date sum
 #' to `value` and are `NA` where it is. A target below detection gives that
-#' analyte exactly zero. The `"total"` variant apportions `msT` by
-#' `PAF_i(T)` and sums to `value_total`. A group's contribution is the sum
-#' over its analytes.
+#' analyte exactly zero. The `"total"` variant apportions `msT0` by
+#' `PAF_i(T0)` (`T0` the target's values with below-detection days at 0, so a
+#' below-detection analyte-day contributes 0) the same way and sums to
+#' `value_total`. A group's contribution is the sum over its analytes.
 #'
 #' **Output.** One row per (target site, focal date): `focal_date`, `site_id`,
 #' `sample_id` (`"chronic_<focal_date>_<site_id>"`), `analyte` (`"msPAF"`),
@@ -233,7 +238,7 @@
 #' dates with a toxicant result in the window), `n_imputed_in_window`
 #' (covered days in the window that are not sample dates) and `coverage`.
 #' Attribute `"daily"` holds `date`, `site_id`, `mspaf` (`100 D`),
-#' `mspaf_total`, `mspaf_reference` and `n_analytes`; attribute
+#' `mspaf_total` (`100 msT0`), `mspaf_reference` and `n_analytes`; attribute
 #' `"sample_days"` has one row per target sample date (`site_id`, `date`,
 #' `paired`, `TRUE` when the reference has a toxicant result that day). With
 #' `chronic = FALSE` the daily frame is returned, carrying `"sample_days"`

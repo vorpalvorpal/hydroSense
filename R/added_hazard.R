@@ -6,7 +6,9 @@
 # toxicant normalised with that point's own co-analytes. Per (target, day) the
 # added hazard D = max((msPAF_T - msPAF_R) / (1 - msPAF_R), 0) is formed and
 # time-weighted with exp(-age / tau) over a look-back window, renormalised over
-# the covered days. Everything is vectorised as (days x analytes) matrices and
+# the covered days. The total (value_total, mspaf_total, the "total"
+# contributions) uses msT0: the target alone, below-detection analyte-days at
+# concentration 0, on the same analytes as that day's D. Everything is vectorised as (days x analytes) matrices and
 # the time-weighting is a causal convolution, so a 25-year daily grid runs in
 # seconds. See the roxygen of mspaf_pipeline() for the user-facing definition.
 
@@ -315,7 +317,10 @@
 #' Run the chronic added-hazard msPAF
 #'
 #' Engine of `mspaf_pipeline(ara_form = "added_hazard")`; arguments are
-#' validated by [.ah_validate()] first.
+#' validated by [.ah_validate()] first. Per target and day it forms the added
+#' hazard `D = max((msT - msR) / (1 - msR), 0)` and the total `msT0` (the
+#' target alone, below-detection analyte-days at concentration 0, on the same
+#' analytes as `D`); both are time-weighted over the days where `D` exists.
 #'
 #' @return See [mspaf_pipeline()].
 #' @keywords internal
@@ -432,6 +437,9 @@
     Tn <- Tp$norm
     bd <- !is.na(Tn) & !Tp$det
     bd[is.na(bd)] <- FALSE
+    ## T0: the target alone, below-detection analyte-days at 0 (the total).
+    T0 <- Tn
+    T0[bd] <- 0
     if (!is.null(Rp)) {
       Rn <- Rp$norm
       need <- !is.na(Tn) & is.na(Rn)
@@ -439,12 +447,14 @@
       Tn[bd] <- Rn[bd]
       Tn[is.na(Rn)] <- NA_real_
       Rn[is.na(Tn)] <- NA_real_
+      T0[is.na(Tn)] <- NA_real_      # same analyte set as the day's D
     } else {
       Tn[bd] <- 0
       Rn <- Tn
       Rn[!is.na(Rn)] <- 0
     }
     msT <- .ah_mspaf_rows(Tn, ssd)
+    msT0 <- .ah_mspaf_rows(T0, ssd)
     if (!is.null(Rp)) {
       msR <- .ah_mspaf_rows(Rn, ssd)
       D <- ifelse(is.na(msT) | is.na(msR), NA_real_,
@@ -458,11 +468,11 @@
     cov <- !is.na(D)
 
     daily_out[[s]] <- tibble::tibble(
-      date = grid, site_id = s, mspaf = 100 * D, mspaf_total = 100 * msT,
+      date = grid, site_id = s, mspaf = 100 * D, mspaf_total = 100 * msT0,
       mspaf_reference = 100 * msR, n_analytes = n_an
     )
 
-    ## Per-analyte apportioning of each day's D (and msT).
+    ## Per-analyte apportioning of each day's D (and msT0).
     cA <- cT <- NULL
     if (contributions) {
       pT <- .ah_paf_cells(Tn, ssd)
@@ -472,8 +482,9 @@
       cA <- added * ifelse(sa > 0, D / sa, 0)
       cA[is.na(cA)] <- 0
       if (also_total) {
-        sT <- rowSums(pT, na.rm = TRUE)
-        cT <- pT * ifelse(sT > 0, msT / sT, 0)
+        pT0 <- .ah_paf_cells(T0, ssd)
+        sT <- rowSums(pT0, na.rm = TRUE)
+        cT <- pT0 * ifelse(sT > 0, msT0 / sT, 0)
         cT[is.na(cT)] <- 0
       }
       if (!chronic) {
@@ -505,9 +516,9 @@
     k <- as.integer(fd - start) + 1L
     covn <- as.numeric(cov)
     D0 <- ifelse(cov, D, 0)
-    T0 <- ifelse(cov, msT, 0)
+    M0 <- ifelse(cov, msT0, 0)
     is_sd <- as.numeric(cov & (g %in% sdays))
-    sums <- .ah_window_sums(cbind(covn, D0 * covn, T0 * covn), k, w)
+    sums <- .ah_window_sums(cbind(covn, D0 * covn, M0 * covn), k, w)
     cnt <- .ah_window_sums(cbind(covn, is_sd), k, rep(1, window + 1L))
     den <- sums[, 1L]
     coverage <- pmin(pmax(den / w_all, 0), 1)
