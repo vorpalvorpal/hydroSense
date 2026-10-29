@@ -77,6 +77,7 @@ reference:
       - mspaf_pipeline
       - add_mspaf
       - mspaf_daily
+      - interpolate_loglinear
       - prepare_reference
       - fit_reference_model
       - fit_target_model

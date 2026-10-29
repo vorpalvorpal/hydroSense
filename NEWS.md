@@ -1,5 +1,32 @@
 # hydroSense (development)
 
+## Chronic added-hazard msPAF (`ara_form = "added_hazard"`)
+
+* **New `ara_form = c("excess", "added_hazard")` and `min_coverage = 0.2` on
+  `mspaf_pipeline()`.** `"excess"` (the default) is the existing behaviour,
+  unchanged. `"added_hazard"` builds every target and the reference the same
+  way from their own samples on a daily grid (toxicants log-linear with a
+  span cap, `daily_args$span_cap`, default 120 days; co-analytes without a
+  cap; `daily_args$temperature` used for every point), applies the
+  detection-limit rules (reference below-detection results at LOR/2, a
+  target below detection takes the reference's value, a static gap-filler
+  that is never below LOR/2), forms the daily added hazard
+  `D = max((msPAF_T - msPAF_R) / (1 - msPAF_R), 0)` and time-weights it over
+  the covered days. Days the cap leaves uncovered lower the new `coverage`
+  column; `value` is `NA` below `min_coverage`. With `also_total = TRUE`,
+  `value_total` is the target's own msPAF with no reference (below-detection
+  analyte-days at 0, on the same analytes as that day's `D`), time-weighted
+  over the same covered days. Attributes `"daily"`,
+  `"sample_days"` (the pairing flag) and, with `contributions = TRUE`, the
+  apportionment of `D` by added single-substance PAF. No model is fitted and
+  nothing is imputed. Conflicting arguments (`ara = "static"`,
+  `impute = TRUE`, another `daily_args$interpolation`, a non-arithmetic
+  `chronic_summary`, `daily_args$interpolation = "loglinear"` with
+  `ara_form = "excess"`) are errors of class `hydroSense_ara_conflict`; a
+  reference with more than one site is `hydroSense_reference_sites`.
+* **New exported `interpolate_loglinear()`**: daily log-linear (or linear)
+  interpolation of grab samples with a span cap and below-detection flags.
+
 ## Contemporaneous ARA from `mspaf_pipeline()`; tier-1 matching fixed
 
 * **`mspaf_pipeline()` accepts `reference = NULL`.** No reference model is

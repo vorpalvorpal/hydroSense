@@ -130,7 +130,119 @@
 #'   only additive aggregation) when `chronic = TRUE`. An error of class
 #'   `hydroSense_contributions_draws` in draws mode (`daily_args$ndraws` set).
 #'   With `chronic = FALSE` the daily breakdown from [mspaf_daily()] is
-#'   attached to the daily result instead.
+#'   attached to the daily result instead. For `ara_form = "added_hazard"`
+#'   the definition differs; see the section *Added-hazard form*.
+#' @param ara_form The form of the area-reference adjustment:
+#'   - `"excess"` (default): the existing behaviour described above, where the
+#'     reference is subtracted from each analyte's concentration before the
+#'     msPAF is formed.
+#'   - `"added_hazard"`: the reference is compared at the msPAF level, as the
+#'     added hazard of the target over the reference (see the section
+#'     *Added-hazard form*). It has its own engine: no model is fitted and
+#'     nothing is imputed.
+#' @param min_coverage Used only by `ara_form = "added_hazard"`: the smallest
+#'   share (0 to 1) of the time weights that covered days must carry for a
+#'   chronic value to be reported. Default `0.2`.
+#'
+#' @section Added-hazard form:
+#' With `ara_form = "added_hazard"` each point (every target site, and the
+#' reference) is built the same way from its own samples, on a daily grid.
+#'
+#' **Input.** `target` and `reference` are raw long frames in the same format
+#' (`sample_id`, `site_id`, `datetime`, `analyte`, `value`, `detected`, a unit
+#' column). A below-detection row has `detected = FALSE` and its detection
+#' limit (LOR) as `value`. Analyte names go through [analyte_aliases()].
+#' Toxicants are the analytes with SSD parameters for the given
+#' `daily_args$analyte_metadata` / `method` / `guideline_dir`; the rest are
+#' co-analytes. Rows are reduced to one value per (site, analyte, day): the
+#' mean of the detected results when there is one, otherwise the smallest LOR
+#' (below detection). `reference` must hold exactly one `site_id` (error
+#' class `hydroSense_reference_sites`).
+#'
+#' **Grid.** Daily, from the earliest sample date of the targets and the
+#' reference to the latest target sample date plus the span cap (the latest
+#' date itself when the cap is infinite), unless `daily_args$start` / `end`
+#' are given.
+#'
+#' **Point build.** Toxicants are interpolated with [interpolate_loglinear()]
+#' and the span cap `daily_args$span_cap` (default 120 days): days in a gap
+#' between samples longer than the cap, more than the cap after the last
+#' sample, or before the first sample are uncovered. Below-detection results
+#' are anchored at the LOR for a target and at LOR/2 for the reference. The
+#' co-analytes are interpolated without a cap and held constant beyond the
+#' first and last sample (detected positive results only; one result is a
+#' constant): pH and temperature linearly, DOC, hardness, Ca and Mg linearly
+#' in log. Hardness is the measured value where it exists, else
+#' `2.497 Ca + 4.118 Mg` on days with both. `daily_args$temperature` (a
+#' `datetime`/`value` series, per site only when it has a `site_id` column)
+#' replaces every point's own temperature results when given; it is
+#' interpolated linearly between its days and held beyond its ends. Each
+#' toxicant is normalised with the point's own co-analytes using the metadata
+#' normalisation formulas, as [add_mspaf()] does; a day lacking a required
+#' co-analyte leaves that analyte out of that point on that day.
+#'
+#' **Detection-limit rules and the gap-filler**, per target, analyte and day:
+#' where the target is covered and the reference is not, the reference takes
+#' its static summary `s = max(geometric mean of its results with
+#' below-detection results at LOR/2, median(LOR of its below-detection
+#' results) / 2)` (the geometric mean alone when it has none), normalised with
+#' the reference's co-analytes that day. An analyte the reference never
+#' measured is dropped. When the target is below detection that day (both
+#' bracketing samples below detection) its value is set to the reference's,
+#' so the analyte adds no hazard. An analyte enters a day only when both
+#' sides have a value.
+#'
+#' **Daily added hazard.** `msPAF` combines the normalised concentrations by
+#' concentration addition within mode-of-action group (`TU = sum(C / HC50)`,
+#' mean slope) and independent action across groups. With `msT` and `msR` the
+#' target's and reference's msPAF on the same analytes,
+#' `D = max((msT - msR) / (1 - msR), 0)` (0 when `msR` is 1). Without a
+#' reference (`ara = "none"`) below-detection target days enter at 0 and
+#' `D = msT`. On this path `ara` defaults to `"contemporaneous"` with a
+#' reference and `"none"` without; `"static"`, `"contemporaneous"` without a
+#' reference, `impute = TRUE`, a `daily_args$interpolation` other than
+#' `"loglinear"` and a `chronic_summary` other than `"arith_mean"` are errors
+#' of class `hydroSense_ara_conflict`, raised before anything is computed
+#' (`daily_args$interpolation = "loglinear"` with `ara_form = "excess"` is the
+#' same error). An unspecified `impute` means `FALSE` here. `hydro`,
+#' `reference_args` and the `daily_args` entries other than `interpolation`,
+#' `span_cap`, `temperature`, `start`, `end`, `analyte_metadata`, `method`,
+#' `guideline_dir` and `conc_units` are ignored.
+#'
+#' **Time-weighting and coverage.** For a focal date the days of age
+#' `a = 0..window` carry weight `exp(-a / tau)` (`tau` 90 and `window` 365
+#' days by default). A day is covered when `D` exists. The chronic `value` is
+#' `100 * sum(w D) / sum(w)` over the covered days; `coverage` is the covered
+#' share of all the weights. `value` is `NA` when `coverage < min_coverage` or
+#' nothing is covered. `value_total` (with `also_total = TRUE`) is the same
+#' time-weighting (same weights, covered days and `NA` gate) of `msT0`, the
+#' target's own msPAF with no reference: its normalised values with
+#' below-detection analyte-days at concentration 0, on the same analytes as
+#' that day's `D`. Non-detects are therefore not counted at the reference's
+#' level in the total.
+#'
+#' **Contributions.** Per analyte and day the added single-substance PAF is
+#' `max(PAF_i(T) - PAF_i(R), 0)`, with `PAF_i(C) = pnorm(log10(C / HC50_i) /
+#' sigma_i)`. The day's `D` is apportioned in proportion to it (all zero when
+#' no analyte adds any), and the shares are time-weighted with exactly the
+#' weights and denominator of `value`, so the contributions of a focal date sum
+#' to `value` and are `NA` where it is. A target below detection gives that
+#' analyte exactly zero. The `"total"` variant apportions `msT0` by
+#' `PAF_i(T0)` (`T0` the target's values with below-detection days at 0, so a
+#' below-detection analyte-day contributes 0) the same way and sums to
+#' `value_total`. A group's contribution is the sum over its analytes.
+#'
+#' **Output.** One row per (target site, focal date): `focal_date`, `site_id`,
+#' `sample_id` (`"chronic_<focal_date>_<site_id>"`), `analyte` (`"msPAF"`),
+#' `value`, `value_total` (with `also_total`), `detected`, `n_samples_in_window` (target sample
+#' dates with a toxicant result in the window), `n_imputed_in_window`
+#' (covered days in the window that are not sample dates) and `coverage`.
+#' Attribute `"daily"` holds `date`, `site_id`, `mspaf` (`100 D`),
+#' `mspaf_total` (`100 msT0`), `mspaf_reference` and `n_analytes`; attribute
+#' `"sample_days"` has one row per target sample date (`site_id`, `date`,
+#' `paired`, `TRUE` when the reference has a toxicant result that day). With
+#' `chronic = FALSE` the daily frame is returned, carrying `"sample_days"`
+#' (and the daily `"contributions"`, by `date`, when requested).
 #'
 #' @return When `chronic = TRUE` (default), the chronic msPAF frame, one row per
 #'   (focal date × site):
@@ -149,9 +261,11 @@
 #'   `"reference_model"` and `"imputation_model"` (the latter `NULL` when
 #'   `impute = FALSE` or the fit was skipped). Note that most \pkg{dplyr} verbs
 #'   drop attributes, so read them off the returned frame directly.
+#'   For `ara_form = "added_hazard"` see the section *Added-hazard form*.
 #'
 #' @seealso [fit_imputation_model()], [fit_reference_model()], [mspaf_daily()],
-#'   [time_weighted_aggregate()], [expand_focal_dates()]
+#'   [time_weighted_aggregate()], [expand_focal_dates()],
+#'   [interpolate_loglinear()]
 #' @examples
 #' \dontrun{
 #' demo <- leachate_demo()
@@ -180,9 +294,42 @@ mspaf_pipeline <- function(target,
                            chronic_summary = "arith_mean",
                            also_total = FALSE,
                            ara = c("static", "contemporaneous", "none"),
-                           contributions = FALSE) {
+                           contributions = FALSE,
+                           ara_form = c("excess", "added_hazard"),
+                           min_coverage = 0.2) {
   checkmate::assert_data_frame(target)
   checkmate::assert_data_frame(reference, null.ok = TRUE)
+  checkmate::assert_list(daily_args)
+  ara_form <- match.arg(ara_form)
+
+  # ── Chronic added-hazard form: its own engine, validated before anything ──
+  if (ara_form == "added_hazard") {
+    checkmate::assert_flag(impute)
+    checkmate::assert_flag(chronic)
+    checkmate::assert_string(chronic_summary)
+    checkmate::assert_flag(also_total)
+    checkmate::assert_flag(contributions)
+    v <- .ah_validate(
+      reference = reference, impute = impute, impute_missing = missing(impute),
+      daily_args = daily_args, chronic_summary = chronic_summary,
+      ara = ara, ara_missing = missing(ara), min_coverage = min_coverage,
+      tau = tau, window = window
+    )
+    return(.added_hazard_pipeline(
+      target = target, reference = v$reference, daily_args = daily_args,
+      chronic = chronic, focal_dates = focal_dates, focal_by = focal_by,
+      tau = tau, window = window, also_total = also_total,
+      contributions = contributions, min_coverage = min_coverage
+    ))
+  }
+  if (identical(daily_args$interpolation, "loglinear")) {
+    cli::cli_abort(c(
+      "{.code daily_args$interpolation = \"loglinear\"} belongs to \
+       {.code ara_form = \"added_hazard\"}.",
+      "i" = "Set {.code ara_form = \"added_hazard\"}, or choose another \
+             interpolation."
+    ), class = "hydroSense_ara_conflict")
+  }
   no_ref <- is.null(reference)
   checkmate::assert_flag(impute)
   impute_on_default <- missing(impute_on)

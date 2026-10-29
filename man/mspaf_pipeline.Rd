@@ -23,7 +23,9 @@ mspaf_pipeline(
   chronic_summary = "arith_mean",
   also_total = FALSE,
   ara = c("static", "contemporaneous", "none"),
-  contributions = FALSE
+  contributions = FALSE,
+  ara_form = c("excess", "added_hazard"),
+  min_coverage = 0.2
 )
 }
 \arguments{
@@ -143,7 +145,23 @@ window and rows as the chronic \code{value}, so the contributions sum to
 only additive aggregation) when \code{chronic = TRUE}. An error of class
 \code{hydroSense_contributions_draws} in draws mode (\code{daily_args$ndraws} set).
 With \code{chronic = FALSE} the daily breakdown from \code{\link[=mspaf_daily]{mspaf_daily()}} is
-attached to the daily result instead.}
+attached to the daily result instead. For \code{ara_form = "added_hazard"}
+the definition differs; see the section \emph{Added-hazard form}.}
+
+\item{ara_form}{The form of the area-reference adjustment:
+\itemize{
+\item \code{"excess"} (default): the existing behaviour described above, where the
+reference is subtracted from each analyte's concentration before the
+msPAF is formed.
+\item \code{"added_hazard"}: the reference is compared at the msPAF level, as the
+added hazard of the target over the reference (see the section
+\emph{Added-hazard form}). It has its own engine: no model is fitted and
+nothing is imputed.
+}}
+
+\item{min_coverage}{Used only by \code{ara_form = "added_hazard"}: the smallest
+share (0 to 1) of the time weights that covered days must carry for a
+chronic value to be reported. Default \code{0.2}.}
 }
 \value{
 When \code{chronic = TRUE} (default), the chronic msPAF frame, one row per
@@ -164,6 +182,7 @@ unchanged. In all cases the fitted models are attached as attributes
 \code{"reference_model"} and \code{"imputation_model"} (the latter \code{NULL} when
 \code{impute = FALSE} or the fit was skipped). Note that most \pkg{dplyr} verbs
 drop attributes, so read them off the returned frame directly.
+For \code{ara_form = "added_hazard"} see the section \emph{Added-hazard form}.
 }
 }
 \description{
@@ -199,6 +218,105 @@ reference model is fitted. \code{daily_args$interpolation = "model"} is then an
 error (class \code{hydroSense_model_needs_reference}); the default is
 \code{"linear"}. All such argument errors are raised before any model is fitted.
 }
+\section{Added-hazard form}{
+
+With \code{ara_form = "added_hazard"} each point (every target site, and the
+reference) is built the same way from its own samples, on a daily grid.
+
+\strong{Input.} \code{target} and \code{reference} are raw long frames in the same format
+(\code{sample_id}, \code{site_id}, \code{datetime}, \code{analyte}, \code{value}, \code{detected}, a unit
+column). A below-detection row has \code{detected = FALSE} and its detection
+limit (LOR) as \code{value}. Analyte names go through \code{\link[=analyte_aliases]{analyte_aliases()}}.
+Toxicants are the analytes with SSD parameters for the given
+\code{daily_args$analyte_metadata} / \code{method} / \code{guideline_dir}; the rest are
+co-analytes. Rows are reduced to one value per (site, analyte, day): the
+mean of the detected results when there is one, otherwise the smallest LOR
+(below detection). \code{reference} must hold exactly one \code{site_id} (error
+class \code{hydroSense_reference_sites}).
+
+\strong{Grid.} Daily, from the earliest sample date of the targets and the
+reference to the latest target sample date plus the span cap (the latest
+date itself when the cap is infinite), unless \code{daily_args$start} / \code{end}
+are given.
+
+\strong{Point build.} Toxicants are interpolated with \code{\link[=interpolate_loglinear]{interpolate_loglinear()}}
+and the span cap \code{daily_args$span_cap} (default 120 days): days in a gap
+between samples longer than the cap, more than the cap after the last
+sample, or before the first sample are uncovered. Below-detection results
+are anchored at the LOR for a target and at LOR/2 for the reference. The
+co-analytes are interpolated without a cap and held constant beyond the
+first and last sample (detected positive results only; one result is a
+constant): pH and temperature linearly, DOC, hardness, Ca and Mg linearly
+in log. Hardness is the measured value where it exists, else
+\verb{2.497 Ca + 4.118 Mg} on days with both. \code{daily_args$temperature} (a
+\code{datetime}/\code{value} series, per site only when it has a \code{site_id} column)
+replaces every point's own temperature results when given; it is
+interpolated linearly between its days and held beyond its ends. Each
+toxicant is normalised with the point's own co-analytes using the metadata
+normalisation formulas, as \code{\link[=add_mspaf]{add_mspaf()}} does; a day lacking a required
+co-analyte leaves that analyte out of that point on that day.
+
+\strong{Detection-limit rules and the gap-filler}, per target, analyte and day:
+where the target is covered and the reference is not, the reference takes
+its static summary \verb{s = max(geometric mean of its results with below-detection results at LOR/2, median(LOR of its below-detection results) / 2)} (the geometric mean alone when it has none), normalised with
+the reference's co-analytes that day. An analyte the reference never
+measured is dropped. When the target is below detection that day (both
+bracketing samples below detection) its value is set to the reference's,
+so the analyte adds no hazard. An analyte enters a day only when both
+sides have a value.
+
+\strong{Daily added hazard.} \code{msPAF} combines the normalised concentrations by
+concentration addition within mode-of-action group (\code{TU = sum(C / HC50)},
+mean slope) and independent action across groups. With \code{msT} and \code{msR} the
+target's and reference's msPAF on the same analytes,
+\code{D = max((msT - msR) / (1 - msR), 0)} (0 when \code{msR} is 1). Without a
+reference (\code{ara = "none"}) below-detection target days enter at 0 and
+\code{D = msT}. On this path \code{ara} defaults to \code{"contemporaneous"} with a
+reference and \code{"none"} without; \code{"static"}, \code{"contemporaneous"} without a
+reference, \code{impute = TRUE}, a \code{daily_args$interpolation} other than
+\code{"loglinear"} and a \code{chronic_summary} other than \code{"arith_mean"} are errors
+of class \code{hydroSense_ara_conflict}, raised before anything is computed
+(\code{daily_args$interpolation = "loglinear"} with \code{ara_form = "excess"} is the
+same error). An unspecified \code{impute} means \code{FALSE} here. \code{hydro},
+\code{reference_args} and the \code{daily_args} entries other than \code{interpolation},
+\code{span_cap}, \code{temperature}, \code{start}, \code{end}, \code{analyte_metadata}, \code{method},
+\code{guideline_dir} and \code{conc_units} are ignored.
+
+\strong{Time-weighting and coverage.} For a focal date the days of age
+\verb{a = 0..window} carry weight \code{exp(-a / tau)} (\code{tau} 90 and \code{window} 365
+days by default). A day is covered when \code{D} exists. The chronic \code{value} is
+\verb{100 * sum(w D) / sum(w)} over the covered days; \code{coverage} is the covered
+share of all the weights. \code{value} is \code{NA} when \code{coverage < min_coverage} or
+nothing is covered. \code{value_total} (with \code{also_total = TRUE}) is the same
+time-weighting (same weights, covered days and \code{NA} gate) of \code{msT0}, the
+target's own msPAF with no reference: its normalised values with
+below-detection analyte-days at concentration 0, on the same analytes as
+that day's \code{D}. Non-detects are therefore not counted at the reference's
+level in the total.
+
+\strong{Contributions.} Per analyte and day the added single-substance PAF is
+\code{max(PAF_i(T) - PAF_i(R), 0)}, with \code{PAF_i(C) = pnorm(log10(C / HC50_i) / sigma_i)}. The day's \code{D} is apportioned in proportion to it (all zero when
+no analyte adds any), and the shares are time-weighted with exactly the
+weights and denominator of \code{value}, so the contributions of a focal date sum
+to \code{value} and are \code{NA} where it is. A target below detection gives that
+analyte exactly zero. The \code{"total"} variant apportions \code{msT0} by
+\code{PAF_i(T0)} (\code{T0} the target's values with below-detection days at 0, so a
+below-detection analyte-day contributes 0) the same way and sums to
+\code{value_total}. A group's contribution is the sum over its analytes.
+
+\strong{Output.} One row per (target site, focal date): \code{focal_date}, \code{site_id},
+\code{sample_id} (\code{"chronic_<focal_date>_<site_id>"}), \code{analyte} (\code{"msPAF"}),
+\code{value}, \code{value_total} (with \code{also_total}), \code{detected}, \code{n_samples_in_window} (target sample
+dates with a toxicant result in the window), \code{n_imputed_in_window}
+(covered days in the window that are not sample dates) and \code{coverage}.
+Attribute \code{"daily"} holds \code{date}, \code{site_id}, \code{mspaf} (\verb{100 D}),
+\code{mspaf_total} (\verb{100 msT0}), \code{mspaf_reference} and \code{n_analytes}; attribute
+\code{"sample_days"} has one row per target sample date (\code{site_id}, \code{date},
+\code{paired}, \code{TRUE} when the reference has a toxicant result that day). With
+\code{chronic = FALSE} the daily frame is returned, carrying \code{"sample_days"}
+(and the daily \code{"contributions"}, by \code{date}, when requested).
+}
+
 \examples{
 \dontrun{
 demo <- leachate_demo()
@@ -211,5 +329,6 @@ out <- mspaf_pipeline(
 }
 \seealso{
 \code{\link[=fit_imputation_model]{fit_imputation_model()}}, \code{\link[=fit_reference_model]{fit_reference_model()}}, \code{\link[=mspaf_daily]{mspaf_daily()}},
-\code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}, \code{\link[=expand_focal_dates]{expand_focal_dates()}}
+\code{\link[=time_weighted_aggregate]{time_weighted_aggregate()}}, \code{\link[=expand_focal_dates]{expand_focal_dates()}},
+\code{\link[=interpolate_loglinear]{interpolate_loglinear()}}
 }
