@@ -442,6 +442,37 @@ describe("added_hazard: daily_args$temperature", {
   })
 })
 
+describe("added_hazard: value_total is the target alone (msT0), BDL days at 0", {
+  skip_on_cran()
+
+  it("a target analyte below detection every day adds nothing to the total", {
+    s <- .ah_sb(tvals = c(Cu = 1, B = 8000, DOC = 0.5), tdet = list(Cu = FALSE))
+    args <- list(also_total = TRUE, contributions = TRUE, focal_dates = .ah_sb_focal)
+    r <- do.call(.ah_run, c(list(s$target, s$reference), args))
+    no_cu <- s$target[s$target$analyte != "Cu", ]
+    r2 <- do.call(.ah_run, c(list(no_cu, s$reference), args))
+    expect_equal(as.data.frame(r)$value_total, as.data.frame(r2)$value_total,
+                 tolerance = 1e-10)
+    expect_equal(as.data.frame(r)$value_total, 100 * .ah_paf1(8000, "B"),
+                 tolerance = 1e-8)
+    ctb <- as.data.frame(attr(r, "contributions"))
+    tt <- ctb[ctb$variant == "total", ]
+    expect_equal(sum(tt$contribution[tt$analyte == "Cu"]), 0)
+    expect_equal(sum(tt$contribution), as.data.frame(r)$value_total, tolerance = 1e-6)
+  })
+
+  it("equals the ara = 'none' value_total on the analytes the reference has", {
+    t1 <- .ah_scn_T1(); ref <- .ah_scn_REF()
+    fd <- .ah_day(seq(60, 480, by = 30))
+    a <- as.data.frame(.ah_run(t1, ref, also_total = TRUE, focal_dates = fd))
+    t1r <- t1[t1$analyte != "Cr", ]
+    b <- as.data.frame(.ah_run(t1r, NULL, ara = "none", also_total = TRUE,
+                               focal_dates = fd))
+    .ah_expect_close(a$value_total, b$value_total, tol = 1e-8, label = "value_total")
+    expect_true(sum(!is.na(a$value_total)) > 5)
+  })
+})
+
 ## ═════════════════════════════════════════════════════════════════════════════
 ## Hand-computed checks
 ## ═════════════════════════════════════════════════════════════════════════════

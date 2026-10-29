@@ -343,15 +343,19 @@
       }
       bd <- Tp$det[, tox, drop = FALSE] == 0 & !is.na(Tn)
       bd[is.na(bd)] <- FALSE
+      T0 <- Tn; T0[bd] <- 0          # msT0: target alone, BDL days at 0
       Tn[bd] <- Rn[bd]
       Tn[is.na(Rn)] <- NA; Rn[is.na(Tn)] <- NA
+      T0[is.na(Tn)] <- NA
     } else {
       Rn <- Tn; Rn[!is.na(Rn)] <- 0
       bd <- Tp$det[, tox, drop = FALSE] == 0 & !is.na(Tn)
       bd[is.na(bd)] <- FALSE
       Tn[bd] <- 0
+      T0 <- Tn
     }
     msT <- .ah_ms_mat(Tn)
+    msT0 <- .ah_ms_mat(T0)
     msR <- if (is.null(R)) ifelse(is.na(msT), NA_real_, 0) else .ah_ms_mat(Rn)
     D <- if (is.null(R)) msT else .ah_D(msT, msR)
     nan <- rowSums(!is.na(Tn))
@@ -362,10 +366,13 @@
     pT[is.na(Tn)] <- NA; pR[is.na(Tn)] <- NA
     added <- pmax(pT - pR, 0)
     sa <- rowSums(added, na.rm = TRUE)
-    sT <- rowSums(pT, na.rm = TRUE)
+    pT0 <- T0; pT0[] <- NA_real_
+    for (a in tox) pT0[, a] <- .ah_paf1(T0[, a], a)
+    pT0[is.na(T0)] <- NA
+    sT <- rowSums(pT0, na.rm = TRUE)
     cA <- added * ifelse(sa > 0, D / sa, 0)
     cA[is.na(cA)] <- 0
-    cT <- pT * ifelse(sT > 0, msT / sT, 0)
+    cT <- pT0 * ifelse(sT > 0, msT0 / sT, 0)
     cT[is.na(cT)] <- 0
 
     ## time-weighting
@@ -393,7 +400,7 @@
       if (den > 0 && cvg >= min_coverage) {
         wi <- wfull[cov]; ii <- idx[cov]
         ch$value[k] <- 100 * sum(wi * D[ii]) / den
-        ch$value_total[k] <- 100 * sum(wi * msT[ii]) / den
+        ch$value_total[k] <- 100 * sum(wi * msT0[ii]) / den
         cAi <- 100 * colSums(cA[ii, , drop = FALSE] * wi) / den
         cTi <- 100 * colSums(cT[ii, , drop = FALSE] * wi) / den
       } else {
@@ -408,7 +415,7 @@
     out$chronic[[s]] <- ch
     out$contributions[[s]] <- do.call(rbind, ca_rows)
     out$daily[[s]] <- data.frame(
-      date = grid, site_id = s, mspaf = 100 * D, mspaf_total = 100 * msT,
+      date = grid, site_id = s, mspaf = 100 * D, mspaf_total = 100 * msT0,
       mspaf_reference = 100 * msR, n_analytes = nan)
     ## pairing flag
     tdates <- sort(unique(tgd$date))
