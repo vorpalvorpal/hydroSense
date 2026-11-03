@@ -24,6 +24,15 @@
   `chronic_summary`, `daily_args$interpolation = "loglinear"` with
   `ara_form = "excess"`) are errors of class `hydroSense_ara_conflict`; a
   reference with more than one site is `hydroSense_reference_sites`.
+* **Coverage states for the added-hazard msPAF.** `mspaf_pipeline(ara_form =
+  "added_hazard")` output (chronic and daily) carries a new attribute
+  `"analyte_coverage"`: per target site, side (`"target"`/`"reference"`) and
+  toxicant, the runs of days that are `"measured"` (a sample within
+  `daily_args$measured_within` days, default 30), `"modelled"` (interpolated,
+  held or gap-filled further away) or `NA` (no value). It changes no other
+  output; `"excess"` ignores `measured_within`. `interpolate_loglinear()`
+  gains a fourth column, `anchor_distance` (days to the nearest usable
+  anchor, `NA` on uncovered days).
 * **New exported `interpolate_loglinear()`**: daily log-linear (or linear)
   interpolation of grab samples with a span cap and below-detection flags.
 

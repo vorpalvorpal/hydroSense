@@ -229,7 +229,9 @@ column). A below-detection row has \code{detected = FALSE} and its detection
 limit (LOR) as \code{value}. Analyte names go through \code{\link[=analyte_aliases]{analyte_aliases()}}.
 Toxicants are the analytes with SSD parameters for the given
 \code{daily_args$analyte_metadata} / \code{method} / \code{guideline_dir}; the rest are
-co-analytes. Rows are reduced to one value per (site, analyte, day): the
+co-analytes. The other \code{daily_args} entries the added-hazard path reads are
+\code{span_cap}, \code{start}, \code{end}, \code{temperature}, \code{conc_units}, \code{interpolation}
+and \code{measured_within} (see \emph{Coverage states} below); the rest are ignored. Rows are reduced to one value per (site, analyte, day): the
 mean of the detected results when there is one, otherwise the smallest LOR
 (below detection). \code{reference} must hold exactly one \code{site_id} (error
 class \code{hydroSense_reference_sites}).
@@ -304,6 +306,24 @@ analyte exactly zero. The \code{"total"} variant apportions \code{msT0} by
 below-detection analyte-day contributes 0) the same way and sums to
 \code{value_total}. A group's contribution is the sum over its analytes.
 
+\strong{Coverage states.} For every point (each target site, and the
+reference), toxicant and day, the attribute \code{"analyte_coverage"} says where
+the value that point contributes came from. \code{daily_args$measured_within}
+(a single non-negative number of days, may be \code{Inf}; default 30; anything
+else is an error) sets what counts as "nearby". The state is \code{"measured"}
+when the point's own value that day is not \code{NA} and the nearest sample of
+that toxicant at that point (the \code{anchor_distance} of
+\code{\link[=interpolate_loglinear]{interpolate_loglinear()}}) is at most \code{measured_within} days away;
+\code{"modelled"} when its own value is further than that from any sample
+(interpolated or held), or, for the reference only, when its own value is
+\code{NA} but the static gap-filler value is not; and \code{NA} when the point has no
+value for that toxicant that day (outside the span cap, before the first
+sample, never measured there, or a required co-analyte missing). Below
+detection results are samples like any other and the state does not depend
+on detection. \code{measured_within} changes no other output, and is ignored by
+\code{ara_form = "excess"}. An analyte enters a target's day of \code{D} only when
+both sides are non-\code{NA}.
+
 \strong{Output.} One row per (target site, focal date): \code{focal_date}, \code{site_id},
 \code{sample_id} (\code{"chronic_<focal_date>_<site_id>"}), \code{analyte} (\code{"msPAF"}),
 \code{value}, \code{value_total} (with \code{also_total}), \code{detected}, \code{n_samples_in_window} (target sample
@@ -315,6 +335,15 @@ Attribute \code{"daily"} holds \code{date}, \code{site_id}, \code{mspaf} (\verb{
 \code{paired}, \code{TRUE} when the reference has a toxicant result that day). With
 \code{chronic = FALSE} the daily frame is returned, carrying \code{"sample_days"}
 (and the daily \code{"contributions"}, by \code{date}, when requested).
+Both outputs carry the attribute \code{"analyte_coverage"}, a data frame with
+columns \code{site_id}, \code{side} (\code{"target"} or \code{"reference"}), \code{analyte} (as in
+the contributions attribute), \code{state} (\code{"measured"}, \code{"modelled"} or \code{NA}),
+\code{date_from} and \code{date_to} (\code{Date}, inclusive). For each target site and
+toxicant it holds the maximal runs of constant state over the whole daily
+grid, for the target and, when a reference is used, for the reference
+(repeated under each target \code{site_id}); runs are contiguous, cover the grid
+and are ordered by \code{site_id}, \code{side}, \code{analyte}, \code{date_from}. With no
+toxicant it has zero rows.
 }
 
 \examples{
