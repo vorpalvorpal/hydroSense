@@ -210,7 +210,8 @@ describe("analyte_coverage: partition properties", {
 ## span_cap 10, measured_within 2.
 ## B (T1) anchors 0, 8, 40.  0..8 covered (gap 8): distances 0 1 2 3 4 3 2 1 0;
 ##   9..39 uncovered (gap 32); 40..50 held (distance 0..10).
-## Cr (T1) anchors 0, 40: 0..10 held from 0; 11..39 uncovered; 40..50 held.
+## Cr (T1) anchors 0, 40: gap 40 > cap, so 1..39 uncovered (only the last
+##   anchor is held); 40..50 held.
 
 describe("analyte_coverage: states of a target alone", {
   out <- .cs_get("tonly", function() .cs_run(.cs_t1()))
@@ -224,7 +225,7 @@ describe("analyte_coverage: states of a target alone", {
 
   it("holds after the last anchor and is NA before/beyond the span cap", {
     .cs_expect_runs(cov, "T1", "target", "Cr", .cs_runs(
-      c("measured", 0, 2), c("modelled", 3, 10), c(NA, 11, 39),
+      c("measured", 0, 0), c(NA, 1, 39),
       c("measured", 40, 42), c("modelled", 43, 50)))
   })
 
@@ -433,7 +434,7 @@ describe("daily_args$measured_within: changes no other output", {
                   daily_args = list(span_cap = 120, measured_within = 0))
     db <- .cs_run(tgt, ref, chronic = FALSE,
                   daily_args = list(span_cap = 120, measured_within = Inf))
-    expect_equal(as.data.frame(da), as.data.frame(db))
+    expect_equal(as.data.frame(da), as.data.frame(db), ignore_attr = "analyte_coverage")
     expect_equal(attr(da, "contributions"), attr(db, "contributions"))
     expect_false(isTRUE(all.equal(.cs_attr(da), .cs_attr(db))))
   })

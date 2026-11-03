@@ -154,9 +154,7 @@
 #' limit (LOR) as `value`. Analyte names go through [analyte_aliases()].
 #' Toxicants are the analytes with SSD parameters for the given
 #' `daily_args$analyte_metadata` / `method` / `guideline_dir`; the rest are
-#' co-analytes. The other `daily_args` entries the added-hazard path reads are
-#' `span_cap`, `start`, `end`, `temperature`, `conc_units`, `interpolation`
-#' and `measured_within` (see *Coverage states* below); the rest are ignored. Rows are reduced to one value per (site, analyte, day): the
+#' co-analytes. Rows are reduced to one value per (site, analyte, day): the
 #' mean of the detected results when there is one, otherwise the smallest LOR
 #' (below detection). `reference` must hold exactly one `site_id` (error
 #' class `hydroSense_reference_sites`).
@@ -208,7 +206,8 @@
 #' (`daily_args$interpolation = "loglinear"` with `ara_form = "excess"` is the
 #' same error). An unspecified `impute` means `FALSE` here. `hydro`,
 #' `reference_args` and the `daily_args` entries other than `interpolation`,
-#' `span_cap`, `temperature`, `start`, `end`, `analyte_metadata`, `method`,
+#' `span_cap`, `measured_within`, `temperature`, `start`, `end`,
+#' `analyte_metadata`, `method`,
 #' `guideline_dir` and `conc_units` are ignored.
 #'
 #' **Time-weighting and coverage.** For a focal date the days of age

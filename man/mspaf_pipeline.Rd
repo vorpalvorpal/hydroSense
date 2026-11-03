@@ -229,9 +229,7 @@ column). A below-detection row has \code{detected = FALSE} and its detection
 limit (LOR) as \code{value}. Analyte names go through \code{\link[=analyte_aliases]{analyte_aliases()}}.
 Toxicants are the analytes with SSD parameters for the given
 \code{daily_args$analyte_metadata} / \code{method} / \code{guideline_dir}; the rest are
-co-analytes. The other \code{daily_args} entries the added-hazard path reads are
-\code{span_cap}, \code{start}, \code{end}, \code{temperature}, \code{conc_units}, \code{interpolation}
-and \code{measured_within} (see \emph{Coverage states} below); the rest are ignored. Rows are reduced to one value per (site, analyte, day): the
+co-analytes. Rows are reduced to one value per (site, analyte, day): the
 mean of the detected results when there is one, otherwise the smallest LOR
 (below detection). \code{reference} must hold exactly one \code{site_id} (error
 class \code{hydroSense_reference_sites}).
@@ -281,7 +279,8 @@ of class \code{hydroSense_ara_conflict}, raised before anything is computed
 (\code{daily_args$interpolation = "loglinear"} with \code{ara_form = "excess"} is the
 same error). An unspecified \code{impute} means \code{FALSE} here. \code{hydro},
 \code{reference_args} and the \code{daily_args} entries other than \code{interpolation},
-\code{span_cap}, \code{temperature}, \code{start}, \code{end}, \code{analyte_metadata}, \code{method},
+\code{span_cap}, \code{measured_within}, \code{temperature}, \code{start}, \code{end},
+\code{analyte_metadata}, \code{method},
 \code{guideline_dir} and \code{conc_units} are ignored.
 
 \strong{Time-weighting and coverage.} For a focal date the days of age
