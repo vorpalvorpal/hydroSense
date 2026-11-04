@@ -245,21 +245,22 @@
 }
 
 ## Coverage state of each (day, toxicant) cell as an integer code matrix:
-## 0 = none (NA), 1 = measured, 2 = modelled. `norm` is the point's own
-## normalised value, `dist` its anchor distance, `fill` (reference only) the
-## static gap-filler value.
+## 0 = none (NA), 1 = measured, 2 = modelled (own value only: interpolated or
+## held), 3 = background_fill (reference only: own value NA, static gap-filler
+## not). `norm` is the point's own normalised value, `dist` its anchor
+## distance, `fill` (reference only) the static gap-filler value.
 .ah_state_codes <- function(norm, dist, measured_within, fill = NULL) {
   code <- matrix(0L, nrow(norm), ncol(norm))
   own <- !is.na(norm)
   code[own] <- ifelse(!is.na(dist[own]) & dist[own] <= measured_within, 1L, 2L)
-  if (!is.null(fill)) code[!own & !is.na(fill)] <- 2L
+  if (!is.null(fill)) code[!own & !is.na(fill)] <- 3L
   code
 }
 
 ## Maximal runs of constant state per column of a code matrix, as a frame of
 ## (analyte, state, date_from, date_to). Vectorised over days.
 .ah_state_runs <- function(code, tox, grid, site_id, side) {
-  lab <- c(NA_character_, "measured", "modelled")
+  lab <- c(NA_character_, "measured", "modelled", "background_fill")
   parts <- lapply(seq_along(tox), function(k) {
     cv <- code[, k]
     st <- c(1L, which(cv[-1L] != cv[-length(cv)]) + 1L)

@@ -314,8 +314,10 @@ when the point's own value that day is not \code{NA} and the nearest sample of
 that toxicant at that point (the \code{anchor_distance} of
 \code{\link[=interpolate_loglinear]{interpolate_loglinear()}}) is at most \code{measured_within} days away;
 \code{"modelled"} when its own value is further than that from any sample
-(interpolated or held), or, for the reference only, when its own value is
-\code{NA} but the static gap-filler value is not; and \code{NA} when the point has no
+(interpolated or held; never the gap-filler); \code{"background_fill"}, for the
+reference only, when its own value is \code{NA} but the static gap-filler value
+is not (the long-run summary stands in for the missing series; the target
+never has this state); and \code{NA} when the point has no
 value for that toxicant that day (outside the span cap, before the first
 sample, never measured there, or a required co-analyte missing). Below
 detection results are samples like any other and the state does not depend
@@ -336,7 +338,7 @@ Attribute \code{"daily"} holds \code{date}, \code{site_id}, \code{mspaf} (\verb{
 (and the daily \code{"contributions"}, by \code{date}, when requested).
 Both outputs carry the attribute \code{"analyte_coverage"}, a data frame with
 columns \code{site_id}, \code{side} (\code{"target"} or \code{"reference"}), \code{analyte} (as in
-the contributions attribute), \code{state} (\code{"measured"}, \code{"modelled"} or \code{NA}),
+the contributions attribute), \code{state} (\code{"measured"}, \code{"modelled"}, \code{"background_fill"} or \code{NA}),
 \code{date_from} and \code{date_to} (\code{Date}, inclusive). For each target site and
 toxicant it holds the maximal runs of constant state over the whole daily
 grid, for the target and, when a reference is used, for the reference
