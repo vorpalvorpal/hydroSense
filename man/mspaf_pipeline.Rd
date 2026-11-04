@@ -260,7 +260,9 @@ co-analyte leaves that analyte out of that point on that day.
 where the target is covered and the reference is not, the reference takes
 its static summary \verb{s = max(geometric mean of its results with below-detection results at LOR/2, median(LOR of its below-detection results) / 2)} (the geometric mean alone when it has none), normalised with
 the reference's co-analytes that day. An analyte the reference never
-measured is dropped. When the target is below detection that day (both
+measured is dropped. The summary is taken from \code{daily_args$fill_reference}
+when given (a frame shaped like \code{reference}, same site), e.g. to restrict
+it to one analytical fraction; an analyte it lacks has no fill. When the target is below detection that day (both
 bracketing samples below detection) its value is set to the reference's,
 so the analyte adds no hazard. An analyte enters a day only when both
 sides have a value.
@@ -280,7 +282,7 @@ of class \code{hydroSense_ara_conflict}, raised before anything is computed
 same error). An unspecified \code{impute} means \code{FALSE} here. \code{hydro},
 \code{reference_args} and the \code{daily_args} entries other than \code{interpolation},
 \code{span_cap}, \code{measured_within}, \code{temperature}, \code{start}, \code{end},
-\code{analyte_metadata}, \code{method},
+\code{fill_reference}, \code{analyte_metadata}, \code{method},
 \code{guideline_dir} and \code{conc_units} are ignored.
 
 \strong{Time-weighting and coverage.} For a focal date the days of age

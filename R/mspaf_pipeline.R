@@ -187,7 +187,9 @@
 #' below-detection results at LOR/2, median(LOR of its below-detection
 #' results) / 2)` (the geometric mean alone when it has none), normalised with
 #' the reference's co-analytes that day. An analyte the reference never
-#' measured is dropped. When the target is below detection that day (both
+#' measured is dropped. The summary is taken from `daily_args$fill_reference`
+#' when given (a frame shaped like `reference`, same site), e.g. to restrict
+#' it to one analytical fraction; an analyte it lacks has no fill. When the target is below detection that day (both
 #' bracketing samples below detection) its value is set to the reference's,
 #' so the analyte adds no hazard. An analyte enters a day only when both
 #' sides have a value.
@@ -207,7 +209,7 @@
 #' same error). An unspecified `impute` means `FALSE` here. `hydro`,
 #' `reference_args` and the `daily_args` entries other than `interpolation`,
 #' `span_cap`, `measured_within`, `temperature`, `start`, `end`,
-#' `analyte_metadata`, `method`,
+#' `fill_reference`, `analyte_metadata`, `method`,
 #' `guideline_dir` and `conc_units` are ignored.
 #'
 #' **Time-weighting and coverage.** For a focal date the days of age

@@ -30,6 +30,14 @@
   `"background_fill"` (it was `"modelled"`). `"modelled"` now means the
   point's own interpolated or held value only. The target side never has
   `"background_fill"`. No value or other output changes.
+* **`daily_args$fill_reference` for the added-hazard msPAF.** An optional
+  data frame shaped like `reference` (same single site) from which the
+  reference's static gap-filler summary is computed instead of from
+  `reference` itself, e.g. to restrict it to one analytical fraction. An
+  analyte with no `fill_reference` rows gets no fill. Nothing else changes:
+  the reference series, grid, coverage and sample days still come from
+  `reference`. A non-data-frame, or one with another site, is an error;
+  it is ignored without a reference.
 * **Coverage states for the added-hazard msPAF.** `mspaf_pipeline(ara_form =
   "added_hazard")` output (chronic and daily) carries a new attribute
   `"analyte_coverage"`: per target site, side (`"target"`/`"reference"`) and
