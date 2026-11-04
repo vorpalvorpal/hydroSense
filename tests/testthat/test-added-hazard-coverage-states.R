@@ -14,9 +14,12 @@
 ##
 ## State of a point / toxicant / day:
 ##   own normalised value not NA: "measured" if anchor_distance <=
-##     measured_within, else "modelled";
-##   reference only, own value NA but static gap-filler not NA: "modelled";
+##     measured_within, else "modelled" (interpolated or held; own series
+##     only, never the gap-filler);
+##   reference only, own value NA but static gap-filler not NA:
+##     "background_fill";
 ##   otherwise NA.
+## The target side never has "background_fill".
 ## Ordering: site_id, side, analyte, date_from (C locale).
 ## The setting changes no other output and is ignored by ara_form = "excess".
 ##
@@ -136,7 +139,7 @@ describe("analyte_coverage: presence, columns and types", {
     expect_type(cov$state, "character")
     expect_s3_class(cov$date_from, "Date")
     expect_s3_class(cov$date_to, "Date")
-    expect_true(all(cov$state %in% c("measured", "modelled", NA)))
+    expect_true(all(cov$state %in% c("measured", "modelled", "background_fill", NA)))
     expect_true(all(cov$side %in% c("target", "reference")))
   }
 
@@ -299,9 +302,10 @@ describe("analyte_coverage: states of a target alone", {
 ## Reference B anchors 4, 12, 30 (cap 10, mw 2): own distances
 ##   4..12: 0 1 2 3 4 3 2 1 0; 13..29 uncovered; 30..40 held (0..10);
 ##   0..3 and 41..50 uncovered.  The static gap-filler (B was measured) turns
-##   every uncovered day into "modelled".
+##   every uncovered day into "background_fill".
 ## Reference Mn anchors 5, 15 (gap 10): 5..15 distances 0 1 2 3 4 5 4 3 2 1 0;
-##   16..25 held (1..10); the rest uncovered -> gap-filled "modelled".
+##   16..25 held (1..10, own "modelled"); the rest uncovered -> gap-filled
+##   "background_fill".
 ## Reference Cr: never measured -> NA over the whole grid.
 ## Target Mn: never measured -> NA over the whole grid.
 
@@ -313,16 +317,41 @@ describe("analyte_coverage: states with a reference", {
 
   it("gives the reference's own measured/modelled days and gap-fills the rest", {
     .cs_expect_runs(cov, "T1", "reference", "B", .cs_runs(
-      c("modelled", 0, 3), c("measured", 4, 6), c("modelled", 7, 9),
-      c("measured", 10, 12), c("modelled", 13, 29), c("measured", 30, 32),
-      c("modelled", 33, 50)))
+      c("background_fill", 0, 3), c("measured", 4, 6), c("modelled", 7, 9),
+      c("measured", 10, 12), c("background_fill", 13, 29),
+      c("measured", 30, 32), c("modelled", 33, 40),
+      c("background_fill", 41, 50)))
   })
 
-  it("marks static gap-fill days 'modelled' even where the target is uncovered", {
+  it("marks static gap-fill days 'background_fill' even where the target is uncovered", {
     # target T1 Mn is NA everywhere, reference Mn is gap-filled / own.
+    # modelled (held, own series) 18..25 then background_fill from 26.
     .cs_expect_runs(cov, "T1", "reference", "Mn", .cs_runs(
-      c("modelled", 0, 4), c("measured", 5, 7), c("modelled", 8, 12),
-      c("measured", 13, 17), c("modelled", 18, 50)))
+      c("background_fill", 0, 4), c("measured", 5, 7), c("modelled", 8, 12),
+      c("measured", 13, 17), c("modelled", 18, 25),
+      c("background_fill", 26, 50)))
+  })
+
+  it("keeps interpolated and held reference days 'modelled', not background_fill", {
+    r <- .cs_pick(cov, "T1", "reference", "B")
+    state_on <- function(i) r$state[r$date_from <= .ah_day(i) &
+                                      .ah_day(i) <= r$date_to]
+    for (i in c(7:9, 33:40)) expect_identical(state_on(i), "modelled")
+    for (i in c(0:3, 13:29, 41:50)) expect_identical(state_on(i), "background_fill")
+  })
+
+  it("never has background_fill on the target side", {
+    expect_false("background_fill" %in% cov$state[cov$side == "target"])
+    expect_true("background_fill" %in% cov$state[cov$side == "reference"])
+  })
+
+  it("splits measured -> modelled -> background_fill into separate maximal runs", {
+    r <- .cs_pick(cov, "T1", "reference", "Mn")
+    i <- which(r$state == "modelled" & r$date_from == .ah_day(18))
+    expect_length(i, 1L)
+    expect_identical(r$state[i + 1L], "background_fill")
+    expect_identical(r$state[i - 1L], "measured")
+    expect_identical(r$date_from[i + 1L], r$date_to[i] + 1)
   })
 
   it("is NA on the reference side for a toxicant it never measured", {
@@ -376,9 +405,66 @@ describe("analyte_coverage: states with a reference", {
                detected = c(FALSE, FALSE, FALSE))))
     o <- .cs_run(.cs_t1(), ref)
     .cs_expect_runs(.cs_attr(o), "T1", "reference", "B", .cs_runs(
-      c("modelled", 0, 3), c("measured", 4, 6), c("modelled", 7, 9),
-      c("measured", 10, 12), c("modelled", 13, 29), c("measured", 30, 32),
-      c("modelled", 33, 50)))
+      c("background_fill", 0, 3), c("measured", 4, 6), c("modelled", 7, 9),
+      c("measured", 10, 12), c("background_fill", 13, 29),
+      c("measured", 30, 32), c("modelled", 33, 40),
+      c("background_fill", 41, 50)))
+  })
+
+  it("never labels the target background_fill when the target is below detection", {
+    o <- .cs_run(.cs_t1(bdet = c(FALSE, FALSE, FALSE)), .cs_ref())
+    cv <- .cs_attr(o)
+    expect_false("background_fill" %in% cv$state[cv$side == "target"])
+    .cs_expect_runs(cv, "T1", "target", "B", .cs_runs(
+      c("measured", 0, 2), c("modelled", 3, 5), c("measured", 6, 8),
+      c(NA, 9, 39), c("measured", 40, 42), c("modelled", 43, 50)))
+  })
+
+  it("gives the same states on the daily output", {
+    od <- .cs_run(dplyr::bind_rows(.cs_t1(), .cs_t2()), .cs_ref(),
+                  chronic = FALSE)
+    cd <- .cs_attr(od)
+    .cs_expect_runs(cd, "T1", "reference", "B", .cs_runs(
+      c("background_fill", 0, 3), c("measured", 4, 6), c("modelled", 7, 9),
+      c("measured", 10, 12), c("background_fill", 13, 29),
+      c("measured", 30, 32), c("modelled", 33, 40),
+      c("background_fill", 41, 50)))
+    .cs_expect_runs(cd, "T2", "reference", "Cr", .cs_runs(c(NA, 0, 50)))
+    expect_false("background_fill" %in% cd$state[cd$side == "target"])
+  })
+
+  it("is background_fill only where the own series is absent (measured_within = Inf)", {
+    oi <- .cs_run(.cs_t1(), .cs_ref(), daily_args = list(measured_within = Inf))
+    .cs_expect_runs(.cs_attr(oi), "T1", "reference", "B", .cs_runs(
+      c("background_fill", 0, 3), c("measured", 4, 12),
+      c("background_fill", 13, 29), c("measured", 30, 40),
+      c("background_fill", 41, 50)))
+  })
+
+  it("has no background_fill anywhere without a reference", {
+    o <- .cs_run(dplyr::bind_rows(.cs_t1(), .cs_t2()))
+    expect_false("background_fill" %in% .cs_attr(o)$state)
+    o2 <- .cs_run(dplyr::bind_rows(.cs_t1(), .cs_t2()), chronic = FALSE)
+    expect_false("background_fill" %in% .cs_attr(o2)$state)
+  })
+
+  it("leaves the numeric outputs unchanged by the background_fill label", {
+    # Values worked out on the behaviour before the relabel (the gap-filler
+    # feeds the reference exactly as before); only the state label changes.
+    o <- .cs_run(.cs_t1(), .cs_ref(), also_total = TRUE)
+    d <- attr(o, "daily")
+    i <- c(1, 5, 10, 41, 51)   # grid days 0, 4, 9, 40, 50
+    expect_equal(d$mspaf[i], c(24.837654573370592, 29.564511669289161, NA,
+                               40.40577505056244, 40.935032671569495),
+                 tolerance = 1e-8)
+    expect_equal(d$mspaf_total[i], c(26.575739640402496, 30.70628129435644, NA,
+                                     42.300875330091699, 42.300875330091699),
+                 tolerance = 1e-8)
+    # the reference msPAF on a gap-filled day equals the static summary's
+    expect_equal(d$mspaf_reference[i], c(2.312441232596385, 1.6210147073963732,
+                                         NA, 3.1800065881168127,
+                                         2.312441232596385), tolerance = 1e-8)
+    expect_identical(d$n_analytes[i], c(1L, 1L, 0L, 1L, 1L))
   })
 })
 

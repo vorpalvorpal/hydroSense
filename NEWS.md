@@ -24,12 +24,18 @@
   `chronic_summary`, `daily_args$interpolation = "loglinear"` with
   `ara_form = "excess"`) are errors of class `hydroSense_ara_conflict`; a
   reference with more than one site is `hydroSense_reference_sites`.
+* **Reference gap-fill is now visible in the coverage states.** In the
+  `"analyte_coverage"` attribute, a reference cell whose own series is `NA`
+  but which is filled by the static long-run summary now has state
+  `"background_fill"` (it was `"modelled"`). `"modelled"` now means the
+  point's own interpolated or held value only. The target side never has
+  `"background_fill"`. No value or other output changes.
 * **Coverage states for the added-hazard msPAF.** `mspaf_pipeline(ara_form =
   "added_hazard")` output (chronic and daily) carries a new attribute
   `"analyte_coverage"`: per target site, side (`"target"`/`"reference"`) and
   toxicant, the runs of days that are `"measured"` (a sample within
-  `daily_args$measured_within` days, default 30), `"modelled"` (interpolated,
-  held or gap-filled further away) or `NA` (no value). It changes no other
+  `daily_args$measured_within` days, default 30), `"modelled"` (interpolated or
+  held further away) or `NA` (no value). It changes no other
   output; `"excess"` ignores `measured_within`. `interpolate_loglinear()`
   gains a fourth column, `anchor_distance` (days to the nearest usable
   anchor, `NA` on uncovered days).
