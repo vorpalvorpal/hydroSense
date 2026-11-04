@@ -78,6 +78,21 @@
       ), class = "hydroSense_reference_sites", call = rlang::caller_env())
     }
   }
+  fill_ref <- daily_args$fill_reference
+  if (!is.null(fill_ref)) {
+    checkmate::assert_data_frame(fill_ref, .var.name = "daily_args$fill_reference")
+    checkmate::assert_names(names(fill_ref), must.include = "site_id",
+                            .var.name = "daily_args$fill_reference")
+    if (!is.null(reference) &&
+        !all(as.character(fill_ref$site_id) ==
+               as.character(reference$site_id[1L]))) {
+      cli::cli_abort(c(
+        "{.code daily_args$fill_reference} must have the same {.field site_id} \
+         as {.arg reference}.",
+        "x" = "It contains other site ids."
+      ), class = "hydroSense_fill_reference_site", call = rlang::caller_env())
+    }
+  }
   checkmate::assert_number(min_coverage, lower = 0, upper = 1)
   checkmate::assert_number(tau, lower = 0, finite = TRUE, null.ok = TRUE)
   checkmate::assert_number(window, lower = 0, finite = TRUE, null.ok = TRUE)
@@ -433,7 +448,14 @@
     rsite <- red_r[red_r$site_id == ref_site, , drop = FALSE]
     Rp <- .ah_build_point(rsite, ssd, g, span_cap, 0.5, temp_for(ref_site),
                           co_extra)
-    rstat <- .ah_static_summary(rsite, tox)
+    ## The gap-filler summary may come from a separate frame (same site).
+    fsite <- rsite
+    if (!is.null(daily_args$fill_reference)) {
+      fsite <- .ah_reduce_input(daily_args$fill_reference, ssd_all$analyte,
+                                conc_units, "daily_args$fill_reference")$red
+      fsite <- fsite[fsite$site_id == ref_site, , drop = FALSE]
+    }
+    rstat <- .ah_static_summary(fsite, tox)
     Rfill <- Rp$norm
     for (k in seq_along(tox)) {
       Rfill[, k] <- if (is.na(rstat[k])) NA_real_ else
