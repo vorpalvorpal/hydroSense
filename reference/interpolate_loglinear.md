@@ -54,8 +54,13 @@ interpolate_loglinear(
 ## Value
 
 A data frame with one row per element of `grid`, in grid order, and
-columns `date` (= `grid`), `value` (numeric) and `detected` (logical).
-With no usable anchor every row is `NA`.
+columns `date` (= `grid`), `value` (numeric), `detected` (logical) and
+`anchor_distance` (numeric): for a covered day, the number of days to
+the nearest usable anchor on either side (0 on an anchor date;
+`g - x_last` for a day held after the last anchor;
+`min(g - x_i, x_j - g)` between two anchors), `NA` for an uncovered day.
+A usable anchor is one the interpolation kept (see `log`). With no
+usable anchor every row is `NA`.
 
 ## Span cap
 
@@ -100,11 +105,11 @@ interpolate_loglinear(
   dates = d0 + c(0, 10, 200), values = c(2, 8, 4),
   detected = c(TRUE, FALSE, TRUE), grid = d0 + c(-1, 0, 5, 10, 100, 330)
 )
-#>         date value detected
-#> 1 2023-12-31    NA       NA
-#> 2 2024-01-01     2     TRUE
-#> 3 2024-01-06     4     TRUE
-#> 4 2024-01-11     8    FALSE
-#> 5 2024-04-10    NA       NA
-#> 6 2024-11-26    NA       NA
+#>         date value detected anchor_distance
+#> 1 2023-12-31    NA       NA              NA
+#> 2 2024-01-01     2     TRUE               0
+#> 3 2024-01-06     4     TRUE               5
+#> 4 2024-01-11     8    FALSE               0
+#> 5 2024-04-10    NA       NA              NA
+#> 6 2024-11-26    NA       NA              NA
 ```

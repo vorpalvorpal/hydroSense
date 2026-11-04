@@ -362,7 +362,8 @@ of class <code>hydroSense_ara_conflict</code>, raised before anything is compute
 (<code>daily_args$interpolation = "loglinear"</code> with <code>ara_form = "excess"</code> is the
 same error). An unspecified <code>impute</code> means <code>FALSE</code> here. <code>hydro</code>,
 <code>reference_args</code> and the <code>daily_args</code> entries other than <code>interpolation</code>,
-<code>span_cap</code>, <code>temperature</code>, <code>start</code>, <code>end</code>, <code>analyte_metadata</code>, <code>method</code>,
+<code>span_cap</code>, <code>measured_within</code>, <code>temperature</code>, <code>start</code>, <code>end</code>,
+<code>analyte_metadata</code>, <code>method</code>,
 <code>guideline_dir</code> and <code>conc_units</code> are ignored.</p>
 <p><strong>Time-weighting and coverage.</strong> For a focal date the days of age
 <code>a = 0..window</code> carry weight <code>exp(-a / tau)</code> (<code>tau</code> 90 and <code>window</code> 365
@@ -384,6 +385,23 @@ analyte exactly zero. The <code>"total"</code> variant apportions <code>msT0</co
 <code>PAF_i(T0)</code> (<code>T0</code> the target's values with below-detection days at 0, so a
 below-detection analyte-day contributes 0) the same way and sums to
 <code>value_total</code>. A group's contribution is the sum over its analytes.</p>
+<p><strong>Coverage states.</strong> For every point (each target site, and the
+reference), toxicant and day, the attribute <code>"analyte_coverage"</code> says where
+the value that point contributes came from. <code>daily_args$measured_within</code>
+(a single non-negative number of days, may be <code>Inf</code>; default 30; anything
+else is an error) sets what counts as "nearby". The state is <code>"measured"</code>
+when the point's own value that day is not <code>NA</code> and the nearest sample of
+that toxicant at that point (the <code>anchor_distance</code> of
+<code><a href="interpolate_loglinear.html">interpolate_loglinear()</a></code>) is at most <code>measured_within</code> days away;
+<code>"modelled"</code> when its own value is further than that from any sample
+(interpolated or held), or, for the reference only, when its own value is
+<code>NA</code> but the static gap-filler value is not; and <code>NA</code> when the point has no
+value for that toxicant that day (outside the span cap, before the first
+sample, never measured there, or a required co-analyte missing). Below
+detection results are samples like any other and the state does not depend
+on detection. <code>measured_within</code> changes no other output, and is ignored by
+<code>ara_form = "excess"</code>. An analyte enters a target's day of <code>D</code> only when
+both sides are non-<code>NA</code>.</p>
 <p><strong>Output.</strong> One row per (target site, focal date): <code>focal_date</code>, <code>site_id</code>,
 <code>sample_id</code> (<code>"chronic_&lt;focal_date&gt;_&lt;site_id&gt;"</code>), <code>analyte</code> (<code>"msPAF"</code>),
 <code>value</code>, <code>value_total</code> (with <code>also_total</code>), <code>detected</code>, <code>n_samples_in_window</code> (target sample
@@ -394,7 +412,16 @@ Attribute <code>"daily"</code> holds <code>date</code>, <code>site_id</code>, <c
 <code>"sample_days"</code> has one row per target sample date (<code>site_id</code>, <code>date</code>,
 <code>paired</code>, <code>TRUE</code> when the reference has a toxicant result that day). With
 <code>chronic = FALSE</code> the daily frame is returned, carrying <code>"sample_days"</code>
-(and the daily <code>"contributions"</code>, by <code>date</code>, when requested).</p>
+(and the daily <code>"contributions"</code>, by <code>date</code>, when requested).
+Both outputs carry the attribute <code>"analyte_coverage"</code>, a data frame with
+columns <code>site_id</code>, <code>side</code> (<code>"target"</code> or <code>"reference"</code>), <code>analyte</code> (as in
+the contributions attribute), <code>state</code> (<code>"measured"</code>, <code>"modelled"</code> or <code>NA</code>),
+<code>date_from</code> and <code>date_to</code> (<code>Date</code>, inclusive). For each target site and
+toxicant it holds the maximal runs of constant state over the whole daily
+grid, for the target and, when a reference is used, for the reference
+(repeated under each target <code>site_id</code>); runs are contiguous, cover the grid
+and are ordered by <code>site_id</code>, <code>side</code>, <code>analyte</code>, <code>date_from</code>. With no
+toxicant it has zero rows.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
