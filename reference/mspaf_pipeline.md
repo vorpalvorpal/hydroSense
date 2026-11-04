@@ -407,15 +407,16 @@ is not `NA` and the nearest sample of that toxicant at that point (the
 `anchor_distance` of
 [`interpolate_loglinear()`](https://vorpalvorpal.github.io/hydroSense/reference/interpolate_loglinear.md))
 is at most `measured_within` days away; `"modelled"` when its own value
-is further than that from any sample (interpolated or held), or, for the
-reference only, when its own value is `NA` but the static gap-filler
-value is not; and `NA` when the point has no value for that toxicant
-that day (outside the span cap, before the first sample, never measured
-there, or a required co-analyte missing). Below detection results are
-samples like any other and the state does not depend on detection.
-`measured_within` changes no other output, and is ignored by
-`ara_form = "excess"`. An analyte enters a target's day of `D` only when
-both sides are non-`NA`.
+is further than that from any sample (interpolated or held; never the
+gap-filler); `"background_fill"`, for the reference only, when its own
+value is `NA` but the static gap-filler value is not (the long-run
+summary stands in for the missing series; the target never has this
+state); and `NA` when the point has no value for that toxicant that day
+(outside the span cap, before the first sample, never measured there, or
+a required co-analyte missing). Below detection results are samples like
+any other and the state does not depend on detection. `measured_within`
+changes no other output, and is ignored by `ara_form = "excess"`. An
+analyte enters a target's day of `D` only when both sides are non-`NA`.
 
 **Output.** One row per (target site, focal date): `focal_date`,
 `site_id`, `sample_id` (`"chronic_<focal_date>_<site_id>"`), `analyte`
@@ -431,13 +432,13 @@ daily frame is returned, carrying `"sample_days"` (and the daily
 `"contributions"`, by `date`, when requested). Both outputs carry the
 attribute `"analyte_coverage"`, a data frame with columns `site_id`,
 `side` (`"target"` or `"reference"`), `analyte` (as in the contributions
-attribute), `state` (`"measured"`, `"modelled"` or `NA`), `date_from`
-and `date_to` (`Date`, inclusive). For each target site and toxicant it
-holds the maximal runs of constant state over the whole daily grid, for
-the target and, when a reference is used, for the reference (repeated
-under each target `site_id`); runs are contiguous, cover the grid and
-are ordered by `site_id`, `side`, `analyte`, `date_from`. With no
-toxicant it has zero rows.
+attribute), `state` (`"measured"`, `"modelled"`, `"background_fill"` or
+`NA`), `date_from` and `date_to` (`Date`, inclusive). For each target
+site and toxicant it holds the maximal runs of constant state over the
+whole daily grid, for the target and, when a reference is used, for the
+reference (repeated under each target `site_id`); runs are contiguous,
+cover the grid and are ordered by `site_id`, `side`, `analyte`,
+`date_from`. With no toxicant it has zero rows.
 
 ## See also
 
