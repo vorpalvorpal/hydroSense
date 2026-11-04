@@ -344,7 +344,9 @@ co-analyte leaves that analyte out of that point on that day.</p>
 where the target is covered and the reference is not, the reference takes
 its static summary <code>s = max(geometric mean of its results with below-detection results at LOR/2, median(LOR of its below-detection results) / 2)</code> (the geometric mean alone when it has none), normalised with
 the reference's co-analytes that day. An analyte the reference never
-measured is dropped. When the target is below detection that day (both
+measured is dropped. The summary is taken from <code>daily_args$fill_reference</code>
+when given (a frame shaped like <code>reference</code>, same site), e.g. to restrict
+it to one analytical fraction; an analyte it lacks has no fill. When the target is below detection that day (both
 bracketing samples below detection) its value is set to the reference's,
 so the analyte adds no hazard. An analyte enters a day only when both
 sides have a value.</p>
@@ -363,7 +365,7 @@ of class <code>hydroSense_ara_conflict</code>, raised before anything is compute
 same error). An unspecified <code>impute</code> means <code>FALSE</code> here. <code>hydro</code>,
 <code>reference_args</code> and the <code>daily_args</code> entries other than <code>interpolation</code>,
 <code>span_cap</code>, <code>measured_within</code>, <code>temperature</code>, <code>start</code>, <code>end</code>,
-<code>analyte_metadata</code>, <code>method</code>,
+<code>fill_reference</code>, <code>analyte_metadata</code>, <code>method</code>,
 <code>guideline_dir</code> and <code>conc_units</code> are ignored.</p>
 <p><strong>Time-weighting and coverage.</strong> For a focal date the days of age
 <code>a = 0..window</code> carry weight <code>exp(-a / tau)</code> (<code>tau</code> 90 and <code>window</code> 365
