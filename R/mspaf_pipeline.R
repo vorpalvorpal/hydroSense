@@ -206,7 +206,8 @@
 #' (`daily_args$interpolation = "loglinear"` with `ara_form = "excess"` is the
 #' same error). An unspecified `impute` means `FALSE` here. `hydro`,
 #' `reference_args` and the `daily_args` entries other than `interpolation`,
-#' `span_cap`, `temperature`, `start`, `end`, `analyte_metadata`, `method`,
+#' `span_cap`, `measured_within`, `temperature`, `start`, `end`,
+#' `analyte_metadata`, `method`,
 #' `guideline_dir` and `conc_units` are ignored.
 #'
 #' **Time-weighting and coverage.** For a focal date the days of age
@@ -232,6 +233,24 @@
 #' below-detection analyte-day contributes 0) the same way and sums to
 #' `value_total`. A group's contribution is the sum over its analytes.
 #'
+#' **Coverage states.** For every point (each target site, and the
+#' reference), toxicant and day, the attribute `"analyte_coverage"` says where
+#' the value that point contributes came from. `daily_args$measured_within`
+#' (a single non-negative number of days, may be `Inf`; default 30; anything
+#' else is an error) sets what counts as "nearby". The state is `"measured"`
+#' when the point's own value that day is not `NA` and the nearest sample of
+#' that toxicant at that point (the `anchor_distance` of
+#' [interpolate_loglinear()]) is at most `measured_within` days away;
+#' `"modelled"` when its own value is further than that from any sample
+#' (interpolated or held), or, for the reference only, when its own value is
+#' `NA` but the static gap-filler value is not; and `NA` when the point has no
+#' value for that toxicant that day (outside the span cap, before the first
+#' sample, never measured there, or a required co-analyte missing). Below
+#' detection results are samples like any other and the state does not depend
+#' on detection. `measured_within` changes no other output, and is ignored by
+#' `ara_form = "excess"`. An analyte enters a target's day of `D` only when
+#' both sides are non-`NA`.
+#'
 #' **Output.** One row per (target site, focal date): `focal_date`, `site_id`,
 #' `sample_id` (`"chronic_<focal_date>_<site_id>"`), `analyte` (`"msPAF"`),
 #' `value`, `value_total` (with `also_total`), `detected`, `n_samples_in_window` (target sample
@@ -243,6 +262,15 @@
 #' `paired`, `TRUE` when the reference has a toxicant result that day). With
 #' `chronic = FALSE` the daily frame is returned, carrying `"sample_days"`
 #' (and the daily `"contributions"`, by `date`, when requested).
+#' Both outputs carry the attribute `"analyte_coverage"`, a data frame with
+#' columns `site_id`, `side` (`"target"` or `"reference"`), `analyte` (as in
+#' the contributions attribute), `state` (`"measured"`, `"modelled"` or `NA`),
+#' `date_from` and `date_to` (`Date`, inclusive). For each target site and
+#' toxicant it holds the maximal runs of constant state over the whole daily
+#' grid, for the target and, when a reference is used, for the reference
+#' (repeated under each target `site_id`); runs are contiguous, cover the grid
+#' and are ordered by `site_id`, `side`, `analyte`, `date_from`. With no
+#' toxicant it has zero rows.
 #'
 #' @return When `chronic = TRUE` (default), the chronic msPAF frame, one row per
 #'   (focal date × site):
@@ -322,6 +350,8 @@ mspaf_pipeline <- function(target,
       contributions = contributions, min_coverage = min_coverage
     ))
   }
+  # `measured_within` belongs to the added-hazard form; this path ignores it.
+  daily_args$measured_within <- NULL
   if (identical(daily_args$interpolation, "loglinear")) {
     cli::cli_abort(c(
       "{.code daily_args$interpolation = \"loglinear\"} belongs to \

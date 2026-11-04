@@ -33,8 +33,12 @@ with \code{log = FALSE} only \code{NA} anchors are dropped.}
 }
 \value{
 A data frame with one row per element of \code{grid}, in grid order, and
-columns \code{date} (= \code{grid}), \code{value} (numeric) and \code{detected} (logical).
-With no usable anchor every row is \code{NA}.
+columns \code{date} (= \code{grid}), \code{value} (numeric), \code{detected} (logical) and
+\code{anchor_distance} (numeric): for a covered day, the number of days to the
+nearest usable anchor on either side (0 on an anchor date; \code{g - x_last}
+for a day held after the last anchor; \code{min(g - x_i, x_j - g)} between two
+anchors), \code{NA} for an uncovered day. A usable anchor is one the
+interpolation kept (see \code{log}). With no usable anchor every row is \code{NA}.
 }
 \description{
 Fills a grid of days from a point's own grab samples ("anchors"). Between two

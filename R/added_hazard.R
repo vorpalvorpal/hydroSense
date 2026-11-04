@@ -83,6 +83,8 @@
   checkmate::assert_number(window, lower = 0, finite = TRUE, null.ok = TRUE)
   span_cap <- daily_args$span_cap %||% 120
   checkmate::assert_number(span_cap, lower = 0, .var.name = "daily_args$span_cap")
+  checkmate::assert_number(daily_args$measured_within %||% 30, lower = 0,
+                           .var.name = "daily_args$measured_within")
   if (!is.null(daily_args$temperature)) {
     checkmate::assert_data_frame(daily_args$temperature,
                                  .var.name = "daily_args$temperature")
@@ -222,6 +224,7 @@
   n <- length(g)
   raw <- matrix(NA_real_, n, length(tox), dimnames = list(NULL, tox))
   det <- matrix(NA, n, length(tox), dimnames = list(NULL, tox))
+  dist <- matrix(NA_real_, n, length(tox), dimnames = list(NULL, tox))
   co <- .ah_coanalytes(red_site, g, co_extra)
   if (!is.null(temp)) co$temperature <- temp
   for (k in seq_along(tox)) {
@@ -231,13 +234,41 @@
     s <- .interp_loglinear_num(o$date, v, o$detected, g, span_cap, TRUE, g)
     raw[, k] <- s$value
     det[, k] <- s$detected
+    dist[, k] <- s$anchor_distance
   }
   norm <- raw
   for (k in seq_along(tox)) {
     if (all(is.na(raw[, k]))) next
     norm[, k] <- .ah_normalise(ssd, k, raw[, k], co)
   }
-  list(raw = raw, det = det, norm = norm, co = co)
+  list(raw = raw, det = det, norm = norm, co = co, dist = dist)
+}
+
+## Coverage state of each (day, toxicant) cell as an integer code matrix:
+## 0 = none (NA), 1 = measured, 2 = modelled. `norm` is the point's own
+## normalised value, `dist` its anchor distance, `fill` (reference only) the
+## static gap-filler value.
+.ah_state_codes <- function(norm, dist, measured_within, fill = NULL) {
+  code <- matrix(0L, nrow(norm), ncol(norm))
+  own <- !is.na(norm)
+  code[own] <- ifelse(!is.na(dist[own]) & dist[own] <= measured_within, 1L, 2L)
+  if (!is.null(fill)) code[!own & !is.na(fill)] <- 2L
+  code
+}
+
+## Maximal runs of constant state per column of a code matrix, as a frame of
+## (analyte, state, date_from, date_to). Vectorised over days.
+.ah_state_runs <- function(code, tox, grid, site_id, side) {
+  lab <- c(NA_character_, "measured", "modelled")
+  parts <- lapply(seq_along(tox), function(k) {
+    cv <- code[, k]
+    st <- c(1L, which(cv[-1L] != cv[-length(cv)]) + 1L)
+    en <- c(st[-1L] - 1L, length(cv))
+    data.frame(site_id = site_id, side = side, analyte = tox[k],
+               state = lab[cv[st] + 1L], date_from = grid[st],
+               date_to = grid[en], stringsAsFactors = FALSE)
+  })
+  do.call(rbind, parts)
 }
 
 ## Static reference summary (raw ug/L) per toxicant for the gap-filler:
@@ -336,6 +367,7 @@
   } else {
     getOption("hydroSense.guideline_dir")
   }
+  measured_within <- daily_args$measured_within %||% 30
   conc_units  <- daily_args$conc_units
   temperature <- daily_args$temperature
 
@@ -430,11 +462,23 @@
   ctb_out <- list()
   dctb_out <- list()
   sdays_out <- list()
+  cov_out <- list()
+  if (!is.null(Rp) && length(tox)) {
+    ref_code <- .ah_state_codes(Rp$norm, Rp$dist, measured_within, Rfill)
+  }
 
   for (s in sites) {
     tsite <- red_t[red_t$site_id == s, , drop = FALSE]
     Tp <- .ah_build_point(tsite, ssd, g, span_cap, 1, temp_for(s), co_extra)
     Tn <- Tp$norm
+    if (length(tox)) {
+      t_runs <- .ah_state_runs(
+        .ah_state_codes(Tn, Tp$dist, measured_within), tox, grid, s, "target")
+      r_runs <- if (!is.null(Rp)) {
+        .ah_state_runs(ref_code, tox, grid, s, "reference")
+      }
+      cov_out[[s]] <- rbind(t_runs, r_runs)
+    }
     bd <- !is.na(Tn) & !Tp$det
     bd[is.na(bd)] <- FALSE
     ## T0: the target alone, below-detection analyte-days at 0 (the total).
@@ -565,7 +609,20 @@
     sample_days <- tibble::tibble(site_id = character(), date = as.Date(character()),
                                   paired = logical())
   }
+  analyte_cov <- if (length(cov_out)) do.call(rbind, unname(cov_out)) else
+    data.frame(site_id = character(), side = character(),
+               analyte = character(), state = character(),
+               date_from = as.Date(character()),
+               date_to = as.Date(character()), stringsAsFactors = FALSE)
+  if (nrow(analyte_cov)) {
+    analyte_cov <- analyte_cov[order(analyte_cov$site_id, analyte_cov$side,
+                                     analyte_cov$analyte,
+                                     analyte_cov$date_from,
+                                     method = "radix"), , drop = FALSE]
+  }
+  analyte_cov <- tibble::as_tibble(analyte_cov)
   if (!chronic) {
+    attr(daily, "analyte_coverage") <- analyte_cov
     if (contributions) {
       attr(daily, "contributions") <- .ah_arrange_ctb(dplyr::bind_rows(dctb_out),
                                                       "date")
@@ -581,6 +638,7 @@
   }
   attr(out, "daily") <- daily
   attr(out, "sample_days") <- sample_days
+  attr(out, "analyte_coverage") <- analyte_cov
   out
 }
 

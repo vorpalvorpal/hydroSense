@@ -38,7 +38,7 @@ describe("interpolate_loglinear(): return shape", {
   it("returns a data.frame with date, value, detected, one row per grid day", {
     out <- .il(c(0, 10), c(2, 8), grid_off = -1:12)
     expect_s3_class(out, "data.frame")
-    expect_named(out, c("date", "value", "detected"))
+    expect_named(out, c("date", "value", "detected", "anchor_distance"))
     expect_equal(nrow(out), 14L)
     expect_identical(out$date, .il_d0 + (-1:12))
     expect_type(out$value, "double")
@@ -178,5 +178,78 @@ describe("interpolate_loglinear(): input validation", {
                             .il_d0 + 0:6),
       class = "hydroSense_input"
     )
+  })
+})
+
+describe("interpolate_loglinear(): anchor_distance", {
+  it("is numeric and the fourth column", {
+    out <- .il(c(0, 10), c(2, 8), grid_off = 0:10)
+    expect_identical(names(out)[4], "anchor_distance")
+    expect_type(out$anchor_distance, "double")
+  })
+
+  it("is 0 on anchor days and the nearer-anchor distance between anchors", {
+    out <- .il(c(0, 10), c(2, 8), grid_off = 0:10)
+    expect_equal(out$anchor_distance, c(0, 1, 2, 3, 4, 5, 4, 3, 2, 1, 0))
+  })
+
+  it("holds g - x_last after the last anchor, up to the span cap", {
+    out <- .il(c(0, 10), c(2, 8), grid_off = 10:14, span_cap = 3)
+    expect_equal(out$anchor_distance, c(0, 1, 2, 3, NA))
+    expect_equal(out$value[5], NA_real_)
+  })
+
+  it("is NA before the first anchor", {
+    out <- .il(c(5, 10), c(2, 8), grid_off = 3:6)
+    expect_equal(out$anchor_distance, c(NA, NA, 0, 1))
+  })
+
+  it("is NA in an over-cap gap and set again from the next anchor", {
+    out <- .il(c(0, 10, 12), c(2, 8, 4), grid_off = 8:13, span_cap = 5)
+    expect_equal(out$anchor_distance, c(NA, NA, 0, 1, 0, 1))
+  })
+
+  it("is NA on days held beyond the hold (span_cap)", {
+    out <- .il(0, 2, grid_off = 0:5, span_cap = 2)
+    expect_equal(out$anchor_distance, c(0, 1, 2, NA, NA, NA))
+  })
+
+  it("is all NA with no usable anchor", {
+    out <- .il(numeric(0), numeric(0), logical(0), grid_off = 0:3)
+    expect_true(all(is.na(out$anchor_distance)))
+    expect_equal(nrow(out), 4L)
+    out2 <- .il(c(0, 5), c(NA, NA), grid_off = 0:6)
+    expect_true(all(is.na(out2$anchor_distance)))
+  })
+
+  it("does not count anchors dropped by log = TRUE (non-positive, NA)", {
+    ## anchor at 5 has value 0 and is dropped: usable anchors are 0 and 10
+    out <- .il(c(0, 5, 10), c(2, 0, 8), grid_off = 0:10)
+    expect_equal(out$anchor_distance, c(0, 1, 2, 3, 4, 5, 4, 3, 2, 1, 0))
+    out2 <- .il(c(0, 5, 10), c(2, NA, 8), grid_off = 0:10)
+    expect_equal(out2$anchor_distance, out$anchor_distance)
+  })
+
+  it("counts a non-positive anchor with log = FALSE", {
+    out <- .il(c(0, 5, 10), c(2, 0, 8), grid_off = 0:10, log = FALSE)
+    expect_equal(out$anchor_distance, c(0, 1, 2, 2, 1, 0, 1, 2, 2, 1, 0))
+  })
+
+  it("is unaffected by value or detected flag", {
+    a <- .il(c(0, 10), c(2, 8), det = c(FALSE, FALSE), grid_off = 0:12)
+    b <- .il(c(0, 10), c(2, 8), grid_off = 0:12)
+    expect_equal(a$anchor_distance, b$anchor_distance)
+  })
+
+  it("works with an unsorted grid and unsorted anchors", {
+    out <- .il(c(10, 0), c(8, 2), grid_off = c(10, 3, 12, -1, 0, 7),
+               span_cap = 10)
+    expect_equal(out$anchor_distance, c(0, 3, 2, NA, 0, 3))
+  })
+
+  it("leaves value and detected as before", {
+    out <- .il(c(0, 10), c(2, 8), det = c(TRUE, FALSE), grid_off = 0:10)
+    expect_equal(out$value[6], 4)
+    expect_true(out$detected[6])
   })
 })

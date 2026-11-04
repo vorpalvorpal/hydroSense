@@ -43,8 +43,12 @@
 #'   with `log = FALSE` only `NA` anchors are dropped.
 #'
 #' @return A data frame with one row per element of `grid`, in grid order, and
-#'   columns `date` (= `grid`), `value` (numeric) and `detected` (logical).
-#'   With no usable anchor every row is `NA`.
+#'   columns `date` (= `grid`), `value` (numeric), `detected` (logical) and
+#'   `anchor_distance` (numeric): for a covered day, the number of days to the
+#'   nearest usable anchor on either side (0 on an anchor date; `g - x_last`
+#'   for a day held after the last anchor; `min(g - x_i, x_j - g)` between two
+#'   anchors), `NA` for an uncovered day. A usable anchor is one the
+#'   interpolation kept (see `log`). With no usable anchor every row is `NA`.
 #'
 #' @seealso [mspaf_pipeline()] (`ara_form = "added_hazard"`)
 #' @examples
@@ -90,6 +94,7 @@ interpolate_loglinear <- function(dates, values, detected, grid,
   ng <- length(g)
   val <- rep(NA_real_, ng)
   dt  <- rep(NA, ng)
+  ad  <- rep(NA_real_, ng)
   if (any(ok)) {
     o <- order(x[ok])
     x <- x[ok][o]
@@ -106,13 +111,16 @@ interpolate_loglinear <- function(dates, values, detected, grid,
     mid   <- !exact & ii < nx
     v_out <- rep(NA_real_, length(ii))
     d_out <- rep(NA, length(ii))
+    a_out <- rep(NA_real_, length(ii))
     ## anchor dates
     v_out[exact] <- y[ii[exact]]
     d_out[exact] <- q[ii[exact]]
+    a_out[exact] <- 0
     ## held after the last anchor
     held <- last & (gg - x[nx]) <= span_cap
     v_out[held] <- y[nx]
     d_out[held] <- q[nx]
+    a_out[held] <- gg[held] - x[nx]
     ## between two anchors
     if (any(mid)) {
       im <- ii[mid]
@@ -124,11 +132,16 @@ interpolate_loglinear <- function(dates, values, detected, grid,
       dm <- q[im] | q[jm]
       vm[!cov] <- NA_real_
       dm[!cov] <- NA
+      am <- pmin(gg[mid] - x[im], x[jm] - gg[mid])
+      am[!cov] <- NA_real_
+      a_out[mid] <- am
       v_out[mid] <- vm
       d_out[mid] <- dm
     }
     val[has] <- v_out
     dt[has]  <- d_out
+    ad[has]  <- a_out
   }
-  data.frame(date = grid_dates, value = val, detected = dt)
+  data.frame(date = grid_dates, value = val, detected = dt,
+             anchor_distance = ad)
 }
